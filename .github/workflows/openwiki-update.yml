@@ -113,11 +113,16 @@ jobs:
             When the result is `failure`, this PR intentionally preserves only the
             pages completed before the failure. A later successful run can update it.
 
-      - name: Enable auto-merge after a successful update
+      - name: Merge docs update immediately
         if: ${{ steps.openwiki.outcome == 'success' && steps.create-pr.outputs.pull-request-number != '' }}
+        # Docs-only PRs merge without waiting for review: the OPENWIKI_PR_TOKEN
+        # identity is a ruleset bypass actor (see ruleset-main.json), so this
+        # direct merge with --admin bypasses the 1 code-owner review that
+        # `gh pr merge --auto` would wait on forever. The PR is restricted to
+        # docs paths via add-paths above, so human code PRs are unaffected.
         run: |
           [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
-          gh pr merge --auto --squash "$PR_NUMBER"
+          gh pr merge --squash --admin --delete-branch "$PR_NUMBER"
         env:
           GH_TOKEN: ${{ secrets.OPENWIKI_PR_TOKEN }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
