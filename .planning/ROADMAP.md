@@ -12,7 +12,7 @@ This milestone builds the **v1.0 Shared Agent Harness** — the stable, enforced
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Monorepo + Contracts Freeze** - pnpm workspaces, CI, DB-import ban, and frozen zod contracts everything imports
+- [x] **Phase 1: Monorepo + Contracts Freeze** - pnpm workspaces, CI, DB-import ban, and frozen zod contracts everything imports (completed 2026-10-25)
 - [ ] **Phase 2: Postgres Roles + Seeded Data** - Read-only roles proven by test plus deterministic ≥1M-row localized dataset
 - [ ] **Phase 3: SQL Guard + Read-Only Executor** - AST allowlist guard and read-only executor as an importable library
 - [ ] **Phase 4: MCP db-tools Server + Scope Auth** - 5 tools over Streamable HTTP with bearer-token scope enforcement
@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `docs/mcp_interface.md` regenerates from the zod schemas via `pnpm docs:interface`, so docs never drift from code
   4. A PR that imports `pg`, `pg-cursor`, or mcp-server internals from `packages/agent` or `apps/*` fails lint, and every PR runs green CI (typecheck + lint + test + gitleaks v3)
 
-**Plans**: 3/3 plans executed
+**Plans**: 3/3 plans complete
 - [x] 01-01-PLAN.md
 - [x] 01-02-PLAN.md
 - [x] 01-03-PLAN.md
@@ -123,7 +123,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7, except p
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Monorepo + Contracts Freeze | 3/3 | In Progress | - |
+| 1. Monorepo + Contracts Freeze | 3/3 | Complete    | 2026-10-25 |
 | 2. Postgres Roles + Seeded Data | 0/TBD | Not started | - |
 | 3. SQL Guard + Read-Only Executor | 0/TBD | Not started | - |
 | 4. MCP db-tools Server + Scope Auth | 0/TBD | Not started | - |
