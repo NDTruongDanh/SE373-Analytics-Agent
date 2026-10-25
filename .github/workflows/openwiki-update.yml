@@ -58,11 +58,18 @@ jobs:
           # Inference via OpenCode Go (OpenAI-compatible + Responses API).
           # Muse Spark 1.3 Contributor is Responses-only: Go serves it ONLY at
           # POST {base}/responses, so USE_RESPONSES_API must stay "true".
+          # xhigh variant is selected via OPENWIKI_REASONING_EFFORT (not a
+          # `#xhigh` model-ID suffix — `#` fails OpenWiki model-ID validation
+          # and OpenCode `#variant` selector syntax does not apply here).
+          # The SUPPORTED opt-in is mandatory for openai-compatible, otherwise
+          # OpenWiki throws "not supported for provider" before sending.
           OPENWIKI_PROVIDER: openai-compatible
           OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
           OPENAI_COMPATIBLE_BASE_URL: https://opencode.ai/inference/go/openai/v1
           OPENWIKI_MODEL_ID: muse-spark-1.3-contributor
           OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API: "true"
+          OPENWIKI_OPENAI_COMPATIBLE_REASONING_EFFORT_SUPPORTED: "true"
+          OPENWIKI_REASONING_EFFORT: "xhigh"
 
       - name: Exclude workflow changes
         if: ${{ !cancelled() }}
