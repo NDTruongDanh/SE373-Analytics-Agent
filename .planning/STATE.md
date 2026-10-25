@@ -5,10 +5,10 @@ current_phase: 1
 current_phase_name: Monorepo + Contracts Freeze
 status: verifying
 stopped_at: Completed 01-monorepo-contracts-freeze-03-PLAN.md
-last_updated: "2026-10-25T12:52:57.339Z"
+last_updated: "2026-10-25T13:08:21.587Z"
 last_activity: 2026-10-26
 last_activity_desc: Phase 1 execution started
-state_head: 2f07327510683f685b5a6c95a132bfedfc362428
+state_head: a43852f23769eaef4f4e0ce493f766e56d0dc37b
 progress:
   total_phases: 7
   completed_phases: 0
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-26)
 Phase: 1 (Monorepo + Contracts Freeze) — EXECUTING
 Plan: 3 of 3
 Status: Phase complete — ready for verification
-Last activity: 2026-10-25 - Completed quick task 261025-rih: Make per-package pnpm test pass in the four empty shell packages (Phase 1 verification gap)
+Last activity: 2026-10-25 - Completed quick task 261025-rxa: Pass GITHUB_TOKEN to gitleaks v3 secrets scan in ci.yml
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -94,6 +94,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261025-rih | Make per-package pnpm test pass in the four empty shell packages (Phase 1 verification gap) | 2026-10-25 | 2f07327 | [261025-rih-make-per-package-pnpm-test-pass-in-the-f](./quick/261025-rih-make-per-package-pnpm-test-pass-in-the-f/) |
+| 261025-rxa | Pass GITHUB_TOKEN to gitleaks v3 secrets scan in ci.yml | 2026-10-25 | a43852f | [261025-rxa-pass-github-token-to-gitleaks-v3-secrets](./quick/261025-rxa-pass-github-token-to-gitleaks-v3-secrets/) |
 
 ## Deferred Items
 
