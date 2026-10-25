@@ -19,7 +19,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
-    "docs:interface": "tsx scripts/generate-interface.ts"
+    "docs:interface": "tsx scripts/generate-interface.mjs"
   },
   "devDependencies": {
     "jsdom": "29.1.1",
