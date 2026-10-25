@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 1
 current_phase_name: Monorepo + Contracts Freeze
 status: executing
-stopped_at: Roadmap created — next is `/gsd-plan-phase 1`
-last_updated: "2026-10-25T10:44:26.150Z"
+stopped_at: Completed 01-monorepo-contracts-freeze-01-PLAN.md
+last_updated: "2026-10-25T12:25:18.491Z"
 last_activity: 2026-10-26
-last_activity_desc: Roadmap created (7 phases, 52/52 requirements mapped)
-state_head: e47c1744f9e7d0dad81a072aa7ef74d0aa8dbab8
+last_activity_desc: Phase 1 execution started
+state_head: df211b8e3ee64afee4ae25d5092fada9c6508bd1
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-26)
 
 **Core value:** Every UC owner can clone the repo, run one setup command, and build their UC against a stable, enforced harness: shared contracts, a read-only Postgres with seeded data, a guarded `db-tools` path, a LangGraph.js agent skeleton, and a single trace/eval format.
-**Current focus:** Phase 1 ready to plan (Monorepo + Contracts Freeze)
+**Current focus:** Phase 1 — Monorepo + Contracts Freeze
 
 ## Current Position
 
-Phase: 1 (Monorepo + Contracts Freeze) — READY TO EXECUTE
-Plan: 0 of 0 in current phase
+Phase: 1 (Monorepo + Contracts Freeze) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-10-26 — Roadmap created (7 phases, 52/52 requirements mapped)
+Last activity: 2026-10-25 — Phase 1 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01-monorepo-contracts-freeze P01 | 4 min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -63,6 +68,9 @@ Recent decisions affecting current work:
 - [Roadmap]: contracts-first order (Phase 1 freezes schemas by ~28/10; blocks UC-01 M3, UC-02 resources 03/11, UC-09/UC-10 cutovers)
 - [Roadmap]: all DB access via MCP from day one; Phase 3 guard ships as library before Phase 4 server
 - [Roadmap]: Phase 3 ‖ Phase 2 and Phases 5 ‖ 6 parallelizable by different teammates
+- [Phase 01-monorepo-contracts-freeze]: Task 1 recorded as human-APPROVED for all six npm specifiers (verified on npm 2026-10-25, no holds)
+- [Phase 01-monorepo-contracts-freeze]: Approved esbuild postinstall via allowBuilds: pnpm v11 fails install on unapproved build scripts; transitive dep of vitest, no new package
+- [Phase 01-monorepo-contracts-freeze]: Composite tsconfigs include src only: rootDir src plus test dir is a TS6059 hard error, caught by the tracer
 
 ### Pending Todos
 
@@ -84,6 +92,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-26
-Stopped at: Roadmap created — next is `/gsd-plan-phase 1`
+Last session: 2026-10-25T12:25:18.475Z
+Stopped at: Completed 01-monorepo-contracts-freeze-01-PLAN.md
 Resume file: None

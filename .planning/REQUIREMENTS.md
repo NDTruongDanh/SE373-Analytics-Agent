@@ -11,7 +11,7 @@
 
 - [ ] **REPO-01**: Owner can run `pnpm install && pnpm db:up && pnpm data:load` on Node 24 and get a working local stack from a clean clone
 - [ ] **REPO-02**: Workspace has `apps/web`, `apps/api`, `packages/{contracts,mcp-server,access-policy,agent}` with strict TS (`~6.0.3`) project references and a single shared `zod@^4` copy
-- [ ] **REPO-03**: Owner can run `pnpm typecheck`, `pnpm lint`, `pnpm test` at the root and per package (`pnpm --filter <pkg> …`)
+- [x] **REPO-03**: Owner can run `pnpm typecheck`, `pnpm lint`, `pnpm test` at the root and per package (`pnpm --filter <pkg> …`)
 - [ ] **REPO-04**: Every PR to `main` runs CI (typecheck + lint + test + gitleaks v3) and must be green to merge
 - [ ] **REPO-05**: ESLint `no-restricted-imports` fails the build if `packages/agent` or `apps/*` imports `pg`, `pg-cursor`, or `packages/mcp-server` internals
 - [ ] **REPO-06**: CODEOWNERS maps each package/folder to its UC owner so reviews route automatically
@@ -19,7 +19,7 @@
 ### Shared Contracts (CONT)
 
 - [ ] **CONT-01**: Owner imports zod input/output schemas for the 5 db-tools (`list_tables`, `describe_table`, `explain_query`, `run_query`, `sample_rows`) from `@se373/contracts`
-- [ ] **CONT-02**: Owner imports the 11 standard error codes (UNAUTHORIZED … INTERNAL_ERROR, per UC-09 §A.7) and a typed `DbToolError` shape `{code, message, retryable}`
+- [x] **CONT-02**: Owner imports the 11 standard error codes (UNAUTHORIZED … INTERNAL_ERROR, per UC-09 §A.7) and a typed `DbToolError` shape `{code, message, retryable}`
 - [ ] **CONT-03**: Owner imports `SQLAnswerSchema` (UC-01 fields + UC-02 `citations` + telemetry) as the single answer contract for UI/API
 - [ ] **CONT-04**: Owner imports a trace/audit event envelope (`runId`, `threadId`, `userId`, `role`, `node`, `type`, `ts`, `durationMs`, payload) used by every package
 - [ ] **CONT-05**: Owner imports semantic chunk metadata schema (`doc_type`, `table`, `metric_name`, `aliases`, `sensitivity`) for UC-02
@@ -129,12 +129,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | REPO-01 | Phase 7 | Pending |
 | REPO-02 | Phase 1 | Pending |
-| REPO-03 | Phase 1 | Pending |
+| REPO-03 | Phase 1 | Complete |
 | REPO-04 | Phase 1 | Pending |
 | REPO-05 | Phase 1 | Pending |
 | REPO-06 | Phase 1 | Pending |
 | CONT-01 | Phase 1 | Pending |
-| CONT-02 | Phase 1 | Pending |
+| CONT-02 | Phase 1 | Complete |
 | CONT-03 | Phase 1 | Pending |
 | CONT-04 | Phase 1 | Pending |
 | CONT-05 | Phase 1 | Pending |
