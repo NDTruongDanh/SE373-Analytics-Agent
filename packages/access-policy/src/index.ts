@@ -6,3 +6,4 @@ export const ACCESS_POLICY_SHELL =
 export type AccessPolicyShellError = DbToolError;
 
 export * from "./policy.js";
+export * from "./sensitive-columns.js";

@@ -1,0 +1,13 @@
+# Sensitive columns (GUARD-06, UC-09): the declarative input to the
+# AccessPolicy seam. Loaded and zod-validated at construction time;
+# any invalid config throws fail-fast instead of loading silent defaults.
+version: 1
+columns:
+  - table: customers
+    column: phone
+  - table: customers
+    column: email
+  - table: customers
+    column: address
+  - table: employees
+    column: salary
