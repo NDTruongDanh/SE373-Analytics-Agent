@@ -49,7 +49,7 @@
 - [x] **GUARD-03**: Guard ships with ≥30 vitest cases (malicious + valid), and owners can import it as a library for local pre-flight
 - [x] **GUARD-04**: Read-only executor runs `BEGIN READ ONLY` → `SET LOCAL statement_timeout` → cursor `read(maxRows+1)` → `ROLLBACK`, returns `{columns, rows, rowCount, truncated, durationMs}`, and always releases the connection
 - [x] **GUARD-05**: Timeouts surface as `TIMEOUT` (PG 57014) and all DB errors pass through one `sanitizeError()` that never leaks host, user, password, DSN, file paths, or stack traces
-- [ ] **GUARD-06**: `packages/access-policy` exposes an `AccessPolicy` interface and a pass-through/fail-closed `ColumnScopePolicy` stub wired to `policies/sensitive_columns.yaml`, so UC-09/UC-08 can plug enforcement without changing the server
+- [x] **GUARD-06**: `packages/access-policy` exposes an `AccessPolicy` interface and a pass-through/fail-closed `ColumnScopePolicy` stub wired to `policies/sensitive_columns.yaml`, so UC-09/UC-08 can plug enforcement without changing the server
 
 ### MCP db-tools Server (MCP)
 
@@ -155,7 +155,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GUARD-03 | Phase 3 | Complete |
 | GUARD-04 | Phase 3 | Complete |
 | GUARD-05 | Phase 3 | Complete |
-| GUARD-06 | Phase 3 | Pending |
+| GUARD-06 | Phase 3 | Complete |
 | MCP-01 | Phase 4 | Pending |
 | MCP-02 | Phase 4 | Pending |
 | MCP-03 | Phase 4 | Pending |
