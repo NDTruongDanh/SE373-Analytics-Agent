@@ -27,17 +27,17 @@ jobs:
           # update runs against an empty change summary.
           fetch-depth: 0
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "pnpm"
-
-      - name: Enable pnpm via Corepack
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.25.0 --activate
-          pnpm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
