@@ -45,6 +45,12 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/mcp-server:
+    dependencies:
+      '@se373/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
 packages:
 
   '@alcalzone/ansi-tokenize@0.1.3':
