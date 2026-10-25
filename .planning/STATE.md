@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 3
 current_phase_name: SQL Guard + Read-Only Executor
 status: executing
-stopped_at: Phase 1 complete, ready to plan Phase 2
-last_updated: "2026-10-25T15:14:57.894Z"
+stopped_at: Completed 03-sql-guard-read-only-executor-03-01-PLAN.md
+last_updated: "2026-10-25T15:31:15.469Z"
 last_activity: 2026-10-26
-last_activity_desc: Phase 1 complete, transitioned to Phase 2
-state_head: ed46f55303479794ba7421d3667bf8083fcaae5b
+last_activity_desc: Phase 3 execution started
+state_head: 98a5f9bb0615fa8e761cc691ed0a8e64c803b565
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-26)
 
 **Core value:** Every UC owner can clone the repo, run one setup command, and build their UC against a stable, enforced harness: shared contracts, a read-only Postgres with seeded data, a guarded `db-tools` path, a LangGraph.js agent skeleton, and a single trace/eval format.
-**Current focus:** Phase 1 — Monorepo + Contracts Freeze
+**Current focus:** Phase 3 — SQL Guard + Read-Only Executor
 
 ## Current Position
 
-Phase: 3 (SQL Guard + Read-Only Executor) — READY TO EXECUTE
-Plan: Not started
+Phase: 3 (SQL Guard + Read-Only Executor) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-10-25 — Phase 1 complete, transitioned to Phase 2
+Last activity: 2026-10-25 — Phase 3 execution started
 
 Progress: [█░░░░░░░░░] 14%
 
@@ -59,6 +59,7 @@ Progress: [█░░░░░░░░░] 14%
 | Phase 01-monorepo-contracts-freeze P01 | 4 min | 3 tasks | 18 files |
 | Phase 01-monorepo-contracts-freeze P02 | 3 min | 3 tasks | 14 files |
 | Phase 01-monorepo-contracts-freeze P03 | 2 min | 3 tasks | 16 files |
+| Phase 03-sql-guard-read-only-executor P03-01 | 4min | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Recent decisions affecting current work:
 - [Phase 01-monorepo-contracts-freeze]: Generator resolves zod via createRequire anchored at packages/contracts/package.json (no root hoist under pnpm)
 - [Phase 01-monorepo-contracts-freeze]: docs:interface repointed from dangling .ts path to scripts/generate-interface.mjs; eslint now ignores nested dist
 - [Phase 01-monorepo-contracts-freeze]: api/web shells under apps/ per UC-09 0.3 (plan files list was inconsistent); ci.yml uses v4 tags; tracer gate auto-continued
+- [Phase 03-sql-guard-read-only-executor]: Empty/whitespace SQL is INVALID_SQL at character 0 (parser throws position-less on empty input)
+- [Phase 03-sql-guard-read-only-executor]: FROM aliases map to real tables so qualified refs resolve; CTE names exempt from catalog lookup
+- [Phase 03-sql-guard-read-only-executor]: No agent tsconfig project reference to sql-guard needed: typecheck resolves via workspace dist from root tsc -b
 
 ### Pending Todos
 
@@ -106,6 +110,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-25T12:34:08.955Z
-Stopped at: Phase 1 complete, ready to plan Phase 2
+Last session: 2026-10-25T15:31:15.426Z
+Stopped at: Completed 03-sql-guard-read-only-executor-03-01-PLAN.md
 Resume file: None
