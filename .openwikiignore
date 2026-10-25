@@ -1,0 +1,29 @@
+# Read boundary for OpenWiki runs. Ignored paths are never read, scanned, or
+# reproduced in generated docs. Add secrets, generated output, and vendored
+# bulk data here. (An ignored topic can still be *mentioned* if other allowed
+# evidence, e.g. tests or README, refers to it.)
+
+# Secrets and local state
+.env
+.env.*
+!.env.example
+~/.openwiki/
+
+# Generated wiki output itself + transient run state
+openwiki/.run.json
+openwiki/.page-manifest.json
+
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+build/
+coverage/
+
+# Data dumps (large CSVs/parquet/SQLite) — document the loader script instead
+data/*.csv
+data/*.parquet
+data/*.db
+data/*.sqlite
+data/*.duckdb
+*.log
