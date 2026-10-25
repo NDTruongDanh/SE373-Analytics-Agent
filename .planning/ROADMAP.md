@@ -61,9 +61,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The read-only executor runs `BEGIN READ ONLY` → `SET LOCAL statement_timeout` → cursor `read(maxRows+1)` → `ROLLBACK`, returns `{columns, rows, rowCount, truncated, durationMs}`, and always releases the connection; timeouts surface as `TIMEOUT` with no host/user/DSN/path/stack leakage
   3. Owner can import the guard for local pre-flight, and UC-09 can plug column enforcement into the `AccessPolicy` / `ColumnScopePolicy` stub wired to `policies/sensitive_columns.yaml` without changing the (future) server
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 - [x] 03-01-PLAN.md
-- [ ] 03-02-PLAN.md
+- [x] 03-02-PLAN.md
 - [ ] 03-03-PLAN.md
 - [ ] 03-04-PLAN.md
 
@@ -129,7 +129,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7, except p
 |-------|----------------|--------|-----------|
 | 1. Monorepo + Contracts Freeze | 3/3 | Complete    | 2026-10-25 |
 | 2. Postgres Roles + Seeded Data | 0/TBD | Not started | - |
-| 3. SQL Guard + Read-Only Executor | 1/4 | In Progress | - |
+| 3. SQL Guard + Read-Only Executor | 2/4 | In Progress | - |
 | 4. MCP db-tools Server + Scope Auth | 0/TBD | Not started | - |
 | 5. Agent Skeleton + Root Graph | 0/TBD | Not started | - |
 | 6. Trace, Eval + Skills Scaffolding | 0/TBD | Not started | - |

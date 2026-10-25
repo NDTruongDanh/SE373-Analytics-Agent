@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 3
 current_phase_name: SQL Guard + Read-Only Executor
 status: executing
-stopped_at: Completed 03-sql-guard-read-only-executor-03-01-PLAN.md
-last_updated: "2026-10-25T15:31:15.469Z"
+stopped_at: Completed 03-sql-guard-read-only-executor-03-02-PLAN.md
+last_updated: "2026-10-25T15:36:38.634Z"
 last_activity: 2026-10-26
 last_activity_desc: Phase 3 execution started
-state_head: 98a5f9bb0615fa8e761cc691ed0a8e64c803b565
+state_head: 6a7dddcf80eeaf857b8d023628f9919982585834
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-26)
 ## Current Position
 
 Phase: 3 (SQL Guard + Read-Only Executor) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-10-25 — Phase 3 execution started
 
@@ -60,6 +60,7 @@ Progress: [█░░░░░░░░░] 14%
 | Phase 01-monorepo-contracts-freeze P02 | 3 min | 3 tasks | 14 files |
 | Phase 01-monorepo-contracts-freeze P03 | 2 min | 3 tasks | 16 files |
 | Phase 03-sql-guard-read-only-executor P03-01 | 4min | 3 tasks | 21 files |
+| Phase 03-sql-guard-read-only-executor P2 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Recent decisions affecting current work:
 - [Phase 03-sql-guard-read-only-executor]: Empty/whitespace SQL is INVALID_SQL at character 0 (parser throws position-less on empty input)
 - [Phase 03-sql-guard-read-only-executor]: FROM aliases map to real tables so qualified refs resolve; CTE names exempt from catalog lookup
 - [Phase 03-sql-guard-read-only-executor]: No agent tsconfig project reference to sql-guard needed: typecheck resolves via workspace dist from root tsc -b
+- [Phase 03-sql-guard-read-only-executor]: V5/V9 group on status not region: locked Olist fixture has no orders.region; identical GROUP BY plus aggregate coverage, fixture stays DB-faithful
+- [Phase 03-sql-guard-read-only-executor]: M13 expanded to 16 cases so every denylist.ts entry has its own FORBIDDEN_FUNCTION case
 
 ### Pending Todos
 
@@ -110,6 +113,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-25T15:31:15.426Z
-Stopped at: Completed 03-sql-guard-read-only-executor-03-01-PLAN.md
+Last session: 2026-10-25T15:36:38.571Z
+Stopped at: Completed 03-sql-guard-read-only-executor-03-02-PLAN.md
 Resume file: None
