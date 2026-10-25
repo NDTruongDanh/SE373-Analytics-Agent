@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8de16493ccf8f1468da57213df733a1a297d8a2a0b5e4cd2acfe09a323e2bb7c",
+  "claims": [
+    {
+      "id": "claim_2690cff7ad3f4f6ead0c1c8fbb1132f9",
+      "statement": "The planned LangGraph runtime loop orders stages as understand, retrieve semantic, plan, generate SQL, validate with policy, estimate cost with EXPLAIN, approval gate, execute read-only with bounded fix retries, mask PII, chart plus insight, reviewer check, then answer or report or alert.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L115-L144",
+          "version": "repo-lines-v1:sha256:d624cf414b8f83281e755b35b09d8148c7d096bcb8a7d59b95b61192730cae49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3ZGI1OGE1Mzc2NTU0NDRhNzBiOTM4YzI1NDk5ODVmYmZiZmY0NzJlMGQxNjY3MThhMzMzNmEwZWU4NGYyMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyNzhkNDA1NGNmNGNjYzc4MzQyMTAxYTY0NzRlNWM2NTc3YzQ2ZWMxZWEwN2E5ZGQ0YTkzNGYyNDdiMjYxOTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L190-L227",
+          "version": "repo-lines-v1:sha256:9595dd3a8dc5c5ca62ab1dc5dcdfd272926d91e2f8625b70778e5f2bb8957983:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzZTAxZDdjNWNhZDM1OTUwODY1NjIwNDFiMWRlMzBhMWFhYjJiMTAzNzI4ODhkMWViNWM0NTI2MDA1MmJiYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiZjllNWUwMWE4YWQ5N2ExN2M0MGRjMzJkODcwYjZiOTE3ZTZiYjhkN2IyZjkxNjZkM2Y0MDU3ZWU5MDAxODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f09a329737e346a7af99e7901ece65c4",
+      "statement": "The architecture is owned as agent equals model plus harness, where the harness comprises the LangGraph workflow, DB tools via MCP, skills, semantic index, checkpointer and memory, RBAC plus PII policy, trace and audit log, guardrails, and eval runner.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L141-L143",
+          "version": "repo-lines-v1:sha256:18ca120d9a696e7d15a7c6c300073655d8897f1fca6a4fd037811209ceca4e89:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTAyMDQ4MTBkYjQ1N2VmMzk0MmI4ODE1ZDIyOWQ4Y2Q1NmEyNmY5OWRkNGJjNzE4YTVjZmE1MGVjZmE1MDUxMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2I5ODQ0NGU5NDkyY2ZmYzY3ODI0YzZkOWM5YTEzNDhlZmE4ZTc2MzcyZTgzZTRmNjExNjYxNzdjMWZiYzY2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzJhNTJhZjRlMzc1MjU2MjE4MDE4MThlYzBhY2I1YjViNWU1MjkxNDFjZTI0OTc1MzkwNzE5NThkYzlhMWFhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmVhMjc1OGY5NzdlYmFhNDJmNDdhZmJlN2Q4OGE4N2FlMzM2YTA5ZmQ4Y2VmZGFhODU0MDNjNjg3OTFhZDMxMyJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L592-L594",
+          "version": "repo-lines-v1:sha256:14e48f380b87eda33b90bb912dd5f766b3c6f9801049cc29c61417b02a044922:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2M2Y2FhN2U3N2FiNzRhMTMzM2NlYzYyMGMyZDZkNDc4ZDVhOWJkMzViYmEwNjg2MmI1M2FjOWY1NzJmMzhhZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjIzZDUxZDg2MzM4MWM2NTYzYzE5NTE3MThiMmFhZThlODVjNzAzMDc5NmI2NDMxNTcxZjJkOTg3ZDNkYzFmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmQ1NGMyZDFkNzFlZjQ0YjhkNTgyZDBkOTViMzNjZGU0MzcwMGU4MzE3MmY2NWUzOTgzYWExZjU5NmJhNTRhNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjI5MGNjMDg5YTliMDM1NGZjN2I5Zjg3MjhjNzgwMDBiNmNhNDVlOGE3MWYzN2U2YzU2MTg0NTlhMTJkYjM5YyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7e0a694ab83c4a79b46623767e0e37fe",
+      "statement": "The workflow and harness page describes a planned reference architecture because no agent, loader, or eval implementation has landed; the repo contains only wiki tooling scripts and setup docs.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L1-L3",
+          "version": "repo-lines-v1:sha256:53850a2768aa3ed295d95cb4c79c1abea7afea83781cd882d88b4f165eb2ec69:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWQyMGM5Y2ZlOGVjMWM0MTVmMDJmOTE2ZTA5ZmU1ZmJlYTIzYWM1NzdhYTkxZjg4ZDUyNzFhYzY0NWJjNWZiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWRjNjI3Y2FhYWRmMGE0YzcxZTM5YzFjMzE5N2YxZGI5YzNmYWEyNDVkODJlMDY0M2U4MDRiMTUxYTZkZGNiMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjY2YjRmNjIwNTJhMDg1NWE2YzA3MWVhMDdkZDYxZjI1OWQzZGEwZjM2YTExZTk0ODA3ZWZlNjcyMDhkYWQxZiJ9"
+        },
+        {
+          "resource": "repo://package.json#L13-L24",
+          "version": "repo-lines-v1:sha256:969713f1b38b8854bbae520c116027a898c67723fcbc2aa1325983abecf99cab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ODMzZDU5NDljMDNhNDBjYTk1MjQ5MTYxMGE2NjU5NjQ0YjNhYTQ2NjM2MmY3OTkwMjBkYmYxOTgxNTQ3ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MGM3Mjc5YTJiZTM2ZDJhZjU5ZGZkZThiMzM4M2Q5OWRkMWU4NDJhNGVjNThiMjQ3MjZlMGVkY2ZhNzkxMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_746a96d488d9471484bcb793fdf4fd95",
+      "statement": "Shared tools follow fixed contracts: metadata tools are role-filtered, sample_rows returns at most 5 masked rows, validate_sql has no DB access, explain_query runs EXPLAIN without ANALYZE, run_query enforces read-only plus timeout plus row cap plus RBAC, search_semantic_layer is knowledge-only, render_chart accepts only spec JSON, send_alert is allowlisted with retry and dedup, and at least one tool is a genuine external system.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L507-L521",
+          "version": "repo-lines-v1:sha256:d5cd5e9906ead721997b701abf4fded1dba126e9c699b7c65546b5917e59e900:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwN2FlYzcxZDJhZDcxZTAxM2FhYjUxZjc5MTJmNWVhMThhNTVkNTJhZTQyZTkwZTkxMTczMThjOWFmNGM5Y2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ODE1Nzk0NTYzNTIyNDg5NTgxYjMxMTViMmY4ODM1NzZkMjc2Mjk5MzMzNWE1MmYxMmQyYWY2YTFjMWQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODk3MGFkOTBmZDI5ZDU0ZDYwOTY3NzViMjg5YTg1YjljYTM0YWI0YmVjM2VlOGJkOWMzNmRiYWEzM2NiMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyMjM5NzkxODBkOWRhM2Y1NTU0YjY5OWVlODFmYzIxMDUwYTVmZjUwNGNmY2VmY2U1ZGYyNjg4MzY0NDVlMWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c16cf2c10e814a94b01af06bf2818e05",
+      "statement": "The read-only invariant requires the agent to use a SELECT-only PostgreSQL role or read-only DuckDB and SQLite open mode, enforced at the connection layer so prompt-only blocking is insufficient and violations zero the affected use case.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L50-L50",
+          "version": "repo-lines-v1:sha256:350d0a33dc1db3160cea4361345d50d5272b500d41b1804199a53b75e17f67e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzUwZDBhMzNkYzFkYjMxNjBjZWE0MzYxMzQ1ZDUwZDUyNzJiNTAwZDQxYjE4MDQxOTlhNTNiNzVlMTdmNjdlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzUwZDBhMzNkYzFkYjMxNjBjZWE0MzYxMzQ1ZDUwZDUyNzJiNTAwZDQxYjE4MDQxOTlhNTNiNzVlMTdmNjdlNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWViNzUxZjI0NmYzMTYxNWQwNzJjZjM3MjNjMjNiNDM5Mzg2Yjg4YTk0YjkyMzQ2NjVlYmQ4NGU2Y2JjM2NhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjVjZTI0ZDc5YWNlOGE0YjJiNWM5MTBiY2NlZjJjZTJmMjI4MTRmNmFjYWQ1NGY0YjhhYzg3NGYyMTEzNDIyOCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L509-L515",
+          "version": "repo-lines-v1:sha256:39e5a021ba960afd716fcce7099ca7f6850babcdbd3850eb0278c55991fcd1da:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTUyN2U1ZmExNDA1OTZkZmJmY2VlZTU2YTE2NGE2NDM4YjMwZGY1N2I0YTFiYTM0MTIyZWY4ZDIwZmEwNDQyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTljNmVhOThkYzE3YzFmYTYwZDQwZTYwN2QwNDlmNjQwYWM3N2FmYzgxMWViMTU0Y2NmYjcyMjFjMzFhM2UzYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjIwYzE0MjE0ZjQ5NzdlYTAxNjc3YjY4OGMyZGVlZDZjMDc4NmE5MjcxNTBiY2EwYjIxZjVjMTQ1NWJmYmZkNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2Y0YjFkZDg3MzZkNzU4OGNlOWI4ZGI3MzkwNWY4N2QzN2Q0ZWUyNmI3NjcwZWNjMzc0ODk0YjAwMDBlYzcxOSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L62-L62",
+          "version": "repo-lines-v1:sha256:8f30bcf99126fad0621d252d962596c69e787ee2345a45d7a6dba4145602fd33:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGYzMGJjZjk5MTI2ZmFkMDYyMWQyNTJkOTYyNTk2YzY5ZTc4N2VlMjM0NWE0NWQ3YTZkYmE0MTQ1NjAyZmQzMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGYzMGJjZjk5MTI2ZmFkMDYyMWQyNTJkOTYyNTk2YzY5ZTc4N2VlMjM0NWE0NWQ3YTZkYmE0MTQ1NjAyZmQzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDdjMGFiNzE5NTY1MzQyYjIxZmI0MGI2NmVhNWI3MWIxMmMzOWFkYTcyZjQxNDQwN2U0YWExYTJmODNiYTRjMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDEwYWVkZTA0OTM5Mzc2NTdmNTE1ZDdhY2FhOTczMjliOGUzOGYwMDYwY2U4OTBiYzI3YmM1ZDQxNThhODAyNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0e39b45dc5e74418b622525c6a85c88b",
+      "statement": "The SQL validator allows exactly one SELECT or WITH statement with existing tables and columns and absolutely bans DDL and DML, multi-statement payloads, and dangerous functions such as pg_sleep, COPY, pg_read_file, and ATTACH, which are never offered for cost approval.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L390-L390",
+          "version": "repo-lines-v1:sha256:a0e21724104857fc53065e187c43a9ecb71a6e0cc52a16e562c50579585775e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBlMjE3MjQxMDQ4NTdmYzUzMDY1ZTE4N2M0M2E5ZWNiNzFhNmUwY2M1MmExNmU1NjJjNTA1Nzk1ODU3NzVlNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBlMjE3MjQxMDQ4NTdmYzUzMDY1ZTE4N2M0M2E5ZWNiNzFhNmUwY2M1MmExNmU1NjJjNTA1Nzk1ODU3NzVlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2ZiM2U3NjdjZjY2MDY0ZThlZDE4MDI3NmJkMDY0M2QyMzBmZDQ2OTVmNzVmOTcwNmVjYTM2OWFlNGUyM2E1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L509-L513",
+          "version": "repo-lines-v1:sha256:7d65738d12096684b29f37e528a9b4db7e2a8ef1335c423a8568652e9dba7101:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTUyN2U1ZmExNDA1OTZkZmJmY2VlZTU2YTE2NGE2NDM4YjMwZGY1N2I0YTFiYTM0MTIyZWY4ZDIwZmEwNDQyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzYyOTAyMWU0YTY3ZjM1MDlmNzNiYTZmNTJjNjk3MWY5ZDJkZmMxZDFkNTAzOWM0YjYwMjBmMDViNDJiYjY0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjIwYzE0MjE0ZjQ5NzdlYTAxNjc3YjY4OGMyZGVlZDZjMDc4NmE5MjcxNTBiY2EwYjIxZjVjMTQ1NWJmYmZkNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDIzNjI5ZDFiZDVhNWViZjYwNDNhOGJlYWYxMjRlNWZkOTFlNzE4NjMwMDI3Nzg3MGUwNmY4Yzc3MjY5N2YxMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb1958913f674728be13976c64c4d7d0",
+      "statement": "Every surviving query gets an EXPLAIN cost estimate, pauses via interrupt when above the row threshold, presents SQL plus estimate plus a cheaper alternative, resumes at the pause point on approve without regenerating SQL, proposes another approach on reject, carries a database statement_timeout, and audit-logs asker, SQL, estimate, approver, and decision.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L376-L400",
+          "version": "repo-lines-v1:sha256:66c23789d7942b5546dccbe3c656378f5b67325c306c5fb430bb0f6f83f46b09:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxMmU5YzU4ZjU5MjFhMjNlMGYyMzMyYjY3MzFhN2VmN2JlMzE2NzM2M2UxYzBlYWRjODkwNmEzNWZjNjU3YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MmI5MzJkNzMzNTdjYWEzNGQ3MGQ1ZTI4Mzk2YjkwMjNmNmNlODhiMGU1ZWQ4MWMxYzgyYjljZGQxMDFjN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e0076a32007545a28fc8291b5682411a",
+      "statement": "The system requires at least two reusable skills, each as a directory with name, description, usage triggers, inputs and outputs, steps, constraints, examples, and final check, and no skill may include a script that runs arbitrary commands or connects with a different database account.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L523-L525",
+          "version": "repo-lines-v1:sha256:9edee0caede1b15cd6f86b3db9d16b0e4a5b9827c15008b39f1b16a23fa2daf5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDUwYzgxODcyNGViOTg2YTVkZmY4YWNjYWYzYmY0ZTFiOGU2YzMwZmRmNjdjZGRiMWU2NjlkODQxMzZiY2QyNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjU5NDYwNTEyM2FiNzQ1YjYxODM3YzExOWQ4YWE0YTI5ZTNlZTJjY2I3ODQ1NzllMTVlMzQyNTRkYjdkOTBiNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTMxMjk1YjQ1MzE0YjNjMzg0ZjI2MGVhZWM4OTRlMzdlODZhY2UwM2NkNTVmMTZjMTA5OTY1ZTM0ZjEzZmEwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjI0MmVlOWEyMzE2NjRkM2U4ODQyYTI0ZDZkODUwOTRlZThhYjI4N2I0MTcwM2RlOWE4ZThmMzQ0N2MwMjliYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_aadcd5f9c7fb4bcf8f16f627bac1cf56",
+      "statement": "Short-term AnalysisState and multi-step task state with todo, doing, done, skipped, and failed persist in a checkpointer with resume, compaction, branching on contribution share, depth and query caps, per-step retry that marks failed and continues, and interrupt-based human review of plans and costly queries.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L301-L305",
+          "version": "repo-lines-v1:sha256:dba7127ed154c1c3ef0e05758bcfbfc05ca4d68ae8002ae9f6729ae36a4d137d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDE1Yzg3OWYzOTAwYmJhNDk5MDM1MjQxNTVmNDViZTQyNDJlZTFkYzFjZmM0MzYxMjM4NjZlMjExNjIwNDNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTg2NmQyYjVlZDE4ODRjOWY1NzU1OTdjMGVlYWE1MWViNDI5ZTgxZjE1ZTE1ODIwYjNmYzFjNzQyMDVkYzRiOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWU1ODEwN2FlNTk2Zjg0MDJhNWQzYmQzMjE1OWZjMWU5NTI2MDJiYzI5YTlmNzAzZWY4YzBiOWY1NjBlYjUzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L330-L335",
+          "version": "repo-lines-v1:sha256:129fba937c8b1b4de1dcf3aac5027139e6440d52cadd748bf090ba0455d8d773:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDE1Yzg3OWYzOTAwYmJhNDk5MDM1MjQxNTVmNDViZTQyNDJlZTFkYzFjZmM0MzYxMjM4NjZlMjExNjIwNDNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTc0NzhhYzAwNWUxMTQyNGEwNmZhNjkxOTVmMzUyY2QyNTcxNjUzODllZTA5YTQ1YTBlOWMxYTgzODMzOTlhYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWM3NGY4NjgzMzlhZDM0OGVkOWQzNGU0Yzc0OTc3ZTI0MjVmMjFmNTJmZTkyMGVlZWJiYWFjNzQ4YmY2MDRjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8fe62587719d4cd1a55bd947cda01156",
+      "statement": "A separate Reviewer agent with only schema, dictionary, and small check-query access validates question, SQL, results, and conclusions for fan-out, missing filters, wrong metrics, and unsupported claims, returns approve or request_changes with categorized findings, and coordinates at most two revision rounds.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L353-L372",
+          "version": "repo-lines-v1:sha256:4ed81acfcda2c60ff2af0e4f2d77f5f1029654d1090c8a24c796abd27035159b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYjAyMDJlMDZhMzFjMmE1NjZjNWM4YTE2Y2NmMjkzN2NmNjY2Nzk4M2E0Nzk4YjQ1MDI0MDEzNDk3MmJjODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZDNjMjRlOTFhMDQ4ODdlZjQ4ZjQ1MTFhMDlhNjMzYWRmYzg5NTQ4NTI2YjY4NzgyZTBhZjgyYTI3ZjBhOTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2YzY2ZmI2NjA3NjJiZTk2YzUyNjkwYTI2ZWI2NTVlY2FkOTQ0ZGQ1YTEyZjlmMGEzMmZkMGMxZGVmMmQ0NzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_059bb3e3228143ae8ccd7de0a244c5fb",
+      "statement": "PII masking and RBAC rewriting run before display and before cost estimation, then chart selection and 2 to 4 insights proceed under chart-spec and per-number validators that require every claimed number to trace to a query cell.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L135-L135",
+          "version": "repo-lines-v1:sha256:d300776624d4d426293e6efdf0f6cf0d0f95858bf41334829f408915561a33f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDMwMDc3NjYyNGQ0ZDQyNjI5M2U2ZWZkZjBmNmNmMGQwZjk1ODU4YmY0MTMzNDgyOWY0MDg5MTU1NjFhMzNmNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDMwMDc3NjYyNGQ0ZDQyNjI5M2U2ZWZkZjBmNmNmMGQwZjk1ODU4YmY0MTMzNDgyOWY0MDg5MTU1NjFhMzNmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjFmOGJjM2JjYjc4ZTBlZTg1ODVhYzk4ODVhZDg4N2ZkYzA1MGQ3OGRiMjYyMjg1OWQyNzVmODBjYjAwY2FiYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGZiNzk4NDZhOWY5NTBkNzkyYWZjZTUzYTk5ZWNhYWM0NjA5Zjk0NGVjYzM5NzgxNmMxMmYzNjVlMmI0NTRmZSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L260-L274",
+          "version": "repo-lines-v1:sha256:d2f8c0a626de7e51109812e28c09623209a037cf523deb40417a324c3d40f38d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1YTBjMWRkOTBjM2Q4MWIzZjRkY2FkYTU5ODIyODQ3N2IzYjE3NzRkNjA1YmVhYTVjM2QxODAwYmUxNzU1ODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyNTA4MjMyNWI2NWZkNjU0NWNhYTcxMzc4MWNiNzNlOTk3YjFkY2IyYzBmYmMxYzc2NWVjMDRkY2NmMGQ1NGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjODkzNDc0ZDAxYzAyOGU5ZjQ4Yzg3Y2M5YzllY2FiOWZjNDE0ZDJiYzg2N2E1ODFjYjE5MGEyZWE5NmEyYWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzNTgyOGJhN2YyNjU2MTUxYWZjNzI5ODQ1YmI1MWZiM2U4ZDM4NzYyMzJkZjNmNzlhOTFiNWFkODgwYzgxMmMifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L408-L414",
+          "version": "repo-lines-v1:sha256:bfcb9c1365c767314103e81f02fe908687a0a43c1037e45c10bed2291d996912:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTAxYTAyMjMxNTYzYjkwZjZjM2MyNDkyY2YwNDNkZWYxZTUyMTU4YTZkOTBlODIzODU3YmI2NGFhMjY1YWEwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmQ3NjhkMDA0MTNjYjMzZTFkMjQ3MjRjZTAxMWNlZGIzNjNlNGFhOTFiY2IxOWU4NGNmMDY5N2RjMWEwOTY0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2EyZWIyNmJlZDk3NmRiMTk4OGZiODhmYjNlNWJkOTlmN2I1YTViZTM2ZTBjNzQ5YWRkYzg5OWEzNTQxYzA2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTY1ZGE4ZmMxNTUzZTQ1MmFiYzkxZWY4ZTNjYjBkYzkyZmU0ZjQxZjBlYmEyNzZhNjVjNWNjOTY4NTc4M2M1MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_73e83270b7364352ae0c17471e6ddaee",
+      "statement": "Every run records a run ID and trace with user and role, nodes, tool calls with arguments results and timing, all SQL versions including failures, EXPLAIN cost, applied RBAC policy, skill calls, token and cost estimates, errors, and approval decisions, with no unmasked PII, secrets, or connection strings.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC01.md#L209-L209",
+          "version": "repo-lines-v1:sha256:523ae54377996407378e04bf75ee6e1a6ec806f6b58317ac0912abd4afd561ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTIzYWU1NDM3Nzk5NjQwNzM3OGUwNGJmNzVlZTZlMWE2ZWM4MDZmNmI1ODMxN2FjMDkxMmFiZDRhZmQ1NjFjZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTIzYWU1NDM3Nzk5NjQwNzM3OGUwNGJmNzVlZTZlMWE2ZWM4MDZmNmI1ODMxN2FjMDkxMmFiZDRhZmQ1NjFjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmU3ZjVkNmRjMmU0YmJmNzhmYTkxNTI4MWFlODNkZjE5ZWIyYzUyNmRlYjcyMjZhOWZhZDgyNDg4MWE3NTI4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzY1ZDE3OTk2MTU1MGVlNmZlMzNiMTY2ZmU3MWUyOGYwNzcwZDgxOWQzYzRkNWUwZmJhN2Q2NGE1ZGY0MTYxOSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L540-L542",
+          "version": "repo-lines-v1:sha256:eb864364e611235646210866ee76c8d08c36bc646d6bdf45d00005f66383b202:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjUwZTJhZDI2ZmQ3NjA3OTBhMGVkMGFiNjA3MTg1OGQyOWQ3MTJlNzBhMzdhNzBhZDc3NzE1YjY2NjcwMDk0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ0ZGRlZDA3ZThlMGY0NmI4OTI3MTgzYjk2ZjViNjAxMjMyOTNlZjUxZDMzYzBhZjBmMTJmYTk3NmUwZTI2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE0ZjE2OGQyYjMyYWNlYTIxYzM2MzA4YzI5MDg5Y2EyNDNmNzUyOGNjZWFjY2I4MDc4NTc5OTJlYjUyNmFjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}

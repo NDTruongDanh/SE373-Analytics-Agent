@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8492ce02dd6ed98faf4e9883ac5781f739b3f26129470783d0e376acde655086",
+  "claims": [
+    {
+      "id": "claim_c092349b60ee43fdab0b26417119585d",
+      "statement": "UC-05 is a multi-step hierarchical diagnostic agent covering K4/K5 while UC-10 is a scheduled anomaly detection and alerting workflow covering K2/K5.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L167-L172",
+          "version": "repo-lines-v1:sha256:c1277232428f0e4b56e68f5c209fc042c339586f3c054036102732a938f36964:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTZhYjI5OGNiY2JkOTdmZWVkMTI5ZWE2NjRkODk1NDU3MDc1YzRhMDVjYWI1N2VhYjAzNDY0ZDQ2MmY0MDkxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGJlNzg3MmEzYWU4ODA5NzY0NjBkZTZhMTlhMmFhNmI5ZTM3NTQ4MDk1YTk3MWVlNjYwOTVkNzU3NjUwODI3OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzMyODg5Yjg0MWJiYWE0NGEwODAxNTkwNzRkODZlNjlkZTExMmE2YmY3NDZlMGUxMTE3YTQ2ZjdmZmM4MmZiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDNjNGIzYjIzMWJlNDc5NTc0NzE1ZjRjOTVkMjI2NTBkYzNhZTAwNGZlMTFmZTY2NGZmMmY0MDM0MjM1ZDNiYSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L319-L328",
+          "version": "repo-lines-v1:sha256:9297936544fd0e89ba6b5f7110696b56f07c9d828d3262e38dd5b078d2392448:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NjI3NjgyYmJiYmQ5MTVmYzQ1NzAzZWJlNjJkMjUwMWZlMTUyMWEwYzIxZGVjMTJhYjlkMzJlZTU1YzU2MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YWJmNWY0YzY2NzJjMjhkMjVmNzJkYjUzNzhmNzAwMDBhODM4M2ZmNGZmYzk3MDA5Y2E2ZGJmMGRlYTFiNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1YTU0YjBlN2Q1MjY3OWEwMmVkOTQ5MzA2ZTliYmI0Yzg5ODE5OThhMzhmMGQwZWU1ODhmYmQ4YWIxNjU0YWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3761f128747d406caca557f76ab3cb7c",
+      "statement": "UC-05 persists an analysis plan where each step is todo/doing/done/skipped/failed and enforces branching plus depth cap around 4 levels and query cap around 20.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md#L89-L109",
+          "version": "repo-lines-v1:sha256:8d9096212b3a4a0d60044cd737b43de34ffad77bbab15285f1cd4c5e443b4b76:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiNzMwZjkzMDE5ZjFhNjFkZDM3ZWE2Yjk5OWNjOTgyMDAzYzE1OWFhMTI1OWRmNTg4ZjEzZjYzOTg3MTk5MGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlODZkYTk0NjRkZDRkOTVlMWFhMTg2YzdjNWU5NWM1MWY0ZWZlMjEzNjk5YWVlZDk0Zjc2MGU5MTRkOWY2ZDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkMDRlZTkzZDI5N2RjOTNjOGIyM2RjZjg0Y2NhMjcxZTZlNjQwZDM5NTc0NGE1OTBlMzdjMzdhYTI3ZjAwNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhN2NiYzA3MmRkN2MyZjQ3ZGI3MjRkNGQ0MjYzM2YwMTMwY2I2N2Q2YzZlYzY0NTM0YTViYzZjY2ZjOTQyYTMifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L330-L334",
+          "version": "repo-lines-v1:sha256:7d4ef4e4eb64e6385ba8fcf518b8d4abbd2d7f21771a756bb735ee36222c3366:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDE1Yzg3OWYzOTAwYmJhNDk5MDM1MjQxNTVmNDViZTQyNDJlZTFkYzFjZmM0MzYxMjM4NjZlMjExNjIwNDNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFjN2RiNTA0YzBjZGUwNTY0MjQ3M2U5MjIwNTNiN2M4ZDBjZmUzMWVlNDE4N2Q3NmJhMzgwM2I5ZDc4NDI3ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWM3NGY4NjgzMzlhZDM0OGVkOWQzNGU0Yzc0OTc3ZTI0MjVmMjFmNTJmZTkyMGVlZWJiYWFjNzQ4YmY2MDRjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGNlNzgwMjYyZGI5ZWNmMDkxODY1OTBjNTM1ZjU1Zjk1ZTRlNmYzZTY0YjAwMjdhNmRhMjY0N2I5NjQwNGU1YiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_41f67430d80d44bca2ceba2eab81f13c",
+      "statement": "UC-05 attribution requires summed cause contributions to reconcile with the total delta within 5%, verified automatically.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md#L201-L208",
+          "version": "repo-lines-v1:sha256:e7e320da5a46017c6cbbfec38811ab26f6c962d4ce1fdb75b7889b88d45404ca:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTRjNjFkMzM3ZWRkNWIxYjkwNTdlMTkwN2Y3N2RlYWRjOTU1MDZmYmY0N2FhMzliNjIzYjYxMmY3N2FkYzI1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWU3YTUxOTMzMjhiYjc3YzYzZjMxNTIyZGFmYmVkMGFlZWMzZGM5MDhiZDllZGFkM2ZjMzBmOTM2NmVhMWQyYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDcwOTI3ZTMzZjljNjY5NThlMmUzYzgzN2UwYWVlNzY0ZWQzNjkyMGI3NjA0ZWZmZjM4NTNlMGZhNjIwNjIwMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmIxNGJlZDI1MjcwYWU2NzkzODI2MDgxYTg4YWU4NjhlNjgzMTcyOWNiODBlZTAxZDJjNTQ4YjAwNjI3NzM0OSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L337-L341",
+          "version": "repo-lines-v1:sha256:056eff89759af0ef0f0783467215ca58cc0648b05584fb38e9b072bb8038e070:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODhhMTA1N2VmNDlmNDQyZDkxYTZhMDcwNWUxZDU4YWRjYjY4ODBmNzVlOGUyZThlNTkzZWE0YTdiYWViY2Y3YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzg3ODk1MzFkNWQxMGI1NDRiNDE5ZGYyN2U5NDVmMGUyMjU0OGYxNzhkYzNmNWZiNDRmM2RiMjM5YzUyZTg1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjNkMzU5YmM5OGY2ZGZmYjY1MGFiZDY0ZTU0NWJiYmQwYzAwMmIwNDAxOTg4YmQzZDIwZGEyODYwZWZiNWYzYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_99b2be89c1074a07b2e39c16b7aafee0",
+      "statement": "UC-05 validates the baseline phenomenon first and pauses at plan creation with a LangGraph interrupt so users can view and edit dimensions before heavy queries run.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md#L159-L182",
+          "version": "repo-lines-v1:sha256:f8db381a0a5cff543b2f50f208c639d9a1c9a475706de0eb704e8b63d6c5c096:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNTY3NjE3ODBkZmRlNDg3N2JhNTI4OTRiMzczYzEyNjBiMjgwNzIyMjc1NDllOWIwOGE1MzE4ZGEwMWI2ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTRmYTRlZDljMzc3M2UxYTlhZjg0MGViMWVjYTNjYjg4NzY5NWM2ZjYxM2IwZDcxNThlNmFjNDliNjMzMzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjOWU4NTM2YmY3M2RkYmUzOWM3MjdkMDVkZWU4OTk5OWY1NmE0MzA5ZTcyNjM2OTk2ZDY2MDE1MzUwNTcxZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhOGUxODNhOWQzOTRkYmI3NmJhMjQ2ODNkYjBkOGJkM2VjOTNhMGZiNDAyYmMwOTVjZDRiZjE1MWU4OTVkYjcifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L325-L335",
+          "version": "repo-lines-v1:sha256:52ce81875e3eae0b76c656a485d26dae73e9353b7147c35ac93fb50e008cf0c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhODBjNmY0ZThlZmU2OTNhY2E2NDgwNzU5Zjg5MWJjMmZiNTBjNmQ3MGMyZjFmYTA1MDc5Y2Q3ZGRiOTI3NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NDc4YWMwMDVlMTE0MjRhMDZmYTY5MTk1ZjM1MmNkMjU3MTY1Mzg5ZWUwOWE0NWEwZTljMWE4MzgzMzk5YWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxNjBkYmRkMTQxMzBmMzhiNTc5NmNmNzI5MDBkN2I5YzQ4MTk3ZmVmZjNmMjMyMjJkNmU4NjlkOTM4OTBiMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzNTgyOGJhN2YyNjU2MTUxYWZjNzI5ODQ1YmI1MWZiM2U4ZDM4NzYyMzJkZjNmNzlhOTFiNWFkODgwYzgxMmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_08927b7b67ac44ddafbc953a62334ca5",
+      "statement": "UC-05 checkpoints after each step so a restart after step 2 resumes from the last checkpoint without rerunning completed queries.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md#L257-L260",
+          "version": "repo-lines-v1:sha256:7b647d2d67ea8fa419023758c8585a8c4ac10e2b1f61aa2f586340383e76f165:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDQxYWE4ZGVjYzQ5N2IxZTY0MDkwYmRkYzA1ZjhmNTE4MTcyMGNhOTBiYzBmZjA1ZGI1M2VlMjBkNzk2YjlhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTEyMDA3NDRjMDkzN2Q0YjliZWYyMWEwYWU4NzEwMTZhOTdlYTMxYjA4OGIzNzMyNTVjNjNmODMxN2I4MTkxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGJjM2NhYmZiYjNkMTUyMDI1YWJmNjYxZjNlNGQ1ZWVlYWU3YmM4YzIyNjNjYWE1NGJhZTFhZWFiZTExZjk5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L341-L343",
+          "version": "repo-lines-v1:sha256:c7e9b21fae2877f9e13080c30c181e84ff8b4d2ae7c9a22668d0eaf955447e2f:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODhhMTA1N2VmNDlmNDQyZDkxYTZhMDcwNWUxZDU4YWRjYjY4ODBmNzVlOGUyZThlNTkzZWE0YTdiYWViY2Y3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGFlOTg0NTg3NjFjMWU1OTg5ZGVkMjk4YjcxMTg2ODhlZGNiNTZmNjJmNjM4MmM5NDRmMGY3NmM2NTU3YWM3OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmI3OTA3YjJkYTE1NTE2MDBjNTc3ODRiMTI4MmViZGFlZGFiNGRlYTI0MTc4NzkzYWU0ODhkOWUwNTUzM2QzMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWE2MjYzMGEwY2ZjMmE1ODJmZjk1MWUxMDM4MTg2YTYzYjgyNDA0YTJkYWE1YmUyOTc5YmMwZGYyYmViNDkxZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea4ca4101f564bccb4dc3158c5b0d102",
+      "statement": "A failed UC-05 query step retries with a bound and is then marked failed while analysis continues on other branches.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md#L243-L248",
+          "version": "repo-lines-v1:sha256:0ef8186ef0dd2abb263f36c105e6f8aad520504d97f99e8b39c8447ebb60bb9c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmUyZjFkMWJiNDA2OGM1MTRlMjA4NDcwMmM1ZTA0Y2FmOGNkMzVjN2YxMWYzNjA5ZDE4ZTkwZTcyNGQ3NDJkMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGMzNDcwMmI1YWNkYmY2OTMyYTIxMDY2ZjJhOGM2N2Q3ZTA4ZWQ3MGE5ZmQ5OWU0ZjhjN2ZiZDIzNDNiNjVjOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTIyYTk1NTUxMWM0MGM1YTAyZGViYzhjZmI4M2RjNjJiNmJjYTBiYjFiMzhmOTc4OGI5N2JmNTAyZGYxZmI3ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmQyZTIwZTliZjRjM2FmNzYzNjkxOThmYTU0NzRiYjIwNDc2ZjhjNzZkNjg5ZjA3MWVhMThiYTEzYjIzZGJhNCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L334-L334",
+          "version": "repo-lines-v1:sha256:b1c7db504c0cde05642473e922053b7c8d0cfe31ee4187d76ba3803b9d78427d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFjN2RiNTA0YzBjZGUwNTY0MjQ3M2U5MjIwNTNiN2M4ZDBjZmUzMWVlNDE4N2Q3NmJhMzgwM2I5ZDc4NDI3ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFjN2RiNTA0YzBjZGUwNTY0MjQ3M2U5MjIwNTNiN2M4ZDBjZmUzMWVlNDE4N2Q3NmJhMzgwM2I5ZDc4NDI3ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmY1MDA3NjM4NTIyMzJjODFhNzg3OTMwMmVjYzEwODQyNTE0NGI1NTQ0NDU3MjY1M2UxYWJlOTIyYmY5YTI0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGNlNzgwMjYyZGI5ZWNmMDkxODY1OTBjNTM1ZjU1Zjk1ZTRlNmYzZTY0YjAwMjdhNmRhMjY0N2I5NjQwNGU1YiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_15b58abcceb44f4c9bff6e8b05464340",
+      "statement": "UC-10 scans subscribed metric-by-slice series on a 07:00 schedule plus manual trigger, fetching via shared db-tools MCP without a separate pool and checkpointing per metric/slice so one slice failure does not stop the run.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L35-L44",
+          "version": "repo-lines-v1:sha256:97396fb5c68955e95fcec3aec5e9157ee5515e0e8888a2845295144fad63a438:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3ZjQzOWExZGMyNDk1NzNmNjExYTBlOWJkZTgyM2E3YzAxMjVmZTA2Nzg4NmM5MGQ3MWM5MjVkZGRiMWQ0NTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliM2MwMmYzMjdmMWM4ODZjNTRkNzA0N2ZjMzNlNWVhMjY4YzkyZTFhOTYzMWI4NmJmZjM2MWI2MWM1NDM3NjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMTNlZTdjMGJhYmVlMmViMmU1NWQ2MjczZjFjYzcxMTBhMDUzZWYwYTkwZDZjZmI0ZTJmN2Q0Yzg2NWNhNDcifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L458-L464",
+          "version": "repo-lines-v1:sha256:e882155698ceb1478e65b5b13ada887da7d9ba1e62d9e799cfb1eccdb1700466:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE5MjQzMTYxODBjZGVhZjdjOTFhNzgxZjM2ZWQ0ODZkYTdiYTk4ZmYwMGViODM3ZDgyY2UxZWU5YzJjZjE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjRiNmVkYTRkMDNhNDZhOWFhNDFkYzQ0MzIxY2RiNDgyNTM3ZmFmMTY0MjJkMDA1MWVmMTRiYmZhNDc1YzdjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmY1NTdhNDNjMGI5OWMwOWZhMzk4YjYzNjYyNDI5YTRjZTEwZTFhY2M0OTMxNDQ5N2M1MDI5Y2M4YTJlOWExZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e47b3c8b595c41c49652515fd9faa4a2",
+      "statement": "UC-10 detection is code-based robust z-score over a trimmed 28-day window with sigma floor and EPS plus week-over-week comparison, gated by min_support so under-supported slices are skipped rather than alerted.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L85-L113",
+          "version": "repo-lines-v1:sha256:3bb5451e0a530ebe3501fc2a25f6f396663129d8dbd9a7d07da2e7a928861ad6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YzFiOWIwOGNiYzlkZjUxODc1NDA3N2M5M2U2MjI4NTYxZTAwN2IyNDg2ZTg2YmMzNzM1MmIxMzBlNjA5ODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0MmM2NjI5NTdjNTk3NzRhZTkyNmZmZDM2NmI3OWU2MjI1NzhhNmQxY2NhM2ZjMjIzZGIwODI4YmMxZDUyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxOTQyZDdjNmUwMjgxOWMzNmYxMGRlZGU1MWVhYWVmZjVmYTViZTM3MzNmNjRkOGI2YjBlMjI3MGViMjdkNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkNzhlZWQwMTI4MmJjMWE3NzFhZGQzNjc0ZWMxOWM2ZDYxOTZjMzNjYzgxY2EwZGFmNmFkYjI4N2JlMDU4NjAifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L461-L461",
+          "version": "repo-lines-v1:sha256:17b6ecadb557eadcbed7fbfca2f8d51b48f9462e9dcfac1bd9351a34c9799a58:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTdiNmVjYWRiNTU3ZWFkY2JlZDdmYmZjYTJmOGQ1MWI0OGY5NDYyZTlkY2ZhYzFiZDkzNTFhMzRjOTc5OWE1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTdiNmVjYWRiNTU3ZWFkY2JlZDdmYmZjYTJmOGQ1MWI0OGY5NDYyZTlkY2ZhYzFiZDkzNTFhMzRjOTc5OWE1OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYThmODNiMTdhMjU4ZGI4MWZkOWQ5OTc3YjgwYzRhZWIwOGFlZGFiNjVlYjI4YWQxYzdiMjc0ZDk1ODY5Njk0YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDA2Nzk5ZGM4OTQwMmUyOWM4YTExOGYwYzYzNmI4ZGJiNmQ5NmQwM2NkODFlNmZmZWYyZjRkMzA4YTNiYjQ5MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bd8189c5b253462b8e23375f514c524d",
+      "statement": "UC-10 severity routes critical alerts immediately while warning and info are grouped into a digest.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L115-L120",
+          "version": "repo-lines-v1:sha256:d49ed668de6d34a8d82179c991c54d63df14f718e959e228028031a45873fc12:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGFkZGY2YjFiNDZhM2U2YTg4ZTcwN2EyOWYzMmY3NmJmOTJlNDc3MDIxOWI2YjA3M2M0ZDYyNjc3MGQ3YTQzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGIzZWY2MDdjNmMzMzQzYjMyM2UwYmQ4ZmUwMzBhOGEwMjg5NmI3NmRkNTQ5Nzg5NzlhZjdkNjFjYTViYzE2OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2I4OTY1YTcyMzdkYmQ4ZGY1NjU4MzA0MjczMDRjMTFkZjhlYjQyNDAzMGM2NTYzMmI0ZTFmMDg3NjVlOTMzYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjZlN2Q5Mjk0N2QxOWEyNmRjOWM1OTg2OTIxZWIyYTZmN2E4MGUyNWM0YjkzNDY3NmRhMjEyZGZiNDRkNWMxMCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L471-L471",
+          "version": "repo-lines-v1:sha256:d821db02adb62c633667f01873100b21872f13341ecf853b31d68edd377487fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDgyMWRiMDJhZGI2MmM2MzM2NjdmMDE4NzMxMDBiMjE4NzJmMTMzNDFlY2Y4NTNiMzFkNjhlZGQzNzc0ODdmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDgyMWRiMDJhZGI2MmM2MzM2NjdmMDE4NzMxMDBiMjE4NzJmMTMzNDFlY2Y4NTNiMzFkNjhlZGQzNzc0ODdmZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjkxNWYzMWZmN2E3YzliOTg3MjY0MzBmZWViYzJkZTY1NWJjNzIxY2YzZDA4Y2YxOGIyMGQ0NTZlNDc4MDk3ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b5c5f637bc344231aa7e39573fc7772f",
+      "statement": "Anomalous UC-10 slices trigger 1-2 dimension LLM drill-down through sqlGuard and policy checks, and every alert must contain metric, current value, expected value, deviation, localized segment, and evidence SQL.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L122-L126",
+          "version": "repo-lines-v1:sha256:737a512da7faee0bc55d78251b613117eb8efc8a09cf92ed261dbb313901d134:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRmZWViMWZiN2ZkOGNiYWY1Zjc4YzhiOGVjM2Y2ZGE5OTVhYmE3MzVhMDhhMzEyNDc0ODBhMWU0NzEwMjVkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzN2ExZDNlOTg4Y2EyMDU3NDRmMWEwZTE1MzM1NmE4ZGYyZmI0MTY5YzM2YTY3NTQ0ODU4Y2Y4NTI0YjRlNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTgxYzMzOGQ4MjFhZDJiZjZlOWYyODY0MjYzMjVkMmY0OGIyZjllZjFjZDQ2ZjIxNzVjNTU0ZTBhMTEyZjY5MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTdjNzkxODBmN2MxZTMzMmYyZWRmNGY0YzhlOWY4ZDgwZTRjNDY3MDBhNDEwOWM2OWRhOTNjMDMzODIzZTY1NyJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L473-L476",
+          "version": "repo-lines-v1:sha256:ea74de987ea558d8ad0cec992e3982333285371934ab6bbee7bc65a338c321fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzJlNGM3ZDljZDEwZWVhYjA0MGJkY2IzYmZkZjNkMDZhYjk5MzQ1ZjdmMjVkMmQxMmZiMTQxNWI0NGU3MmEzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmVlMDkxYTAzNDZjZDBlYjMxY2I1NWExMjg2YzA1NWJjMmJhNDA0OTY1OGNmNWM0MTBjY2Y3NzBkNjQ4YTJiOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjE3YTA1YWNkN2UzMWY4ZTA5NjQ4NTFlOTU4OGFiNTVlZjZmZjc2MDA1OWY3YjVhNGI4YWQyMDk5MzMxNWYxNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_99bb00732c5b4630a2848afed04e8d90",
+      "statement": "UC-10 deduplicates by SHA256 of recipient plus metric plus dimension key plus date plus direction within 24 hours and writes PostgreSQL alert_history only after successful send.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L137-L143",
+          "version": "repo-lines-v1:sha256:bb4fc643a1c6f4d70d784f489244c28eae3f4443cd4a2e8eea1cdc8fd8c05fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGRmYmMxYWZkY2Y4MWE2ZmU4ZjM4MzkxMDVjZDNjYWUzYTUwODY1ZjYzNWQwMzAyMGMwMzA4ZjcyZDc1OTk0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTFhYzliNTI3NTdmNTg1YmNkYTlhOTk0M2RkMGFmNmIyMTE4ODFhNmQxOTVkMmM3MzNhNDZiNDBjMTc0MTA0YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjdkMmQ5OGQyNWY0ZGYwODNkZGM5NzFjODQwNDk1MmI1NTBkMGI3MDlhODljYTM4YzI1ZjZlOGEzMjYzZjhmNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzcwOTA5MzA1MDVhNzM4Y2VjMDhjZDlmMGE1MjBiNzc2ZTk5ODYyNjcyZmZkOGQyNjQ3NjFiYjc0Yzg0NmM1MSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L469-L470",
+          "version": "repo-lines-v1:sha256:4826e1e4930d1832b7e2b62ccd063e74a09dc66270f718060e3266a2efa7e97c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0NWNiOGU4MTI0YjdhMzJkMzBlNzNlM2NjM2FkOGY2ODA2YWZiNGMxZTdhYTA3YzdkNTU1ZmZiNGI3MmZmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTJmMWY2ZjdkMDQ4MjI2Yjg1ZDUxNzVlYWNiOTM3Y2Y0MjZiOWI5YmU2NzIzZGQ5NmRmNTQyNDg4YTkzM2NmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVhNTRiMGU3ZDUyNjc5YTAyZWQ5NDkzMDZlOWJiYjRjODk4MTk5OGEzOGYwZDBlZTU4OGZiZDhhYjE2NTRhZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFmYTRiMzYzMWFlYWUyMDIzMjg3YWI0ZGUxNTdmMjU1YjBmMmNhZmU5NGYwN2FlMmIwMzIzMmI4MmUzY2RmZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bfb31e5fc1454d59ac5f7336c7708a68",
+      "statement": "UC-10 channel sends use timeout with bounded exponential-backoff retry and fall back to a failed-alerts queue with trace when retries are exhausted.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L141-L141",
+          "version": "repo-lines-v1:sha256:01baaac1dd77d043b7fd85176be3b0e09175f76ab5efcd3a821cb372f1184af2:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYWFhYzFkZDc3ZDA0M2I3ZmQ4NTE3NmJlM2IwZTA5MTc1Zjc2YWI1ZWZjZDNhODIxY2IzNzJmMTE4NGFmMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYWFhYzFkZDc3ZDA0M2I3ZmQ4NTE3NmJlM2IwZTA5MTc1Zjc2YWI1ZWZjZDNhODIxY2IzNzJmMTE4NGFmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTQ5YjgyOTgwNzI1YmYwOWQ5ZjZjYzZkNWNhMTI1ODFhMGZhN2ZjYWY0MWYxMTBhYjdjYWU0NDBkYjFlNzU4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzc1ZGI3NzJlNTg1OTI4YjU3YWNjZWRmOTYxOWQ2NjBmMWI4YjdkN2NmOTEyZjY2MjViYTkzZDAyMGI1MGEzZiJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L469-L470",
+          "version": "repo-lines-v1:sha256:4826e1e4930d1832b7e2b62ccd063e74a09dc66270f718060e3266a2efa7e97c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0NWNiOGU4MTI0YjdhMzJkMzBlNzNlM2NjM2FkOGY2ODA2YWZiNGMxZTdhYTA3YzdkNTU1ZmZiNGI3MmZmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTJmMWY2ZjdkMDQ4MjI2Yjg1ZDUxNzVlYWNiOTM3Y2Y0MjZiOWI5YmU2NzIzZGQ5NmRmNTQyNDg4YTkzM2NmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVhNTRiMGU3ZDUyNjc5YTAyZWQ5NDkzMDZlOWJiYjRjODk4MTk5OGEzOGYwZDBlZTU4OGZiZDhhYjE2NTRhZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFmYTRiMzYzMWFlYWUyMDIzMjg3YWI0ZGUxNTdmMjU1YjBmMmNhZmU5NGYwN2FlMmIwMzIzMmI4MmUzY2RmZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_16b01e7741bb4702a1ccab8dfdd44f6a",
+      "statement": "UC-10 applies recipient RBAC and masking at SQL build time with MCP scopes plus a second PII scan before send, never as post-hoc text filtering.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L128-L135",
+          "version": "repo-lines-v1:sha256:794d093ed1635ded0e4cd0d4027dc751db7b4f29528948074108143fe64ecbe8:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmRmYTBiMmQ0ZjMxZWMwMmFjZTVkMTZhNjA0MjY4ZDYwNjA1MzY2ZjE3MTgyN2RjMjQ4Yjc3YTU4NWU4MzY5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODEyNTA1OWI3NWIwOTBjZTU2YWNjMGE5MGYwM2FmN2YxMWQyMTUxMmM3YmI1NmZhZmIzNWFkZTk3ZTZjNDJjNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTQwZmVmYmMyMTk4M2Q3YmQxMmI4ZjVkYmRkYWJiNzVmMTIzN2UyZGFiZGQxMmUwMDAyMjAyYjQ1Nzk3ZDhlZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWU2M2ZlMjUwYmI0MGE1MTgwYjUyYTFiYWY2ODRhMWViNjM4NDczMWNjYmM3YjZkMzI4ZmUzNzRjYzk0ZTBiOCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L479-L479",
+          "version": "repo-lines-v1:sha256:970bfffb8bee33e543a30adcd8be0f5a12261246ef521573ddb1b788a63f9941:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcwYmZmZmI4YmVlMzNlNTQzYTMwYWRjZDhiZTBmNWExMjI2MTI0NmVmNTIxNTczZGRiMWI3ODhhNjNmOTk0MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcwYmZmZmI4YmVlMzNlNTQzYTMwYWRjZDhiZTBmNWExMjI2MTI0NmVmNTIxNTczZGRiMWI3ODhhNjNmOTk0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTk2NDVhZThmN2E1ZjhhOTk0ODY5YjdkNDA5ZDE4NTU4MDAxNmVhMjI5MDcxMzZiNjI5NjIyNjQwMGEyNWFkZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjkwZWZjODc3NjEyN2E5YTA4NTdhODdkM2Y2Mzg4ZjNmNWQ0MDMyZjk5MjgxMTk2YTBlZDkyZjQxZmYwNmM2YSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c4d815d9ac6435ea49bc0caef61aeb9",
+      "statement": "Seeded fluctuation scenarios, anomaly points, and injection rows in data/seeded_scenarios.md are hidden from the agent and its retrieval context.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L86-L89",
+          "version": "repo-lines-v1:sha256:e06d67e4986851d734a1d1edf36da16bbfc11af4509f9da6e3b58391c583d4db:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDBiOGJkMTAwYTQzMTdlZWU3MmRkNDU3M2M0YzBhNzJhNDRmNTQwZjVmYTlhOTllZGVhN2QzODZkMzM0NTE3MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTczNDc3M2ZmYjdmODU3N2YzNmVhNTcwN2IyNDRkZTczYjU1ZTEzZjE0OTNmZTg0OWY3YzA2N2I2NWUyNzcwZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODIwZDM3MmRmOTJmNDk1OGJlMGI0YmU5ZDUxMDUwZjFlNWZiMzgxYzMxNGRiYjE0ZDMyMDlmMTI1MzAxYzQyMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTE3NDM5NTJiNjc1MjJiNjUwMzc2MzI5MmJjNDE5MGMwYmIyOGViYmQzMTg4YTA1YTRlYjEyYWE5NDUzMTQyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_46dea9332c254befa2ba2fb566e8e067",
+      "statement": "The pair exposes root-cause-analysis and mandatory anomaly-alert skills with when-to-use, inputs/outputs, steps, constraints, examples, and final checks, without arbitrary-execution scripts.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md#L111-L147",
+          "version": "repo-lines-v1:sha256:0500cffa4f353f1e3490dfaf63c3272688ca98f97f540ecf7765427797727981:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYjIwYjc0OGM1ODdkYmExZjc3YzRhNThkMTUzZDE0ZDc3YjM0OGM2YzMxOWZkM2YwZmY1Mjc0ODMxYmMzNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmNGJiODc0Njk1ZjAyNmZjYjgxZjJiMGM1ZmVmYjg3ZWIzODY2YTdmOWI1M2U2MGMwNzk3YmMwZjc4MzkwMjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwNGI3MWFjYzgyYjUwOGIyYTE5Njk5YTRkMGZjNzY0ODFkYjQ3ZjM0NmZmOTc3ZWU2OTg5ZGYxNTMwYjE3ODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0ODFlZjU5ZjMzNmRhOTdhN2NhNDcyYmFiN2MwYjUyNDg5NTg3ZTQyNmE3MmYyNGZhNjc2NzU4ZTc0ZWJjMzMifQ"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC10.md#L167-L169",
+          "version": "repo-lines-v1:sha256:631a17be9b3be9e693ab290b97db888f63060b454edeadabc56bc4f752a9f7fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmM2NWRjZDkwY2Y2OGNkM2E2MGUxN2I4MDIwNjBjNzAxMjVjYjY4ZTc3Y2QxYTAzOWFmNzQ2YWY5NmFmOGViMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGFjZGI4ODBhMjZmMDNmZDMyYmE3ZTRjZWY1ZWY0MjczOTRiYjRkZTQxYmM2Y2ZmYzlhNTExZmJiZTgyMzIzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2ExNjM3NThhZGVjM2ZhYTNkYWMyNzJkYjY5YzQ0OWU5MzY1M2VmODcyYjc1YjA3NDFjODdkMTVlOGM2MTM5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjE0YWIyY2E4MmI1OTg3ZTg1NWMzNjAyMDIzZGI4ZWFmYmY5MjZiYjcxMWRlNDI3ZTgzZjc4Zjg5ZDc3OGM5MCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L523-L525",
+          "version": "repo-lines-v1:sha256:9edee0caede1b15cd6f86b3db9d16b0e4a5b9827c15008b39f1b16a23fa2daf5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDUwYzgxODcyNGViOTg2YTVkZmY4YWNjYWYzYmY0ZTFiOGU2YzMwZmRmNjdjZGRiMWU2NjlkODQxMzZiY2QyNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjU5NDYwNTEyM2FiNzQ1YjYxODM3YzExOWQ4YWE0YTI5ZTNlZTJjY2I3ODQ1NzllMTVlMzQyNTRkYjdkOTBiNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTMxMjk1YjQ1MzE0YjNjMzg0ZjI2MGVhZWM4OTRlMzdlODZhY2UwM2NkNTVmMTZjMTA5OTY1ZTM0ZjEzZmEwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjI0MmVlOWEyMzE2NjRkM2U4ODQyYTI0ZDZkODUwOTRlZThhYjI4N2I0MTcwM2RlOWE4ZThmMzQ0N2MwMjliYyJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:e578a1a23d129fee6e7860d53be1385a495c64bf5146064c7741a64d523f2cbe",
+  "claims": [
+    {
+      "id": "claim_8fca3bcc0e394ef8930dcc7c5279815c",
+      "statement": "The agent connects only with a read-only identity and write blocking is enforced at the connection layer, not by prompt alone.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L62-L64",
+          "version": "repo-lines-v1:sha256:f597142490f0e150e7b00193080ea5a98506007ab4d828e5e2da5db775387f1c:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGYzMGJjZjk5MTI2ZmFkMDYyMWQyNTJkOTYyNTk2YzY5ZTc4N2VlMjM0NWE0NWQ3YTZkYmE0MTQ1NjAyZmQzMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDU0YjE4YzY3OWY2ZmMxZThiOGQ2ZGNhZWI4ZjY2NTEyZTgxYjc4YzMzOGFiYzUxNzczZjFkZDQzMmIwNDgzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDdjMGFiNzE5NTY1MzQyYjIxZmI0MGI2NmVhNWI3MWIxMmMzOWFkYTcyZjQxNDQwN2U0YWExYTJmODNiYTRjMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTQ3NjNmY2ZkMjk0Y2QzYWQ0Njg1MzM4OGUwZjg5ZWYxZDM4YzA0MWJmNGNjMWY5OGNkODg4ZWJmOTZjZDEyZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1791eb5fbf904bb9aa68d20675c7b2a0",
+      "statement": "The SQL guard allows only a single SELECT or WITH statement and blocks DDL, DML, multi-statement payloads and locking clauses.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L199-L200",
+          "version": "repo-lines-v1:sha256:423bc9fde13043ce4e040fcf1216f60e51282f38435e3b3198b7e32e711efe8f:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjNjMTA0YTRjZmYxNDNhMTUxNzAxNjliNjhlZWIzYTNlMjFjNzY1YmVlOTEyYjgxNzY1NWY5ZmE0Yjk2NjMxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTU2ZDhlMGRjMjdhMGI2MGQ1YmNhZTJjOGFlMTMyNWU2YTFmODU3MDhhZTlmZmUwNWZjMmI1ODhmNWE2YTk4ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDI3MDU3Y2ZiNjEyNDM4ODQxNzVkY2EzNzNlNmYzYTZmOTQyOTE4YWY1ZjMwNmJkNWI0ZjAzYWE1MmFiNmQ2OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk5ZTA2ZDg3ZTgzYWI1YWYyZjkyYmI2ZDU1MGE1ZWJhNjNmOTE0OWE0MTk0NzYwNTcxYjVhMWNiNjhkNTk2YSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6bfdcd8599cb49c282b8f1123434f715",
+      "statement": "Dangerous system functions such as pg_sleep, COPY and pg_read_file are absolutely banned and never routed to cost approval.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L390-L390",
+          "version": "repo-lines-v1:sha256:a0e21724104857fc53065e187c43a9ecb71a6e0cc52a16e562c50579585775e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBlMjE3MjQxMDQ4NTdmYzUzMDY1ZTE4N2M0M2E5ZWNiNzFhNmUwY2M1MmExNmU1NjJjNTA1Nzk1ODU3NzVlNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBlMjE3MjQxMDQ4NTdmYzUzMDY1ZTE4N2M0M2E5ZWNiNzFhNmUwY2M1MmExNmU1NjJjNTA1Nzk1ODU3NzVlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2ZiM2U3NjdjZjY2MDY0ZThlZDE4MDI3NmJkMDY0M2QyMzBmZDQ2OTVmNzVmOTcwNmVjYTM2OWFlNGUyM2E1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_81abd02b003249108020da191ef00cfe",
+      "statement": "SQL validation is applied twice, once by the shared guard in the agent and independently again on the MCP server.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC01.md#L30-L30",
+          "version": "repo-lines-v1:sha256:ec5b318c5fe40d8043b6f3a68a03cebdbd695f080404649f08f4d4b9bc2f7407:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM1YjMxOGM1ZmU0MGQ4MDQzYjZmM2E2OGEwM2NlYmRiZDY5NWYwODA0MDQ2NDlmMDhmNGQ0YjliYzJmNzQwNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM1YjMxOGM1ZmU0MGQ4MDQzYjZmM2E2OGEwM2NlYmRiZDY5NWYwODA0MDQ2NDlmMDhmNGQ0YjliYzJmNzQwNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIzNjRkYjA1MTM4NGJiNDBjMWVkMjM4Mzc1NGFiYzc3ZjhhZjQxYWJmODc4NmZmYjAwYjZkMjg2MjRiM2E2NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDNmNTBlNzU3MTMxNzkwYmZhNDQ4YWRmZjYxNDk1MmYyOWM2MjhjYTIyODEwMDEyNTliMGQxMzdkNWZjYzQ4MCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d4cc4f5517d240b0b0569a7420ebb57c",
+      "statement": "Cost estimation uses EXPLAIN without ANALYZE and returns estimated cost and row count before execution.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L380-L380",
+          "version": "repo-lines-v1:sha256:e8e33701a599ce5b86607ee13a99f0139bfb840ac7b1a112ed104fa2d9701c8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZThlMzM3MDFhNTk5Y2U1Yjg2NjA3ZWUxM2E5OWYwMTM5YmZiODQwYWM3YjFhMTEyZWQxMDRmYTJkOTcwMWM4YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZThlMzM3MDFhNTk5Y2U1Yjg2NjA3ZWUxM2E5OWYwMTM5YmZiODQwYWM3YjFhMTEyZWQxMDRmYTJkOTcwMWM4YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODBhMDllYmVlYjAyOTg2OGZjODRiYzVmMTYyZmI5YjgwNDNhZGMyZDBmY2IwZjBlYzdhOWU2NmNjMTg1NDUwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjY4YTJiMzE1ZDQ2OGQ3ZmQxZmI0ODBhNDhhMmRhYzNlYzlhYmQxODlkMThkMjQwNTdkZTAzM2E3MDZjODkxMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0f444a2158884c1c9add9e3667cfc549",
+      "statement": "Queries exceeding the cost threshold pause for Approve, Reject or Use-cheaper-alternative and every decision is audit-logged.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L380-L389",
+          "version": "repo-lines-v1:sha256:b3a51593767ee85c55fc89b174afef300e4d56f9e11720a00cd57b29ea8a202a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZTMzNzAxYTU5OWNlNWI4NjYwN2VlMTNhOTlmMDEzOWJmYjg0MGFjN2IxYTExMmVkMTA0ZmEyZDk3MDFjOGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkZTc4OTRiODgyMmYzZmU5MjFlZGNkNWI2OGE1N2YwOGViMDkxN2MyMWUxZWI5NjYwNTNhNzMyZDhlMmY3YjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwYTA5ZWJlZWIwMjk4NjhmYzg0YmM1ZjE2MmZiOWI4MDQzYWRjMmQwZmNiMGYwZWM3YTllNjZjYzE4NTQ1MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkN2ZmYzJkMDJlMjE2ZDUzYjI4YjEzMWJkMjg3MDQxNjM1NjM3NDlmMzZmODI3NDAzZmFlYTNiZmRkNjUxMjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_98805e71c80c485e9a043c6f09fafa26",
+      "statement": "Every real execution is bounded by a database statement_timeout and a row limit with truncation flag.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L396-L398",
+          "version": "repo-lines-v1:sha256:0cad4d107274f060642371527a3141a26618e8a36b5e6d321e489673735b6bd4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDM5MDI1N2ViNzVmMzAxMWZlZTZmYzM3MWRhNTNiN2NhNzE2MTNlOWI2NWQ1MjgxYThkOGQwYjUwNDNiODE0OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDZjZWEyOGNkNDA2MjQ0MzM1OGRhNzI4YWRhYWI1M2MzMzk0MmI0YjRmMWNiN2JmMzBjZWQ3ZjcwNDllYmE4NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDZlNjc3MjY0NDNlN2ZjZTAxZjE2NDQ2ODYxNTdlYTc1NWNhZDkwYjQwMmZjZmE4YmJkMjAwYmM3MDMxMjZmOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTliMTA0MTk2MTcxM2ViMWUwYWY1NTAxMGMxMDA1NTgyMjljOThlZDNmZmEwNzc5MGFiOTg1Njk2ZDE1NDk1NiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4376383347894246a5921c75507eae7a",
+      "statement": "Role access is declared in policy files with row-level predicates, column-level deny or mask, and masked display forms.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L408-L414",
+          "version": "repo-lines-v1:sha256:bfcb9c1365c767314103e81f02fe908687a0a43c1037e45c10bed2291d996912:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTAxYTAyMjMxNTYzYjkwZjZjM2MyNDkyY2YwNDNkZWYxZTUyMTU4YTZkOTBlODIzODU3YmI2NGFhMjY1YWEwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmQ3NjhkMDA0MTNjYjMzZTFkMjQ3MjRjZTAxMWNlZGIzNjNlNGFhOTFiY2IxOWU4NGNmMDY5N2RjMWEwOTY0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2EyZWIyNmJlZDk3NmRiMTk4OGZiODhmYjNlNWJkOTlmN2I1YTViZTM2ZTBjNzQ5YWRkYzg5OWEzNTQxYzA2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTY1ZGE4ZmMxNTUzZTQ1MmFiYzkxZWY4ZTNjYjBkYzkyZmU0ZjQxZjBlYmEyNzZhNjVjNWNjOTY4NTc4M2M1MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2d79405264b843e9a2d412d0fe1bf6f1",
+      "statement": "RBAC and masking are enforced in code by rewriting SQL, so disabling the permission prompt does not lift the restriction.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L420-L420",
+          "version": "repo-lines-v1:sha256:b85e2674acaa6a2e86cc3c13477253699511bac76ec69cb9a5fcaf2e64406fd5:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg1ZTI2NzRhY2FhNmEyZTg2Y2MzYzEzNDc3MjUzNjk5NTExYmFjNzZlYzY5Y2I5YTVmY2FmMmU2NDQwNmZkNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg1ZTI2NzRhY2FhNmEyZTg2Y2MzYzEzNDc3MjUzNjk5NTExYmFjNzZlYzY5Y2I5YTVmY2FmMmU2NDQwNmZkNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzkzODE2ZjhmZWEzOGQ5YWI4OTJmMmVmZWIwODQ5NDMzMzUwNmEzNTk1NmFhNzczMDcyYWZlNmVmOWFiNjYzNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_eb38c38a278046aaa400db2a63ba640e",
+      "statement": "Indirect PII probing through filters, aggregates or aliasing of sensitive columns is denied and unresolvable references fail closed.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L423-L423",
+          "version": "repo-lines-v1:sha256:1ba41ca48c81a14d899320435ae559613ed224f02eff1c1b3aec7f141011b894:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWJhNDFjYTQ4YzgxYTE0ZDg5OTMyMDQzNWFlNTU5NjEzZWQyMjRmMDJlZmYxYzFiM2FlYzdmMTQxMDExYjg5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWJhNDFjYTQ4YzgxYTE0ZDg5OTMyMDQzNWFlNTU5NjEzZWQyMjRmMDJlZmYxYzFiM2FlYzdmMTQxMDExYjg5NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWU5MTJmYmM5N2Y0ZWIzMGZiODYzMDJmOTBmNGFkZmIyZjI1ZWZjNzczMDlkZTAzMjMyYjQ3NmE0YjRmZmY2NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGJjYzExNGFlNjk2MDkzZDE5NTU4ZDM0ZDk3OTRiNmNjOWVlMDc3ZDNkMDUyZjljMmUxM2FkMDgwZTBiN2MyYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6cfa2ee810904a73a80133cc899f06f0",
+      "statement": "MCP tools enforce scopes schema read, data read and data sensitive, log every call, and sanitize errors so secrets never leak.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L436-L448",
+          "version": "repo-lines-v1:sha256:599ae57ff75c5460d0fb7fb43f4278fa479f63f3c4bf5e6751d1f63fa4eabdec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjNjA3OGRiMDU2N2VkNzQ5MmQwNGZkYmNiZjgzMDAwMTVjZTcwZmQxNjA3MTU3YWNmODZkMTRhNmE0YTgxMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2Y2ZkODQzZTAxNTM1MTU4MmJkN2ZhOWE0NDA5OWMzOWFiOTA3ZDljNzBjNmQ1YTI2MjYwZTMzYWQ0YjIxMzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3MDVhNTM0MzgxNjJiZDc5MjRmZmFiYmMwZmRmM2YzZWJmZDcwOTllMTI1YWQwMjc5ZWFkMjI4Y2U1ZDlmYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmYTFiNjVjZWVjMzg2YWNmOGJjMzk0NWU2YjQ0ZDk3MDhjZDc0NTM1OTU4ZDhiN2IwNDY2MDFhZWI4NGRkZDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_eaa553987c8b49cda4aa93674a13524c",
+      "statement": "The safety eval covers injection in questions, privilege escalation, instructions hidden in data, hanging queries and fabrication demands, with query results treated as untrusted data.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L529-L538",
+          "version": "repo-lines-v1:sha256:fa63bb7b709059b967aebe1d35b8fb1654453a96b759fb4b49ed9f14ffb67f73:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxYTQxMDM3OTVjY2Y2MWQ1ODE2MDkxODRhMzk4MDA0MTkwZmI4NTI2YmQyMWZhNGE0ODZlNjE4ZjU0ZTZkNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MTY0NGQxYzVlN2ZjZWJhMThkOTU2ZTg2NGE5ZDc1NTgzMzA4MDMzMDE1Njg5ZGIxMzI4YWI2MWMwNjM4NzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyNDJlZTlhMjMxNjY0ZDNlODg0MmEyNGQ2ZDg1MDk0ZWU4YWIyODdiNDE3MDNkZTlhOGU4ZjM0NDdjMDI5YmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkMTM5NTI1ZjFiNTE4OTMyOTRjNmVjOWNjYWQ0ZjZlYTVkODQ0NzA4MjI3ODUyOWY3MmM3ZjU4NGFmZTE4ZGQifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}
