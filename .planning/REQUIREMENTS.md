@@ -18,12 +18,12 @@
 
 ### Shared Contracts (CONT)
 
-- [ ] **CONT-01**: Owner imports zod input/output schemas for the 5 db-tools (`list_tables`, `describe_table`, `explain_query`, `run_query`, `sample_rows`) from `@se373/contracts`
+- [x] **CONT-01**: Owner imports zod input/output schemas for the 5 db-tools (`list_tables`, `describe_table`, `explain_query`, `run_query`, `sample_rows`) from `@se373/contracts`
 - [x] **CONT-02**: Owner imports the 11 standard error codes (UNAUTHORIZED … INTERNAL_ERROR, per UC-09 §A.7) and a typed `DbToolError` shape `{code, message, retryable}`
-- [ ] **CONT-03**: Owner imports `SQLAnswerSchema` (UC-01 fields + UC-02 `citations` + telemetry) as the single answer contract for UI/API
-- [ ] **CONT-04**: Owner imports a trace/audit event envelope (`runId`, `threadId`, `userId`, `role`, `node`, `type`, `ts`, `durationMs`, payload) used by every package
-- [ ] **CONT-05**: Owner imports semantic chunk metadata schema (`doc_type`, `table`, `metric_name`, `aliases`, `sensitivity`) for UC-02
-- [ ] **CONT-06**: `docs/mcp_interface.md` is generated from the zod schemas via `z.toJSONSchema()` (`pnpm docs:interface`), so docs never drift from code
+- [x] **CONT-03**: Owner imports `SQLAnswerSchema` (UC-01 fields + UC-02 `citations` + telemetry) as the single answer contract for UI/API
+- [x] **CONT-04**: Owner imports a trace/audit event envelope (`runId`, `threadId`, `userId`, `role`, `node`, `type`, `ts`, `durationMs`, payload) used by every package
+- [x] **CONT-05**: Owner imports semantic chunk metadata schema (`doc_type`, `table`, `metric_name`, `aliases`, `sensitivity`) for UC-02
+- [x] **CONT-06**: `docs/mcp_interface.md` is generated from the zod schemas via `z.toJSONSchema()` (`pnpm docs:interface`), so docs never drift from code
 
 ### Database & Roles (DB)
 
@@ -133,12 +133,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REPO-04 | Phase 1 | Pending |
 | REPO-05 | Phase 1 | Pending |
 | REPO-06 | Phase 1 | Pending |
-| CONT-01 | Phase 1 | Pending |
+| CONT-01 | Phase 1 | Complete |
 | CONT-02 | Phase 1 | Complete |
-| CONT-03 | Phase 1 | Pending |
-| CONT-04 | Phase 1 | Pending |
-| CONT-05 | Phase 1 | Pending |
-| CONT-06 | Phase 1 | Pending |
+| CONT-03 | Phase 1 | Complete |
+| CONT-04 | Phase 1 | Complete |
+| CONT-05 | Phase 1 | Complete |
+| CONT-06 | Phase 1 | Complete |
 | DB-01 | Phase 2 | Pending |
 | DB-02 | Phase 2 | Pending |
 | DB-03 | Phase 2 | Pending |
