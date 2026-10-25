@@ -1,0 +1,16 @@
+import * as z from "zod";
+
+// One row of the benchmark question set (PRD 2.2).
+// The full 30-question set is authored by UC-01 in a later phase; this
+// schema freezes the row shape so the eval runner can build against it.
+
+export const BenchmarkRowSchema = z.object({
+  id: z.string().min(1),
+  question: z.string().min(1),
+  difficulty: z.enum(["easy", "medium", "hard"]),
+  gold_sql: z.string().min(1),
+  gold_result_path: z.string().min(1),
+  tags: z.array(z.string()).default([]),
+});
+
+export type BenchmarkRow = z.infer<typeof BenchmarkRowSchema>;
