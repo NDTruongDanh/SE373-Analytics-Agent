@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# local env (secret keys) — commit only .env.example
+.env
+.env.local
+
+# OpenWiki transient run state (removed in CI too; never commit)
+openwiki/.run.json
+
+# OS / editor
+.DS_Store
+Thumbs.db

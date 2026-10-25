@@ -1,0 +1,133 @@
+name: OpenWiki Update and Auto-merge
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub schedules use UTC; 08:00 UTC is midnight PST.
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: openwiki-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: true
+          # Full history so `openwiki code --update` can diff HEAD against the
+          # commit it last documented; a shallow clone hides that commit and the
+          # update runs against an empty change summary.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.25.0 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run OpenWiki
+        id: openwiki
+        continue-on-error: true
+        # --update also handles the first run for code docs when env vars are set.
+        # The --import preload injects the mandatory `x-opencode-session` header
+        # on every opencode.ai request (OpenCode Go 400s with MissingSessionID
+        # without it; OpenWiki sends no such header itself). See
+        # scripts/openwiki-fetch-patch.mjs for the researched caveat.
+        run: node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --update --print
+        env:
+          # OpenWiki sends anonymous reliability telemetry from CI runs.
+          # Uncomment to disable:
+          # OPENWIKI_TELEMETRY_DISABLED: "1"
+          # Inference via OpenCode Go (OpenAI-compatible + Responses API).
+          # Muse Spark 1.3 Contributor is Responses-only: Go serves it ONLY at
+          # POST {base}/responses, so USE_RESPONSES_API must stay "true".
+          OPENWIKI_PROVIDER: openai-compatible
+          OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+          OPENAI_COMPATIBLE_BASE_URL: https://opencode.ai/inference/go/openai/v1
+          OPENWIKI_MODEL_ID: muse-spark-1.3-contributor
+          OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API: "true"
+
+      - name: Exclude workflow changes
+        if: ${{ !cancelled() }}
+        # Keep docs PRs to generated docs only; never auto-merge changes to
+        # executable workflow files.
+        run: git checkout -- .github/workflows/openwiki-update.yml
+
+      - name: Remove transient OpenWiki run state
+        if: ${{ !cancelled() }}
+        run: rm -f -- openwiki/.run.json
+
+      - name: List OpenWiki update paths
+        id: paths
+        if: ${{ !cancelled() }}
+        # CLAUDE.md is listed only when present: git add fails on a missing path
+        # and then stages nothing.
+        run: |
+          paths=openwiki,AGENTS.md
+          if [ -e CLAUDE.md ]; then paths="$paths,CLAUDE.md"; fi
+          echo "list=$paths" >> "$GITHUB_OUTPUT"
+
+      - name: Create OpenWiki update pull request
+        id: create-pr
+        if: ${{ !cancelled() }}
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          # Dedicated token (PAT or GitHub App) with Contents: read+write and
+          # Pull requests: read+write on this repo. PRs opened with the default
+          # GITHUB_TOKEN do not trigger most `pull_request` workflows, so
+          # required PR checks would never run.
+          token: ${{ secrets.OPENWIKI_PR_TOKEN }}
+          add-paths: ${{ steps.paths.outputs.list }}
+          branch: openwiki/update
+          commit-message: "docs: update OpenWiki"
+          title: "docs: update OpenWiki"
+          body: |
+            Automated OpenWiki documentation update.
+
+            OpenWiki result: ${{ steps.openwiki.outcome }}
+
+            When the result is `failure`, this PR intentionally preserves only the
+            pages completed before the failure. A later successful run can update it.
+
+      - name: Enable auto-merge after a successful update
+        if: ${{ steps.openwiki.outcome == 'success' && steps.create-pr.outputs.pull-request-number != '' }}
+        run: |
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          gh pr merge --auto --squash "$PR_NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.OPENWIKI_PR_TOKEN }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+
+      - name: Disable auto-merge after a failed update
+        if: ${{ steps.openwiki.outcome == 'failure' && steps.create-pr.outputs.pull-request-number != '' }}
+        run: |
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          gh pr merge --disable-auto "$PR_NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.OPENWIKI_PR_TOKEN }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+
+      - name: Annotate OpenWiki update pull request
+        if: ${{ !cancelled() && steps.create-pr.outputs.pull-request-url != '' }}
+        run: echo "::notice title=OpenWiki update pull request::${{ steps.create-pr.outputs.pull-request-url }}"
+
+      - name: Propagate OpenWiki failure
+        if: ${{ steps.openwiki.outcome == 'failure' }}
+        run: exit 1
