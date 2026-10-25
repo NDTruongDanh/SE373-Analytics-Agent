@@ -33,10 +33,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `docs/mcp_interface.md` regenerates from the zod schemas via `pnpm docs:interface`, so docs never drift from code
   4. A PR that imports `pg`, `pg-cursor`, or mcp-server internals from `packages/agent` or `apps/*` fails lint, and every PR runs green CI (typecheck + lint + test + gitleaks v3)
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 - [x] 01-01-PLAN.md
 - [x] 01-02-PLAN.md
-- [ ] 01-03-PLAN.md
+- [x] 01-03-PLAN.md
 
 ### Phase 2: Postgres Roles + Seeded Data
 
@@ -123,7 +123,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7, except p
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Monorepo + Contracts Freeze | 2/3 | In Progress | - |
+| 1. Monorepo + Contracts Freeze | 3/3 | In Progress | - |
 | 2. Postgres Roles + Seeded Data | 0/TBD | Not started | - |
 | 3. SQL Guard + Read-Only Executor | 0/TBD | Not started | - |
 | 4. MCP db-tools Server + Scope Auth | 0/TBD | Not started | - |

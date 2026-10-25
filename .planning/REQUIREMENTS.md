@@ -10,11 +10,11 @@
 ### Repository & Tooling (REPO)
 
 - [ ] **REPO-01**: Owner can run `pnpm install && pnpm db:up && pnpm data:load` on Node 24 and get a working local stack from a clean clone
-- [ ] **REPO-02**: Workspace has `apps/web`, `apps/api`, `packages/{contracts,mcp-server,access-policy,agent}` with strict TS (`~6.0.3`) project references and a single shared `zod@^4` copy
+- [x] **REPO-02**: Workspace has `apps/web`, `apps/api`, `packages/{contracts,mcp-server,access-policy,agent}` with strict TS (`~6.0.3`) project references and a single shared `zod@^4` copy
 - [x] **REPO-03**: Owner can run `pnpm typecheck`, `pnpm lint`, `pnpm test` at the root and per package (`pnpm --filter <pkg> …`)
-- [ ] **REPO-04**: Every PR to `main` runs CI (typecheck + lint + test + gitleaks v3) and must be green to merge
-- [ ] **REPO-05**: ESLint `no-restricted-imports` fails the build if `packages/agent` or `apps/*` imports `pg`, `pg-cursor`, or `packages/mcp-server` internals
-- [ ] **REPO-06**: CODEOWNERS maps each package/folder to its UC owner so reviews route automatically
+- [x] **REPO-04**: Every PR to `main` runs CI (typecheck + lint + test + gitleaks v3) and must be green to merge
+- [x] **REPO-05**: ESLint `no-restricted-imports` fails the build if `packages/agent` or `apps/*` imports `pg`, `pg-cursor`, or `packages/mcp-server` internals
+- [x] **REPO-06**: CODEOWNERS maps each package/folder to its UC owner so reviews route automatically
 
 ### Shared Contracts (CONT)
 
@@ -128,11 +128,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REPO-01 | Phase 7 | Pending |
-| REPO-02 | Phase 1 | Pending |
+| REPO-02 | Phase 1 | Complete |
 | REPO-03 | Phase 1 | Complete |
-| REPO-04 | Phase 1 | Pending |
-| REPO-05 | Phase 1 | Pending |
-| REPO-06 | Phase 1 | Pending |
+| REPO-04 | Phase 1 | Complete |
+| REPO-05 | Phase 1 | Complete |
+| REPO-06 | Phase 1 | Complete |
 | CONT-01 | Phase 1 | Complete |
 | CONT-02 | Phase 1 | Complete |
 | CONT-03 | Phase 1 | Complete |
