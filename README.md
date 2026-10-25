@@ -11,8 +11,9 @@ key (you paste it yourself — it is never committed).
 
 ### 1. Prerequisites
 
-- Node.js `>=22.22.0`, pnpm `>=10` (repo pins `pnpm@11.25.0` via
-  `packageManager`; Corepack activates it: `corepack enable`).
+- Node.js `>=24.0.0` (latest major tested by upstream OpenWiki CI: 22 + 24),
+  pnpm `>=10` (repo pins `pnpm@11.25.0` via `packageManager`; Corepack
+  activates it: `corepack enable`).
 - An OpenCode Go API key (subscribe in the
   [OpenCode Console](https://opencode.ai/console), Go or Go Plus).
 
@@ -35,7 +36,8 @@ read boundary is `.openwikiignore`.
 ### 3. Scheduled CI (auto-merge docs PRs)
 
 `.github/workflows/openwiki-update.yml` runs daily (`08:00 UTC`) + on demand
-(`workflow_dispatch`), installs with pnpm + Corepack, runs OpenWiki, and opens
+(`workflow_dispatch`) on Node 24, installs with `pnpm/action-setup` +
+`actions/setup-node` (pnpm cache), runs OpenWiki, and opens
 a docs-only PR (`openwiki`, `AGENTS.md`, `CLAUDE.md`) with auto-merge enabled
 on success. Workflow-file changes are excluded from the PR so auto-merge never
 touches executable CI.
