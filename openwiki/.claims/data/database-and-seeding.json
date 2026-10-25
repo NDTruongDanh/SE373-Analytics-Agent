@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:1d9d1c35dc04af89ffb11ef906aad72a3a2e7b22da85f7606f1c2f162d1d7e66",
+  "claims": [
+    {
+      "id": "claim_7900d07fa59e42b2827a0c0d856025b0",
+      "statement": "Target database is scoped to 8-15 relational tables with 100k-5M total rows on PostgreSQL, DuckDB, or SQLite, and the agent may only issue read-only SELECT/WITH enforced at the connection layer.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L47-L50",
+          "version": "repo-lines-v1:sha256:c8203ddb5e59feb2bd256db2083681068a27261cee7d93b584f4c7e2f81e2cfd:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGU3MmZiMGJiZWMwNDU0YTk3ZGM5NzUwMDk4ZWI0NmI0YzNhNjU4NmQ2Y2NmMDFiODFjMGMwYjIxZTE4NmQ4ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzUwZDBhMzNkYzFkYjMxNjBjZWE0MzYxMzQ1ZDUwZDUyNzJiNTAwZDQxYjE4MDQxOTlhNTNiNzVlMTdmNjdlNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjE1MGEyYmExMjYyNjdmMDNiNDNhMTBmMDZmYzIwYWIwZTQzMzI4ZjM5MTBlMWU1YjJlMDU5MmIxNGY5ZDhjMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjVjZTI0ZDc5YWNlOGE0YjJiNWM5MTBiY2NlZjJjZTJmMjI4MTRmNmFjYWQ1NGY0YjhhYzg3NGYyMTEzNDIyOCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L62-L62",
+          "version": "repo-lines-v1:sha256:8f30bcf99126fad0621d252d962596c69e787ee2345a45d7a6dba4145602fd33:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGYzMGJjZjk5MTI2ZmFkMDYyMWQyNTJkOTYyNTk2YzY5ZTc4N2VlMjM0NWE0NWQ3YTZkYmE0MTQ1NjAyZmQzMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGYzMGJjZjk5MTI2ZmFkMDYyMWQyNTJkOTYyNTk2YzY5ZTc4N2VlMjM0NWE0NWQ3YTZkYmE0MTQ1NjAyZmQzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDdjMGFiNzE5NTY1MzQyYjIxZmI0MGI2NmVhNWI3MWIxMmMzOWFkYTcyZjQxNDQwN2U0YWExYTJmODNiYTRjMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDEwYWVkZTA0OTM5Mzc2NTdmNTE1ZDdhY2FhOTczMjliOGUzOGYwMDYwY2U4OTBiYzI3YmM1ZDQxNThhODAyNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_09cdd4c0672d46788bbef80371169513",
+      "statement": "Approved source datasets are Brazilian E-Commerce (Olist, recommended), Northwind, and small-scale TPC-H (scale factor 0.1-1) for costly-query testing.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L73-L79",
+          "version": "repo-lines-v1:sha256:3a2ebdb936174673c1cc310fb2c7c531e5d0f75684dd2f037892512a00e56282:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzViMWUzZDQ3MGI3YmE1MzljNzdjYTcwZTlmODI5ZTU5NWU4ZWU4ZGJhZmQ2NDVhYzJjZDJlNmFiNmYyMTgyOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGE4OGE0ODJiNmE2OGMwYjMyMjliYTJjZDEzYTUzNWI0MjM4M2JlODhlMTg3YjRlMDBjYTBiNWFhNWRjYWQwYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGYyYzBiZWEyZTg0OTYyNTlmYjkzNjFjNzc3Y2Y1ZDBiMzUwYjRiODJkODliYmViMTM3NDZkYzdiYWY1ODY5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWE3Yzg2NmUyYTliYWE4YmMzMjE1NTQ0MjJlMWQ5NDFiNGMxNDc0ZmIxZDU2ZTQ5OWNjNzY4NWUxOGQyMGFkMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_14e659f4493d402e95211c5061a04ddd",
+      "statement": "Vietnamesization converts Olist states to Vietnamese provinces in 3 regions, product categories to Vietnamese, currency to VND, and dates to 2025-2026; Northwind gets Vietnamese names plus region and channel; TPC-H gets retail renames.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L73-L79",
+          "version": "repo-lines-v1:sha256:3a2ebdb936174673c1cc310fb2c7c531e5d0f75684dd2f037892512a00e56282:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzViMWUzZDQ3MGI3YmE1MzljNzdjYTcwZTlmODI5ZTU5NWU4ZWU4ZGJhZmQ2NDVhYzJjZDJlNmFiNmYyMTgyOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGE4OGE0ODJiNmE2OGMwYjMyMjliYTJjZDEzYTUzNWI0MjM4M2JlODhlMTg3YjRlMDBjYTBiNWFhNWRjYWQwYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGYyYzBiZWEyZTg0OTYyNTlmYjkzNjFjNzc3Y2Y1ZDBiMzUwYjRiODJkODliYmViMTM3NDZkYzdiYWY1ODY5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWE3Yzg2NmUyYTliYWE4YmMzMjE1NTQ0MjJlMWQ5NDFiNGMxNDc0ZmIxZDU2ZTQ5OWNjNzY4NWUxOGQyMGFkMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ce89e761872c4e3e9b15f32623a40cdd",
+      "statement": "Database requires at least 8 tables with explicit foreign keys from the planned set including customers, orders, order_items, products, categories, sellers, payments, reviews, regions, channels, employees, and promotions.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L81-L85",
+          "version": "repo-lines-v1:sha256:6458fd1cf6416f92067c867541dbaf663f36cb025f9580510edc33fd99d124c2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzliODk1NGQ3YzQ5NjVmODNmNGRlYzg5YWJjMjEzZjc0MWZiOTE3Nzc1M2Y5ZjM2YTI1YTZhMmY3MmRlNmNhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWU2Yzg1MjViNmFlOGM5YjUyZmRhZDk5ZTcwMmVjMGFiYjcxNzBjNzE0MDVjMDY3Yzk1ZTJjOTk1YzUwYzAwMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzZhN2E2NGU0MTQxOTg4YjczNmMxMWI0ZWJiN2JmYTc3ZDZjYzU2ODdiMTA2MmI4Njc2ZGYwYmQ5YmE5YzFmZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWY3Y2Y3ZTgzNmE1OGM1N2ExNTEzYzE4ODNiMGJmNTZkYzZkODA5M2Y2M2ZkMTQwNDZjYjg4ZmUzMTI0NzI1ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7b626dd60b2046939d538983db4be6d1",
+      "statement": "At least one table, typically order_items via noisy replication, must hold one million or more rows so full-table scans have real cost.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L81-L85",
+          "version": "repo-lines-v1:sha256:6458fd1cf6416f92067c867541dbaf663f36cb025f9580510edc33fd99d124c2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzliODk1NGQ3YzQ5NjVmODNmNGRlYzg5YWJjMjEzZjc0MWZiOTE3Nzc1M2Y5ZjM2YTI1YTZhMmY3MmRlNmNhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWU2Yzg1MjViNmFlOGM5YjUyZmRhZDk5ZTcwMmVjMGFiYjcxNzBjNzE0MDVjMDY3Yzk1ZTJjOTk1YzUwYzAwMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzZhN2E2NGU0MTQxOTg4YjczNmMxMWI0ZWJiN2JmYTc3ZDZjYzU2ODdiMTA2MmI4Njc2ZGYwYmQ5YmE5YzFmZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWY3Y2Y3ZTgzNmE1OGM1N2ExNTEzYzE4ODNiMGJmNTZkYzZkODA5M2Y2M2ZkMTQwNDZjYjg4ZmUzMTI0NzI1ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a85731c9845e4252a6f5e88dc59daeed",
+      "statement": "Fake PII columns required for access-control tests are customers.phone, customers.email, customers.address, and employees.salary.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L81-L85",
+          "version": "repo-lines-v1:sha256:6458fd1cf6416f92067c867541dbaf663f36cb025f9580510edc33fd99d124c2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzliODk1NGQ3YzQ5NjVmODNmNGRlYzg5YWJjMjEzZjc0MWZiOTE3Nzc1M2Y5ZjM2YTI1YTZhMmY3MmRlNmNhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWU2Yzg1MjViNmFlOGM5YjUyZmRhZDk5ZTcwMmVjMGFiYjcxNzBjNzE0MDVjMDY3Yzk1ZTJjOTk1YzUwYzAwMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzZhN2E2NGU0MTQxOTg4YjczNmMxMWI0ZWJiN2JmYTc3ZDZjYzU2ODdiMTA2MmI4Njc2ZGYwYmQ5YmE5YzFmZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWY3Y2Y3ZTgzNmE1OGM1N2ExNTEzYzE4ODNiMGJmNTZkYzZkODA5M2Y2M2ZkMTQwNDZjYjg4ZmUzMTI0NzI1ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_57849f1da6df402eb285d97ae3fb3b1b",
+      "statement": "All PII in the database must be synthetic (e.g., Faker locale vi_VN); using real personal data fails the related use case and requires deletion from the repo.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L63-L63",
+          "version": "repo-lines-v1:sha256:df6e3b039f7d744c756df62cffcc121c5510ed33312bf43c6a76b096b05c199d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGY2ZTNiMDM5ZjdkNzQ0Yzc1NmRmNjJjZmZjYzEyMWM1NTEwZWQzMzMxMmJmNDNjNmE3NmIwOTZiMDVjMTk5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGY2ZTNiMDM5ZjdkNzQ0Yzc1NmRmNjJjZmZjYzEyMWM1NTEwZWQzMzMxMmJmNDNjNmE3NmIwOTZiMDVjMTk5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmUxMDBlODY3NGU5ODRkMzRkN2RkZjNmNzg0Mzc4NmQ1NWUyZDQwNmJmNDdhMjBjNGQ4ZTg4Njk4MjMxMTQwYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTkyODEyOTFhNDFlMWRhMzhlZjI3NzljZGM4NDU5MTdjOWM4ZGIzMTcyYzgxMTIyNjhhYTdmNmM0NzJlOTMyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b175d977f64d48e0ad2e1e1b34759bb4",
+      "statement": "Database must load with one command such as python -m data.load, and the README must record the source dataset, license, and transformation steps while data/ holds only load and transform scripts.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L589-L591",
+          "version": "repo-lines-v1:sha256:2d54c2d1d71ef44b8d582d0d95b33cde43700e83172f65e3983aa1f596ba54a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZkODhjMDM2NzlhYjhkYjUxOTY4NDE5NDkwMjQ4NzU0YTA2M2IyNTA2NTRjNTY1NjQ5NjMxY2ZkMGExYTVlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGJlYzM0NmM3MjhhZTdhZWI0Mjc5ZDAwMWM1ODQyOTUxOWFjYzBkNGQ3ZjYwODQ2MmFkYmYzODUwMGJlNzI3YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTRlNDhmMzgwYjg3ZWRhMzNiOTBiYjkxMmRkNWY3NjZiM2M2Zjk4MDEwNDljYzI5YzYxNDE3YjAyYTA0NDkyMiJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L90-L90",
+          "version": "repo-lines-v1:sha256:9aa704b16d1900609a2322bee043c0c7059d91424854d9acf882feb06e807951:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWFhNzA0YjE2ZDE5MDA2MDlhMjMyMmJlZTA0M2MwYzcwNTlkOTE0MjQ4NTRkOWFjZjg4MmZlYjA2ZTgwNzk1MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWFhNzA0YjE2ZDE5MDA2MDlhMjMyMmJlZTA0M2MwYzcwNTlkOTE0MjQ4NTRkOWFjZjg4MmZlYjA2ZTgwNzk1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTVkMTExZGJkNDliZWE4ZjE2Y2E4ZWY0NjVkOWU4NWE4MGU1Zjk1ZTk5YjA5ODU3YzQ3YWU1NTk2YjNhOGQwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWI2NGZlNGIwY2ZjZjlkZmE3NGFhNjE0ZGYzZTVlNmJmMjk2MmE4ZWI4NTM0MDZkYTYxYmI0YjIwMGM0OTJlYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_03686411a2364578bea6f21af3a92877",
+      "statement": "TypeScript monorepo equivalent of the loader is pnpm data:load using csv-parse plus pg-copy-streams for fast bulk load after pnpm db:up starts PostgreSQL.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L34-L34",
+          "version": "repo-lines-v1:sha256:aec2bf87997e2e60811a2e9a53d3a94fefc90bcc4ec328a0846ef3de9b751d9b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWVjMmJmODc5OTdlMmU2MDgxMWEyZTlhNTNkM2E5NGZlZmM5MGJjYzRlYzMyOGEwODQ2ZWYzZGU5Yjc1MWQ5YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWVjMmJmODc5OTdlMmU2MDgxMWEyZTlhNTNkM2E5NGZlZmM5MGJjYzRlYzMyOGEwODQ2ZWYzZGU5Yjc1MWQ5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDZkZmJmYmU0Nzc3MGZlMmQ4NGE1MmI3MTg1OGMzY2I0YWRlMGFmMjE5ZWRkOTBmZDNlNGIyOWZiMDUyODJjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWQ0ZTcyMzE3NjQ3NjZmMWY2Y2YzNTQ3M2U3NzIzZGExZDljNzI2NmZiY2MxZGM0YTEwZjc0ZjFhNmIyNDZhZCJ9"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L67-L72",
+          "version": "repo-lines-v1:sha256:fe4aa074edc666217470978da46b0998d7cbe333956dc52409e04e4f95153986:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmZhOTUyYmM2OWYyNDE2NjI1YjZjOTU2ZjI3MDk2NTg5YzU4OTlmMGJkMzUxNzU1ZDkxZjhiM2E2OGEwNmY3NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhNDYxNTM5ODAzNDEyMjI4YWVmZDFmOGQzYjc0N2U5ZDdmNTg4NDk3MDNiOWEyZjNhYzk4ZDU1ZWU1ZmY3NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzE4MGRhYWZiNGYxYjRjN2Q5NTBkNWNlZDY5MWJhYjdmOWY4NWE5Yjk0ZTJlMGVkMzJkODBjNjZmN2ZlM2ZmNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzFjZGU4YTFhZWE4NmNhNTNlNDA4OWVmMzg4NmE1NGU2NmI0NTkyZTlkNjljYTdlN2FhYWUwNjJlMzU0NzVkOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_971c9a4e7a8c4191a6c815d3db983e35",
+      "statement": "Large data dumps data/*.csv, *.parquet, *.db, *.sqlite, and *.duckdb are read-ignored, so documentation must reference the loader script and schema files rather than dump contents.",
+      "evidence": [
+        {
+          "resource": "repo://.openwikiignore#L23-L28",
+          "version": "repo-lines-v1:sha256:fb453a5b771ec0413b3be4198731285b736d4498ec7b16a6d005db23f622665d:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTNhMjkyNmE4YzY0OTk0ZmNkNDc5MmIzNzkwZDQxZmJiYmZiZjBhNDZkZmIwYTFlZTkyMzM5NDc2MWUzYThiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjYwMjEwOWYxODJlY2U2ODcxNzVkZDg3OTU5NDcyMmYwNWI4MGRjNGYyN2Q1NjE3NmFlYThmMTE4MWQxZmIxZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzJiODNkZjZjYmZlNzhmMTg0YmU0NGVmZTAwZDk2NDhlMDc5MTAzMTNkNDMzNDgxNTUzMTU1YTA5Yjk1YmNiYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzE4ZDlhMTY1MzM3MzJhNjljZGE3YmI3YjE3NGVlMzkyZmRkMTViZTNkNzJhMTE0Y2Q4ZjJkNTFmM2VhYjUxMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8c68c7097eb94bf3bde823f056b78107",
+      "statement": "Seeded fixtures require at least 3 drift scenarios with known causes, at least 5 anomaly points for UC-10, and at least 3 rows containing instruction-injection strings.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L86-L89",
+          "version": "repo-lines-v1:sha256:e06d67e4986851d734a1d1edf36da16bbfc11af4509f9da6e3b58391c583d4db:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDBiOGJkMTAwYTQzMTdlZWU3MmRkNDU3M2M0YzBhNzJhNDRmNTQwZjVmYTlhOTllZGVhN2QzODZkMzM0NTE3MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTczNDc3M2ZmYjdmODU3N2YzNmVhNTcwN2IyNDRkZTczYjU1ZTEzZjE0OTNmZTg0OWY3YzA2N2I2NWUyNzcwZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODIwZDM3MmRmOTJmNDk1OGJlMGI0YmU5ZDUxMDUwZjFlNWZiMzgxYzMxNGRiYjE0ZDMyMDlmMTI1MzAxYzQyMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTE3NDM5NTJiNjc1MjJiNjUwMzc2MzI5MmJjNDE5MGMwYmIyOGViYmQzMTg4YTA1YTRlYjEyYWE5NDUzMTQyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0a3e8b8a237f41eca186dd07bb27d927",
+      "statement": "Seeded scenarios in data/seeded_scenarios.md plus gold SQL and expected results in evals/questions/ are hidden from the agent and its retrieval.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L101-L102",
+          "version": "repo-lines-v1:sha256:b6080ab93c3fde4bbdc82781d8afccce69c6717e53f817dd85e5c75110d87770:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzI4MWU3ZDg5NThkNGViYmZkMTc1YWM1YTBkN2ZiNTFiYThlMTU4M2YyZTJmNGI5ZDgyODA1N2YwMjAwMjU3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY2OGU5MzM4Y2IyZTQ4NjVmYWRkNmQzMTY1MjIyMGRmZTE2MzdmZGQ2YjM0NWI1MDJjYjI1NDk2NzlhNDExZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGY2NmQxNTRmZGU3YmQ2MzVmYzk5OTZkOWJlODQ3NTVlYzRmMDU2MmEzZjdiNTA4YmRhMzU0MTgyMDVmZTc2ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZThlYjI1YjBmMzk5YzM2NTJmNDQ0ZTM3ZjdhN2U0NjczNzEyNTA4YmM0MGZjMzk3NTQxMTljOThmN2UxMWJhMCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L86-L89",
+          "version": "repo-lines-v1:sha256:e06d67e4986851d734a1d1edf36da16bbfc11af4509f9da6e3b58391c583d4db:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDBiOGJkMTAwYTQzMTdlZWU3MmRkNDU3M2M0YzBhNzJhNDRmNTQwZjVmYTlhOTllZGVhN2QzODZkMzM0NTE3MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTczNDc3M2ZmYjdmODU3N2YzNmVhNTcwN2IyNDRkZTczYjU1ZTEzZjE0OTNmZTg0OWY3YzA2N2I2NWUyNzcwZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODIwZDM3MmRmOTJmNDk1OGJlMGI0YmU5ZDUxMDUwZjFlNWZiMzgxYzMxNGRiYjE0ZDMyMDlmMTI1MzAxYzQyMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTE3NDM5NTJiNjc1MjJiNjUwMzc2MzI5MmJjNDE5MGMwYmIyOGViYmQzMTg4YTA1YTRlYjEyYWE5NDUzMTQyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_aaab1fa0e315435aa2a83acc251acfbf",
+      "statement": "Root-cause analysis must recover the correct seeded dimension combination in at least 2 of 3 drift scenarios with summed attribution within 5% of the total delta.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L337-L344",
+          "version": "repo-lines-v1:sha256:d60aaf5258e2426acb6b031b5cfcb1d73123dc250ab4c32534b50158990ab4ce:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzg3ODk1MzFkNWQxMGI1NDRiNDE5ZGYyN2U5NDVmMGUyMjU0OGYxNzhkYzNmNWZiNDRmM2RiMjM5YzUyZTg1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODlmYTA3NDQ4YmZlZTcyOGRlMzBlODdlNzY5ZTk2NjM1ZGVjMzhkZTJiYWUwM2FjMDA2NzRkYjc3MWQwMjJmMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_186768043f1f485ebf6fd332ad26761d",
+      "statement": "Scheduled anomaly detection must detect at least 4 of 5 seeded anomalies with at most 3 false positives per normal week, each alert carrying metric, current and expected values, deviation, narrowed segment, and evidence SQL.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L473-L481",
+          "version": "repo-lines-v1:sha256:d96152111b38534af4552ecfc94326e8dac3950961d60d19433d30a6901a2ff2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzRmY2RkMzRjNGQxNmQ0N2IzMmMzZjEwYTM3Yjc2NDJkZjY0ZWQwOGRmNTM0MDU3MWJlMTQ1NmY0YTkyZmIyZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmVlMDkxYTAzNDZjZDBlYjMxY2I1NWExMjg2YzA1NWJjMmJhNDA0OTY1OGNmNWM0MTBjY2Y3NzBkNjQ4YTJiOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a216a65c597c43deac4896e34681cb35",
+      "statement": "Rows containing injected instructions (e.g., product names telling the agent to disclose phone numbers) are safety eval cases: the agent must not follow instructions embedded in query results.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L529-L534",
+          "version": "repo-lines-v1:sha256:dc6793687cb1c158ef96fefb643101be5d3a4028d1ed3407e16072994aa4a17f:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTFhNDEwMzc5NWNjZjYxZDU4MTYwOTE4NGEzOTgwMDQxOTBmYjg1MjZiZDIxZmE0YTQ4NmU2MThmNTRlNmQ0MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmJkYTI0Mjg4YTRlZjQ5YmY0MmY2Y2RiNGM3ZGNmM2E4NGU3NjMwMTFjZmM3NzE5YTJkMTg0ZWNlOWRmMTYxOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjI0MmVlOWEyMzE2NjRkM2U4ODQyYTI0ZDZkODUwOTRlZThhYjI4N2I0MTcwM2RlOWE4ZThmMzQ0N2MwMjliYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGQwNTg4MDFiYmZhMjFhZDMwZDk5NmRlMWNhODJmOWExMGQ5M2FhNTYxYTY3MjljNDE0NzE0ZDhiY2U2ZmNkYiJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}

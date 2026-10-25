@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d48d3aaa971707287b32398675de77fcc484090fb9e787fa9a2a75e1e77b2567",
+  "pageVersion": "sha256:6e9b58b9f818d85eda6c0493f656a936387c6afdc4ef693e59f4fcfa5336788b",
   "claims": [
     {
       "id": "claim_638e6578d6aa4bcabc42b45540786f26",
@@ -141,10 +141,184 @@
           "version": "repo-lines-v1:sha256:5f2f2302892872b430535ad8f21b588f92cee69599fbd3e138f42f74ba101478:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNjEzMTRlMzQyNDU5ZWE4NTU4ZjMyZTUzMmFmODg2ZDA2ZTk5Yzg4ZjdkMmZiOWYzMGM1ZjFmZDYxMjgyYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1ZmI5MWYyNTRmZWYwMTU5Njk3OGNhMGE5NGZiNTMxNDBkOGM3YmNiMzAzNjQ3YTJiMzBlYmZlMWFjM2E4NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiODYyM2IzY2ZmNTgwMGExNmIyNzg0NDdmYjE2NGU2NWY4NzgxZGViMjM5YjBkNzk3NGMxN2RjYWM0N2JiMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
         }
       ]
+    },
+    {
+      "id": "claim_44567fa6c73442659070a9c7c1a6102c",
+      "statement": "Local setup requires Node.js >=24 and pnpm >=10 with repo-pinned pnpm@11.25.0 activated via Corepack, followed by frozen-lockfile install and non-interactive wiki update.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L14-L28",
+          "version": "repo-lines-v1:sha256:c4fcedf7a7aad86f640fb234b6758fa24672c8017db0129ffec03d35bc89f1c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhYWIyZDQ5NzAzMjQ0MWRlMGVlMDg4NmFmOTA4ZDViMDc5NzNmZjE2MDcxNGUxNWVlMTUyMTg5NjQ0ZmVlZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4MzQ0NmE1ODNmN2RhZTQ3N2Q0MDUxNjQwMzg2Nzc3ZGI2MDljMTBjMjFkZmRiNzczMmZhNDU3NWJiNDIzMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxM2IxMDExOGQ3M2M2NTFiMzRjMDgyYTUxZGI0ZjI0MzAyYmNkZmI3ZWUyZmE4OWFlYjFlZDA1Y2JkN2I5ZWMifQ"
+        },
+        {
+          "resource": "repo://package.json#L8-L18",
+          "version": "repo-lines-v1:sha256:88eef595855e3674002a1a80137dd49499de243b5a66887956763b340df1dd15:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhOTg0MDYyNGYxYzk0NmU3OThkZDFkODM4NGQzMTdmMDcwM2NkYmQyZjM5MTdhMGE4ZDVlM2Y0MTlhYzI3MzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzOTQ2MTQwZWM3MmMwOTQ2NDFiYTE4YTdhNTllYmFjZDg2OTY4NWE3MzY1NWY1YTRmZmRjZmY4YjhhYzU2YTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4MDk4NjQ1MTQ2Y2I3MzM4OTU2MzEzNTAzMjAwYjE1Njc3YWVlODE3ZTZjYjFiOThhMTQ3ZDNhNjRlNmNlYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxMmFkMWM1NDkzOGQzYWFhMTg0ZTBkZmY4MzE5YmQ4NGEzMmFjOGJlNDk2Y2JiNzQ5ZTExMzM4OTFlMmJmNTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fc6815e280a84bfb8b8b11f0df9af8b4",
+      "statement": "Local runs copy .env.example to .env to supply OPENAI_COMPATIBLE_API_KEY, while .env is never committed and CI instead maps the OPENCODE_GO_API_KEY secret to that variable.",
+      "evidence": [
+        {
+          "resource": "repo://.env.example#L6-L21",
+          "version": "repo-lines-v1:sha256:29f0ed8bd4ef20311e0a415d0743c50aae25b210988913ca7e28e6b4a457bcb8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMDAxMGM2ZjAzMmFhNGExNDkzYjUxMmVhNGY5ODUxYTRhMTdjNDYzNTVlNmRhNWI3YTIxZjNjNWMxZTRkNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ODY2N2IzNjc2Y2Y3YzQzODU3MmJmMTE4YzhjNmFmYmIzMGUyZGNjZDYzOWE4YzljYmVkYjBiZTI2MDc1NDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NzUxOGQ4NWQ0OThkMGM5ZDkyY2Y2OTljMjlhNDVkZDI2ZTU2Y2E2OWNiYTk4NTFhN2VjMWYyNTJmMDFlZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1YTEzNWFhOWIwNTk1YTc0NWE5MmQwYjhkZmI2MmM2ZGM4YTZlNTcyMTk0NWQzYjQzZTk4MjQ1OTQ0NTc0MzYifQ"
+        },
+        {
+          "resource": "repo://README.md#L22-L28",
+          "version": "repo-lines-v1:sha256:c47f1400aaa3c7e274ec0c6a22e2fcc5e30aaa51e41655eb73f3ca5be5a9bee2:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM0M2ZiODlkZDcxMzkxNzA2YmI2NTUzMzcxMzlhZTY2YWMxMGZhY2M0MjYyYmNkMjQ4YzIyOWNmMGUyNWQwNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdjMDZjNTYxZDVjMzI3MzQzNjg1MjY4YTQ2YjMzOTFmMzk5OGVlZTg5MGQyYmU1MWYwZDIxY2M0YTUzYWU2ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzA0MmNjYmU0Y2ZiYzhlYjUxY2E0MGUyMDQ1M2JiNDk2MDE0NGJiOWJmYjE3OTdkYjRiZTU0MmE4NzkzMDFlZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTEzYjEwMTE4ZDczYzY1MWIzNGMwODJhNTFkYjRmMjQzMDJiY2RmYjdlZTJmYTg5YWViMWVkMDVjYmQ3YjllYyJ9"
+        },
+        {
+          "resource": "repo://README.md#L45-L50",
+          "version": "repo-lines-v1:sha256:ffef2c23ebdae7a21e935866cc3d43517916ac8f85b185f1caf2d3b78e414c63:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDZiN2E2ZGQ1MjczYWZiNTljZGEzODIyZjM5NDM4MjAwODMwZTcwYmEzNjcwZDMwODc3NTZmYzhhYWY2ODA0YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGY5YTJhM2I0ZDk3ZWUyOWRhN2U2ZjdjOWZhYjJlYWExY2ZkYTY5YWFjZTk5NWQxYWQxZTFmY2RhNzA0YjIzNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGRkYjE1NmM3YjA1NTk2MjJjYTA2NjYzOTYyOGRiOGNkZjU3NjVlMDNiNzNiYTNiMjVlMzAzNGE2ZDhkYzdmNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjE0NTk3YjliYWM2MGNjMmY2ZTJiZjc2MzNlYzA4YTg4ZDI4MTIwNTcyZTA5NjIzOWNiMTYxY2I3MzYyNjI1MCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_729cd45876ae4b2ab80bf57d9dad79b8",
+      "statement": "Every pnpm wiki:* script preloads scripts/openwiki-fetch-patch.mjs, which injects a stable opaque x-opencode-session header (ses_ plus 32 hex chars) for opencode.ai requests, deterministic per GitHub run and random per local process without overwriting an existing value.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L13-L18",
+          "version": "repo-lines-v1:sha256:aee0ee96428a7a9e4f96af3703553fbe220d51f5c6d2daee8308616910799239:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ4MzNkNTk0OWMwM2E0MGNhOTUyNDkxNjEwYTY2NTk2NDRiM2FhNDY2MzYyZjc5OTAyMGRiZjE5ODE1NDdkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjM5NDYxNDBlYzcyYzA5NDY0MWJhMThhN2E1OWViYWNkODY5Njg1YTczNjU1ZjVhNGZmZGNmZjhiOGFjNTZhMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTYwYzcyNzlhMmJlMzZkMmFmNTlkZmRlOGIzMzgzZDk5ZGQxZTg0MmE0ZWM1OGIyNDcyNmUwZWRjZmE3OTEwYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODEyYWQxYzU0OTM4ZDNhYWExODRlMGRmZjgzMTliZDg0YTMyYWM4YmU0OTZjYmI3NDllMTEzMzg5MWUyYmY1MCJ9"
+        },
+        {
+          "resource": "repo://scripts/openwiki-fetch-patch.mjs#L22-L37",
+          "version": "repo-lines-v1:sha256:35a0f80a40ef27e725b53bb7dc076909611743cbb934478539705d6542c24f66:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjMyYmQ2NjEyMTFjMTU2YTE4YWQyOGNkMWE3ODQ0YWEzZmFkZjViODI3MTZkZDJiNDdiNTRiN2M1NDBjNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5NTQyMzIzNGQwNWYyOTJmMzFlMTFkMmZhNDVkN2Q1ZjJjN2U2NTQ3YjcyNWEzYmRkODUyMjEzNDQzM2UxZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NzdhNjQ5NzI0NWFiZjVlNmE1OTgyYWEzZGNmNWVhOGU3NGUyNTY5MTU2NWUyMTcyZThmZGIyMGM3N2VhNmYifQ"
+        },
+        {
+          "resource": "repo://scripts/openwiki-fetch-patch.mjs#L44-L70",
+          "version": "repo-lines-v1:sha256:079cd76352a5852b4e1b942df3365d542dde2ed904d889577fe8f3acad4ee454:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlMDA5MTU1YTMxYzM2NmFiMjM5ZjAzNzcxMTU5ZDYzMmY3OWUyZTlkYmFjMjI2YzdkNDU3YzVhNGYyNGYzMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlNDAxNWEyNTYwZjdmOThhYTc1YTlkNDNkNTlmNjU3MmUzYWVjNzRiZTQ4YzMwNzk0NzgyNTA5ZGM4NjI3NzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyNjlhYzAyOGI3MzI5ZTEzN2IwOWU2NDhkODNlY2EzMzBiNDExNTVjMjUzODZjOGYzZTk2ZmZjMjkxZDEwYjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bf1a2728ce1b4be4bccc8fef40d992b5",
+      "statement": "The inference provider must keep OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API=true because the pinned muse-spark-1.3-contributor model is Responses-only; setting false routes to /chat/completions and fails as ModelProtocolUnsupported.",
+      "evidence": [
+        {
+          "resource": "repo://.env.example#L18-L21",
+          "version": "repo-lines-v1:sha256:d2bd9084e3a14502096b7fd8db870ffb571d75b3854dc674db44b61760d44ee7:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdiZTIxMWNhZDcxZTI3NDBhOTNiZGU0NmRhNTIxNmIxNzg1YjU2YmRkNzc4MTRiNTAzNjI2OWY4YWNhNmViNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDk4NjY3YjM2NzZjZjdjNDM4NTcyYmYxMThjOGM2YWZiYjMwZTJkY2NkNjM5YThjOWNiZWRiMGJlMjYwNzU0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjY5ODQwMjA5OGRkNDc0YTAxODkyYTYzM2U1Y2FmZWVlNDIxYTBjOTBiZTlmYTZmNmFmODUxOWE1MzNiYzdmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDVhMTM1YWE5YjA1OTVhNzQ1YTkyZDBiOGRmYjYyYzZkYzhhNmU1NzIxOTQ1ZDNiNDNlOTgyNDU5NDQ1NzQzNiJ9"
+        },
+        {
+          "resource": "repo://README.md#L57-L63",
+          "version": "repo-lines-v1:sha256:7de4ed87aecd56a6a60ce5027b0a818ca39260fba55284112a9e55fd419d21ca:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2U3NWQzMTJiMjRmM2NhOGJjNTRkMTc2ZTg4YTQ1NzQ5OTY5YTUxMmYwYWNlMzNiZmJlODgyNDU1YjRmYTYxMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZlNWZiZGU0ZmJiMjBhODhiOWIwOTU0MzFhNDM4NzA2MTkyZTdlNDFmMjVmZTI5ZmJjYjdiNzk1NmUyODk1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODMxZmRkNDEyMjUyZDU2ODIwNjE0YjExOGM2NTQ3OTVjMmMxZGUxMzg2NTVkODJiYTIwYjc1NzIyNzZkZjRkMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDZlMmUxMzVkOGFhNjRkMmM0MmM4OWViZjZmMzM2OTczZTQxOTUxZDBmYjQzZWU3ZTExZTdhZTdiMTk1ZDQ5OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_52f02b12a4164cb6af2875747f18d1ed",
+      "statement": "Scheduled wiki CI runs daily at 08:00 UTC plus on-demand on Node 24, installs with pnpm/action-setup and actions/setup-node, runs OpenWiki update, and opens a docs-only auto-merge PR limited to openwiki, AGENTS.md, and CLAUDE.md.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L3-L7",
+          "version": "repo-lines-v1:sha256:f85bdfd7954ff5617292b34d02c83de4510d7f1dc18cbdc099a6cba72aa18082:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk2ZGM0ODE0OWY1YTgzZDFlZDZkYmIzOWJiYzdlMmI5MDJhYTNkMzRkNmJkNWFlNGIyOTFiNjhkZjBjYTc5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTNhZWQ1MDJhNWFkZWU3YmIwY2FkZDQ2Y2Q3NDYzYjUzMjBjNmNjZWU0NDgwZDY2ODU0ODg0MzEwNjM3NjExOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWE4YjA3YjE4NGY5NzZlMDBkNzU4OGZkNTM0MzI5ODQ3ZWEyNTgyMGFhNGVmMzlhM2Q1MWMwNmZiZjgzM2EwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzk0NjJkNWYyYzIwN2U2YjRmODI4NDNkOTE1NGZmMGJiYWQwMzQzOTI0YjJjM2M0YmFiZDk5Yjg3Y2NkNGI4MiJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L30-L53",
+          "version": "repo-lines-v1:sha256:8327d5d5d6336181dbc2afa3a39bae60967b86a1c43abd0b73a0eded739fc64e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzY2ExYTBlYmM2MDFiOGM0MDIxZjRkY2FhYTg2YzU0NGM2OTM1ODBhOWQ1NjkyNTM4NjQyMmRlM2YzZjk2N2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjZjBjN2ZjNGVmYjcxM2JjNTA2ZjQxNDMxZTZiN2Y0ZWM5OGUwMjdiYWMyYmYyNjJiNmJlM2I3MWMzNTIzZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZDVlY2I5NDI1MGZlNjFjYWJhYTJiZTQzMGYyMjc2YTgxOWM1OWUwMDFmNzNmMGI3NTFlZmM1ZTkyMGZjYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyM2JkOTUyODNmZDJhYjk1Yjg2OThjODAwOTJhNTBmNGVhZTA5OWMzOTk3NTQwNWI2MzAxYTBhZTU0ZTk4MzEifQ"
+        },
+        {
+          "resource": "repo://README.md#L38-L43",
+          "version": "repo-lines-v1:sha256:1dbddfa33a6b1bef38e54c2821228df9ce91a1c5d3330eabba26604c4fb2811c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRhMjJjMGM2M2JmYmZiZjM0ZDExZGI5YTdmMDllMzU4MGIwZDc0NzlhNGZlNjUxNmVhNjE2MTg1NjdjNDEwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmRhNDJmYzE1YjQ0YmI3ZTRhZWQ4ZDhiYzMwMTgyOWY2NzYyMDc5MjFhMzc0ZTY0ZDk2YjQyZmU2YzYwNjY5YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTcyZmE0MGY0YjY5N2U5NDliMDBjNDc5N2JhYjJmMWQ2OTM3MGI0NmM3M2Q3OWMxMzQwMTlhODI0NTM5MmY5MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmVjNjBkMGI1ZGFjZTk5NjRiZDEwYjYzMTVhYmI5ZmIzODBiMGVhZjNiMzBjOWZiNTAyZjlmMDdiMWNhOTY4NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_349ee0de1aad4160aea3b0186f9d1440",
+      "statement": "The wiki read boundary in .openwikiignore excludes secrets, generated state, dependencies, and data dumps, so docs cite .env.example and loader or schema files and never reproduce .env contents or data-dump rows.",
+      "evidence": [
+        {
+          "resource": "repo://.openwikiignore#L6-L29",
+          "version": "repo-lines-v1:sha256:1ebb6f3a05375deb52e4f71c03c1534a9013de732d4289d6a688ef563f21d403:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMDQzZmIyNzZmZjhkMGZkZmZlNjMzNTNmOWRmNTM2ZDdjZDMzYThmMmUwNWI0ZDU3NDQ1MjMzMmViYjlkNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxOGQ5YTE2NTMzNzMyYTY5Y2RhN2JiN2IxNzRlZTM5MmZkZDE1YmUzZDcyYTExNGNkOGYyZDUxZjNlYWI1MTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmMjA5MWM3NTEzMjQyNjQwYjRmZTEzNjI0OTM3ZTIxZWEzYmY5M2Q4ZWY3YjE0ZTEzZDFhZDI5N2VlZTE2ZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://README.md#L30-L34",
+          "version": "repo-lines-v1:sha256:41581b99efaa8c0e825b7ea3930c431a45284a06927c14f8303295a4d58c7d75:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjU5ODc5NGU5NTVmZGJmNWM2YjE1MWY1NGZkYWNkMmY4MDcxYTMyYjYzYWYzNjUzNTRjMzI0MGY4NTk4MTNmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2JlNjhlMjhlMTQ2NWU0MWVkNzI3ZmU1ZjAyMDhkZWFjMTk0ZTJjMGFjMzkwMzI0NDE4NjlmM2RjMjBlZjdlMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjg2ODA4Y2QwZDBlN2I3NjE5Nzk2YmU3YWI4NjVjZDZmMjc5OTFkNmExMWYxNDM2N2MwODFjZTZhNjBiMzY2ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTcyZmE0MGY0YjY5N2U5NDliMDBjNDc5N2JhYjJmMWQ2OTM3MGI0NmM3M2Q3OWMxMzQwMTlhODI0NTM5MmY5MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d01a210604004622beba60ae8763fe90",
+      "statement": "Agent documentation is organized by system rather than source directory: workflow-architecture owns the reference understand-retrieve-plan-generate-validate-cost-gate-execute-mask-chart-review loop, semantic-layer owns the knowledge corpus and hybrid retrieval, and safety-and-access-control owns read-only, validation, cost-gate, RBAC, masking, and injection defenses.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L104-L113",
+          "version": "repo-lines-v1:sha256:1acfb1478d53c0243b22d4dd71860440090f70ac739a49e03a3cd0f05cefc198:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMGFiNGE3MTljMzUwNTI1ZWYxNjU2NmEwNWExMGMxOGMxMzQ4YzVhM2ViNGQwODMwM2MxZmQ0YWU2MmI2ZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZjE0ZTBlMzRjNGVmN2FiYWVmZDJiNjNiMmVjYTA2Mzg2YzczNDQ0NWYzMWNkY2EzMGZmNjI5YzRiYzRmYzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjZmFkYmI1NGFlMmYxNjJlZmY5OTA3ZjBjMTVjOWZlNmM2Y2JhODY2NGUxZjFhYjE1ZjU0OTExMjFiMGUxN2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MDIwMDg3ZTI4NWU0NGIyMDRjZGRmOTgwYmNlNjY2YjFiOWQzYjEzMzExNjg3ZmQ4ZjNhNDcyM2Y3ZDAzOWYifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L115-L144",
+          "version": "repo-lines-v1:sha256:d624cf414b8f83281e755b35b09d8148c7d096bcb8a7d59b95b61192730cae49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3ZGI1OGE1Mzc2NTU0NDRhNzBiOTM4YzI1NDk5ODVmYmZiZmY0NzJlMGQxNjY3MThhMzMzNmEwZWU4NGYyMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyNzhkNDA1NGNmNGNjYzc4MzQyMTAxYTY0NzRlNWM2NTc3YzQ2ZWMxZWEwN2E5ZGQ0YTkzNGYyNDdiMjYxOTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L507-L525",
+          "version": "repo-lines-v1:sha256:555c0d0a291c0fac641e47da734f9cfa300891778edfcac665347a4dec9203e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwN2FlYzcxZDJhZDcxZTAxM2FhYjUxZjc5MTJmNWVhMThhNTVkNTJhZTQyZTkwZTkxMTczMThjOWFmNGM5Y2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1OTQ2MDUxMjNhYjc0NWI2MTgzN2MxMTlkOGFhNGEyOWUzZWUyY2NiNzg0NTc5ZTE1ZTM0MjU0ZGI3ZDkwYjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODk3MGFkOTBmZDI5ZDU0ZDYwOTY3NzViMjg5YTg1YjljYTM0YWI0YmVjM2VlOGJkOWMzNmRiYWEzM2NiMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNDJlZTlhMjMxNjY0ZDNlODg0MmEyNGQ2ZDg1MDk0ZWU4YWIyODdiNDE3MDNkZTlhOGU4ZjM0NDdjMDI5YmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_605b5c9298914260afaa9ce1818a2a26",
+      "statement": "The target business database requires at least 8 related tables with a >=1M-row table and fake-PII columns, plus hidden seeded fixtures of at least 3 drift scenarios, 5 anomalies, and 3 injections, loadable by one command such as python -m data.load.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L69-L90",
+          "version": "repo-lines-v1:sha256:2ba36d7b027ba5bbe3ad0714f6e56b97219de6bf858bbed2f077dad03ba8b9a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3M2ZjOTQ4NGNiZGYxN2M3OTZlNTE5MDJjMDBlMWQxMDdmNzJmYmQzYjBmZDc4YjM0MDE4NWMzNWU2MzUxZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYTcwNGIxNmQxOTAwNjA5YTIzMjJiZWUwNDNjMGM3MDU5ZDkxNDI0ODU0ZDlhY2Y4ODJmZWIwNmU4MDc5NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiNjRmZTRiMGNmY2Y5ZGZhNzRhYTYxNGRmM2U1ZTZiZjI5NjJhOGViODUzNDA2ZGE2MWJiNGIyMDBjNDkyZWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9cbe25eec9284f6a868ff928e2c1dc10",
+      "statement": "Submitted use-case designs route to use-cases/text-to-sql for UC-01 bounded self-repair, use-cases/root-cause-and-anomaly for UC-05 branching analysis and UC-10 scheduled anomaly alerts, and integrations/mcp-server for the UC-09 database MCP server and operator surfaces.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L190-L227",
+          "version": "repo-lines-v1:sha256:9595dd3a8dc5c5ca62ab1dc5dcdfd272926d91e2f8625b70778e5f2bb8957983:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzZTAxZDdjNWNhZDM1OTUwODY1NjIwNDFiMWRlMzBhMWFhYjJiMTAzNzI4ODhkMWViNWM0NTI2MDA1MmJiYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiZjllNWUwMWE4YWQ5N2ExN2M0MGRjMzJkODcwYjZiOTE3ZTZiYjhkN2IyZjkxNjZkM2Y0MDU3ZWU5MDAxODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L319-L345",
+          "version": "repo-lines-v1:sha256:49bfa8f2762da9e3d37a9d687f52dc79e65f1f6fcec3bc8bf61523f22fd924aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NjI3NjgyYmJiYmQ5MTVmYzQ1NzAzZWJlNjJkMjUwMWZlMTUyMWEwYzIxZGVjMTJhYjlkMzJlZTU1YzU2MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2ZWI3YjI2MmYxZjlmMmRjNDViYmNmNDk0Y2Y1NTRjYzhlMTdhMGJjNDg3ZmYzYzhhM2FjOWY4MmVkOWJhYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L430-L449",
+          "version": "repo-lines-v1:sha256:174ff4ebe838e5bd4b7e11db42b4ff9ba45426f86e41d0d733f683874a1792ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3YTk0MTkxMmVhMjNlZTg0MGNiYzljNWZlZTVkNDQ3N2JkNDQ1ZDRhMjY0MGI1NmM4Zjg4MmJiNWQxZGI1MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhNWEzYzVmMWI3NTFkODVjN2RmMDU2NjYyOGExMjNlOTY2MmFjZDA3ZWIxNDc2OWExZjZhNDllNTA5ODc5MzUifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L454-L481",
+          "version": "repo-lines-v1:sha256:8dc4978d80cec1c6e5966f6b5ef798c6270294ba76490fb16093d16f9aab9105:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwY2Y3ZTNiOTVmYzkxNzY4ZDMwM2U2NmRjNGJhZjcxMWE4NGZlMmI2MThiODA1Yjk4ZGI0NGNiODM5NDhhYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0ZmNkZDM0YzRkMTZkNDdiMzJjM2YxMGEzN2I3NjQyZGY2NGVkMDhkZjUzNDA1NzFiZTE0NTZmNGE5MmZiMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_02b61c80777f4ab9a668d2fab5cbfad2",
+      "statement": "Verification routes to evals/eval-and-safety-harness: evals run by one command with execution-accuracy grading, per-UC metrics, regression comparison, hidden gold results, and at least 5 mandatory attack and safety cases.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L101-L102",
+          "version": "repo-lines-v1:sha256:b6080ab93c3fde4bbdc82781d8afccce69c6717e53f817dd85e5c75110d87770:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzI4MWU3ZDg5NThkNGViYmZkMTc1YWM1YTBkN2ZiNTFiYThlMTU4M2YyZTJmNGI5ZDgyODA1N2YwMjAwMjU3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY2OGU5MzM4Y2IyZTQ4NjVmYWRkNmQzMTY1MjIyMGRmZTE2MzdmZGQ2YjM0NWI1MDJjYjI1NDk2NzlhNDExZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGY2NmQxNTRmZGU3YmQ2MzVmYzk5OTZkOWJlODQ3NTVlYzRmMDU2MmEzZjdiNTA4YmRhMzU0MTgyMDVmZTc2ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZThlYjI1YjBmMzk5YzM2NTJmNDQ0ZTM3ZjdhN2U0NjczNzEyNTA4YmM0MGZjMzk3NTQxMTljOThmN2UxMWJhMCJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L527-L538",
+          "version": "repo-lines-v1:sha256:976be6f4489e463f043b5202aac81c427d74fdcd8b2dd5fb15ae9d11dff8faf3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmMTJiMGYyYWM1NjFkZjgyZWMzNDFiMmQ4MTA1MDIxZmU4OTdmZTMwNTQwNDI4YTM5YzUwY2QwNzY0NTUyYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MTY0NGQxYzVlN2ZjZWJhMThkOTU2ZTg2NGE5ZDc1NTgzMzA4MDMzMDE1Njg5ZGIxMzI4YWI2MWMwNjM4NzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNDdmZGZhYTQ0MDUzNTI1NWZjNzg2YTA4ZWQxZGM2ZTQzNWVlZjJkNWFhMmEwOTAxMGNlY2NhMTlmMjRlZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkMTM5NTI1ZjFiNTE4OTMyOTRjNmVjOWNjYWQ0ZjZlYTVkODQ0NzA4MjI3ODUyOWY3MmM3ZjU4NGFmZTE4ZGQifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L560-L565",
+          "version": "repo-lines-v1:sha256:8a6aa1137ad08c2d1adedc9cab26f575ec088087e6ec1c6deebe266b3afd67b9:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQxMjlkMTQ2NzdmYWViMzljNWM5MzFmOTVkODdlMmUzYzQ0NGI1NDk5NTdmZjQ1MmI5OGYzZDdiM2VlZDE1ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmI4MTMxMDBkZjNkYzkzMjkzZWVmNzVjNDcyMGU2YjkzMWFhNGU0OTZmNmNlNDE1MWRlYzY0Y2VlNGQzMTgxYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGNmZDFkODEyNWU3YTRlZGYxZmZkOTY1NmMwMWZlYTJkMDk3MDY5MjZlMGY0YmRjOWQ3NTRhMWM4NTgwYmExZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTQ2MzcwMTYwNmY3Y2MzMTk5ZDYxMjMzNTAxZDZkNzA3ZmI5ODgwYzRkMGQyMzUzNzUxMWVlMjRlZTViM2UyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_dbd0a44a614a4e27b8c500f2c9f2eeeb",
+      "statement": "Hard invariants apply to every agent task: the team self-builds the SQL path without hosted text-to-SQL or BI products, connects with a read-only account enforced at the connection layer, uses only synthetic or public data with fake PII, and implements in Python or TypeScript with a LangGraph-style workflow.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L56-L65",
+          "version": "repo-lines-v1:sha256:5f2f2302892872b430535ad8f21b588f92cee69599fbd3e138f42f74ba101478:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNjEzMTRlMzQyNDU5ZWE4NTU4ZjMyZTUzMmFmODg2ZDA2ZTk5Yzg4ZjdkMmZiOWYzMGM1ZjFmZDYxMjgyYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1ZmI5MWYyNTRmZWYwMTU5Njk3OGNhMGE5NGZiNTMxNDBkOGM3YmNiMzAzNjQ3YTJiMzBlYmZlMWFjM2E4NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiODYyM2IzY2ZmNTgwMGExNmIyNzg0NDdmYjE2NGU2NWY4NzgxZGViMjM5YjBkNzk3NGMxN2RjYWM0N2JiMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T07:25:04.439Z"
+    "at": "2026-10-25T12:53:57.503Z"
   }
 }

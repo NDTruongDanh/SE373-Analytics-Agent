@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:b8f6a696ef1dbe0a2bd1eae1790a5a3f9f727a6818d657c888e7ca1fc350c6e7",
+  "claims": [
+    {
+      "id": "claim_78e91c482704485589f3185c9b862649",
+      "statement": "The full eval suite must run with one command such as python -m evals.run --all and emit structured result files, with each submitted UC contributing at least its minimum case count.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L560-L565",
+          "version": "repo-lines-v1:sha256:8a6aa1137ad08c2d1adedc9cab26f575ec088087e6ec1c6deebe266b3afd67b9:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQxMjlkMTQ2NzdmYWViMzljNWM5MzFmOTVkODdlMmUzYzQ0NGI1NDk5NTdmZjQ1MmI5OGYzZDdiM2VlZDE1ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmI4MTMxMDBkZjNkYzkzMjkzZWVmNzVjNDcyMGU2YjkzMWFhNGU0OTZmNmNlNDE1MWRlYzY0Y2VlNGQzMTgxYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGNmZDFkODEyNWU3YTRlZGYxZmZkOTY1NmMwMWZlYTJkMDk3MDY5MjZlMGY0YmRjOWQ3NTRhMWM4NTgwYmExZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTQ2MzcwMTYwNmY3Y2MzMTk5ZDYxMjMzNTAxZDZkNzA3ZmI5ODgwYzRkMGQyMzUzNzUxMWVlMjRlZTViM2UyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2bd7168df26441b98e02dff7581e81e9",
+      "statement": "Graded questions live in evals/questions/ as JSONL records with id, question, difficulty, gold_sql, gold_result_path, and tags, with at least 30 questions split across easy, medium, hard, metric-dependent, and unanswerable slices.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L92-L100",
+          "version": "repo-lines-v1:sha256:c2726560cea244ca7a232e78027d7396dbcb100eb97bedd4770058d7bcae05c4:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzlmZDU4ZmY4YTdiOTRlMTdhZGI3ZTMwNTM4NTAzNTg5NGQzOTY2ODgzN2VlYjY0ZjM0NGQ4OGQ1MGVjMDI5MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTI4YTJmZTg5NzFjZTk2NWQ0MTkyYjFjNDc1ZTc2MTdjYTBjMmRjZmYyNDJiNDI1NTEwMjZjNjJlMTQwNTg5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTc1NDI3MTNkOWVmZDk1YWUzNWRkMjQ1NjBjOTA2MmNhZTMwN2RiMWEyYjkzNmZjNzY0NmM0OWRmMTJjNGNjYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2NmYWRiYjU0YWUyZjE2MmVmZjk5MDdmMGMxNWM5ZmU2YzZjYmE4NjY0ZTFmMWFiMTVmNTQ5MTEyMWIwZTE3ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_48ebe91b860442beb5a07db44b00cfab",
+      "statement": "Execution accuracy counts a question correct when the agent result set matches the gold result set ignoring row order unless ordering was requested and ignoring column names, with float tolerance 0.5% after normalization that preserves duplicate rows.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L101-L102",
+          "version": "repo-lines-v1:sha256:b6080ab93c3fde4bbdc82781d8afccce69c6717e53f817dd85e5c75110d87770:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzI4MWU3ZDg5NThkNGViYmZkMTc1YWM1YTBkN2ZiNTFiYThlMTU4M2YyZTJmNGI5ZDgyODA1N2YwMjAwMjU3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY2OGU5MzM4Y2IyZTQ4NjVmYWRkNmQzMTY1MjIyMGRmZTE2MzdmZGQ2YjM0NWI1MDJjYjI1NDk2NzlhNDExZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGY2NmQxNTRmZGU3YmQ2MzVmYzk5OTZkOWJlODQ3NTVlYzRmMDU2MmEzZjdiNTA4YmRhMzU0MTgyMDVmZTc2ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZThlYjI1YjBmMzk5YzM2NTJmNDQ0ZTM3ZjdhN2U0NjczNzEyNTA4YmM0MGZjMzk3NTQxMTljOThmN2UxMWJhMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6493a791feba4fba8a7b1df0f4f5643f",
+      "statement": "Gold SQL, gold results, and seeded scenario definitions are hidden from the agent at run time; only the grader and humans may read gold artifacts.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L102-L102",
+          "version": "repo-lines-v1:sha256:7668e9338cb2e4865fadd6d31652220dfe1637fdd6b345b502cb2549679a411e:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY2OGU5MzM4Y2IyZTQ4NjVmYWRkNmQzMTY1MjIyMGRmZTE2MzdmZGQ2YjM0NWI1MDJjYjI1NDk2NzlhNDExZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY2OGU5MzM4Y2IyZTQ4NjVmYWRkNmQzMTY1MjIyMGRmZTE2MzdmZGQ2YjM0NWI1MDJjYjI1NDk2NzlhNDExZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzYwYmI3YjU3OTJmNjg3NTZkZGRhYzg3NDQxMTQzMWQ0ZjNlOWY4MGI2Y2Q0MGIwNDJhNjQ4MGZmMWIxZTgxNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZThlYjI1YjBmMzk5YzM2NTJmNDQ0ZTM3ZjdhN2U0NjczNzEyNTA4YmM0MGZjMzk3NTQxMTljOThmN2UxMWJhMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_60017b64851d423b94a8bf497ab50e73",
+      "statement": "Every run emits a run ID and trace covering user and role, nodes, tool calls with parameters and timing, all SQL attempts, EXPLAIN cost, applied access policy, skill uses, tokens, cost, errors, and approval decisions, with no unmasked PII in traces or logs.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L540-L542",
+          "version": "repo-lines-v1:sha256:eb864364e611235646210866ee76c8d08c36bc646d6bdf45d00005f66383b202:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjUwZTJhZDI2ZmQ3NjA3OTBhMGVkMGFiNjA3MTg1OGQyOWQ3MTJlNzBhMzdhNzBhZDc3NzE1YjY2NjcwMDk0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ0ZGRlZDA3ZThlMGY0NmI4OTI3MTgzYjk2ZjViNjAxMjMyOTNlZjUxZDMzYzBhZjBmMTJmYTk3NmUwZTI2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE0ZjE2OGQyYjMyYWNlYTIxYzM2MzA4YzI5MDg5Y2EyNDNmNzUyOGNjZWFjY2I4MDc4NTc5OTJlYjUyNmFjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_616a409e05e44d6c854fce456287edba",
+      "statement": "Eval reports must include every applicable metric row from the required table: EX overall and by difficulty, repair rate, Recall at 5 and citation validity, semantic lift, insight-number validity, root-cause hit rate, reviewer precision and recall, cost-gate block rate and cost correlation, PII leak count, anomaly detection and false alerts, plus tokens, cost, and latency.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L567-L581",
+          "version": "repo-lines-v1:sha256:3592d86f07071fcaa04b98cf7c3253fbb7dbf120d21793926b9385d7bd8e963b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2MzJhYmY2NjNjNGMxNDRhNGU4MDlhNGQxOGQwNDM2YzI0ODBjYTU5ZGViMmVkNWYxYThkZDNhMjUwZDgxMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMzQxNTIyNTFhNDYyYTEwNDUxYTg3MDQ5ODIwMTE3MWVkMDUzOGJhNDYyZTc0OTI3NTM4MWNiZDJmOGM3YzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3YzNhZDM5NGUwY2ZkZDk3YWE5MDM0N2QwNDdiYjdjNzE5MzE0ODE2ZjUwMzRmZTA1YjU4YjFhNDFkNzM2ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2M2EyYTUwZDhiZTRhNTc4ZmQ3ZWM1YzVhNWE1ZjBlZGY1Y2E4N2RiYzM1YzUzMDRjMGMzODk0ZGE3MzAxMmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2ef3f5f3ed8c41998380e052a7a43ce5",
+      "statement": "The submitted UC set must cover all eight knowledge areas K1-K8, with each missing area penalized, using the defined UC-to-K mapping.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L159-L186",
+          "version": "repo-lines-v1:sha256:e9b67d9333b2b06cbfcc22e499ebc08ef02813d12599c42fc345adafc5245ecd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NGEyZDMwZWRmNjc1MTlhMDY4ZTEyMTQ1ODFlNGI3MDhmODM0MWVjZGQ4ZGY0YzMzNjc1MDQ0M2MxNDY1NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhOTdkNmMxZTc5NmI5Y2M1Mzc2YmNjNjAxNjYwZTE4ZDkxOGFlMWVhZTE2YWY4ZDhhNjJiY2Q3OTMyYjQwYTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwNTFlYzI5M2E4MjYyMWZlODMwZmE4M2EyNDZkODVjNGFiN2MyNDIyYTAyNWUxMmY2OGRkMTk3MDFkNTg4ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8adf5567133c4c99aca6169ec56c05a1",
+      "statement": "Regression requires at least two full eval runs, baseline and post-improvement, with a comparison attributing each metric delta to the change that caused it.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L583-L585",
+          "version": "repo-lines-v1:sha256:32a2bb973d5e8ab5ef7dd83961aa0a43936a29d7e80eb14f3fcaee687359e87c:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2RkMjZkMWNhN2E4MzBkYTFhNmNlMTNjYTZhYTczZmYzYTgwNjYwNTJhYWQ4MjU3YTU4Y2I1ZWY1ZTViOTQ4NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzI2MDdiMzlkYmE0NTliYjUwNTk4ZjI1ZDBjMjJkOTM2NjU3ZTY2MDM2ZjVhMWYzOWQyZjczYWRjOWU1OTI0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjdjM2Q1ZWU4MzQ2NjA2M2M3N2JlMWVjZjRiNWNiZDhkMzkyZWU5NTFhZDAzMjY3ZTU2NTQxNDA2OTE0OGFhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_28e7bb35eaee491c8fd203aa05738d02",
+      "statement": "The shared eval includes at least five attack cases covering question SQL injection, privilege escalation, data-borne instruction injection, hanging or explosive queries, and fabrication demands, each recorded with outcome, blocking layer, and remediation if unblocked.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L527-L538",
+          "version": "repo-lines-v1:sha256:976be6f4489e463f043b5202aac81c427d74fdcd8b2dd5fb15ae9d11dff8faf3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmMTJiMGYyYWM1NjFkZjgyZWMzNDFiMmQ4MTA1MDIxZmU4OTdmZTMwNTQwNDI4YTM5YzUwY2QwNzY0NTUyYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MTY0NGQxYzVlN2ZjZWJhMThkOTU2ZTg2NGE5ZDc1NTgzMzA4MDMzMDE1Njg5ZGIxMzI4YWI2MWMwNjM4NzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNDdmZGZhYTQ0MDUzNTI1NWZjNzg2YTA4ZWQxZGM2ZTQzNWVlZjJkNWFhMmEwOTAxMGNlY2NhMTlmMjRlZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkMTM5NTI1ZjFiNTE4OTMyOTRjNmVjOWNjYWQ0ZjZlYTVkODQ0NzA4MjI3ODUyOWY3MmM3ZjU4NGFmZTE4ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_346c694cdb7e4481a89b2e8165b61493",
+      "statement": "UC-01 acceptance requires EX at least 70 percent overall and 85 percent on easy questions, bounded self-repair with at least 50 percent recovery of first-attempt failures, blocking of non-SELECT payloads and multi-statement payloads, and correct cannot_answer without fabrication.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L218-L227",
+          "version": "repo-lines-v1:sha256:1d97099eb90c5dc617d120b4af36197840d7b7bf9896de22d5c60d6991c3cadb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiNmRmY2YyOWUwMjgyODUxMDMzZmViNjdhMGUwYzJkY2Q2YzU3ZDFkOWE0NTc4NTE0OTcyNmVmODU2NDIxMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiZjllNWUwMWE4YWQ5N2ExN2M0MGRjMzJkODcwYjZiOTE3ZTZiYjhkN2IyZjkxNjZkM2Y0MDU3ZWU5MDAxODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNDExMjE5MmZjMmI2ODBkMzBlMDNhNDM1MDlhNmNkMGE0ZGVhZjMyYTk2MjJjZGFhYTgwMmJkYzFjM2U0YjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_df7b42491c5a4277ad2b44cac87c5d7a",
+      "statement": "UC-02 acceptance requires Recall at 5 at least 0.85, EX lift of at least 15 percentage points with the semantic layer on, 100 percent valid citations to existing metric or table.column identifiers, clarification for unknown terms, and incremental re-indexing of only changed documents.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L244-L252",
+          "version": "repo-lines-v1:sha256:ced305004c916cb7035f265fc29db5264c8a1a53484ea2cc4fedbab5ece16f2f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjc0Y2UyNGUwN2E1NWYxMWE2MWM4MmUxNTA4NmE4ZDczZjE0MmI1NzEwZjYwMDUyZDdiN2E5MjUzM2ZjZGE3OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWNkOTY5M2M1MmJkNjFjZDM0YzhiNzQxZmRmYjhhZjY4M2I5MzE0OWM5N2YxMjE1ZTVkZjk0YzA4M2MyNzc0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0cbd4c8435a64ec7ab2c58839b5adcca",
+      "statement": "UC-05 acceptance requires finding the correct root dimension combination on at least 2 of 3 seeded scenarios, contribution sums reconciling within 5 percent, checkpoint resume without rerunning completed queries, and reporting false premises instead of fabricating causes.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L337-L345",
+          "version": "repo-lines-v1:sha256:c676519884a354bce8e9e31db85cd4f6b04bbf2ebd9c667897ecbac8ff0a5a95:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjZlYjdiMjYyZjFmOWYyZGM0NWJiY2Y0OTRjZjU1NGNjOGUxN2EwYmM0ODdmZjNjOGEzYWM5ZjgyZWQ5YmFhZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzg3ODk1MzFkNWQxMGI1NDRiNDE5ZGYyN2U5NDVmMGUyMjU0OGYxNzhkYzNmNWZiNDRmM2RiMjM5YzUyZTg1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d6ce512c17cc4ad2b499e90fa607089c",
+      "statement": "UC-10 acceptance requires detecting at least 4 of 5 seeded anomalies with at most 3 false alerts on a normal week, complete six-field alerts with evidence SQL, 24-hour dedup, bounded retry with queueing, and recipient-policy-compliant alert content.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L473-L481",
+          "version": "repo-lines-v1:sha256:d96152111b38534af4552ecfc94326e8dac3950961d60d19433d30a6901a2ff2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzRmY2RkMzRjNGQxNmQ0N2IzMmMzZjEwYTM3Yjc2NDJkZjY0ZWQwOGRmNTM0MDU3MWJlMTQ1NmY0YTkyZmIyZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmVlMDkxYTAzNDZjZDBlYjMxY2I1NWExMjg2YzA1NWJjMmJhNDA0OTY1OGNmNWM0MTBjY2Y3NzBkNjQ4YTJiOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:5eabc812cc15723693a6e8e5e4cbb6bbc278a9a34ffd647c44e4846ad6129210",
+  "claims": [
+    {
+      "id": "claim_9130d13e96824047afd4753eb07555fc",
+      "statement": "test",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L163-L164",
+          "version": "repo-lines-v1:sha256:59c58c5d17c8767cde5dd16f45444720b64df488039e7a08a1a2fc2b71e1fa5a:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzI3MDUyZWI3MmI0YTFlMTFiNGQ1NDMwYmE3NzljZGYzYjU0NTRjY2YwMjZmZWQyYjY0N2YwMmE5ZWIzYjNiMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjQwZmI1NjU0MTkxMjY1OTcxNWNmMGY2YmI0N2NmMWUxYTI0NWI2OWI5MDYxNjNlZGYzY2MzZmJmNWQzNTlmNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzM1M2JiZTY2ODBjNmE2MDYyMzQ1OTVhMjQyNmE2OGUwYmY2MzUyYmM3ZTI2ZTNmYWU2MGYzNDRiYjgzNmUyNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTdhNThkM2RmOWRkYjI4NzJkNTM3YTYwODk0YzM4Y2ZlNmMwMDI1Y2U5ODJiZDEzZTAxY2U3MjdiNzA5OTQ2OSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}

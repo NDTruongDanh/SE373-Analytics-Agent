@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:a5ab7a02d7d808ea0b83e98f2fedda444480d5ea03a815532660e8ad9557cfee",
+  "claims": [
+    {
+      "id": "claim_9c1fc350f353418b8d9d22eb711ef8c4",
+      "statement": "All database access goes through a single db-tools MCP server that validates, scopes, masks, and audits independently of the agent, so external clients face the same controls.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L124-L131",
+          "version": "repo-lines-v1:sha256:ae06dd7e35fb34824a7fb8cbbed2c68543b497381428de9c331c56ae5bf1235e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY5OTE0NDM3NmVlNWYwZTMwY2IyMjM4M2E2NmE1MjZjNDkwOThhN2FjYjg3NjFlOThjMGJhZjEwYjY1MDNiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwNWU4NmNiNzk4ZDNhNDEwNWViNGNhMDY0ZmNmNmFlZmQ2ZjcxZGU4YjYwMWU5YWY4YTM5ZmZkOGY3NGJiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDRlZWE3NWRkODAyZjgyYmIxYjVmY2YxOTdkNTFlZDk2MGFjMzdiNDE2NjlmNWY1ODQ1ZDgzN2FhMGVhZDExMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGY0YmI3NjZhMzFhZjNhNWU2NmFlMGY1MDI2MDU4NDAyZjIyNWJlYTAyZjQwM2RmMWYzMjViMTVlYTYwNTUzNiJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L434-L440",
+          "version": "repo-lines-v1:sha256:091fce6b6c95b6e2665780595791e7b1977555dd54bbce836c17abcde9fd9aa3:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWIzOWY3ODlkNGE1NzViOGQ3NWY4OGExNTk4ZTNhZWYyN2M3MzJiYTg0ZWUyOWI3OThlM2E1MWRjNWNiOWNkMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODVkOWI1YTk5MDFlYzM4YjAzZmZiNTFmZDJiYTA1YjIwMDViMDRkYTVhYjI2ZDhlYjhlNTc2ZjFmNTgwMmEzYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTlmMzNlZTJiN2NiN2E0ZWI0YmE4MmEzM2I1MzQ5YWFlMjg0OTk3ZjQzNmE1MjAwY2YxMjJmMTAyMDMzZDJiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c1c7c4845ce34b27ae1d8afa1322c8a0",
+      "statement": "The server exposes five tools — list_tables, describe_table, explain_query, run_query, sample_rows — with sample_rows capped at 5 rows and explain_query run without ANALYZE.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L172-L180",
+          "version": "repo-lines-v1:sha256:c0793ca5b5dc69b8e47a57f785ca514b9d210db54f2e4bb339ae40da8fe334db:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDU2YTM0ZjZlOTA0Y2Y2NmYwN2MyZjVhODgwNmM4M2NkMDkwYWU1NjU0OTgyOTI5ODAzYjE3N2MzNjRhMjJkNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2ZkNTIzMGFlZTU5ZGUyMjUzZjE3YzJkYTkwMjBkNGZhNjJlOTMxNmJkOTc2NDExODhjY2VkMDk4NGFmZjM4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmQzYWU0OTIxMWUyYWFmNDNlOWVhZGFmNmRkMDlkOTQ5ZmFhMWY0Yjg3NzNiODI4OTExZjNlMGIxMDdiMWU2MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTIwMGYyODJiZTkwYTFhY2Q3NmRjYzRiYTM4Y2ZkNWViNzY4ZTEwZWMxNzA0ZDNjZmIxYjQxODAwOWY2MTYxYSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L434-L440",
+          "version": "repo-lines-v1:sha256:091fce6b6c95b6e2665780595791e7b1977555dd54bbce836c17abcde9fd9aa3:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWIzOWY3ODlkNGE1NzViOGQ3NWY4OGExNTk4ZTNhZWYyN2M3MzJiYTg0ZWUyOWI3OThlM2E1MWRjNWNiOWNkMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODVkOWI1YTk5MDFlYzM4YjAzZmZiNTFmZDJiYTA1YjIwMDViMDRkYTVhYjI2ZDhlYjhlNTc2ZjFmNTgwMmEzYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTlmMzNlZTJiN2NiN2E0ZWI0YmE4MmEzM2I1MzQ5YWFlMjg0OTk3ZjQzNmE1MjAwY2YxMjJmMTAyMDMzZDJiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L507-L521",
+          "version": "repo-lines-v1:sha256:d5cd5e9906ead721997b701abf4fded1dba126e9c699b7c65546b5917e59e900:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwN2FlYzcxZDJhZDcxZTAxM2FhYjUxZjc5MTJmNWVhMThhNTVkNTJhZTQyZTkwZTkxMTczMThjOWFmNGM5Y2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ODE1Nzk0NTYzNTIyNDg5NTgxYjMxMTViMmY4ODM1NzZkMjc2Mjk5MzMzNWE1MmYxMmQyYWY2YTFjMWQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODk3MGFkOTBmZDI5ZDU0ZDYwOTY3NzViMjg5YTg1YjljYTM0YWI0YmVjM2VlOGJkOWMzNmRiYWEzM2NiMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyMjM5NzkxODBkOWRhM2Y1NTU0YjY5OWVlODFmYzIxMDUwYTVmZjUwNGNmY2VmY2U1ZGYyNjg4MzY0NDVlMWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6f8da55e148a43b69c3aa202ea39d858",
+      "statement": "The server exposes two resources, semantic://data-dictionary and semantic://metrics, with sensitive columns hidden or flagged by caller role.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L172-L180",
+          "version": "repo-lines-v1:sha256:c0793ca5b5dc69b8e47a57f785ca514b9d210db54f2e4bb339ae40da8fe334db:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDU2YTM0ZjZlOTA0Y2Y2NmYwN2MyZjVhODgwNmM4M2NkMDkwYWU1NjU0OTgyOTI5ODAzYjE3N2MzNjRhMjJkNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2ZkNTIzMGFlZTU5ZGUyMjUzZjE3YzJkYTkwMjBkNGZhNjJlOTMxNmJkOTc2NDExODhjY2VkMDk4NGFmZjM4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmQzYWU0OTIxMWUyYWFmNDNlOWVhZGFmNmRkMDlkOTQ5ZmFhMWY0Yjg3NzNiODI4OTExZjNlMGIxMDdiMWU2MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTIwMGYyODJiZTkwYTFhY2Q3NmRjYzRiYTM4Y2ZkNWViNzY4ZTEwZWMxNzA0ZDNjZmIxYjQxODAwOWY2MTYxYSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L434-L438",
+          "version": "repo-lines-v1:sha256:d90753de3d5bdf8d56650810e192916d06a83eca30ba88601167b55fc2a365cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWIzOWY3ODlkNGE1NzViOGQ3NWY4OGExNTk4ZTNhZWYyN2M3MzJiYTg0ZWUyOWI3OThlM2E1MWRjNWNiOWNkMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWQ3Nzk5MzUwNzY4Y2Q0MjQyMjFiYzhmOTBiYTI4NmJlMzZkMjk4NmJiNjliODVlOGRiNGIxZWQwOGYwN2QwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTlmMzNlZTJiN2NiN2E0ZWI0YmE4MmEzM2I1MzQ5YWFlMjg0OTk3ZjQzNmE1MjAwY2YxMjJmMTAyMDMzZDJiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWQ0NjRiMmRiZWM3ZTc5NDNhNDI1OWI1NzI3MjUwMzA0OTZlN2U4ZjVkZDc5YWY5MTFlNzUzOGIyOGRlYTE1ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ed344841e3294ede8a7160e9387f1d6b",
+      "statement": "Bearer tokens are verified via requireBearerAuth into AuthInfo (clientId, scopes, role) from policies/mcp_clients.yaml, and each tool handler enforces its required scope; schema:read maps to metadata, data:read to query execution, data:sensitive to unmasked sensitive values.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L117-L123",
+          "version": "repo-lines-v1:sha256:b200acda61b0a8f0a8591e5ed0e4afee2d8d5a52fc64fe2187086f3dc0dfe014:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGU4Y2I4ZGRmY2FkOWFjMmMwYmY0OGQ1MTdmOWEzNWUyN2IzYWM4YzY0Y2JhZjVkOTNhMGUzMDI5ZGNhNDZhZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQ4NDc1YzQzNDlhYmUxYTI1MTA1YTUxZTkyYWNmNDI1ZDNlZThlMjYxODBjM2FjODFjODgzZGMwZDA5MDE4NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjc3YTNmMWUxMTRjZGUwMzYyZTQ3Y2I1MmMyNTczYzEzODZmMjk0YzQ1MjMzYjYwYjc1YzY1ZGQwNmJiNDlmYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzkyMGJhYTBhMjRlZmM5MjU5YmQyNGIwNjYzMTNmMWZjNWNiNzYxZDlkNGZjNTBmNWQ4Zjk1YzhiZDUxMzY3OCJ9"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L99-L104",
+          "version": "repo-lines-v1:sha256:68fa919e2a3d37e89c97235c82896ee2382f5137845ac0c0f2bf2a94c5ac4e09:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzllYjllNDBjNmQ5ZDVlNmYyNDhjMDM2M2FhZmVkNDc4OTc4NzI3Zjk5OTU2ODk3MzA2Zjc4YzI3ZjViNDNiMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDU1NWQzMGJiYzYwNGJjMmJjZmJjMGExZjQwYzM2ZjRlZDBhNjhlMGM0MzhlOWQwYTJkNWQyYmIwNzRiOGU0YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTUzOGYxNWFmZDZiMDY5Y2QyMzk0NTdmN2YxYjQzYjdlOWUyODRkMDg5ZmIxZDk3YjZmYjIyZDVjZjc5MjI5YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzljMmNlMGJiMTY5YWIyNDIxNzhjNWViNjI0ZTI1NjM3ZTNjNmZmNGE3ODk0MjQzMjdiYzIwNjNhYjhkZWEyOSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L434-L440",
+          "version": "repo-lines-v1:sha256:091fce6b6c95b6e2665780595791e7b1977555dd54bbce836c17abcde9fd9aa3:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWIzOWY3ODlkNGE1NzViOGQ3NWY4OGExNTk4ZTNhZWYyN2M3MzJiYTg0ZWUyOWI3OThlM2E1MWRjNWNiOWNkMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODVkOWI1YTk5MDFlYzM4YjAzZmZiNTFmZDJiYTA1YjIwMDViMDRkYTVhYjI2ZDhlYjhlNTc2ZjFmNTgwMmEzYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTlmMzNlZTJiN2NiN2E0ZWI0YmE4MmEzM2I1MzQ5YWFlMjg0OTk3ZjQzNmE1MjAwY2YxMjJmMTAyMDMzZDJiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_26ac4fd47e8a4afabc2d66dbd19d3f61",
+      "statement": "Server-side SQL guard allows only a single SelectStmt (SELECT/WITH/UNION), and blocks DDL/DML, multi-statements, SELECT INTO, FOR UPDATE/locking clauses, DML hidden in CTEs, denylisted functions (pg_sleep, pg_read_file, dblink, set_config), system schemas, and unknown tables.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L122-L131",
+          "version": "repo-lines-v1:sha256:340b271fc52b6acbd3ddd37c626628d3513007f9849af8efd8e75467519f1ca2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMTQ3MGM5NDEyYmRkYTc3ZmYzNGYzMWU2NWVkMTRkMzEyNGM0ZDQwNDU2YzJmOWY3OGFkMzZjOTAwNGExYjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0MDVlODZjYjc5OGQzYTQxMDVlYjRjYTA2NGZjZjZhZWZkNmY3MWRlOGI2MDFlOWFmOGEzOWZmZDhmNzRiYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ZjkyYTg2YWNlNzkzZjBmZTVkNzM4MjIwNWZmYjY4OGNkOWIxYjM2YzY3OWMyYzc5YjY2ZTJhMWZhMzUwMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmNGJiNzY2YTMxYWYzYTVlNjZhZTBmNTAyNjA1ODQwMmYyMjViZWEwMmY0MDNkZjFmMzI1YjE1ZWE2MDU1MzYifQ"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L135-L147",
+          "version": "repo-lines-v1:sha256:c83d8f01838f840c137481e6fe595215a1f8d13213bbcce8e1ef8b8063b43bd5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1NWJjYmRkNmRmZGJhODA3ZGJmNzQzMGJjNzJmOTQ0MTIwNmM2ZWVlMDMyYjhjYWZkMWQ0ZTIzNDAwOWZjNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMDczYzc0YjEwNzlhMTU4ZjQ1YzFjN2Q2OTdkMTIxMjNmZDA1MjRmZTliYjBmNWRkMjU0ZTk4MjY3Yzg2YzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNGJiNzY2YTMxYWYzYTVlNjZhZTBmNTAyNjA1ODQwMmYyMjViZWEwMmY0MDNkZjFmMzI1YjE1ZWE2MDU1MzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3M2RjZTA1YTVjN2EyOTA0MDkxNTMxZDVlOTI3MzJmN2M0YjExNWU0YzU1ZGZhNzg5MzYzN2UxNWQ3MWMxODQifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L442-L449",
+          "version": "repo-lines-v1:sha256:9799771c58081fd910f3017593430eee45f6040bd68aa534001b08a064f19630:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWQ0NjRiMmRiZWM3ZTc5NDNhNDI1OWI1NzI3MjUwMzA0OTZlN2U4ZjVkZDc5YWY5MTFlNzUzOGIyOGRlYTE1ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmE1YTNjNWYxYjc1MWQ4NWM3ZGYwNTY2NjI4YTEyM2U5NjYyYWNkMDdlYjE0NzY5YTFmNmE0OWU1MDk4NzkzNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e29aa4bb667d4a6a8e36aaf5e5d511b3",
+      "statement": "Column policy resolves * / alias / JOIN / one-level CTE references to table.column, masks sensitive projection values by AST rewrite plus deparse, and fail-closes to SENSITIVE_COLUMN_DENIED for sensitive use in filters/joins/aggregates or unresolvable references without data:sensitive.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L124-L128",
+          "version": "repo-lines-v1:sha256:26dd91a1ac37fdafb2f5178102c7f64af0cda511534b31bf6d5b0531e85396e9:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY5OTE0NDM3NmVlNWYwZTMwY2IyMjM4M2E2NmE1MjZjNDkwOThhN2FjYjg3NjFlOThjMGJhZjEwYjY1MDNiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDA4Yjk3MzU3NTk3MzI4ZmRjNTU0MjIxNjIyYWZiMzQ0ZGE5MWViZjBkNDdiOTYxZGUwN2ZlZDk3MjAyYmFlMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDRlZWE3NWRkODAyZjgyYmIxYjVmY2YxOTdkNTFlZDk2MGFjMzdiNDE2NjlmNWY1ODQ1ZDgzN2FhMGVhZDExMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjVhYjQyNjNmYjhlZDlhZDk4MjIxNTcxZDY2NTAyNmYwZDBmN2UwYTVhMDdlZTBkODA2M2QwNGY2NmRkMjc3MSJ9"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L28-L31",
+          "version": "repo-lines-v1:sha256:7f1d2ba34647706eda08f328dcab34787a44313c15e58b6009be16a7a58a5b01:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTk5ZmM1Y2I4YWMyNzEwZDQzODMyMjQ2ZWYzYmY1ZDBjODdiYzFhYjNhZjU1YjExNWJhN2U4OTgzZmE0MmNlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTI3OTkyMTQzZjNjODI1ZjRiYmU4NDZjNDU2ZDI5MWU1ZGU4NDIyZjk3YjMwMzExM2M0ODlkMmRlYTRlNzE1ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWIzMTM4NWNmNzcwYjQyMThkZGVjZThjN2NmZTIyNjYzYWZlZGM0ZjE3OTRhNGZlMTQ0OGNlYTMwOWYxMzRlMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTg4YWZhMWViMTFjODMwM2I2ODMzNDNlMWVhOTljNDg5NjM1MWIxZjIyZjI1ZGFmYWIyYTg3MTAzZWEwOTMyYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ae4b95a008614a5c926b91ac63a6b698",
+      "statement": "Execution uses the agent_ro read-only pool identity with BEGIN READ ONLY, SET LOCAL statement_timeout 30s, bounded pg-cursor read of maxRows+1 rows with ROLLBACK, truncated flag on overflow, and structuredContent result of columns/rows/rowCount/truncated/maskedColumns/durationMs.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L127-L131",
+          "version": "repo-lines-v1:sha256:86b8ebe1617b8a2f8e21b658c7beb7a39b86ad8b91f584e1f177647dfd8b900f:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2FhMjJmNDVhOWQxZjAxNmM3NzA2NGE2ZDU3ZWUyYWZiZjg4YmRhNGU4NTk5ZTg5YTIyNzc4MDY5ZTFiZTliMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwNWU4NmNiNzk4ZDNhNDEwNWViNGNhMDY0ZmNmNmFlZmQ2ZjcxZGU4YjYwMWU5YWY4YTM5ZmZkOGY3NGJiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzkyMGJhYTBhMjRlZmM5MjU5YmQyNGIwNjYzMTNmMWZjNWNiNzYxZDlkNGZjNTBmNWQ4Zjk1YzhiZDUxMzY3OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGY0YmI3NjZhMzFhZjNhNWU2NmFlMGY1MDI2MDU4NDAyZjIyNWJlYTAyZjQwM2RmMWYzMjViMTVlYTYwNTUzNiJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L509-L515",
+          "version": "repo-lines-v1:sha256:39e5a021ba960afd716fcce7099ca7f6850babcdbd3850eb0278c55991fcd1da:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTUyN2U1ZmExNDA1OTZkZmJmY2VlZTU2YTE2NGE2NDM4YjMwZGY1N2I0YTFiYTM0MTIyZWY4ZDIwZmEwNDQyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTljNmVhOThkYzE3YzFmYTYwZDQwZTYwN2QwNDlmNjQwYWM3N2FmYzgxMWViMTU0Y2NmYjcyMjFjMzFhM2UzYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjIwYzE0MjE0ZjQ5NzdlYTAxNjc3YjY4OGMyZGVlZDZjMDc4NmE5MjcxNTBiY2EwYjIxZjVjMTQ1NWJmYmZkNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2Y0YjFkZDg3MzZkNzU4OGNlOWI4ZGI3MzkwNWY4N2QzN2Q0ZWUyNmI3NjcwZWNjMzc0ODk0YjAwMDBlYzcxOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3792653d3fb44d48aa05bc05f4bda63c",
+      "statement": "Every call writes one pino JSONL audit line with client, scope, tool, redacted parameters, row count, duration, decision, and X-Run-Id linkage to the agent trace, with DSN/password/host redaction and PII-literal redaction.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L128-L131",
+          "version": "repo-lines-v1:sha256:a4b0cbca4793382b8aa5327f3a5612f93df70bb6f48a2634da1e2a281f9d3d92:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDA4Yjk3MzU3NTk3MzI4ZmRjNTU0MjIxNjIyYWZiMzQ0ZGE5MWViZjBkNDdiOTYxZGUwN2ZlZDk3MjAyYmFlMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwNWU4NmNiNzk4ZDNhNDEwNWViNGNhMDY0ZmNmNmFlZmQ2ZjcxZGU4YjYwMWU5YWY4YTM5ZmZkOGY3NGJiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDU1MThhZDgwY2Q4YmIxMjhkODM5MTkxN2QzNjRlMzg0ZGNkMmQ5MDczMzIwNmE3MzFjNzk0YmRjOTZlMGEyYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGY0YmI3NjZhMzFhZjNhNWU2NmFlMGY1MDI2MDU4NDAyZjIyNWJlYTAyZjQwM2RmMWYzMjViMTVlYTYwNTUzNiJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L442-L448",
+          "version": "repo-lines-v1:sha256:1de867bca391b1245d24cdffb59c08ae4089c1e51109685782baacb491cedac2:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODZjZmQ4NDNlMDE1MzUxNTgyYmQ3ZmE5YTQ0MDk5YzM5YWI5MDdkOWM3MGM2ZDVhMjYyNjBlMzNhZDRiMjEzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWQ0NjRiMmRiZWM3ZTc5NDNhNDI1OWI1NzI3MjUwMzA0OTZlN2U4ZjVkZDc5YWY5MTFlNzUzOGIyOGRlYTE1ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWZhMWI2NWNlZWMzODZhY2Y4YmMzOTQ1ZTZiNDRkOTcwOGNkNzQ1MzU5NThkOGI3YjA0NjYwMWFlYjg0ZGRkMSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L540-L542",
+          "version": "repo-lines-v1:sha256:eb864364e611235646210866ee76c8d08c36bc646d6bdf45d00005f66383b202:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjUwZTJhZDI2ZmQ3NjA3OTBhMGVkMGFiNjA3MTg1OGQyOWQ3MTJlNzBhMzdhNzBhZDc3NzE1YjY2NjcwMDk0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ0ZGRlZDA3ZThlMGY0NmI4OTI3MTgzYjk2ZjViNjAxMjMyOTNlZjUxZDMzYzBhZjBmMTJmYTk3NmUwZTI2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE0ZjE2OGQyYjMyYWNlYTIxYzM2MzA4YzI5MDg5Y2EyNDNmNzUyOGNjZWFjY2I4MDc4NTc5OTJlYjUyNmFjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6ce6079e2d8b487892469cea430b1355",
+      "statement": "Errors use sanitized canonical codes (UNAUTHORIZED via HTTP 401, SCOPE_DENIED, INVALID_PARAMS, INVALID_SQL, FORBIDDEN_STATEMENT, FORBIDDEN_FUNCTION, UNKNOWN_TABLE, SENSITIVE_COLUMN_DENIED, TIMEOUT, INTERNAL_ERROR) and never expose connection strings, passwords, hosts, file paths, or stack traces.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L133-L156",
+          "version": "repo-lines-v1:sha256:66384d0204bd142d5b126dea908898ea919c9b746301ab31e97fa19561d7eb51:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4YTBkZjJiM2Q3YmIyZGMxMDQ5MDc3MzNkYmJlYWY4OTljMmJmZDZhZDczMjVmMjVmMjhiNjAwNDgxODE3ZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyOWIyNWJiODEzODU0NjNhZjI0MDBkOTlmMTViNjQ5ZjdlNTEwOWYxOGMwNDJkNWMwZTU4MTRlOGEyNWJlNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NjZiMmNhNTM0ZjA0OWYxNWY1NzdmZTZmYjc4M2E3Y2U2NjFkYTQ2MDMxMTMyNDUxYmFhOGIyZDYyZmMyOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjMDljOTNkYjM1MDU4ZTc5M2JmMDU1YTJmNTM4OGI5MGE0YzlhZmRjNmM2Y2NjYjI1MTkxZGNkYTQyYzk2NTIifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L442-L448",
+          "version": "repo-lines-v1:sha256:1de867bca391b1245d24cdffb59c08ae4089c1e51109685782baacb491cedac2:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODZjZmQ4NDNlMDE1MzUxNTgyYmQ3ZmE5YTQ0MDk5YzM5YWI5MDdkOWM3MGM2ZDVhMjYyNjBlMzNhZDRiMjEzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWQ0NjRiMmRiZWM3ZTc5NDNhNDI1OWI1NzI3MjUwMzA0OTZlN2U4ZjVkZDc5YWY5MTFlNzUzOGIyOGRlYTE1ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWZhMWI2NWNlZWMzODZhY2Y4YmMzOTQ1ZTZiNDRkOTcwOGNkNzQ1MzU5NThkOGI3YjA0NjYwMWFlYjg0ZGRkMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f741f31122de42cdb326881902afbc5c",
+      "statement": "Operator software must display live agent progress, viewable SQL, reviewer verdicts, a costly-query approval queue with approve/reject/cheaper-option, a role switcher for scoped demos, and an eval dashboard, in Web, Notebook-cell, or interactive CLI form.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L546-L554",
+          "version": "repo-lines-v1:sha256:9fb0fee23eede89280f125bb22ce45c1c49fbfd395f77d4d1887f20cbb8a09e1:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FkNzQ3MWFjZWIxOTIyNGNhMGMzMjZhOWRjNDM4MDA0NTJhOGI2MTY5M2I1NWM0NDc2NTQyNmM4ZmM0ZWVkOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDZhNTczN2UwNWI4YWQ4ZTNjZWFjYzhkZDBjZDMyZjlhYmRlNGZkYWRlMWU5OWMzMmVkNTgzMGJjODFkNWE2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_112afc6936004061984a27e6e834bb61",
+      "statement": "An independent external client (MCP Inspector plus a standalone SDK script importing no agent code) can list and call the tools, and its DDL/DML attempts are still blocked, proving agent-independent enforcement.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC09.md#L186-L192",
+          "version": "repo-lines-v1:sha256:afe2c4437ba562634550a3de1c52a219fbd550044949ddc19b97781a7ba00457:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDIxZDJkOTNjMTQ3YzA5YWZhZTMwYTNmMmQ3MjlhYmFlMDQ0MGZkNjE0NDkwYjg5Mzc3OGNmZDVkZWM2MDdjOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmM3Y2U1Mzk0NzI2OGZkYTIwODJjZmVmOTk0Yzk3MWU2NTYyZjM0ZDQyOTM1N2VkZjI4OWFmZWI3ZmYzZGZlMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWQyMjNmMzRkMmVjYWYzNzRlM2ViMGJkODhmMzM2MjQwMGQxMTNlN2ZlYzAyOGZhMmU2ZWU2NmNhNGI5ZWY3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjYzMmNlNzMxOThkYzMxMDc0Mjg0NzY3YmJjNDY0ZDcwZWRlOTU1ZTNjZDA1N2RhYjVlNjkxMmM3NzYyODI2YiJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L440-L450",
+          "version": "repo-lines-v1:sha256:f6c86a69a2db52488e3c2ba5a9401d86898235fef9c630510dfdf70ba8651c0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ZDliNWE5OTAxZWMzOGIwM2ZmYjUxZmQyYmEwNWIyMDA1YjA0ZGE1YWIyNmQ4ZWI4ZTU3NmYxZjU4MDJhM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ODI4OTM1NDFjNDE4ZDdkM2M0YmE4MmY1ODY5YjI0YTFhNDJhYjczYjI5NDIyMGI0ZjU4MTMxNGMxNDQ2MzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlYjU3ZmFlMThlYTE1MDMwOTdjZmQ3OWRlNTAxOWM3MDcwYjA0ZjljODZlZWFmMDA4Y2U0MTM1MzQyODJmZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}

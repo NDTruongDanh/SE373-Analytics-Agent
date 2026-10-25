@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:167bb882893b169ebcb72cee6f7f870a6300836919060f7559e7e539f0068edc",
+  "claims": [
+    {
+      "id": "claim_67cb28f975154c3dab2eee2e110ffe62",
+      "statement": "The semantic corpus consists of six doc_types authored as modular YAML: table, column, metric (10-12 metrics), join_rule, example (15-20 few-shots), and event entries with dates and affected regions/channels.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L20-L38",
+          "version": "repo-lines-v1:sha256:38362567c0741615903a2adda95e5a549ce56c677665515ce5cd55f039542c26:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMWIzMDFmYmY3MTc3MDBjOWEwY2JjMGU4NWYyMjEyNWY1NTU3MGZjMjIyMTNkOTQyNGNjZTdjZDUwMDlkZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiYTk5MmJiNjdiNGUwMGM5YmE2OTBkOTY2N2VhNWIwMTlhYTM0NDlmOTkzYjY0YzdhNTA4YjQ0NDVmMjhjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNzYzNWJmMjkwNzYxM2VlNWYzMDJlZjkxNjZhNmNhZTc2ZTZjNzQ5YzQ1ZmU3NzA0YmM3NGE0NGVjMGI3N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlNmRjNzUwNjkzYmNmNjQzYzUyYjAyMjkwZjNhNDc1OWJmMzkzMGI3N2IwOTdiNjE2NDc2ZTIyMTI3MGE5MTgifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L104-L113",
+          "version": "repo-lines-v1:sha256:1acfb1478d53c0243b22d4dd71860440090f70ac739a49e03a3cd0f05cefc198:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMGFiNGE3MTljMzUwNTI1ZWYxNjU2NmEwNWExMGMxOGMxMzQ4YzVhM2ViNGQwODMwM2MxZmQ0YWU2MmI2ZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZjE0ZTBlMzRjNGVmN2FiYWVmZDJiNjNiMmVjYTA2Mzg2YzczNDQ0NWYzMWNkY2EzMGZmNjI5YzRiYzRmYzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjZmFkYmI1NGFlMmYxNjJlZmY5OTA3ZjBjMTVjOWZlNmM2Y2JhODY2NGUxZjFhYjE1ZjU0OTExMjFiMGUxN2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MDIwMDg3ZTI4NWU0NGIyMDRjZGRmOTgwYmNlNjY2YjFiOWQzYjEzMzExNjg3ZmQ4ZjNhNDcyM2Y3ZDAzOWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7b44c7e390224f24b5ae451d7602de8f",
+      "statement": "Every semantic chunk carries metadata with chunk_id, doc_type, table plus tables array, metric_name, aliases, sensitivity (public/internal/restricted_pii), optional additive flag, and updated_at.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L40-L56",
+          "version": "repo-lines-v1:sha256:3f44e97ca1fbffe1995a7c2ce48b40605b1811f1f0946850af7d82e96303ae30:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzMmUxZTdhMzA2YzEyYTgwZGMxOGEyZjNiODdmMWRjMTZhNmI2OTVkZDg3OTk5YmEwZDE3Yjk0ZDE0OTQ2YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxZDI0MGEwNjgzZDNmZjQzNjVjMjVjNzExZTFmNzk0YTBlMWJmYzVkNDM1Y2JiMmVhYTQ4OGNhNzBkNGM0YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L239-L242",
+          "version": "repo-lines-v1:sha256:a10db2a9c599361ccfe2163146de2ea6d1a4f846e9df34fe831dcc81e8d31baa:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmI2M2VjYThlNDRlMjExMjc0N2NjYWY4YzliYTVmZWQxOGI2NjVhMDM1NjRhMTYwODlmMjFiMDkyZDg4ODIzZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzRmMjQyMDczNmYzY2IxM2ZmOWMxMmE2NzdlYTFiMzc5OGY4NTk2NTNiNjNjZWNkMjlhMGIzYWI4NzAyMjg5MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVhNTRiMGU3ZDUyNjc5YTAyZWQ5NDkzMDZlOWJiYjRjODk4MTk5OGEzOGYwZDBlZTU4OGZiZDhhYjE2NTRhZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_972e6c0a20914c7eb2c722013a3b9370",
+      "statement": "Chunking is by semantic unit (one YAML entry equals one chunk) through ingestion, embedding, vector store, and retrieval, rather than fixed-token sliding windows that would split formulas from metric names.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L60-L64",
+          "version": "repo-lines-v1:sha256:623b1e301c59e2f174fe666b62b9a1a3ac0741ed608cbef5a76d3d1e7db858b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE2MzhkYmZhOGY2ZWEzMGRlOWFkZTU1NjY1ODU2M2NhYjZmZWM2ZDBmMjEzZTkzNDI3Mzc0NzMyMGI2ODgyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDIzOGFlMjZiZDU1YTQ5YTJjMDFiZDU2YTVjNzVjNTU2OGU1M2RkYmRjNTM5YzgzNTVjMzFkODJjNTRjOTY5NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTRlNjE1MDliMTBmYjU5NTg1YjQxMzA2NTgzMDQ5ZGUxZTg2NDdlZGZiMTE2ZDc5NDkyN2JkMjFiOGRkZmJlMyJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L237-L242",
+          "version": "repo-lines-v1:sha256:3ff1b8c59fbcc72ee7426d2a8fe2d1003db4e3a85f03df7718c9f2ec2a13e829:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDE1Yzg3OWYzOTAwYmJhNDk5MDM1MjQxNTVmNDViZTQyNDJlZTFkYzFjZmM0MzYxMjM4NjZlMjExNjIwNDNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzRmMjQyMDczNmYzY2IxM2ZmOWMxMmE2NzdlYTFiMzc5OGY4NTk2NTNiNjNjZWNkMjlhMGIzYWI4NzAyMjg5MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGJiNDI2Yzk0Njc5YmIyMzVlMjdiODM1NGNmY2EyMTY5OWIxZjQxYTlmMzMyOTdhYWY0MGFhYTA3YzM5OTI1MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM1ODI4YmE3ZjI2NTYxNTFhZmM3Mjk4NDViYjUxZmIzZThkMzg3NjIzMmRmM2Y3OWE5MWI1YWQ4ODBjODEyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c3ec9292c829473bab9883d4b7648088",
+      "statement": "Incremental indexing diffs SHA-256 content hashes into unchanged, toUpsert, and toDelete sets, batch-embeds only new or modified chunks, upserts on chunk_id with updated_at refresh, and reports added/updated/skipped/deleted with token and cost telemetry.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L66-L84",
+          "version": "repo-lines-v1:sha256:aeaae05b6875638ca2c00acde6c8adcce16f395fa8acf04869cba8c7029cfb9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNzJiNTczMTVhMTc4ODcyNTYyNWViZTFkOTIyYjU5OWQyNzMzNTg1ZjI4MjJlOGYwMDUwYWJlNzFkMTc2N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwOTUwYmYwMTIzODA3MWE1YjczMmVmNjY0YjgxMWFkOTM5MGUwMTFmNWMyMmFjN2M3ZWNiMTAwNDUxNWYzM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhZjhjOTBmMzU0MDAxMzVjZDQ2MDM2MDhlYWJhZjBiMWRiZWNiNTk4MmNjZTJlNjUzOTcwODA0NmJhY2FmOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4ZDExZWQ0Y2UxMzQwYmUyN2ZiYzg2YjZiZWVhYWZlN2RlMWE1N2ZkYWFlYmVjZTQ2NWVlMmZjMDJhMTUxNWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6281d8e45664ca9b25f7251713c5708",
+      "statement": "The in-memory BM25 index hot-reloads without server restart by checking MAX(updated_at) and chunk count before each retrieve call and refreshing the index and citation catalog when the store is newer.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L86-L93",
+          "version": "repo-lines-v1:sha256:983ecdf35de755b94fcafc9ecb1c99d8814eccb4f7a668c86d4038a5a65abc83:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDI1OWU1NzZhOTVjYmMzNWEyZjhmNzk0OTUzYWIyZWYxYzM1NDczY2IyNWNmY2RiZjk4MGI2YTg5OGJkYmZjNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWEwOGI1NjJjZTZjNzYzODcyZWFjZjI4ODc5MjJmZDg4MzBiNWQxYzJhMDg3NzVjZGI1ZjlhMmE2ZTUxYjk4NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTBkNWVhZDY5OTJkZjFlMjViNGViMDI2NjM0ODUzMmRlOTJlY2VmYjZjYzI1YTBjZDY0ZWY1MjM5NDA2NjAxYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4be7f958e5c74ebf9a668dd7e36ed94b",
+      "statement": "Retrieval is a three-leg hybrid fusing dense vector cosine search, lexical BM25 with k1 1.2 and b 0.75 over content plus metric_name plus aliases plus tables, and deterministic alias/identifier matching, combined by weighted RRF with k 60 and weights 1.0/1.0/1.5.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L97-L118",
+          "version": "repo-lines-v1:sha256:2a7c88fee1a9e893fab3ac226370cf88add4d1511a7c4cc9a75ba07ae7b17a7e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMjA2Mjg2YzUwNWI5NWY3MDY3YzlhMTI2ODY2YTc4NWJjZjlkMTdiZTRiMDI2NDBjYzMyYzcxNjAzMDZlNTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDM5OGY2YjBkODdlYjdmNTNmOGY4YWM0NWU3NzM1Yjk4MmFiOWQwOWY3MWRkYmEyNGQxMjM3OTZmNDgwM2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjZGM0MTUzMTA0NmU0Y2EzMDY0MzRmMzc0MGIzZjY3N2E5N2MxZmFjOTNmYjJhN2U2MzZmYjJkYTFkMmNmMDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7efd2036c5194fec8c4356024fb9b9c8",
+      "statement": "After ranking, join-rule graph expansion automatically fetches join_rule chunks whose tables overlap at least two tables from the top metric/table/column results to prevent fan-out double counting.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L120-L121",
+          "version": "repo-lines-v1:sha256:aa53f05879783dc26d84d0b615f3d26bcaa1896ad5d1f24dc7b3881b7b32b01b:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTVmOGRkZDg2MDZmNTliNDZlMjk1OTZmNTM3ZTFkZjc1NzNkYTE4M2JlNTYyMWEzOTMxNDQxYjA5NTQzYTE2MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjE0MTc1NTYwZjMzOTQyNWI4NDI4ZDEwMjIzZGIyMzhmNGUwM2U0ODdmZjUzNjIzZDJhMmZjMDM3Zjg5MmI4MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTE3MzQ1MDdhMzVkY2U5OGI2Y2FiZWQ5MGFjMmRiMzI1MTQ0NDBiZDdiYmE2ZGJmMjUzOWU5MzVmNmY4NGU4ZiJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L111-L112",
+          "version": "repo-lines-v1:sha256:134b762574a91a8f4a13fbf7e0fda742dc549d87b8c87422f3c9b78a13fb3fdd:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjY0NjM0ZGJmZDNlMzBhNjFiMDM5MDFmZDZlZTE0OWI5NGU1ZDI4OGI3MmEwOWYyNDUxYjNmMTU1NDVlOTNhZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFhMTYzZTk1MzgxMjI5ZTE1NmM3ZDNiNmE2NmMwOTNmYmNmMWJhNjExY2JlMWU2NjBmMzc2OWM5ZGU0OGIzYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTg5OGU2ZTc4OGUyOTRiNjQ5ZGU0MzBlYmU5ZTAxNTM5MmIxMWMxZDliZjE4YzhhZjQ5NzY4MjVmZTgxZjllZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGU2ODBjYjI0ZGU1YTY2ZDE1OGRhZmJmMmVmYjI1MjFiYjQ3OTEzYTlkMGI2OWZjNjgyNDZhZjlhYjM0YTc5ZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9177917f2fc340faac8991a6e8240679",
+      "statement": "The LangGraph retrieve-semantic node uses two-tier extraction separating requested_metrics (business KPIs) from schema_entities (tables/columns/literals); unmatched requested_metrics route to cannot_answer with clarification and no invented formula, while empty requested_metrics queries proceed normally.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L124-L138",
+          "version": "repo-lines-v1:sha256:a8485a29c8207f6d182fb3bc5d3a23ff9daab68a7ff33f303ce19a24ae85c1cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNDRjYTlmMDBlNDE1ZDA5ZTAwMjczNTcxMzEyMTIxNTQ1Y2YyMjUyMTFhOTM0ZjFkYzZhNGE3ZTBkMTBjMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlNzJmOWMzMjM3OGU3NTg4MWVkMzA3MzBjYTZjYjMwZmMwNGE2YWQxZDdhOGRmOTM3MmY5ZjI3NzkyNjlmMWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0YmEyMGMxODRkYmY4NzQ3YjAzNzlhYzcyNzZkZDFiZjA1YzYxY2E3NWY5M2E3NjIyNjA5MWRhZmU5ZmU5NDMifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L244-L250",
+          "version": "repo-lines-v1:sha256:713b4e4db5c220dbf17f06eddb44af1b97d4946332d9f3d6fc8680403902ccca:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmM0Njc3YjIyNmE5MWNhODc0YmFiNDFhZjc0Y2M2NDUwZTMzNTA0MDU5MmVmMTY2ZDgwNTVjYzZjYWRlM2I1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWNkOTY5M2M1MmJkNjFjZDM0YzhiNzQxZmRmYjhhZjY4M2I5MzE0OWM5N2YxMjE1ZTVkZjk0YzA4M2MyNzc0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzYxZmNiZDM2ZDhjODU3ZWM4MDA5ZTgwNDVmZGIxY2RiYzBlZjQ0NDkwMTQzZDUwZmY4MmIxMmQ1NGZlOWJiNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f8b0cdbcb694c08b138aa33d2f58233",
+      "statement": "Definitional questions use a definition_lookup route that bypasses SQL generation and synthesizes the explanation directly from the retrieved metric or column chunk with citations.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L139-L140",
+          "version": "repo-lines-v1:sha256:5aacc5f29ff0e350a7b79557429e201ad9841ed85892a14a3d7fed322338a5ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmM1YjZiMjE0ZjFlMmFkMmRiOTU2ZmU5YzIyMDdkNDQ4ODE3MzAxZGI3ODIwOTNmZjMzMzAwMDk1MWRmMmE5YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWJmYjkyYjljZjcyNDljYTcxMmU0NzA1Zjg2NTJhMGFjNmFkNmY4OGFlYjRlOTIxNWI5NTExMjdiNjY4ZDZhMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzgzNWRhMjVhZGY5YTQ3Y2U2MTY5ZDRlZjNhYThkMjgyZjRiZWZhOTZmNzdmYjRiODY3Y2ZiOWQ1MWU1NmExOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L235-L236",
+          "version": "repo-lines-v1:sha256:26196fa942552dfb549e538f29937046b20b9a4bdf265aceeaddf6426745b450:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhhMzA5NjAzZTFkNDVlMTBhMDgzOWIxNTBjOTA5OWVjMGY0NTk1OWY5MGJlMTA1NGY1ZGYxNThjOGZlN2VhZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmZlODI5ZTQwNGNjYmFiYTY3ZDM1OTZlM2YwYTk3OTA2NWRhMGY1Y2MwMzVjMjMzODVhYzk5OTU5MWRhNDQyMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDFmMjJmNTczNjhlNGRlMjRjY2ViMjcwYjBlOWI4NWFkYWYxMmNkMmIxZjBkNGY2Mzc4MmI3OTgyNTczNGU4OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7a991f671ba74089b8b88340bd4fb9f2",
+      "statement": "Every answer carries dual citations as a citations array in SQLAnswer and a prepended SQL header comment, validated deterministically for catalog existence, current-context grounding, and metric coverage with up to two self-correction retries to reach 100% validity.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L144-L181",
+          "version": "repo-lines-v1:sha256:6803505aa8cbd0a88412595bbc4fe18bedaa5004868d9ce6678ac63d2ae20b9e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5ZDI4NjA2NDJjNzM2MTYzYTU4YmI5MDY3NmE2MzdmNmZmNzRhNTRjZmY3ZWNhYTcwOTkyZjczMWQ2OTAzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzYjM2OGI2Y2Q3YmMyMTU1ZDRhZmIzNzg0MzM1ZDg3OWM5ZGEyOTNiZDQ5NzBkY2IzMDQzMzg1ZjZjMDJkODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L242-L250",
+          "version": "repo-lines-v1:sha256:b9e0c24ef9caca61b710fe45b2100090451576eac01f79c4e23324e5ac4e74a7:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzRmMjQyMDczNmYzY2IxM2ZmOWMxMmE2NzdlYTFiMzc5OGY4NTk2NTNiNjNjZWNkMjlhMGIzYWI4NzAyMjg5MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmM0Njc3YjIyNmE5MWNhODc0YmFiNDFhZjc0Y2M2NDUwZTMzNTA0MDU5MmVmMTY2ZDgwNTVjYzZjYWRlM2I1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjcxZjM4NWZjYmVjOGZjNzlmZmI5NGFlOGUxMTkyZTE1MGRhODBkNDExZTQ3MmQyOWJjN2NkMjkwODRiMDU0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzYxZmNiZDM2ZDhjODU3ZWM4MDA5ZTgwNDVmZGIxY2RiYzBlZjQ0NDkwMTQzZDUwZmY4MmIxMmQ1NGZlOWJiNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9cca77f465604eeb9f2b20ba582b47db",
+      "statement": "UC-02 acceptance requires Recall@5 at least 0.85 on at least 15 definition queries, EX lift at least 15 points with semantic layer on versus off, 100% valid citations, clarification on unknown terms, and behavior change after incremental reindex of only changed docs.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L265-L273",
+          "version": "repo-lines-v1:sha256:e16a74c1100a82e0874e1ca0db956fb1e246d686690dff692f9bdf2eef683c66:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlYTUwYzQzZGJkYTA5YWViNDNiY2FjNWVkZDQ4MjkzNTc3NmU5Zjc0NjY5NDFhMGE4MjAwMTY4NTA0ODY1ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzZiZTNmMjFlMTZmMDJkZTg0MTM3YmI2MGE1ZDY5MjFiMjczZTVkNWUyM2RhY2E3NmY5YTNkZDExNmI2MjQzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmI4MDg1MzJjYTYyOGYyMmYzM2M3NTEzYTEwZmExNDgzNGVhNTJkNzg1YmQ1MGIyNmE0OWU3Y2FiZGI3ZDFiOSJ9"
+        },
+        {
+          "resource": "repo://docs/prd.md#L244-L250",
+          "version": "repo-lines-v1:sha256:713b4e4db5c220dbf17f06eddb44af1b97d4946332d9f3d6fc8680403902ccca:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI2ZGZjZjI5ZTAyODI4NTEwMzNmZWI2N2EwZTBjMmRjZDZjNTdkMWQ5YTQ1Nzg1MTQ5NzI2ZWY4NTY0MjEzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmM0Njc3YjIyNmE5MWNhODc0YmFiNDFhZjc0Y2M2NDUwZTMzNTA0MDU5MmVmMTY2ZDgwNTVjYzZjYWRlM2I1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWNkOTY5M2M1MmJkNjFjZDM0YzhiNzQxZmRmYjhhZjY4M2I5MzE0OWM5N2YxMjE1ZTVkZjk0YzA4M2MyNzc0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzYxZmNiZDM2ZDhjODU3ZWM4MDA5ZTgwNDVmZGIxY2RiYzBlZjQ0NDkwMTQzZDUwZmY4MmIxMmQ1NGZlOWJiNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b3e9d84b27b744aca0976ca03e37d44a",
+      "statement": "UC-02 evaluation covers five mandatory cases (alias query, fan-out join trap, direct definition, undefined term including forced-guess refusal, and live definition edit with hot reload) plus dense-only baseline versus hybrid regression reporting recall, EX lift, citation rate, latency, tokens, and cost.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L251-L261",
+          "version": "repo-lines-v1:sha256:c995028761c4bbcc6ab638c180e7d8e07b80f20a317ffde6b96f796655a8617d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0NzA4MTk3M2I3NWU4N2Q0YjYxMDE3MmU4Y2EyMjE4ZjkxOTkyNDYxY2ZkMmMxNDQyYjZjYjA3MGJmMmZkMjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwZWNmYjM0OTg4MDdjNmZmYWRjMzVjMmM5MDZkYTZmMDQ3OWFiNjVhYzcyZGUyN2ZiMmIyZDU3NmJkYmM3MDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyYjk4ZmNjOTMxNjUxNmE5NWE3NTdiOWJmNTMzOWRiY2ZjZjlhOWRkMzFlMzM4ZTkyYzMzMmIyMDA4OTA3YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_550b776cb1624db79f7c833869d4f440",
+      "statement": "The layer integrates via search_semantic_layer tool, MCP resources for data dictionary and metrics, enableSemanticLayer on/off eval flag, getMetricSpec with additive flag for attribution, PII sensitivity alignment, and few-shot examples kept disjoint from graded questions.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L204-L223",
+          "version": "repo-lines-v1:sha256:23e0ee7f87ae2701525a1cecbde7f6e16ec0fb2e3f4e4bc5457e226a6b3abb1a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzZmU0YThjYWI1MWFhZjY2ODYyNjQ0MTNmZjUwMDRjY2ZhNGJjOGM5OGQzM2RlNjRhNzdhNmUxOTk5YTFlYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiYjI3NjUxOGRmNDQ2NTczNjVhNTZhYzZiNTc1MWZhNWNjOTY1NzFmZGUyNzhlODk2MGMyYzhmYTI1NWI3YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNDEwNzU1ODBjNjMzY2NiYmZkY2JlNTNiOWZiYjhlNTBhNmJjYTM5Yjg2YzZjMGUzMTczMTRlMTgwNzA0ZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiNGFiNjk0YjQ0NzNlZDZjMTdhZmRhMWM5N2M2NGJkMGQzMTMyM2NlNWNhMWRhZWYwMDI2OWY5ZDk2ZDQ1YTkifQ"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L237-L244",
+          "version": "repo-lines-v1:sha256:8535c3fd4aac488827788c27ac7d7f74b18b412dd2ab9a407eb2e93dccda10c3:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODVmOGY0YzdlMzkyMzZmZTViNTU1MzM2NjI2NGY3N2EyODY3MjFiMDQ0MzRlMWEzZjY4ZmIyMTdkMzlhOTQ3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTAwZWViMmNjMTlkYjYxZWVmYzFlY2UxNjIyM2M3NDJlZDU3NmJjYjc4NDM0ZDA4MmUxMTFkZjEzZTZiNjBhOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDMyYmJiNjEyM2JjY2U2MjYzZTlmZDhhYjRlMjcxMzA3NDBmMDU2YzYwNTVlZWE0MzBhNmVkZTU5OTM0MmYxNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzdhNjAzZWNmOTkxNTM5YzJmMzdlMTM3MjViMDdlMDY5YWQ3YTNlY2MwZTFhZjBmM2ZiOWYxMTA5YTZmYzQ0MCJ9"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L36-L37",
+          "version": "repo-lines-v1:sha256:b4bf7784f1e75fc6ad6866c07d241d7757e7d520ed4ed9da3c9c9fa38721ad17:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFlMTk2ZDUxZjQyN2QwOTdhMmFlYjg4MzA5OWY5OTJhNmVmOGJmMWFjMzk1YmI4OGMyOGVhNWEwZGM1YjFjNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4YzIzMDY1ZmE2ZjIzMzYwZDk3YTJkNTY1ZTMwNGIzNTE4MzhhZjQ0MTI1NjkzOTI0Y2RkZGQwZjQ1MDVhOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjIxYzc2ZmI1YzA2NjUxYjYwNWQzN2JkMzMyMmUzZjBiM2I2ZDBlZWMxOTU0NGE0ZWQ3ZTM5MmUzNDY4ZTQ0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDcyNzJjN2MxOWRmNTQyZTRhNTJhOTg3NWM4ZmE3NjNmYmEyOGRhOGIxNWNjNDFkZTA5ZjRjZDg3YTFjNGU3NSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T12:53:57.503Z"
+  }
+}
