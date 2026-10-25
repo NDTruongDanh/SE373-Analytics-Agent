@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d48d3aaa971707287b32398675de77fcc484090fb9e787fa9a2a75e1e77b2567",
+  "claims": [
+    {
+      "id": "claim_638e6578d6aa4bcabc42b45540786f26",
+      "statement": "The repository is the SE373 Analytics Agent course project, a natural-language analytics agent over a fictional Vietnamese business database, currently in initial setup with wiki/PRD tooling but no landed agent or loader code.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L1-L3",
+          "version": "repo-lines-v1:sha256:53850a2768aa3ed295d95cb4c79c1abea7afea83781cd882d88b4f165eb2ec69:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWQyMGM5Y2ZlOGVjMWM0MTVmMDJmOTE2ZTA5ZmU1ZmJlYTIzYWM1NzdhYTkxZjg4ZDUyNzFhYzY0NWJjNWZiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWRjNjI3Y2FhYWRmMGE0YzcxZTM5YzFjMzE5N2YxZGI5YzNmYWEyNDVkODJlMDY0M2U4MDRiMTUxYTZkZGNiMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjY2YjRmNjIwNTJhMDg1NWE2YzA3MWVhMDdkZDYxZjI1OWQzZGEwZjM2YTExZTk0ODA3ZWZlNjcyMDhkYWQxZiJ9"
+        },
+        {
+          "resource": "repo://package.json#L1-L12",
+          "version": "repo-lines-v1:sha256:e0f09410e88284714f11162e1239db0e1d0a127f415c4ead2dec33e35e01eec4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkNmJhMzU0NDZhODljNzgzYTNkMTM1NzgyOTkzYTQxNzIxZDQ5YjMzMWIxNDc3NTExNmIzNzFlYjJjOTNiYWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_64d7e12aa4094067b32b3744003f41bd",
+      "statement": "Local setup requires Node.js >=24, pnpm >=10 with pnpm@11.25.0 activated via Corepack, plus an uncommitted OpenCode Go API key.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L12-L16",
+          "version": "repo-lines-v1:sha256:3f0ca2e3548e7bd8488132751494af00b0dbc48c1672566661b12cdbe56c04bd:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjA0MGQwNzNjYzA2ZjJiYWFlOTBhMDNlNjc3NWI1ZTgxNjVmNWYyNGI5ZDVlNGUwZDhlOGFhNjM2MTc3N2M4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGRlYmUxNGIxMTI2MDE5ZDNiNzk5YTVkZDE3Y2I5MmU2OTNhYWU3NjNiMTJjNDM2OWIxZmE5NGY5ZTI3NDg5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGY0Y2E2YjA4ZWM3ZDNmODNjOTBlMGE5ZTJkMzJmNjlhYjBmZWY0YzFlZDExM2I4YTcxNzIxZDdiODE5NWJkNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDI0YzliNTcxZWE5NTYxZjBlNDRmNzY0NGQ3MDVlM2RmN2E2ODk1NTU4MzRlMDdjNGMyMmVkZWRlNmI5MmUwYyJ9"
+        },
+        {
+          "resource": "repo://package.json#L8-L12",
+          "version": "repo-lines-v1:sha256:6c8a72abeb7572d2dfc994f741dca5646c31001fa0f88dd29f69fc719c0befb8:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE5ODQwNjI0ZjFjOTQ2ZTc5OGRkMWQ4Mzg0ZDMxN2YwNzAzY2RiZDJmMzkxN2EwYThkNWUzZjQxOWFjMjczNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjgwOTg2NDUxNDZjYjczMzg5NTYzMTM1MDMyMDBiMTU2NzdhZWU4MTdlNmNiMWI5OGExNDdkM2E2NGU2Y2VjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGQ2YmEzNTQ0NmE4OWM3ODNhM2QxMzU3ODI5OTNhNDE3MjFkNDliMzMxYjE0Nzc1MTE2YjM3MWViMmM5M2JhYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ca920606db714846ac297b0980b2691c",
+      "statement": "The canonical local run is corepack enable, pin pnpm@11.25.0, pnpm install --frozen-lockfile, copy .env.example to .env and fill in OPENAI_COMPATIBLE_API_KEY, then pnpm wiki:update:print.",
+      "evidence": [
+        {
+          "resource": "repo://.env.example#L6-L21",
+          "version": "repo-lines-v1:sha256:29f0ed8bd4ef20311e0a415d0743c50aae25b210988913ca7e28e6b4a457bcb8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMDAxMGM2ZjAzMmFhNGExNDkzYjUxMmVhNGY5ODUxYTRhMTdjNDYzNTVlNmRhNWI3YTIxZjNjNWMxZTRkNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ODY2N2IzNjc2Y2Y3YzQzODU3MmJmMTE4YzhjNmFmYmIzMGUyZGNjZDYzOWE4YzljYmVkYjBiZTI2MDc1NDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NzUxOGQ4NWQ0OThkMGM5ZDkyY2Y2OTljMjlhNDVkZDI2ZTU2Y2E2OWNiYTk4NTFhN2VjMWYyNTJmMDFlZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1YTEzNWFhOWIwNTk1YTc0NWE5MmQwYjhkZmI2MmM2ZGM4YTZlNTcyMTk0NWQzYjQzZTk4MjQ1OTQ0NTc0MzYifQ"
+        },
+        {
+          "resource": "repo://README.md#L22-L28",
+          "version": "repo-lines-v1:sha256:c47f1400aaa3c7e274ec0c6a22e2fcc5e30aaa51e41655eb73f3ca5be5a9bee2:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM0M2ZiODlkZDcxMzkxNzA2YmI2NTUzMzcxMzlhZTY2YWMxMGZhY2M0MjYyYmNkMjQ4YzIyOWNmMGUyNWQwNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdjMDZjNTYxZDVjMzI3MzQzNjg1MjY4YTQ2YjMzOTFmMzk5OGVlZTg5MGQyYmU1MWYwZDIxY2M0YTUzYWU2ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzA0MmNjYmU0Y2ZiYzhlYjUxY2E0MGUyMDQ1M2JiNDk2MDE0NGJiOWJmYjE3OTdkYjRiZTU0MmE4NzkzMDFlZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTEzYjEwMTE4ZDczYzY1MWIzNGMwODJhNTFkYjRmMjQzMDJiY2RmYjdlZTJmYTg5YWViMWVkMDVjYmQ3YjllYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_68a44d7d05904abd9dc9816919b8cc0b",
+      "statement": "Repository entrypoints are the pnpm wiki:* scripts: wiki:init for first generation, wiki:update / wiki:update:print for updates, wiki:dry-run for validation, and wiki:visualize for static-site export.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L30-L33",
+          "version": "repo-lines-v1:sha256:fb590eb24285d8d50725b77f07c232c258020009538fc24083d8b8a3ee9eea93:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjU5ODc5NGU5NTVmZGJmNWM2YjE1MWY1NGZkYWNkMmY4MDcxYTMyYjYzYWYzNjUzNTRjMzI0MGY4NTk4MTNmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjljMzAwNWZjMmI3OWQ1ZjBmOTIxOWRiZmQwODhmNjIyYTZiYmZhMjU3MGE4NDc1OGQzZWNlYWU0YTQ0YTEzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjg2ODA4Y2QwZDBlN2I3NjE5Nzk2YmU3YWI4NjVjZDZmMjc5OTFkNmExMWYxNDM2N2MwODFjZTZhNjBiMzY2ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODE5YzQ0MjY4MzJmMDI1MDk5OTZiYWM0MmJmZmFhODkzODQ3ODUxZWVhM2M3YzM5NTNmOGVlNTgwNmI1NmE0MSJ9"
+        },
+        {
+          "resource": "repo://package.json#L13-L19",
+          "version": "repo-lines-v1:sha256:1df3af809b0463de5b9c938d3666ddeb019662aecb5d9ddb31f97bfae4f67c7e:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ4MzNkNTk0OWMwM2E0MGNhOTUyNDkxNjEwYTY2NTk2NDRiM2FhNDY2MzYyZjc5OTAyMGRiZjE5ODE1NDdkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTYwYzcyNzlhMmJlMzZkMmFmNTlkZmRlOGIzMzgzZDk5ZGQxZTg0MmE0ZWM1OGIyNDcyNmUwZWRjZmE3OTEwYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2RhMDIwMjc5MzdiNjFlOWRmMjlmYmFjMzdmNGYzNzFmMjI0ZTE5OWQ3NGUyMWU1YTUwMjYzNmYzMjliMmZhMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fe6b0c9dcfda4c4eab2c2ccc0d9185a1",
+      "statement": "Every wiki script preloads scripts/openwiki-fetch-patch.mjs, which injects a stable opaque x-opencode-session header (ses_ plus 32 hex chars) on opencode.ai requests to satisfy the mandatory OpenCode Go routing/cache requirement.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L64-L71",
+          "version": "repo-lines-v1:sha256:89e95670c24a9a45d6c64ef2553620a9169a6847d554bd2526e77226b8c0b920:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0ZWQ2Yzg0MDdjYjIyNDk5NzA2ZTJjNTIzMzI1NTUxNmNiMDg1MTAyOWQxNTNmMGZiZThjMGVkM2Q4ZWI5MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGI1YTkxNjg4ZTRmYmE2NjJkN2JlY2Y0MzY5NWY2M2RkZTFhMDI4ODk1MmE3YWY5YjdkZmZjOTYxMzNmODY1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWIzODA2NzIxNTRiOGY1ODdhZDUzMmQ1ZGFkYzJhN2MxNDZmZGMyYzE5ZGVkZmMzN2NmN2VmMTY4MTljY2I5YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://scripts/openwiki-fetch-patch.mjs#L22-L37",
+          "version": "repo-lines-v1:sha256:35a0f80a40ef27e725b53bb7dc076909611743cbb934478539705d6542c24f66:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjMyYmQ2NjEyMTFjMTU2YTE4YWQyOGNkMWE3ODQ0YWEzZmFkZjViODI3MTZkZDJiNDdiNTRiN2M1NDBjNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5NTQyMzIzNGQwNWYyOTJmMzFlMTFkMmZhNDVkN2Q1ZjJjN2U2NTQ3YjcyNWEzYmRkODUyMjEzNDQzM2UxZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NzdhNjQ5NzI0NWFiZjVlNmE1OTgyYWEzZGNmNWVhOGU3NGUyNTY5MTU2NWUyMTcyZThmZGIyMGM3N2VhNmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8be45a2f8edb4fccad88b2082738091f",
+      "statement": "Inference must use the Responses API (OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API=true) because muse-spark-1.3-contributor is Responses-only; routing to /chat/completions fails with ModelProtocolUnsupported surfaced as HTTP 401.",
+      "evidence": [
+        {
+          "resource": "repo://.env.example#L18-L21",
+          "version": "repo-lines-v1:sha256:d2bd9084e3a14502096b7fd8db870ffb571d75b3854dc674db44b61760d44ee7:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdiZTIxMWNhZDcxZTI3NDBhOTNiZGU0NmRhNTIxNmIxNzg1YjU2YmRkNzc4MTRiNTAzNjI2OWY4YWNhNmViNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDk4NjY3YjM2NzZjZjdjNDM4NTcyYmYxMThjOGM2YWZiYjMwZTJkY2NkNjM5YThjOWNiZWRiMGJlMjYwNzU0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjY5ODQwMjA5OGRkNDc0YTAxODkyYTYzM2U1Y2FmZWVlNDIxYTBjOTBiZTlmYTZmNmFmODUxOWE1MzNiYzdmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDVhMTM1YWE5YjA1OTVhNzQ1YTkyZDBiOGRmYjYyYzZkYzhhNmU1NzIxOTQ1ZDNiNDNlOTgyNDU5NDQ1NzQzNiJ9"
+        },
+        {
+          "resource": "repo://README.md#L57-L63",
+          "version": "repo-lines-v1:sha256:7de4ed87aecd56a6a60ce5027b0a818ca39260fba55284112a9e55fd419d21ca:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2U3NWQzMTJiMjRmM2NhOGJjNTRkMTc2ZTg4YTQ1NzQ5OTY5YTUxMmYwYWNlMzNiZmJlODgyNDU1YjRmYTYxMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZlNWZiZGU0ZmJiMjBhODhiOWIwOTU0MzFhNDM4NzA2MTkyZTdlNDFmMjVmZTI5ZmJjYjdiNzk1NmUyODk1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODMxZmRkNDEyMjUyZDU2ODIwNjE0YjExOGM2NTQ3OTVjMmMxZGUxMzg2NTVkODJiYTIwYjc1NzIyNzZkZjRkMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDZlMmUxMzVkOGFhNjRkMmM0MmM4OWViZjZmMzM2OTczZTQxOTUxZDBmYjQzZWU3ZTExZTdhZTdiMTk1ZDQ5OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6ff1f18c2f9c4d8a84180d22d97aa9c6",
+      "statement": "Scheduled wiki CI runs daily at 08:00 UTC plus on demand on Node 24, installs with pnpm/action-setup and actions/setup-node, runs the same wiki update command, and opens a docs-only auto-merge PR limited to openwiki, AGENTS.md, and CLAUDE.md.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L3-L7",
+          "version": "repo-lines-v1:sha256:f85bdfd7954ff5617292b34d02c83de4510d7f1dc18cbdc099a6cba72aa18082:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk2ZGM0ODE0OWY1YTgzZDFlZDZkYmIzOWJiYzdlMmI5MDJhYTNkMzRkNmJkNWFlNGIyOTFiNjhkZjBjYTc5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTNhZWQ1MDJhNWFkZWU3YmIwY2FkZDQ2Y2Q3NDYzYjUzMjBjNmNjZWU0NDgwZDY2ODU0ODg0MzEwNjM3NjExOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWE4YjA3YjE4NGY5NzZlMDBkNzU4OGZkNTM0MzI5ODQ3ZWEyNTgyMGFhNGVmMzlhM2Q1MWMwNmZiZjgzM2EwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzk0NjJkNWYyYzIwN2U2YjRmODI4NDNkOTE1NGZmMGJiYWQwMzQzOTI0YjJjM2M0YmFiZDk5Yjg3Y2NkNGI4MiJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L30-L53",
+          "version": "repo-lines-v1:sha256:8327d5d5d6336181dbc2afa3a39bae60967b86a1c43abd0b73a0eded739fc64e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzY2ExYTBlYmM2MDFiOGM0MDIxZjRkY2FhYTg2YzU0NGM2OTM1ODBhOWQ1NjkyNTM4NjQyMmRlM2YzZjk2N2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjZjBjN2ZjNGVmYjcxM2JjNTA2ZjQxNDMxZTZiN2Y0ZWM5OGUwMjdiYWMyYmYyNjJiNmJlM2I3MWMzNTIzZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZDVlY2I5NDI1MGZlNjFjYWJhYTJiZTQzMGYyMjc2YTgxOWM1OWUwMDFmNzNmMGI3NTFlZmM1ZTkyMGZjYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyM2JkOTUyODNmZDJhYjk1Yjg2OThjODAwOTJhNTBmNGVhZTA5OWMzOTk3NTQwNWI2MzAxYTBhZTU0ZTk4MzEifQ"
+        },
+        {
+          "resource": "repo://README.md#L38-L43",
+          "version": "repo-lines-v1:sha256:1dbddfa33a6b1bef38e54c2821228df9ce91a1c5d3330eabba26604c4fb2811c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRhMjJjMGM2M2JmYmZiZjM0ZDExZGI5YTdmMDllMzU4MGIwZDc0NzlhNGZlNjUxNmVhNjE2MTg1NjdjNDEwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmRhNDJmYzE1YjQ0YmI3ZTRhZWQ4ZDhiYzMwMTgyOWY2NzYyMDc5MjFhMzc0ZTY0ZDk2YjQyZmU2YzYwNjY5YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTcyZmE0MGY0YjY5N2U5NDliMDBjNDc5N2JhYjJmMWQ2OTM3MGI0NmM3M2Q3OWMxMzQwMTlhODI0NTM5MmY5MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmVjNjBkMGI1ZGFjZTk5NjRiZDEwYjYzMTVhYmI5ZmIzODBiMGVhZjNiMzBjOWZiNTAyZjlmMDdiMWNhOTY4NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c28d6044efa04b54a8cfa039242b79db",
+      "statement": "The normative agent design is the LangGraph reference workflow (understand, retrieve semantic layer, plan, generate/validate/explain/execute/fix SQL, mask PII, chart, reviewer) backed by a common harness contract covering read-only DB tools, semantic search, chart rendering, alerting, skills, and audit traces.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L115-L144",
+          "version": "repo-lines-v1:sha256:d624cf414b8f83281e755b35b09d8148c7d096bcb8a7d59b95b61192730cae49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3ZGI1OGE1Mzc2NTU0NDRhNzBiOTM4YzI1NDk5ODVmYmZiZmY0NzJlMGQxNjY3MThhMzMzNmEwZWU4NGYyMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyNzhkNDA1NGNmNGNjYzc4MzQyMTAxYTY0NzRlNWM2NTc3YzQ2ZWMxZWEwN2E5ZGQ0YTkzNGYyNDdiMjYxOTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L505-L525",
+          "version": "repo-lines-v1:sha256:1844de888b3a89f45832b3f90ebe5782aed69c085de08b0df10dd9f8401a1ead:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0MTcwMjhmZWVkZTIwOTdmN2NhZmExYTg5ZGU1N2I3YmZhNzNlMmMzY2YzMzU1YmE5ZDM0OWVhYjM0MjFmZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1OTQ2MDUxMjNhYjc0NWI2MTgzN2MxMTlkOGFhNGEyOWUzZWUyY2NiNzg0NTc5ZTE1ZTM0MjU0ZGI3ZDkwYjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNDJlZTlhMjMxNjY0ZDNlODg0MmEyNGQ2ZDg1MDk0ZWU4YWIyODdiNDE3MDNkZTlhOGU4ZjM0NDdjMDI5YmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1d9639aba7484375a0bc2e8e8d5a0460",
+      "statement": "The target database must be a fictional Vietnamese business database with at least 8 related tables, one table of at least one million rows, fake PII columns, and hidden seeded drift/anomaly/injection scenarios loaded by a one-command script.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L69-L90",
+          "version": "repo-lines-v1:sha256:2ba36d7b027ba5bbe3ad0714f6e56b97219de6bf858bbed2f077dad03ba8b9a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3M2ZjOTQ4NGNiZGYxN2M3OTZlNTE5MDJjMDBlMWQxMDdmNzJmYmQzYjBmZDc4YjM0MDE4NWMzNWU2MzUxZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYTcwNGIxNmQxOTAwNjA5YTIzMjJiZWUwNDNjMGM3MDU5ZDkxNDI0ODU0ZDlhY2Y4ODJmZWIwNmU4MDc5NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiNjRmZTRiMGNmY2Y5ZGZhNzRhYTYxNGRmM2U1ZTZiZjI5NjJhOGViODUzNDA2ZGE2MWJiNGIyMDBjNDkyZWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f4235390b3a44f3b8002cc589d74fda8",
+      "statement": "Every implementation task is constrained by mandatory project rules (self-built agent with no hosted text-to-SQL/BI products, read-only connection-layer enforcement, synthetic-only PII, Python/TypeScript with a LangGraph-style workflow) and the submitted use-case set must cover all eight knowledge areas K1-K8.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md#L159-L186",
+          "version": "repo-lines-v1:sha256:e9b67d9333b2b06cbfcc22e499ebc08ef02813d12599c42fc345adafc5245ecd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NGEyZDMwZWRmNjc1MTlhMDY4ZTEyMTQ1ODFlNGI3MDhmODM0MWVjZGQ4ZGY0YzMzNjc1MDQ0M2MxNDY1NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhOTdkNmMxZTc5NmI5Y2M1Mzc2YmNjNjAxNjYwZTE4ZDkxOGFlMWVhZTE2YWY4ZDhhNjJiY2Q3OTMyYjQwYTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwNTFlYzI5M2E4MjYyMWZlODMwZmE4M2EyNDZkODVjNGFiN2MyNDIyYTAyNWUxMmY2OGRkMTk3MDFkNTg4ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://docs/prd.md#L56-L65",
+          "version": "repo-lines-v1:sha256:5f2f2302892872b430535ad8f21b588f92cee69599fbd3e138f42f74ba101478:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNjEzMTRlMzQyNDU5ZWE4NTU4ZjMyZTUzMmFmODg2ZDA2ZTk5Yzg4ZjdkMmZiOWYzMGM1ZjFmZDYxMjgyYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1ZmI5MWYyNTRmZWYwMTU5Njk3OGNhMGE5NGZiNTMxNDBkOGM3YmNiMzAzNjQ3YTJiMzBlYmZlMWFjM2E4NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiODYyM2IzY2ZmNTgwMGExNmIyNzg0NDdmYjE2NGU2NWY4NzgxZGViMjM5YjBkNzk3NGMxN2RjYWM0N2JiMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-25T07:25:04.439Z"
+  }
+}
