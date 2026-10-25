@@ -2,6 +2,15 @@
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+  # Phase 3: transitive postinstall via pgsql-parser/pgsql-deparser → plpgsql-deparser → pg-proto-parser (benign version-scheme warning check); without this pnpm install exits with ERR_PNPM_IGNORED_BUILDS.
+  "@launchql/protobufjs": true
+
+minimumReleaseAgeExclude:
+  - '@pgsql/traverse@18.8.1'
+  - libpg-query@18.2.1
+  - pgsql-deparser@18.4.1
+  - pgsql-parser@18.3.1
+  - plpgsql-deparser@18.3.1
 
 packages:
   - "apps/*"

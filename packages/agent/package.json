@@ -7,6 +7,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@se373/contracts": "workspace:*"
+    "@se373/contracts": "workspace:*",
+    "@se373/sql-guard": "workspace:*"
   }
 }

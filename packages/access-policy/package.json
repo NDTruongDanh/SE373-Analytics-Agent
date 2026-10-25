@@ -7,6 +7,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@se373/contracts": "workspace:*"
+    "@se373/contracts": "workspace:*",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
   }
 }

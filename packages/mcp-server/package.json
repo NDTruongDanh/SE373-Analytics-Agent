@@ -7,6 +7,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@se373/contracts": "workspace:*"
+    "@se373/contracts": "workspace:*",
+    "pg": "^8.23.1",
+    "pg-cursor": "^2.22.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "@types/pg-cursor": "^2.7.2"
   }
 }

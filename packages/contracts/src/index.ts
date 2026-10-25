@@ -1,5 +1,6 @@
 export * from "./errors.js";
 export * from "./tools.js";
+export * from "./catalog.js";
 export * from "./answers.js";
 export * from "./trace.js";
 export * from "./semantic.js";

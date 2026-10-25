@@ -1,0 +1,22 @@
+{
+  "name": "@se373/sql-guard",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@se373/contracts": "workspace:*",
+    "@pgsql/traverse": "^18.8.1",
+    "pgsql-parser": "^18.3.1"
+  }
+}
