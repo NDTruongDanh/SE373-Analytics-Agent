@@ -77,6 +77,9 @@ importers:
       '@se373/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@se373/sql-guard':
+        specifier: workspace:*
+        version: link:../sql-guard
       pg:
         specifier: ^8.23.1
         version: 8.23.1
