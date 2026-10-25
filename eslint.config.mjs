@@ -39,4 +39,26 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ["packages/sql-guard/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "pg",
+              message:
+                "sql-guard is a pure validator — it must never import the DB driver (UC-09 F11, D-01 purity).",
+            },
+            {
+              name: "pg-cursor",
+              message:
+                "sql-guard is a pure validator — it must never import the DB cursor (UC-09 F11, D-01 purity).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );
