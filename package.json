@@ -15,11 +15,20 @@
     "wiki:update": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --update",
     "wiki:update:print": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --update --print",
     "wiki:dry-run": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js --dry-run",
-    "wiki:visualize": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js visualize"
+    "wiki:visualize": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js visualize",
+    "typecheck": "tsc -b",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "docs:interface": "tsx scripts/generate-interface.ts"
   },
   "devDependencies": {
     "jsdom": "29.1.1",
     "mermaid": "11.16.0",
-    "openwiki": "0.7.2"
+    "openwiki": "0.7.2",
+    "typescript": "~6.0.3",
+    "eslint": "^10.13.0",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5",
+    "tsx": "^4.23.15"
   }
 }
