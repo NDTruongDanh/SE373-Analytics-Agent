@@ -56,10 +56,15 @@ ALTER DEFAULT PRIVILEGES FOR ROLE owner IN SCHEMA public
 -- the table here would fail — the relation does not exist yet). Deliberately
 -- NO ALTER DEFAULT PRIVILEGES for agent_ro in semantic: the grant is
 -- chunk-only, so future semantic tables must NOT auto-grant to agent_ro.
+-- (USAGE alone grants no table access — the table GRANT in 04 is what opens
+-- the single chunk table; verified live: without this USAGE the table GRANT
+-- is unreachable and SELECT fails 42501 on the schema.)
+GRANT USAGE ON SCHEMA semantic TO agent_ro;
 
--- indexer: writes semantic.* only. Zero rights on public, langgraph,
--- app_state (any write there fails 42501).
-GRANT USAGE ON SCHEMA semantic TO indexer;
+-- indexer: writes semantic.* only (CREATE TABLE plus INSERT must succeed
+-- as indexer per the 01-04 role-proof matrix — hence CREATE on the schema).
+-- Zero rights on public, langgraph, app_state (any write there fails 42501).
+GRANT USAGE, CREATE ON SCHEMA semantic TO indexer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA semantic TO indexer;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA semantic TO indexer;
 ALTER DEFAULT PRIVILEGES FOR ROLE owner IN SCHEMA semantic
