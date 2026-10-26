@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "seed": 42,
+  "dataset_version": "olist-vi-2025-2026-v1-small",
+  "tables": {
+    "regions": {
+      "rows": 34,
+      "sha256": "03f39975f71005f3c3c1504b9aeb3839ef1a07074233838d88aacda6fcde83fe"
+    },
+    "categories": {
+      "rows": 75,
+      "sha256": "2ed4e6a187f520800225db905a4788236f9d133be6cead315139a8e17667189a"
+    },
+    "channels": {
+      "rows": 5,
+      "sha256": "64a393e73fc85fca6ad415efb0ef87013f22839c07a5956ad18b819da1a7d68a"
+    },
+    "promotions": {
+      "rows": 30,
+      "sha256": "cfe927fb13c83197477c1e152ecb87a42db9deadf7fbedd2f6a7518341c5e31b"
+    },
+    "employees": {
+      "rows": 200,
+      "sha256": "742471dd903886c23748cd64c64d9d363e88d338115d1658c3eb44d2d1ab8e26"
+    },
+    "customers": {
+      "rows": 99441,
+      "sha256": "5acf9ab1d521a3c311d042088dbd5fb044e235c096596fffc67b6a24b8eb3cfa"
+    },
+    "sellers": {
+      "rows": 3095,
+      "sha256": "eb45a1343f8f696835f11b8d107ad834e7d482c3ac1cea45e943684597f637c8"
+    },
+    "products": {
+      "rows": 32954,
+      "sha256": "3a3d450be770f2cac0dfbd90320cfb749a96e1e2426b4f3b42870a8f0cff6080"
+    },
+    "orders": {
+      "rows": 199737,
+      "sha256": "1fb276479b6deb8f19fa3a045a994ee811bcf2919e8e05dccbe81a6356105307"
+    },
+    "order_items": {
+      "rows": 227925,
+      "sha256": "68a2a0f009d1c6394ab03d7178d3da8473bdc1b98620f74fc6f9d0a36be0a586"
+    },
+    "payments": {
+      "rows": 208522,
+      "sha256": "87cc662e3ea4e652f175c3f085e9f5329f73d29fab6e99943e2f38058c7c522e"
+    },
+    "reviews": {
+      "rows": 197787,
+      "sha256": "6b9e369481f0285a4d6bcc98699eebafb525864ed1d9ea3009f7dfe1437abe07"
+    }
+  }
+}

@@ -21,6 +21,9 @@ dist/
 traces/*.jsonl
 logs/*.jsonl
 results/
+# Olist publisher CSVs (01-07 loader cache — 61 MB, pinned-SHA verified at
+# load time, never committed per T-01-07-01)
+data/.cache/
 # keep skeleton dirs tracked via their .gitkeep files
 !traces/.gitkeep
 !logs/.gitkeep
