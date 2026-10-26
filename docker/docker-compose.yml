@@ -1,0 +1,24 @@
+# Tracer DB (01-01 thin slice, local-only). 01-04 owns the full initdb.
+# Loopback bind only — never 0.0.0.0 (v1 bug). All repo scripts stay plain
+# `docker compose`; in this session run Docker via `sg docker -c`.
+name: se373-tracer
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg16
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_DB: chosen
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${CHOSEN_SUPERUSER_PASSWORD:-chosen_postgres_dev}
+    volumes:
+      - tracer_pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chosen"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+volumes:
+  tracer_pgdata:

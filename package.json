@@ -11,6 +11,9 @@
     "pnpm": ">=10"
   },
   "scripts": {
+    "db:up": "docker compose -f docker/docker-compose.yml up -d",
+    "db:reset": "docker compose -f docker/docker-compose.yml down -v && docker compose -f docker/docker-compose.yml up -d",
+    "demo:tracer": "tsx scripts/demo-tracer.ts",
     "wiki:init": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --init",
     "wiki:update": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --update",
     "wiki:update:print": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --update --print",
