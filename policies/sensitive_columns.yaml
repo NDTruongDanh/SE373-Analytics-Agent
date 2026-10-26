@@ -1,0 +1,14 @@
+# Sensitive-column set (POL-04, D-06): the v1 reference set on the 01-04
+# public layout. Consumed by the access-policy strict loader; any shape
+# violation fails boot closed. Table/column names are exact (case-sensitive
+# match first, case-insensitive fallback in the resolver).
+version: 1
+columns:
+  - table: customers
+    column: phone
+  - table: customers
+    column: email
+  - table: customers
+    column: address
+  - table: employees
+    column: salary

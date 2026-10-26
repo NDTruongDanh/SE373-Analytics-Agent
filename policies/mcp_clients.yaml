@@ -1,0 +1,35 @@
+# MCP client registry (MCP-04, D-11): role → scope mapping with row-scope
+# predicates. Secrets live ONLY in the environment variables named by
+# `tokenEnv` — never in this file. The gateway fails boot when the file is
+# malformed or any referenced token variable is missing or empty.
+version: 1
+clients:
+  - clientId: sales_south
+    role: sales_south
+    tokenEnv: MCP_TOKEN_SALES_SOUTH
+    scopes:
+      - schema:read
+      - data:read
+    rowScope:
+      column: region_group
+      value: Nam
+  - clientId: marketing
+    role: marketing
+    tokenEnv: MCP_TOKEN_MARKETING
+    scopes:
+      - schema:read
+      - data:read
+  - clientId: hr
+    role: hr
+    tokenEnv: MCP_TOKEN_HR
+    scopes:
+      - schema:read
+      - data:read
+      - data:sensitive
+  - clientId: admin
+    role: admin
+    tokenEnv: MCP_TOKEN_ADMIN
+    scopes:
+      - schema:read
+      - data:read
+      - data:sensitive

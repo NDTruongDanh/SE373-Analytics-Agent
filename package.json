@@ -14,6 +14,7 @@
     "db:up": "docker compose -f docker/docker-compose.yml up -d",
     "db:reset": "docker compose -f docker/docker-compose.yml down -v && docker compose -f docker/docker-compose.yml up -d",
     "demo:tracer": "tsx scripts/demo-tracer.ts",
+    "external-client": "tsx scripts/externalClient.ts",
     "data:load": "tsx packages/data/src/load.ts",
     "data:verify": "tsx packages/data/src/verify.ts",
     "eval": "tsx evals/run.ts",
