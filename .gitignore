@@ -16,3 +16,6 @@ Thumbs.db
 # TS project-reference build output (never commit)
 dist/
 *.tsbuildinfo
+
+# GSD skill working state (local planning artifacts — never commit)
+.planning/
