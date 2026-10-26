@@ -114,7 +114,9 @@ describe("tracer PII canary", () => {
       .split("\n")
       .map((line) => line.split("#")[0] ?? "")
       .join("\n");
-    expect(effective).toContain("127.0.0.1:5433");
+    // Port may be literal or env-overridable, but the bind host must be loopback.
+    expect(effective).toMatch(/"127\.0\.0\.1:(5433|\$\{POSTGRES_PORT:-5433\}):5432"/);
+    expect(effective).not.toMatch(/^\s*-\s*"?(\$\{[^}]+\}|\d+):5432"?\s*$/m);
     expect(effective).not.toContain("0.0.0.0");
   });
 
