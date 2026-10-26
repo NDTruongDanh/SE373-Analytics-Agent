@@ -10,6 +10,10 @@
     "./ports": {
       "types": "./dist/ports/index.d.ts",
       "default": "./dist/ports/index.js"
+    },
+    "./telemetry": {
+      "types": "./dist/telemetry/spans.d.ts",
+      "default": "./dist/telemetry/spans.js"
     }
   },
   "scripts": {
