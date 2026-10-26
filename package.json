@@ -24,7 +24,8 @@
     "db:down": "docker compose --project-directory . -f docker/docker-compose.yml stop",
     "db:reset": "docker compose --project-directory . -f docker/docker-compose.yml down -v && docker compose --project-directory . -f docker/docker-compose.yml up -d --wait",
     "data:load": "tsx packages/data/src/load.ts",
-    "data:verify": "tsx packages/data/src/verify.ts"
+    "data:verify": "tsx packages/data/src/verify.ts",
+    "try:query": "tsx --env-file=.env packages/mcp-server/scripts/try-query.ts"
   },
   "devDependencies": {
     "jsdom": "29.1.1",

@@ -4,7 +4,7 @@ milestone: v1.0
 current_phase: 2
 current_phase_name: Postgres Roles + Seeded Data
 status: executing
-stopped_at: Completed 02-03-PLAN.md
+stopped_at: "Phase 2 paused after 02-03 — fix agent_ro search_path + guard alias bug, then 02-04"
 last_updated: "2026-10-26T09:04:28.680Z"
 last_activity: 2026-10-26
 last_activity_desc: Phase 2 execution started
@@ -112,6 +112,11 @@ None yet.
 - K7 coverage gap: current UC set covers no K7 (only UC-03 or UC-06 provide it) — team must add one UC (flagged for Phase 7 DOCS-03 decision item)
 - UC-05 plan still Python/Pydantic — needs TS/zod port (flagged for Phase 7 DOCS-03)
 - Contract freeze must hold ~28/10 or UC-02 MCP resources (03/11) and UC-01/UC-10 MCP cutover (09–10/11) slip
+- **Phase 2 paused after 02-03 (2026-10-26)** — 02-04 (data:verify, CI db-live job, README licence) not started. DB `chosen` is up and fully loaded on 127.0.0.1:5433. Before running 02-04, fix these two bugs found with `pnpm try:query` (manual playground: sqlGuard → read-only executor as agent_ro):
+  - **agent_ro has no search_path** (`"$user", public`): unqualified `SELECT … FROM customers` fails with 42P01; only `business.customers` works. `03_business.sql` sets search_path only for its own session. Fix: `ALTER ROLE agent_ro|indexer|owner SET search_path = business, public` in `docker/initdb/01_roles.sh` (+ apply to the live DB or `pnpm db:reset && pnpm data:load`), and decide how the guard catalog handles `business.`-qualified names.
+  - **sqlGuard false positive on select-list aliases:** `… sum(x) AS revenue_vnd … ORDER BY revenue_vnd` → `UNKNOWN_TABLE: Unknown column: revenue_vnd`. ORDER BY / GROUP BY may reference output aliases in Postgres; `ORDER BY 3` works. Fix in `packages/sql-guard/src/guard.ts` + add guard tests.
+  - Reconsider 02-04's CI `db-live` job: a full load is ~5–6 min per PR (02-03 SUMMARY) — prefer roles tests + a small-scale load in CI.
+  - 02-04 verifier must cast seed reference SQL to numeric (integer division shows 0) — see 02-03 SUMMARY.
 
 ### Quick Tasks Completed
 
