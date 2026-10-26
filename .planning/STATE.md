@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 2
 current_phase_name: Postgres Roles + Seeded Data
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-10-26T06:06:12.968Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-10-26T09:04:28.680Z"
 last_activity: 2026-10-26
 last_activity_desc: Phase 2 execution started
-state_head: db9478e7fc229b5a9ddfc21cc3f3e92ffa30674a
+state_head: 0c9ba7234b817dd78bbd06e27eeca9106acea970
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-26)
 ## Current Position
 
 Phase: 2 (Postgres Roles + Seeded Data) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-10-26 — Phase 2 execution started
 
@@ -66,6 +66,7 @@ Progress: [███░░░░░░░] 29%
 | Phase 03-sql-guard-read-only-executor P4 | 12min | 3 tasks | 9 files |
 | Phase 2 P1 | 7 min | 3 tasks | 22 files |
 | Phase 02-postgres-roles-seeded-data P2 | 5 min | 3 tasks | 7 files |
+| Phase 02-postgres-roles-seeded-data P3 | 2h56min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,9 @@ Recent decisions affecting current work:
 - [Phase 2]: 03_business.sql runs DDL as SET ROLE owner plus search_path business; loader reset uses DELETE FROM, not TRUNCATE CASCADE
 - [Phase 02-postgres-roles-seeded-data]: Triple verification (size plus blob SHA-1 plus SHA-256) for all eight Olist files since contents API was reachable
 - [Phase 02-postgres-roles-seeded-data]: Uniform SeedEntry schema with optional payload; injection reference SQL uses products.name per real DDL
+- [Phase 02-postgres-roles-seeded-data]: September population is synthesized (clone August delivered orders into Sept 01..30): the shifted publisher tail is thin and canceled
+- [Phase 02-postgres-roles-seeded-data]: Scenario magnitudes use dynamic delete-to-target compensation against August baselines; A2 runs last skipping S1/S3 rows so all ratios land exactly
+- [Phase 02-postgres-roles-seeded-data]: TRUNCATE-all reset plus 50k-row chunked COPYs: full reload in ~6 min; partial --tables loads are iteration-only and skip the manifest gate
 
 ### Pending Todos
 
@@ -126,6 +130,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-26T06:06:12.905Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-10-26T09:04:28.606Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None

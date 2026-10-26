@@ -35,7 +35,7 @@
 ### Data & Seeds (DATA)
 
 - [x] **DATA-01**: Localized schema has ≥8 tables with FKs (customers, orders, order_items, products, categories, sellers, payments, reviews, regions, channels, employees, promotions) over 2025–2026, VND, Vietnamese provinces grouped into 3 regions
-- [ ] **DATA-02**: `pnpm data:load` loads the Olist-derived dataset deterministically (seeded RNG, checksums) with `order_items` ≥ 1,000,000 rows
+- [x] **DATA-02**: `pnpm data:load` loads the Olist-derived dataset deterministically (seeded RNG, checksums) with `order_items` ≥ 1,000,000 rows
 - [x] **DATA-03**: PII columns (`customers.phone/email/address`, `employees.salary`) are synthetic via `@faker-js/faker` vi locale (with en fallback); no real personal data
 - [x] **DATA-04**: Loader injects ≥3 known-cause variance scenarios (UC-05), ≥5 anomaly points (UC-10), and ≥3 prompt-injection text rows, documented in `data/seeded_scenarios.md`
 - [x] **DATA-05**: `data/seeded_scenarios.md`, gold SQL and gold results are excluded from agent context and from OpenWiki (`.openwikiignore`), with a test that fails if agent code reads them
@@ -144,7 +144,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DB-03 | Phase 2 | Complete |
 | DB-04 | Phase 2 | Complete |
 | DATA-01 | Phase 2 | Complete |
-| DATA-02 | Phase 2 | Pending |
+| DATA-02 | Phase 2 | Complete |
 | DATA-03 | Phase 2 | Complete |
 | DATA-04 | Phase 2 | Complete |
 | DATA-05 | Phase 2 | Complete |
