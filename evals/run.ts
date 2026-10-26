@@ -1,18 +1,26 @@
-// Eval CLI (EVAL-01, D-15): small tsx runner behind `pnpm eval`.
+// Eval CLI (EVAL-01, D-15, G-01): small tsx runner behind `pnpm eval`.
 // Discovers evals/uc-*/ fixtures plus evals/safety fixtures, validates each
-// case, runs every case through the live harness adapter (buildRootGraph
+// case, runs data cases through the live harness adapter (buildRootGraph
 // with the deterministic fake model over the running MCP gateway + loaded
 // DB, per the 01-14 live-harness recipe), grades data cases with
-// exGrader.ts, records safety cases by live outcome, and writes versioned
+// exGrader.ts, drives every safety case through the REAL
+// ValidatedQueryExecutor plus LocalQuerySafetyGate plus the real MCP gateway
+// with a scripted per-case model (the fixture attack SQL, deterministic —
+// the only prompt consumer, and it ignores its input), and writes versioned
 // JSON results. The injectable stub adapter stays exported for unit tests;
 // main() always runs live — never a fake pass. Exit contract: 0 all EX
-// pass, 1 graded failure, 2 infrastructure failure (DB/gateway/env —
-// clear message, never a hang).
+// pass AND all safety pass, 1 graded failure (data or safety), 2
+// infrastructure failure (DB/gateway/env — clear message, never a hang).
 //
 // NOTE: case validation here is a small structural checker, not zod: zod
 // does not resolve from the repo root under pnpm isolation (only workspace
 // packages declare it). The checker enforces the same required fields the
 // finalized case schema mandates.
+//
+// Safety secrecy: fixture attack text reaches only the scripted model (which
+// ignores its prompt input), the pure guard/gate functions, and the gateway
+// under test. The driver uses a noop span sink, writes no trace files, and
+// evals/** stays under .openwikiignore.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -20,10 +28,26 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildRootGraph } from "@se373/agent";
+import { buildRootGraph, callMcpTool } from "@se373/agent";
 import { createCheckpointer } from "@se373/agent/ports";
+import {
+  ValidatedQueryExecutor,
+  localQuerySafetyGate,
+  type ChatModelLike,
+  type McpToolCaller,
+} from "@se373/agent/queryExecutor";
+import { sqlGuard, warmupSqlGuard } from "@se373/access-policy";
+import type { SchemaCatalog } from "@se373/contracts";
+import { LARGE_TABLES } from "../packages/mcp-server/src/catalog.js";
 import { gradeExecution } from "./exGrader.js";
 import { compareRuns, type EvalResultsFile } from "./regression.js";
+import {
+  gatewayStageFor,
+  gradeResubmitPair,
+  gradeSafetyCase,
+  validateSafetyRecord,
+  type SafetyCase,
+} from "./safety.js";
 
 export { gradeExecution } from "./exGrader.js";
 export { compareRuns } from "./regression.js";
@@ -58,14 +82,8 @@ export interface HarnessOutcome {
 
 export type HarnessAdapter = (c: EvalCase) => Promise<HarnessOutcome>;
 
-export interface SafetyRecord {
-  id: string;
-  attack: string;
-  question: string;
-  role: string;
-  expectedBlockingLayer: string;
-  notes: string;
-}
+/** Safety fixture record (EVAL-04, G-01): validated by safety.ts. */
+export type { SafetyCase } from "./safety.js";
 
 const DIFFICULTIES = new Set(["easy", "medium", "hard"]);
 
@@ -200,6 +218,8 @@ async function httpOk(url: string): Promise<boolean> {
 export interface LiveHandle {
   adapter: HarnessAdapter;
   close: () => Promise<void>;
+  /** Base URL of the booted gateway child (safety driver reuses it). */
+  mcpUrl: string;
 }
 
 /**
@@ -331,6 +351,7 @@ export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
 
   return {
     adapter,
+    mcpUrl,
     close: async () => {
       gateway.kill();
       await (checkpointer as unknown as { end?: () => Promise<void> }).end?.();
@@ -419,14 +440,211 @@ function loadUcCases(repoRoot: string, uc: string): EvalCase[] {
   return out;
 }
 
-function loadSafety(repoRoot: string): SafetyRecord[] {
+function loadSafety(repoRoot: string): SafetyCase[] {
   const file = path.join(repoRoot, "evals", "safety", "cases.jsonl");
   if (!existsSync(file)) return [];
   return readFileSync(file, "utf8")
     .trim()
     .split("\n")
     .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line) as SafetyRecord);
+    .map((line, index) => {
+      const checked = validateSafetyRecord(JSON.parse(line) as unknown);
+      if (!checked.ok || !checked.value) {
+        throw new Error(
+          `invalid safety case line ${index + 1}: ${checked.errors?.join("; ")}`,
+        );
+      }
+      return checked.value;
+    });
+}
+
+interface SafetyDrive {
+  blocked: boolean;
+  observedBlockingLayer: string;
+  status: string;
+  code: string;
+}
+
+/** Scripted model: proposes the fixture attack SQL, ignoring its input. */
+function scriptedModel(sql: string, tablesUsed: string[]): ChatModelLike {
+  return {
+    withStructuredOutput: () => ({
+      invoke: () => Promise.resolve({ sql, tablesUsed }),
+    }),
+  };
+}
+
+/**
+ * HTTP caller over the real gateway as the case role. Gateway denials arrive
+ * as error-shaped JSON text; they are rethrown as code-carrying Errors so the
+ * executor routes them faithfully (statusForError + repairable logic).
+ */
+function httpCaller(
+  mcpUrl: string,
+  token: string,
+  runId: string,
+  userId: string,
+  roleScope: string,
+  calls: string[],
+): McpToolCaller {
+  return {
+    call: async (tool: string, args: Record<string, unknown>) => {
+      calls.push(tool);
+      const result = await callMcpTool(
+        { mcpUrl, token, runId, userId, roleScope },
+        tool,
+        args,
+      );
+      const parsed: unknown = JSON.parse(result.text);
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "code" in parsed &&
+        typeof (parsed as { code: unknown }).code === "string"
+      ) {
+        const denied = parsed as {
+          code: string;
+          message?: unknown;
+          cursorPosition?: unknown;
+        };
+        const failure = new Error(
+          typeof denied.message === "string" && denied.message.length > 0
+            ? denied.message
+            : `MCP tool ${tool} failed with ${denied.code}`,
+        ) as Error & { code?: unknown; cursorPosition?: unknown };
+        failure.code = denied.code;
+        if (typeof denied.cursorPosition === "number") {
+          failure.cursorPosition = denied.cursorPosition;
+        }
+        throw failure;
+      }
+      return parsed;
+    },
+  };
+}
+
+interface DescribeColumns {
+  table: string;
+  columns: { name: string; type: string; nullable: boolean; sensitive: boolean }[];
+}
+
+/** Catalog from real gateway describe calls, overlaid with large flags. */
+async function safetyCatalog(
+  caller: McpToolCaller,
+  tables: string[],
+): Promise<SchemaCatalog> {
+  const large = new Set(LARGE_TABLES.map((name) => name.toLowerCase()));
+  const out: SchemaCatalog["tables"] = [];
+  for (const table of tables) {
+    const raw = (await caller.call("describe_table", {
+      table,
+    })) as unknown as DescribeColumns;
+    out.push({
+      name: raw.table,
+      schema: "public",
+      columns: raw.columns.map((column) => ({
+        ...column,
+        large: large.has(raw.table.toLowerCase()),
+      })),
+    });
+  }
+  return { tables: out };
+}
+
+/**
+ * Drive one attack through the real ValidatedQueryExecutor +
+ * LocalQuerySafetyGate + real MCP gateway, attributing the stopping layer
+ * from actual behavior: zero explain/run calls means a local stop
+ * (disambiguated by re-running the exact pure guard/gate inputs);
+ * gateway-reached denials map by their real error code.
+ */
+async function driveSafetyCase(
+  mcpUrl: string,
+  c: SafetyCase,
+): Promise<SafetyDrive> {
+  const tokenEnv = ROLE_TOKEN_ENV[c.role];
+  if (!tokenEnv) {
+    throw new Error(`unknown safety role '${c.role}' for case ${c.id}`);
+  }
+  const token = process.env[tokenEnv] ?? "";
+  if (!token) {
+    throw new Error(`eval: ${tokenEnv} is not set for safety case ${c.id}`);
+  }
+  const runId = randomUUID();
+  const calls: string[] = [];
+  const caller = httpCaller(mcpUrl, token, runId, c.role, c.role, calls);
+  const catalog = await safetyCatalog(caller, c.candidateTables);
+  const executor = new ValidatedQueryExecutor({
+    model: scriptedModel(c.attackSql, c.candidateTables),
+    mcp: caller,
+    emitSpan: () => "",
+  });
+  const result = await executor.run({
+    question: c.question,
+    candidateTables: c.candidateTables,
+    principal: { runId, userId: c.role, roleScope: c.role },
+    catalog,
+  });
+  const reachedGateway =
+    calls.includes("explain_query") || calls.includes("run_query");
+  if (!reachedGateway) {
+    if (result.status !== "restricted" && result.status !== "needs_clarification") {
+      throw new Error(
+        `safety case ${c.id}: local stop but executor status is '${result.status}' — attribution impossible`,
+      );
+    }
+    const guard = await sqlGuard(c.attackSql, catalog);
+    if (!guard.ok) {
+      return {
+        blocked: true,
+        observedBlockingLayer: "local-guard",
+        status: result.status,
+        code: guard.error.code,
+      };
+    }
+    const gate = localQuerySafetyGate(c.attackSql, guard, catalog);
+    if (gate.verdict === "deny") {
+      return {
+        blocked: true,
+        observedBlockingLayer: "safetyGate",
+        status: result.status,
+        code: gate.error.code,
+      };
+    }
+    if (gate.verdict === "needs_clarification") {
+      return {
+        blocked: true,
+        observedBlockingLayer: "safetyGate",
+        status: result.status,
+        code: "needs_clarification",
+      };
+    }
+    throw new Error(
+      `safety case ${c.id}: executor stopped locally but guard and gate both pass — attribution impossible`,
+    );
+  }
+  if (result.status === "ok" || result.status === "no_data") {
+    return {
+      blocked: false,
+      observedBlockingLayer: "none-allowed",
+      status: result.status,
+      code: result.status,
+    };
+  }
+  if (result.status === "restricted" || result.status === "error") {
+    return {
+      blocked: true,
+      observedBlockingLayer: gatewayStageFor(result.error.code, result.error.message),
+      status: result.status,
+      code: result.error.code,
+    };
+  }
+  return {
+    blocked: false,
+    observedBlockingLayer: "gateway:executor",
+    status: result.status,
+    code: result.status,
+  };
 }
 
 async function main(): Promise<void> {
@@ -488,36 +706,53 @@ async function main(): Promise<void> {
       );
     }
 
+    await warmupSqlGuard();
     const safety = loadSafety(repoRoot);
     const safetyOut: Record<string, unknown>[] = [];
     for (const s of safety) {
-      const outcome = await live.adapter({
-        id: s.id,
-        question: s.question,
-        role: s.role,
-        datasetVersion: "safety-1",
-      });
-      const blocked =
-        outcome.status !== "ok" || (outcome.rows ?? []).length === 0;
+      const resubmit = s.id === "safety-05-resubmit";
+      const first = await driveSafetyCase(live.mcpUrl, s);
+      let observed = first.observedBlockingLayer;
+      let pass: boolean;
+      let reason: string;
+      if (resubmit) {
+        const second = await driveSafetyCase(live.mcpUrl, s);
+        const graded = gradeResubmitPair(s, first, second);
+        pass = graded.pass;
+        reason = graded.reason;
+        observed = first.observedBlockingLayer;
+      } else {
+        const graded = gradeSafetyCase(s, first);
+        pass = graded.pass;
+        reason = graded.reason;
+      }
       safetyOut.push({
         id: s.id,
         attack: s.attack,
         expectedBlockingLayer: s.expectedBlockingLayer,
-        result: "executed",
-        status: outcome.status,
-        blocked,
-        observed: outcome.reason ?? `${outcome.status} with ${(outcome.rows ?? []).length} rows`,
+        observedBlockingLayer: observed,
+        expectBlocked: s.expectBlocked,
+        blocked: first.blocked,
+        pass,
+        reason,
+        status: first.status,
+        code: first.code,
+        fix: s.fix,
         notes: s.notes,
       });
+      console.log(
+        `  safety ${s.id}: ${pass ? "PASS" : "FAIL"} — ${reason} (expected ${s.expectedBlockingLayer})`,
+      );
     }
     writeFileSync(
       path.join(repoRoot, "results", "safety.json"),
       `${JSON.stringify({ datasetVersion: "safety-1", cases: safetyOut }, null, 2)}\n`,
       "utf8",
     );
-    const blockedCount = safetyOut.filter((s) => s["blocked"] === true).length;
+    const passedCount = safetyOut.filter((s) => s["pass"] === true).length;
+    if (passedCount !== safetyOut.length) failed = true;
     console.log(
-      `eval safety: ${blockedCount}/${safetyOut.length} attack cases blocked (live harness; fake-model runs cannot steer SQL, so unblocked rows are expected — see SUMMARY)`,
+      `eval safety: ${passedCount}/${safetyOut.length} cases pass (scripted attacks through the real executor plus gateway; any miss fails the run)`,
     );
   } finally {
     await live.close();

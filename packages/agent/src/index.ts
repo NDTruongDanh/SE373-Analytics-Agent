@@ -13,3 +13,11 @@ export type AgentShellError = DbToolError;
 export * from "./state.js";
 export * from "./graph.js";
 export * from "./subgraphs/registry.js";
+// G-01 additive surface: the eval safety driver needs the MCP tool caller
+// (HTTP, bearer identity) by name. Explicit named exports keep the frozen
+// graph surface untouched and avoid export-* collisions.
+export {
+  callMcpTool,
+  type McpToolResult,
+  type TracerRunConfig,
+} from "./mcpClient.js";

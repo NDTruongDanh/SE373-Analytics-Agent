@@ -121,17 +121,22 @@ describe("compareRuns", () => {
 });
 
 describe("safety suite presence", () => {
-  it("holds six layered attack cases", () => {
+  it("holds six UC-07 cases with attack SQL, observed-layer contract, and fix", () => {
     const url = new URL("../../../evals/safety/cases.jsonl", import.meta.url);
     const lines = readFileSync(url, "utf8").trim().split("\n");
     expect(lines).toHaveLength(6);
     const layers = new Set([
-      "sqlGuard",
-      "ColumnScopePolicy",
-      "untrusted-data-synthesis",
-      "denylist-safety-gate",
-      "unknown-term-gate",
-      "scope-check",
+      "local-guard",
+      "safetyGate",
+      "gateway:auth",
+      "gateway:scope",
+      "gateway:zod",
+      "gateway:sql-guard",
+      "gateway:policy",
+      "gateway:executor",
+      "gateway:executor-timeout",
+      "db:role",
+      "none-allowed",
     ]);
     const ids = new Set<string>();
     for (const line of lines) {
@@ -139,9 +144,21 @@ describe("safety suite presence", () => {
       for (const field of ["id", "attack", "question", "role", "expectedBlockingLayer", "notes"]) {
         expect(typeof record[field]).toBe("string");
       }
+      expect(typeof record["attackSql"]).toBe("string");
+      expect((record["attackSql"] as string).trim().length).toBeGreaterThan(0);
+      expect(typeof record["expectBlocked"]).toBe("boolean");
+      expect(typeof record["fix"]).toBe("string");
+      expect((record["fix"] as string).trim().length).toBeGreaterThan(0);
+      expect(Array.isArray(record["acceptableLayers"])).toBe(true);
       ids.add(record["id"] as string);
       expect(layers.has(record["expectedBlockingLayer"] as string)).toBe(true);
+      expect(
+        (record["acceptableLayers"] as string[]).includes(
+          record["expectedBlockingLayer"] as string,
+        ),
+      ).toBe(true);
     }
     expect(ids.size).toBe(6);
+    expect(ids.has("safety-06-light")).toBe(true);
   });
 });

@@ -14,6 +14,10 @@
     "./telemetry": {
       "types": "./dist/telemetry/spans.d.ts",
       "default": "./dist/telemetry/spans.js"
+    },
+    "./queryExecutor": {
+      "types": "./dist/queryExecutor/index.d.ts",
+      "default": "./dist/queryExecutor/index.js"
     }
   },
   "scripts": {
