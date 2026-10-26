@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Monorepo + Contracts Freeze** - pnpm workspaces, CI, DB-import ban, and frozen zod contracts everything imports (completed 2026-10-25)
 - [ ] **Phase 2: Postgres Roles + Seeded Data** - Read-only roles proven by test plus deterministic ≥1M-row localized dataset
-- [ ] **Phase 3: SQL Guard + Read-Only Executor** - AST allowlist guard and read-only executor as an importable library
+- [x] **Phase 3: SQL Guard + Read-Only Executor** - AST allowlist guard and read-only executor as an importable library (completed 2026-10-25)
 - [ ] **Phase 4: MCP db-tools Server + Scope Auth** - 5 tools over Streamable HTTP with bearer-token scope enforcement
 - [ ] **Phase 5: Agent Skeleton + Root Graph** - LangGraph.js graph with checkpointer, MCP client, seams, and ≥2-tools run
 - [ ] **Phase 6: Trace, Eval + Skills Scaffolding** - JSONL trace with PII redaction, EX grader, eval runner, safety suite
@@ -61,7 +61,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The read-only executor runs `BEGIN READ ONLY` → `SET LOCAL statement_timeout` → cursor `read(maxRows+1)` → `ROLLBACK`, returns `{columns, rows, rowCount, truncated, durationMs}`, and always releases the connection; timeouts surface as `TIMEOUT` with no host/user/DSN/path/stack leakage
   3. Owner can import the guard for local pre-flight, and UC-09 can plug column enforcement into the `AccessPolicy` / `ColumnScopePolicy` stub wired to `policies/sensitive_columns.yaml` without changing the (future) server
 
-**Plans**: TBD
+**Plans**: 4/4 plans complete
+- [x] 03-01-PLAN.md
+- [x] 03-02-PLAN.md
+- [x] 03-03-PLAN.md
+- [x] 03-04-PLAN.md
 
 ### Phase 4: MCP db-tools Server + Scope Auth
 
@@ -125,7 +129,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7, except p
 |-------|----------------|--------|-----------|
 | 1. Monorepo + Contracts Freeze | 3/3 | Complete    | 2026-10-25 |
 | 2. Postgres Roles + Seeded Data | 0/TBD | Not started | - |
-| 3. SQL Guard + Read-Only Executor | 0/TBD | Not started | - |
+| 3. SQL Guard + Read-Only Executor | 4/4 | Complete    | 2026-10-25 |
 | 4. MCP db-tools Server + Scope Auth | 0/TBD | Not started | - |
 | 5. Agent Skeleton + Root Graph | 0/TBD | Not started | - |
 | 6. Trace, Eval + Skills Scaffolding | 0/TBD | Not started | - |

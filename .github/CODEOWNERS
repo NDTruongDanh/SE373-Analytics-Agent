@@ -6,6 +6,7 @@ packages/contracts/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace wit
 packages/mcp-server/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
 packages/access-policy/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
 packages/agent/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
+packages/sql-guard/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
 apps/api/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
 apps/web/ @NDTruongDanh @HungPham-VNU # TODO(UC-02 owner): replace with handle during review
 policies/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review

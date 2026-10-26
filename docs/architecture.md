@@ -43,6 +43,7 @@ records it. Safety lives in code, never only in the prompt (PRD §1.5.2):
 | Component | Owns | Status |
 |---|---|---|
 | `packages/contracts` | All shared zod schemas (see §5). Imports only `zod`. | ✅ |
+| `packages/sql-guard` | Pure guard library: `sqlGuard` + denylist over pgsql-parser AST. Imported by mcp-server (enforcement) and agent (local pre-flight). Never imports DB code. | ✅ guard core · matrix 🔜 Phase 3 |
 | `packages/mcp-server` | The only DB gateway: 5 tools + 2 resources, scope auth, SQL guard, read-only executor, audit log | Shell ✅ · logic 🔜 Phase 3–4 |
 | `packages/access-policy` | `AccessPolicy` interface + `ColumnScopePolicy` (mask/deny sensitive columns); UC-08 can plug in `RbacPolicy` later. Pure functions, no DB I/O. | Shell ✅ · logic 🔜 Phase 3 |
 | `packages/agent` | LangGraph.js root graph, UC subgraphs/nodes, retriever, citation validator, MCP client. **Never imports DB code.** | Shell ✅ · graph 🔜 Phase 5 |
@@ -55,9 +56,10 @@ records it. Safety lives in code, never only in the prompt (PRD §1.5.2):
 
 ```
 contracts      ← everyone (contracts imports nothing but zod)
+sql-guard      → contracts (pure AST validator: pgsql-parser + @pgsql/traverse only, never pg)
 access-policy  → contracts
-mcp-server     → contracts, access-policy, pg, pg-cursor, pgsql-parser, pino, yaml
-agent          → contracts, access-policy (local pre-check only), LangGraph, MCP client
+mcp-server     → contracts, access-policy, sql-guard, pg, pg-cursor, pino, yaml
+agent          → contracts, access-policy, sql-guard (local pre-flight only), LangGraph, MCP client
 api            → agent, contracts            (talks to mcp-server over MCP, never imports it)
 web            → contracts only
 ```
@@ -181,7 +183,7 @@ hidden from the agent (and from OpenWiki).
 | UC-01 text-to-SQL | `packages/agent/src/subgraphs/uc01*`, `skills/text-to-sql/`, `evals/uc01/` | generate → pre-check → execute → repair (≤ 3) subgraph, benchmark ≥ 30 questions | `run_query`, `describe_table`, `SQLAnswerSchema`, error codes |
 | UC-02 semantic layer | `semantic/*.yaml`, `packages/agent/src/semantic/*`, retrieve node, `evals/uc02/` | corpus, indexer, hybrid retriever, citation validator | `SemanticChunkMetadataSchema`, `SQLAnswer.citations` |
 | UC-05 root cause | `packages/agent/src/subgraphs/uc05*`, `skills/root-cause-analysis/` | plan → `interrupt` review → branch → attribution | `run_query`, checkpointer, interrupt/resume |
-| UC-09 db-tools (HungPham-VNU) | `packages/mcp-server`, `packages/access-policy`, `policies/` | tools, scopes, guard, masking, audit | all of `tools.ts` + `errors.ts` |
+| UC-09 db-tools (HungPham-VNU) | `packages/mcp-server`, `packages/sql-guard`, `packages/access-policy`, `policies/` | tools, scopes, guard, masking, audit | all of `tools.ts` + `errors.ts` |
 | UC-10 alerts | separate scheduled graph in `packages/agent`, `skills/anomaly-alert/`, `evals/uc10/` | subscriptions, detection (code), drill-down, deduped `send_alert` | `run_query`, trace envelope |
 
 **Extension rules**

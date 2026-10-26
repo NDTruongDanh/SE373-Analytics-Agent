@@ -18,7 +18,7 @@
     "wiki:visualize": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js visualize",
     "typecheck": "tsc -b",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "tsc -b && vitest run",
     "docs:interface": "tsx scripts/generate-interface.mjs"
   },
   "devDependencies": {

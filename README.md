@@ -4,6 +4,7 @@ Initial setup for main branch.
 
 **Start here:** [`docs/architecture.md`](docs/architecture.md) — harness
 architecture, package boundaries, shared contracts, and where each UC's code goes.
+Team handoff guide (Vietnamese): [`docs/HUONG-DAN-NHOM.md`](docs/HUONG-DAN-NHOM.md).
 
 ## OpenWiki docs (pnpm + GitHub Actions + OpenCode Go)
 
