@@ -6,8 +6,6 @@
 
 export {
   CHECKPOINT_SCHEMA,
-  THREAD_ID_MAX_LENGTH,
-  buildThreadId,
   createCheckpointer,
   type Checkpointer,
   type CreateCheckpointerOptions,

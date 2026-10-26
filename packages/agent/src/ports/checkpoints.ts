@@ -26,12 +26,6 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 /** Postgres schema that PostgresSaver.setup() owns (harness_state). */
 export const CHECKPOINT_SCHEMA = "langgraph" as const;
 
-/**
- * Upper bound for thread_id length. PostgresSaver keys checkpoints on
- * thread_id text; keep ids strictly below 255 chars (arch §4.5, D-13).
- */
-export const THREAD_ID_MAX_LENGTH = 255;
-
 /** Concrete saver type returned by {@link createCheckpointer}. */
 export type Checkpointer = PostgresSaver;
 
@@ -98,20 +92,6 @@ function rejectAgentRo(connString: string): void {
   }
 }
 
-/**
- * Build a checkpoint thread_id for one conversation.
- * Format `chat:{userId}:{sessionId}` per the agent research anti-pattern
- * fix: a fresh thread_id per turn breaks multi-turn context, while a bare
- * userId leaks context across conversations. Throws fail-fast when the
- * composed id would reach {@link THREAD_ID_MAX_LENGTH} chars.
- */
-export function buildThreadId(userId: string, sessionId: string): string {
-  const threadId = `chat:${userId}:${sessionId}`;
-  if (threadId.length >= THREAD_ID_MAX_LENGTH) {
-    throw new Error(
-      `buildThreadId: composed thread_id is ${threadId.length} chars, ` +
-        `over the ${THREAD_ID_MAX_LENGTH - 1} limit; pass shorter ids.`,
-    );
-  }
-  return threadId;
-}
+// Thread ids belong to 01-12's hitl module (makeThreadId/isSameThread):
+// this port takes no id arguments and documents no id format of its own,
+// so the two helpers can never drift apart.

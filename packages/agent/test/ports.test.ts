@@ -8,8 +8,6 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import {
   CHECKPOINT_SCHEMA,
-  THREAD_ID_MAX_LENGTH,
-  buildThreadId,
   createCheckpointer,
 } from "../src/ports/index.js";
 
@@ -66,20 +64,6 @@ describe("createCheckpointer (DB-free)", () => {
     const conn = "postgresql://harness_state:harness_state@127.0.0.1:5433/chosen";
     await createCheckpointer(conn, { schema: "langgraph" });
     expect(fromConn).toHaveBeenCalledWith(conn, { schema: "langgraph" });
-  });
-});
-
-describe("buildThreadId", () => {
-  it("composes chat:{userId}:{sessionId} under the length cap", () => {
-    const id = buildThreadId("user-1", "session-1");
-    expect(id).toBe("chat:user-1:session-1");
-    expect(id.length).toBeLessThan(THREAD_ID_MAX_LENGTH);
-  });
-
-  it("throws fail-fast on ids that would reach the cap", () => {
-    expect(() => buildThreadId("u".repeat(200), "s".repeat(200))).toThrow(
-      /over the .* limit/,
-    );
   });
 });
 
