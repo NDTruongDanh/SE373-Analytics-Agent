@@ -2,9 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
     "rootDir": "src",
     "composite": true
   },
   "include": ["src"],
-  "references": [{ "path": "../contracts" }]
+  "references": [{ "path": "../contracts" }, { "path": "../sql-guard" }]
 }

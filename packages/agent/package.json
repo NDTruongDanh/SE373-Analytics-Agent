@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -b",
-    "test": "vitest run"
+    "test": "tsc -b && vitest run"
   },
   "dependencies": {
     "@se373/contracts": "workspace:*",
