@@ -12,3 +12,7 @@ openwiki/.run.json
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# TS project-reference build output (never commit)
+dist/
+*.tsbuildinfo

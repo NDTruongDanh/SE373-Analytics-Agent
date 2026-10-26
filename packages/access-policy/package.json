@@ -1,0 +1,12 @@
+{
+  "name": "@se373/access-policy",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@se373/contracts": "workspace:*"
+  }
+}
