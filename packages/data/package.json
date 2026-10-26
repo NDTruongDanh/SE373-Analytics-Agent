@@ -1,0 +1,30 @@
+{
+  "name": "@se373/data",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "tsc -b && vitest run"
+  },
+  "dependencies": {
+    "@se373/contracts": "workspace:*",
+    "@faker-js/faker": "^10.6.0",
+    "csv-parse": "^7.0.3",
+    "pg": "^8.23.1",
+    "pg-copy-streams": "^7.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "@types/pg-copy-streams": "^1.2.5"
+  }
+}

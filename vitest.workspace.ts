@@ -5,6 +5,7 @@ export default [
   "packages/mcp-server",
   "packages/access-policy",
   "packages/sql-guard",
+  "packages/data",
   "apps/api",
   "apps/web",
 ];

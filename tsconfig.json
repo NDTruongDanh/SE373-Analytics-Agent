@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
   "files": [],
-  "references": [{ "path": "packages/contracts" }, { "path": "packages/agent" }, { "path": "packages/mcp-server" }, { "path": "packages/access-policy" }, { "path": "packages/sql-guard" }, { "path": "apps/api" }, { "path": "apps/web" }]
+  "references": [{ "path": "packages/contracts" }, { "path": "packages/agent" }, { "path": "packages/mcp-server" }, { "path": "packages/access-policy" }, { "path": "packages/sql-guard" }, { "path": "packages/data" }, { "path": "apps/api" }, { "path": "apps/web" }]
 }
