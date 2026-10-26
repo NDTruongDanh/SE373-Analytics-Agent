@@ -348,11 +348,13 @@ describe.skipIf(!process.env["OWNER_DATABASE_URL"])(
   () => {
     it("runs the real checks against the loaded DB", async () => {
       const { createOwnerPool } = await import("../src/copy.js");
-      const { readManifest, DEFAULT_MANIFEST_PATH } = await import(
+      const { readManifest, manifestPathFor } = await import(
         "../src/manifest.js"
       );
       const { loadSeedsFile } = await import("../src/seeds.js");
-      const manifest = readManifest(DEFAULT_MANIFEST_PATH);
+      // DATA_SCALE=small when the live DB holds the small-scale load (CI).
+      const scale = process.env["DATA_SCALE"] === "small" ? "small" : "full";
+      const manifest = readManifest(manifestPathFor(scale));
       const pool = createOwnerPool();
       try {
         const client = await pool.connect();

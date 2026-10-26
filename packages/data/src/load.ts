@@ -22,8 +22,9 @@
 // 1M order_items, ~6 min). `pnpm data:load --scale=small` runs the same
 // pipeline with one pass and a 60k target (<2 min, CI per D-10); the FK
 // graph, seed scenarios, and reload gate are identical, only volumes shrink.
-// The scale is recorded in dataset_version, so a scale switch fails the
-// reload gate loudly — delete data/seed_manifest.json when switching scale.
+// The scale is recorded in dataset_version, and each scale pins its own
+// manifest (data/seed_manifest.json for full, data/seed_manifest.small.json
+// for small), so either scale reloads against its own committed checksums.
 import { createReadStream } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,7 +40,7 @@ import {
 import {
   compareManifests,
   DATASET_VERSION,
-  DEFAULT_MANIFEST_PATH,
+  manifestPathFor,
   hashCanonicalCsv,
   readManifest,
   type SeedManifest,
@@ -1403,7 +1404,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     } else {
       let previous: SeedManifest | null = null;
       try {
-        previous = readManifest(DEFAULT_MANIFEST_PATH);
+        previous = readManifest(manifestPathFor(scale));
       } catch {
         previous = null; // First load: no manifest yet, write it below.
       }
@@ -1435,14 +1436,14 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
         tables: { ...previous.tables, ...manifest.tables },
       };
     }
-    writeManifest(merged, DEFAULT_MANIFEST_PATH);
+    writeManifest(merged, manifestPathFor(scale));
     for (const name of tableNames) {
       const entry = merged.tables[name];
       if (entry) {
         console.log(`loaded ${name}: ${String(entry.rows)} rows sha256=${entry.sha256}`);
       }
     }
-    console.log(`manifest: ${DEFAULT_MANIFEST_PATH}`);
+    console.log(`manifest: ${manifestPathFor(scale)}`);
     }
   } finally {
     await pool.end();

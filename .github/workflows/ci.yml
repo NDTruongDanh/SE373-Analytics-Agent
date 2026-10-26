@@ -155,7 +155,7 @@ jobs:
           OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
 
       - name: Verify loaded volume
-        run: pnpm data:verify
+        run: pnpm data:verify --scale=small
         env:
           OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
 

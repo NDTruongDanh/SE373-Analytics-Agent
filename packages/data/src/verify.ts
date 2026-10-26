@@ -9,8 +9,8 @@
 import { pathToFileURL } from "node:url";
 import type { PoolClient } from "pg";
 import { createOwnerPool, withOwnerTx } from "./copy.js";
-import { TABLE_LOADERS } from "./load.js";
-import { DEFAULT_MANIFEST_PATH, readManifest } from "./manifest.js";
+import { TABLE_LOADERS, parseLoadScale } from "./load.js";
+import { manifestPathFor, readManifest } from "./manifest.js";
 import { loadSeedsFile, type SeedsFile } from "./seeds.js";
 
 // Every check funnels through this row shape: one numeric cell.
@@ -200,7 +200,8 @@ export async function runChecks(
 }
 
 export async function main(): Promise<void> {
-  const manifest = readManifest(DEFAULT_MANIFEST_PATH);
+  // `--scale=small` pins the small-scale manifest, matching `data:load`.
+  const manifest = readManifest(manifestPathFor(parseLoadScale(process.argv)));
   const seeds = loadSeedsFile();
   const pool = createOwnerPool();
   try {

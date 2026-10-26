@@ -34,6 +34,7 @@ evals/**
 data/seeded_scenarios.md
 packages/data/src/seeds.json
 data/seed_manifest.json
+data/seed_manifest.small.json
 traces/*.jsonl
 logs/*.jsonl
 

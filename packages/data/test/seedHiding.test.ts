@@ -60,7 +60,7 @@ const PATH_FRAGMENTS: readonly string[] = [
   "data/seeded_scenarios.md",
   "packages/data/src/seeds.json",
   "src/seeds.json",
-  "seed_manifest.json",
+  "seed_manifest", // covers seed_manifest.json and seed_manifest.small.json
 ];
 
 // Roots where even a path pointer is a leak (code that could load the file).
@@ -152,6 +152,7 @@ describe("DB-07 seed hiding", () => {
       "data/seeded_scenarios.md",
       "packages/data/src/seeds.json",
       "seed_manifest.json",
+      "seed_manifest.small.json",
     ]) {
       expect(ignore).toContain(fragment);
     }

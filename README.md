@@ -19,6 +19,8 @@ pnpm db:up             # Postgres 16 + pgvector on 127.0.0.1:5433 (loopback only
 pnpm data:load         # full Olist-VN seed (~1M order_items, a few minutes)
 pnpm data:load --scale=small  # CI-speed seed: same FK graph, ~53 s + verify
 pnpm data:verify       # pins the loaded volume to data/seed_manifest.json
+                       #   (after a small load: pnpm data:verify --scale=small,
+                       #    pinned to data/seed_manifest.small.json)
 pnpm demo:tracer       # end-to-end proof: gateway + host, 7 PII-clean trace events
 pnpm eval --uc uc09    # live harness eval (or --all); needs the DB + gateway env
 pnpm skills:check      # declarative-skills invariant (no scripts/credentials)

@@ -30,6 +30,16 @@ export const DEFAULT_MANIFEST_PATH = fileURLToPath(
   new URL("../../../data/seed_manifest.json", import.meta.url),
 );
 
+// One committed manifest per scale, so a CI small load and a local full load
+// each reproduce their own pinned checksums instead of tripping the gate.
+export const SMALL_MANIFEST_PATH = fileURLToPath(
+  new URL("../../../data/seed_manifest.small.json", import.meta.url),
+);
+
+export function manifestPathFor(scale: "full" | "small"): string {
+  return scale === "small" ? SMALL_MANIFEST_PATH : DEFAULT_MANIFEST_PATH;
+}
+
 export const DATASET_VERSION = "olist-vi-2025-2026-v1";
 
 // Canonical form: one `col1,col2,…` line per row, rows in ORDER BY pk order,
