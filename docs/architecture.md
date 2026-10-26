@@ -74,7 +74,7 @@ flowchart TB
     direction LR
     LLM1[["Profile 1: Intent & Plan Proposer<br/>Structured Intent · Ambiguity Check<br/>MECE Decomposition Tree"]]
     LLM2[["Profile 2: SQL Candidate Proposer<br/>Single SELECT/WITH Generation<br/>Sanitized Error Self-Repair"]]
-    LLM3[["Profile 3: Tool-Free Synthesizer<br/>SQLAnswer · InsightReport · RootCause · Alert<br/>🚫 ZERO TOOLS BOUND (&lt;untrusted_data&gt;)"]]
+    LLM3[["Profile 3: Tool-Free Synthesizer<br/>SQLAnswer · InsightReport · RootCause · Alert<br/>🚫 ZERO TOOLS BOUND (untrusted_data tags)"]]
   end
 
   %% ─── PLANE 5: CAPABILITY, POLICY & STORAGE PLANE ───
@@ -154,7 +154,7 @@ flowchart TB
   %% ─── K7 PRE-RESPONSE VERIFICATION & DELIVERY ───
   subgraph VERIFY["5. Tool-Free Synthesis & K7 Verification Gates (UC-02 / UC-03 / UC-05 / UC-10)"]
     direction LR
-    SYN["Tool-Free Synthesis & VIZ Proposal<br/>(&lt;untrusted_data&gt; · ≤50-Row Preview · 🚫 No Tools Bound)"]
+    SYN["Tool-Free Synthesis & VIZ Proposal<br/>(untrusted_data tags · ≤50-Row Preview · 🚫 No Tools Bound)"]
     CIT_V["CitationValidator (UC-02)<br/>(100% Catalog Match + SQL Header, ≤2 Repairs)"]
     VIZ_V["Chart & Numeric Validators (UC-03 / UC-05)<br/>• Headless render_chart Compile (≤2 Repairs)<br/>• Numeric Claim Match (≤1%) · Attribution Sum (≤5%)"]
     OUT(["Verified AgentResponse Stream<br/>+ Post-Send Deduped send_alert (UC-10)"])
@@ -226,15 +226,15 @@ sequenceDiagram
   H->>L: SQL Candidate Proposal (grounded schema + metric formula + join rules)
   L-->>H: Candidate SQL (single SELECT/WITH)
   H->>H: Local sqlGuard (pgsql-parser) + LocalQuerySafetyGate pre-check
-  H->>M: run_query {sql, maxRows: 200} + Bearer + X-Run-Id/User-Id/Role-Scope
+  H->>M: run_query {sql, maxRows=200} + Bearer + X-Run-Id/User-Id/Role-Scope
   M->>M: 1.Auth → 2.Scope → 3.Zod → 4.sqlGuard → 5.AccessPolicy (full-AST mask + rowScope)
-  M->>DB: BEGIN READ ONLY; SET LOCAL statement_timeout='30s'; CURSOR READ(maxRows+1); ROLLBACK
+  M->>DB: BEGIN READ ONLY → SET LOCAL statement_timeout='30s' → CURSOR READ(maxRows+1) → ROLLBACK
   DB-->>M: Masked rows (or PG error mapped by sanitizeError())
   M->>M: 6.Regex PII post-scan → 7.Append redacted line to logs/mcp_audit.jsonl
   M-->>H: RunQueryOutput (≤1,000 rows in transient RAM, ≤50 in resultPreview)
-  H->>L: Tool-Free Synthesis & VIZ Proposal (<untrusted_data>, ZERO tools bound)
+  H->>L: Tool-Free Synthesis and VIZ Proposal (untrusted_data tags, ZERO tools bound)
   L-->>H: Draft SQLAnswer + InsightReport
-  H->>H: K7 Gates: CitationValidator + headless render_chart + Numeric Verifier (≤1%)
+  H->>H: K7 Gates — CitationValidator + headless render_chart + Numeric Verifier (≤1%)
   H-->>A: Verified AgentResponse + redacted TraceEvents (traces/*.jsonl)
   A-->>W: SSE node progress + final verified AgentResponse
 ```
