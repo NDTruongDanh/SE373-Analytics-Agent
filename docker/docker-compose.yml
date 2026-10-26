@@ -1,24 +1,57 @@
-# Tracer DB (01-01 thin slice, local-only). 01-04 owns the full initdb.
-# Loopback bind only — never 0.0.0.0 (v1 bug). All repo scripts stay plain
-# `docker compose`; in this session run Docker via `sg docker -c`.
-name: se373-tracer
+# Full D-08 database (01-04): PostgreSQL 16 + pgvector on loopback only.
+# Adapted from the v1 compose (origin/feat/phase-2-db:docker/docker-compose.yml):
+# image pinned, DB name chosen, strict loopback port, pgdata volume,
+# initdb bind-mount, pg_isready healthcheck.
+#
+# A clean clone boots with no .env file: every POSTGRES_* and *_PASSWORD
+# variable below has a `:-` dev default. Copy `.env.example` to `.env` only
+# for key-holding runs; custom passwords are picked up via environment.
+#
+# LOCAL-ONLY dev defaults (never reuse in deployed environments):
+#   POSTGRES_PASSWORD      = chosen_postgres_dev   (superuser `postgres`)
+#   OWNER_PASSWORD         = chosen_owner_dev      (DDL/load role `owner`)
+#   AGENT_RO_PASSWORD      = chosen_agent_ro_dev   (read-only role `agent_ro`)
+#   INDEXER_PASSWORD       = chosen_indexer_dev    (RAG CLI role `indexer`)
+#   HARNESS_STATE_PASSWORD = chosen_harness_state_dev (state role `harness_state`)
+# These literals MUST match docker/initdb/01_roles.sql (pure SQL initdb
+# cannot read compose env, so the SQL carries the same dev defaults).
+# 01-03 mirrors them into .env.example; operator secrets (tokens, keys)
+# stay in local `.env` only, never in the repo.
+#
+# Client-URL shapes (loopback-only, password from the matching *_PASSWORD):
+#   postgres:      postgresql://postgres:${POSTGRES_PASSWORD:-chosen_postgres_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
+#   owner:         postgresql://owner:${OWNER_PASSWORD:-chosen_owner_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
+#   agent_ro:      postgresql://agent_ro:${AGENT_RO_PASSWORD:-chosen_agent_ro_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
+#   indexer:       postgresql://indexer:${INDEXER_PASSWORD:-chosen_indexer_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
+#   harness_state: postgresql://harness_state:${HARNESS_STATE_PASSWORD:-chosen_harness_state_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
 services:
   db:
     image: pgvector/pgvector:0.8.7-pg16
-    ports:
-      - "127.0.0.1:5433:5432"
     environment:
-      POSTGRES_DB: chosen
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${CHOSEN_SUPERUSER_PASSWORD:-chosen_postgres_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-chosen}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chosen_postgres_dev}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-chosen_owner_dev}
+      AGENT_RO_PASSWORD: ${AGENT_RO_PASSWORD:-chosen_agent_ro_dev}
+      INDEXER_PASSWORD: ${INDEXER_PASSWORD:-chosen_indexer_dev}
+      HARNESS_STATE_PASSWORD: ${HARNESS_STATE_PASSWORD:-chosen_harness_state_dev}
+    ports:
+      # Loopback only: the dev roles use committed default passwords, so the
+      # DB must never be reachable from other machines on the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - tracer_pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
       - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chosen"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-chosen}",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
       start_period: 10s
+
 volumes:
-  tracer_pgdata:
+  pgdata: {}
