@@ -6,3 +6,4 @@ export const ACCESS_POLICY_SHELL =
 export type AccessPolicyShellError = DbToolError;
 
 export * from "./tracerPrecheck.js";
+export * from "./denylist.js";
