@@ -28,8 +28,12 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildRootGraph, callMcpTool } from "@se373/agent";
+import { buildRootGraph } from "@se373/agent";
 import { createCheckpointer } from "@se373/agent/ports";
+// Relative source import, not the frozen root barrel: graph.test.ts pins the
+// barrel to the root surface only, so the eval-only HTTP caller resolves from
+// the agent source file (same module graph the agent tests use).
+import { callMcpTool } from "../packages/agent/src/mcpClient.js";
 import {
   ValidatedQueryExecutor,
   localQuerySafetyGate,
