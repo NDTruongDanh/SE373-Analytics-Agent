@@ -40,6 +40,11 @@ benchmark questions (UC-01), anomaly detection or RCA logic (UC-10 / UC-05).
 ### Research
 - **D-08:** (user) Run phase research first: Olist file list/columns and download options, Vietnamization mappings, role/grant SQL verified against a real `pgvector/pgvector:0.8.7-pg16` container, fast deterministic loading of ≥ 1M rows (COPY via `pg-copy-streams` vs batched INSERT), seeded RNG, and how to make seeded scenarios detectable by reference SQL.
 
+### Post-research decisions (2026-10-26)
+- **D-09:** (user) Database name **`chosen`** (Chợ Sen), host port **5433** (avoids clashing with a local Postgres on 5432). All `.env.example` URLs, compose and docs use these.
+- **D-10:** (user) Business table DDL lives in **`docker/initdb/03_business.sql`** (versioned, reviewable, created at container init); the loader in `@se373/data` only loads data (plus post-load indexes/FKs if research recommends adding them after COPY).
+- **D-11:** (user) `pnpm data:catalog` (schema catalog JSON export for the SQL guard) is **deferred to Phase 4** — not built in this phase.
+
 ### the agent's Discretion
 - Exact table columns beyond the PRD minimum, Vietnamese province list/region mapping, category translation table, date-shift formula, expansion strategy for `order_items` (noisy duplication preserving weekday seasonality).
 - Checksum mechanism for determinism (e.g. per-table row count + hash of a canonical ordering).
