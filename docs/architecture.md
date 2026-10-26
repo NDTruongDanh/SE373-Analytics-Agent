@@ -386,7 +386,7 @@ The harness is organized around eight orthogonal engineering dimensions that map
 | Memory Tier & Backing Store | DB Role / Access | What It Stores | Lifecycle & Harness Invariant |
 |---|---|---|---|
 | **Tier 1: Transient Validation Buffer** (In-Process RAM) | N/A (ephemeral) | Full `RunQueryOutput` rows ($\le 1,000$ rows) for the active graph step. | Lives only for a single step so UC-03 numeric validators, UC-05 attribution math, and UC-10 z-score detectors compute exact figures without bloating checkpoints. |
-| **Tier 2: Short-Term Conversational & Task State** (`PostgresSaver` on `langgraph.*`) | `harness_state` (zero grants on `public.*`) | `threadId`/`runId` state: `intent`, `semanticChunks`, `resultPreview` ($\le 50$ rows), `pendingClarification`, UC-01 `attempts` ($\le 3$), UC-05 `AnalysisPlan` (`todo\|doing\|done\|skipped\|failed`), UC-10 `AlertSliceState`. | Enables deterministic crash recovery, multi-turn clarification, and `interrupt()` / `Command({resume})` without re-running completed SQL queries. |
+| **Tier 2: Short-Term Conversational & Task State** (`PostgresSaver` on `langgraph.*`) | `harness_state` (zero grants on `public.*`) | `threadId`/`runId` state: `intent`, `semanticChunks`, `resultPreview` ($\le 50$ rows), `pendingClarification`, UC-01 `attempts` ($\le 3$), UC-05 `AnalysisPlan` (`todo\|doing\|done\|skipped\|failed`), UC-10 `AlertSliceState`. | Enables deterministic crash recovery, multi-turn clarification, and `interrupt()` / `Command({resume})` without re-running completed SQL queries. `PostgresSaver.setup()` issues `CREATE SCHEMA` unconditionally and PostgreSQL checks database-level `CREATE` even when the schema exists, so `harness_state` holds `GRANT CREATE ON DATABASE chosen` (narrowest grant: schema creation only; `public.*` stays unreachable by absence of grants). |
 | **Tier 3: Operational App & Audit State** (`app_state.alert_history` + JSONL files) | `harness_state` + append-only file writers | 24h alert deduplication fingerprints (`SHA256(recipientId\|metric\|dimensionKey\|date\|direction)`), `logs/mcp_audit.jsonl`, `traces/*.jsonl`, `failed_alerts_queue.jsonl`. | `alert_history` is written **only after** `send_alert` succeeds; audit and trace files are scanned by the shared PII redactor before disk write. |
 | **Tier 4: Domain Semantic Memory** (`semantic.semantic_chunks` + RAM BM25) | Written by `indexer` CLI; read by `agent_ro` | Versioned YAML chunks (`table`, `column`, `metric`, `join_rule`, `example`, `event`) with `pgvector` HNSW embeddings, `content_hash` (`SHA-256`), and `updated_at`. | Incremental re-indexing updates only modified chunks; `MAX(updated_at)` triggers cross-process hot-reload of in-memory BM25 and citation catalogs. |
 
@@ -419,7 +419,7 @@ The harness is organized around eight orthogonal engineering dimensions that map
 
 ## 5. Shared Contracts (`@se373/contracts`) & Package Boundaries
 
-All packages communicate through `@se373/contracts` (`CONTRACTS_VERSION = "0.1.0"`). Full JSON Schemas are generated into [`docs/mcp_interface.md`](mcp_interface.md) via `pnpm docs:interface` (never hand-edited).
+All packages communicate through `@se373/contracts` (`CONTRACTS_VERSION = "1.0.0"`). Full JSON Schemas are generated into [`docs/mcp_interface.md`](mcp_interface.md) via `pnpm docs:interface` (never hand-edited).
 
 | Contract File | Key Exports | Consumers |
 |---|---|---|
@@ -446,14 +446,14 @@ contracts      ← imported by all packages (imports only zod)
 access-policy  → contracts (pure AST & regex functions; zero DB or network I/O)
 mcp-server     → contracts, access-policy, pg, pg-cursor, pgsql-parser, pino, yaml
 agent          → contracts, access-policy (local pre-check & redaction), @langchain/langgraph, MCP client
-api            → agent, contracts, access-policy (trace redaction), PostgresSaver & AppStateStore (harness_state only)
+api            → agent (root, /ports, /telemetry), contracts, pg (AppStateStore DAO only), PostgresSaver & AppStateStore (harness_state only)
 web            → contracts only
 ```
 
-✅ **Enforced by ESLint (`no-restricted-imports`):**
-- `packages/agent/**` and `apps/**` may never import `@se373/mcp-server` or `**/mcp-server/src/**`.
-- `packages/agent/**`, `packages/access-policy/**`, and `apps/web/**` may never import `pg` or `pg-cursor`.
-- `apps/web/**` may only import workspace types from `@se373/contracts`.
+✅ **Enforced by ESLint (`no-restricted-imports`, final 01-15 pass):**
+- `packages/agent/**`, `packages/access-policy/**`, and `apps/api/**` (except the `AppStateStore` DAO `apps/api/src/store/**` and its test) may never import `pg` or `pg-cursor`; `apps/web/**` may never import them either. Only `packages/mcp-server`, the operator-only `packages/data` loader, and the `apps/api` `AppStateStore` host touch the driver.
+- `packages/agent/**`, `packages/access-policy/**`, and `apps/**` (both `api` and `web`) may never import `@se373/mcp-server` or `**/mcp-server/src/**`.
+- `apps/web/**` may only import workspace types from `@se373/contracts` (every other workspace package is enumerated in the ban, so a future package cannot slip through silently).
 
 ---
 
