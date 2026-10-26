@@ -20,6 +20,7 @@
     "@langchain/mcp-adapters": "~1.1.4",
     "@langchain/openai": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@se373/access-policy": "workspace:*",
     "@se373/contracts": "workspace:*",
     "pino": "^10.4.0",
     "zod": "^4.6.7"
