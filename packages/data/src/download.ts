@@ -14,7 +14,7 @@
 // (sensitive-columns.ts:31-52): pure verify function plus a thin IO wrapper
 // where an explicit argument beats the env override beats the default.
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { createWriteStream, mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
