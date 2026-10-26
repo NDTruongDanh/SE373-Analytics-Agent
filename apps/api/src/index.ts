@@ -163,7 +163,6 @@ if (
   }
   const app = createTracerApi(options);
   const server = app.listen(apiPort, () => {
-    // eslint-disable-next-line no-console
     console.log(`[tracer-api] listening on 127.0.0.1:${apiPort}`);
   });
   await new Promise<void>((resolve) => server.on("listening", resolve));

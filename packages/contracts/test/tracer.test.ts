@@ -105,3 +105,39 @@ describe("tracer contracts delta", () => {
     expect(parsed.tables[0].columns[0].sensitive).toBe(true);
   });
 });
+
+describe("tracer redaction contract", () => {
+  // Schema-level half of the task-4 canary: the contracts support the
+  // redaction vocabulary (MASKED markers validate wherever strings do) and
+  // cap error messages at 500 chars to bound leak surface. The sink-level
+  // half (demo trace + audit scan) lives in mcp-server/test/tracer.test.ts.
+
+  it("accepts MASKED markers in trace event payloads", () => {
+    const event = {
+      runId: "r1",
+      threadId: "t1",
+      userId: "u1",
+      role: "sales_south",
+      node: "run",
+      type: "tool_call",
+      ts: new Date().toISOString(),
+      durationMs: 1,
+      payload: { phone: "MASKED_PHONE", email: "MASKED_EMAIL" },
+    };
+    const parsed = TraceEventSchema.parse(event);
+    expect(parsed.payload).toEqual({ phone: "MASKED_PHONE", email: "MASKED_EMAIL" });
+  });
+
+  it("caps error messages at 500 chars", () => {
+    expect(() =>
+      DbToolErrorSchema.parse({
+        code: "TIMEOUT",
+        message: "x".repeat(501),
+        retryable: true,
+        repairable: false,
+      }),
+    ).toThrow();
+    const err = dbToolError("TIMEOUT", "x".repeat(500));
+    expect(err.message).toHaveLength(500);
+  });
+});

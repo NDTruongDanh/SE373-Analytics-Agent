@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -19,6 +20,8 @@ import { createTracerApp, maskPiiText } from "../src/server.js";
 // dist exists).
 
 process.env.MCP_TRACER_TOKEN ??= "tracer-test-token";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const DEMO_SQL =
   "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status";
@@ -75,6 +78,65 @@ describe("tracer PII mask", () => {
     const stamp = maskPiiText("2025-06-01 10:00:00");
     expect(stamp.text).toBe("2025-06-01 10:00:00");
     expect(stamp.hits).toBe(0);
+  });
+});
+
+describe("tracer PII canary", () => {
+  const seedPhones = [
+    "0901111111",
+    "0902222222",
+    "0903333333",
+    "0904444444",
+    "0905555555",
+  ];
+  const seedEmails = [
+    "an.nguyen@example.vn",
+    "bich.tran@example.vn",
+    "cuong.le@example.vn",
+    "dung.pham@example.vn",
+    "em.hoang@example.vn",
+  ];
+
+  it("masks seed phones and emails on the audit path", () => {
+    const masked = maskPiiText(`contact ${seedPhones[0]} or ${seedEmails[0]}`);
+    expect(masked.text).toContain("MASKED_PHONE");
+    expect(masked.text).toContain("MASKED_EMAIL");
+    expect(masked.text).not.toContain(seedPhones[0]);
+    expect(masked.text).not.toContain(seedEmails[0]);
+  });
+
+  it("binds loopback only, never 0.0.0.0", () => {
+    const compose = readFileSync(
+      path.resolve(HERE, "../../../docker/docker-compose.yml"),
+      "utf8",
+    );
+    const effective = compose
+      .split("\n")
+      .map((line) => line.split("#")[0] ?? "")
+      .join("\n");
+    expect(effective).toContain("127.0.0.1:5433");
+    expect(effective).not.toContain("0.0.0.0");
+  });
+
+  // Skip-safe: on a fresh checkout (no demo run yet) there is no trace or
+  // audit artifact to scan — the demo script itself greps its own trace.
+  const tracesDir = path.resolve(HERE, "../../../traces");
+  const auditPath = path.resolve(HERE, "../../../logs/mcp_audit.jsonl");
+  const hasArtifacts =
+    existsSync(tracesDir) &&
+    readdirSync(tracesDir).some((f) => f.endsWith(".jsonl")) &&
+    existsSync(auditPath);
+
+  it.skipIf(!hasArtifacts)("finds no raw seed PII in demo trace or audit", () => {
+    const traceText = readdirSync(tracesDir)
+      .filter((f) => f.endsWith(".jsonl"))
+      .map((f) => readFileSync(path.join(tracesDir, f), "utf8"))
+      .join("\n");
+    const auditText = readFileSync(auditPath, "utf8");
+    for (const literal of [...seedPhones, ...seedEmails]) {
+      expect(traceText).not.toContain(literal);
+      expect(auditText).not.toContain(literal);
+    }
   });
 });
 

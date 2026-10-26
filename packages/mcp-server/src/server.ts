@@ -357,7 +357,6 @@ export async function startTracerServer(
   }
   const app = await createTracerApp(options);
   const server = app.listen(port, () => {
-    // eslint-disable-next-line no-console
     console.log(`[tracer-mcp] listening on 127.0.0.1:${port}`);
   });
   await new Promise<void>((resolve) => server.on("listening", resolve));
