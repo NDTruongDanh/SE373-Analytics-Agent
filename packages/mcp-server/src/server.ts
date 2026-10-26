@@ -48,6 +48,8 @@ import {
 import { initAudit } from "./audit.js";
 import { TOOL_SPECS } from "./tools.js";
 import { warmupSqlGuard } from "@se373/access-policy";
+import { hybridSearch } from "./semantic/retriever.js";
+import { selectEmbedderFromEnv } from "./semantic/embedder.js";
 
 export interface GatewayAppOptions {
   clientsYaml?: string;
@@ -62,12 +64,6 @@ export interface GatewayAppOptions {
 }
 
 const DEFAULT_CLIENTS_PATH = path.resolve("policies/mcp_clients.yaml");
-
-function notWiredSearch(): SearchFn {
-  return async () => {
-    throw dbToolError("INTERNAL_ERROR", "semantic retriever not wired");
-  };
-}
 
 function defaultDocuments(): ResourceDocument[] {
   const read = (file: string): string => {
@@ -116,10 +112,10 @@ export async function createGatewayApp(
   initAudit(options.auditPath ?? path.resolve("logs/mcp_audit.jsonl"));
 
   let catalog = options.catalogOverride;
+  const pool = options.catalogOverride === undefined ? getAgentRoPool() : null;
   if (catalog === undefined) {
-    const pool = getAgentRoPool();
     const source = await fetchCatalogSource(async (text) => {
-      const result = await pool.query(text);
+      const result = await (pool as NonNullable<typeof pool>).query(text);
       return { rows: result.rows as Record<string, unknown>[] };
     });
     catalog = buildCatalog(source, sensitive);
@@ -128,6 +124,12 @@ export async function createGatewayApp(
 
   await warmupSqlGuard();
 
+  const selection = selectEmbedderFromEnv();
+  if (selection.source === "fake") {
+    console.warn("[mcp-gateway] no embedding endpoint configured — serving deterministic fake embeddings");
+  }
+  const searchPool = pool ?? getAgentRoPool();
+
   const deps: GatewayDeps = {
     clients,
     catalog: builtCatalog,
@@ -135,7 +137,19 @@ export async function createGatewayApp(
       sensitive.columns.map((entry) => ({ ...entry })),
     ),
     sessionFactory: options.sessionFactory ?? defaultSessionFactory,
-    search: options.search ?? notWiredSearch(),
+    search:
+      options.search ??
+      (async (query, topK, allowRestricted) =>
+        hybridSearch(
+          async (text, params) => {
+            const result = await searchPool.query(text, params as unknown[]);
+            return { rows: result.rows as Record<string, unknown>[] };
+          },
+          selection.embedder,
+          query,
+          topK,
+          allowRestricted,
+        )),
   };
   const documents = options.documents ?? defaultDocuments();
 
