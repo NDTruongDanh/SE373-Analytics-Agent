@@ -2,6 +2,11 @@
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+  # 01-03 batch A (D-07, RESEARCH-reviewed): transitive via
+  # pgsql-deparser -> plpgsql-deparser -> pg-proto-parser. Postinstall
+  # (scripts/postinstall.js) only reads its parent package.json and prints
+  # a version-scheme stderr warning; no network, writes, or codegen.
+  "@launchql/protobufjs": true
 
 packages:
   - "apps/*"

@@ -15,6 +15,14 @@
     "test": "tsc -b && vitest run"
   },
   "dependencies": {
-    "@se373/contracts": "workspace:*"
+    "@se373/contracts": "workspace:*",
+    "@faker-js/faker": "^10.6.0",
+    "csv-parse": "^7.0.3",
+    "pg": "^8.23.1",
+    "pg-copy-streams": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "@types/pg-copy-streams": "^1.2.5"
   }
 }
