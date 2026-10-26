@@ -19,7 +19,12 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "tsc -b && vitest run",
-    "docs:interface": "tsx scripts/generate-interface.mjs"
+    "docs:interface": "tsx scripts/generate-interface.mjs",
+    "db:up": "docker compose --project-directory . -f docker/docker-compose.yml up -d --wait",
+    "db:down": "docker compose --project-directory . -f docker/docker-compose.yml stop",
+    "db:reset": "docker compose --project-directory . -f docker/docker-compose.yml down -v && docker compose --project-directory . -f docker/docker-compose.yml up -d --wait",
+    "data:load": "tsx packages/data/src/load.ts",
+    "data:verify": "tsx packages/data/src/verify.ts"
   },
   "devDependencies": {
     "jsdom": "29.1.1",

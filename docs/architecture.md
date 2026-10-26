@@ -50,6 +50,7 @@ records it. Safety lives in code, never only in the prompt (PRD §1.5.2):
 | `apps/api` | HTTP boundary: `runId`/`threadId`, role → bearer token, SSE streaming, resume endpoints | Shell ✅ · logic 🔜 Phase 7 |
 | `apps/web` | UI only; talks to `apps/api`, imports types from contracts only | Shell ✅ · UI 🔜 Phase 7 + UCs |
 | Postgres + roles + data loader | `docker/`, `pnpm db:up`, `pnpm data:load`, seeded scenarios | 🔜 Phase 2 |
+| `packages/data` | Deterministic Olist loader + verifier (operator tooling, owner role; never imported by agent code) | ✅ scaffold + tracer slice |
 | Traces + evals | JSONL traces with PII redaction, `pnpm eval --uc <id>`, EX grader, attack suite | 🔜 Phase 6 |
 
 ## 3. Who may import whom (enforced)
@@ -156,7 +157,19 @@ flowchart TD
 - **Tool results are untrusted data:** wrapped/delimited in prompts, never
   followed as instructions (seeded injection rows exist in the dataset).
 
-## 7. Database (🔜 Phase 2)
+## 7. Database (✅ infra + tracer slice)
+
+Local PostgreSQL 16 + pgvector (`pgvector/pgvector:0.8.7-pg16`), database
+**`chosen`**, host port **5433** (avoids clashing with a local Postgres on
+5432). A clean clone needs zero setup — every compose variable has a `:-`
+default; copy `.env.example` to `.env` only for key-holding runs.
+
+| File | Purpose |
+|---|---|
+| `docker/docker-compose.yml` | `db` service: pinned image, `pgdata` volume, read-only `./docker/initdb` mount, `pg_isready` healthcheck |
+| `docker/initdb/01_roles.sh` | `owner` / `agent_ro` / `indexer` roles + `agent_ro` session defaults (`default_transaction_read_only=on`, `statement_timeout=30s`); env-driven with local-only dev defaults, executable |
+| `docker/initdb/02_schemas.sql` | `business`, `semantic`, `langgraph`, `app_state` owned by `owner`; `public`/`TEMP` revokes; least-privilege grants + `ALTER DEFAULT PRIVILEGES` before any data table exists |
+| `docker/initdb/03_business.sql` | 12-table FK-linked DDL (customers, orders, products, categories, sellers, `order_items`, payments, reviews, regions, channels, employees, promotions); data loaders never write schema |
 
 | Schema | Contents |
 |---|---|
@@ -170,6 +183,16 @@ flowchart TD
 | `owner` | DDL + data load only (`pnpm data:load`), never used by the app |
 | `agent_ro` | `SELECT` on business data only; no TEMP/CREATE; `default_transaction_read_only=on`, `statement_timeout=30s`. Used **only** by mcp-server. |
 | `indexer` | writes `semantic`, `langgraph`, `app_state`; never used by the chat path |
+
+Commands: `pnpm db:up` (start, waits healthy) · `pnpm db:down` (stop) ·
+`pnpm db:reset` (recreate from scratch — initdb reruns only on an empty
+volume) · `pnpm data:load` (COPY-load regions slice so far) ·
+`pnpm data:verify` (assert counts/FKs, exit non-zero on failure).
+If your shell predates the `docker` group, wrap Docker-touching commands as
+`sg docker -c "<command>"` (e.g. `sg docker -c "pnpm db:up"`); the repo
+scripts themselves stay plain `docker compose` so they work after re-login.
+After changing any role password you must run `pnpm db:reset` — a plain
+restart keeps the old server-side passwords.
 
 The **grants** are the real protection — `default_transaction_read_only` can be
 switched off by any session, so a test must prove `agent_ro` still cannot write
