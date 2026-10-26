@@ -9,3 +9,6 @@ export * from "./copy.js";
 export * from "./load.js";
 export * from "./manifest.js";
 export * from "./seeds.js";
+// verify.js also exports a `main` CLI entry like load.js does, so it joins
+// the barrel by name instead of by star.
+export { runChecks, type VerifyReport } from "./verify.js";

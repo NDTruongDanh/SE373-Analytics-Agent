@@ -1,7 +1,7 @@
 {
   "version": 1,
   "seed": 42,
-  "dataset_version": "olist-vi-2025-2026-v1-small",
+  "dataset_version": "olist-vi-2025-2026-v1",
   "tables": {
     "regions": {
       "rows": 34,
@@ -36,20 +36,20 @@
       "sha256": "3a3d450be770f2cac0dfbd90320cfb749a96e1e2426b4f3b42870a8f0cff6080"
     },
     "orders": {
-      "rows": 199737,
-      "sha256": "1fb276479b6deb8f19fa3a045a994ee811bcf2919e8e05dccbe81a6356105307"
+      "rows": 997665,
+      "sha256": "c012a2d85cdc956e67d007b1fe8dac34b8032b68d8def39e8869349e3bf07df0"
     },
     "order_items": {
-      "rows": 227925,
-      "sha256": "68a2a0f009d1c6394ab03d7178d3da8473bdc1b98620f74fc6f9d0a36be0a586"
+      "rows": 1138526,
+      "sha256": "1ef91479ca1373250788d7752a9e355e4517698a6d97d5d28edb823035cc79c8"
     },
     "payments": {
-      "rows": 208522,
-      "sha256": "87cc662e3ea4e652f175c3f085e9f5329f73d29fab6e99943e2f38058c7c522e"
+      "rows": 1041582,
+      "sha256": "c17f92c52f283b22a3093c4c1a589ad479d95ae2e02cd30ece93bce453dd8b0f"
     },
     "reviews": {
-      "rows": 197787,
-      "sha256": "6b9e369481f0285a4d6bcc98699eebafb525864ed1d9ea3009f7dfe1437abe07"
+      "rows": 987917,
+      "sha256": "530687be78ae9f922debdd87657e9a43f1fc5a6aba7449a3e1a8dfa61c1ce571"
     }
   }
 }

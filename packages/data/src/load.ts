@@ -160,7 +160,7 @@ const LOAD_ORDER = [
 // 34 post-merger provinces (Res. 202/2025/QH15, effective 2025-07-01) grouped
 // into the three Bắc/Trung/Nam regions per D-01. Mirrors PROVINCES in
 // transform.ts (same source of truth, asserted in sync by construction).
-const REGION_ROWS: (readonly [string, string])[] = [
+export const REGION_ROWS: (readonly [string, string])[] = [
   ["Hà Nội", "Bắc"],
   ["Hải Phòng", "Bắc"],
   ["Lai Châu", "Bắc"],
