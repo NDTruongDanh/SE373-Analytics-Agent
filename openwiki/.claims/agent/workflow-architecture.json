@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8de16493ccf8f1468da57213df733a1a297d8a2a0b5e4cd2acfe09a323e2bb7c",
+  "pageVersion": "sha256:d6912e3c8a4a2a6e6829130aa501b26629609022557e87569101dbba72a16b85",
   "claims": [
     {
       "id": "claim_2690cff7ad3f4f6ead0c1c8fbb1132f9",
@@ -32,15 +32,23 @@
     },
     {
       "id": "claim_7e0a694ab83c4a79b46623767e0e37fe",
-      "statement": "The workflow and harness page describes a planned reference architecture because no agent, loader, or eval implementation has landed; the repo contains only wiki tooling scripts and setup docs.",
+      "statement": "The agent workflow remains a planned reference architecture with the full LangGraph graph deferred to Phase 5, while the implemented foundation is frozen contracts, agent/MCP/access-policy shells, the ESLint DB boundary, and toolchain scripts including typecheck, lint, test, and docs:interface.",
       "evidence": [
         {
-          "resource": "repo://README.md#L1-L3",
-          "version": "repo-lines-v1:sha256:53850a2768aa3ed295d95cb4c79c1abea7afea83781cd882d88b4f165eb2ec69:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWQyMGM5Y2ZlOGVjMWM0MTVmMDJmOTE2ZTA5ZmU1ZmJlYTIzYWM1NzdhYTkxZjg4ZDUyNzFhYzY0NWJjNWZiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWRjNjI3Y2FhYWRmMGE0YzcxZTM5YzFjMzE5N2YxZGI5YzNmYWEyNDVkODJlMDY0M2U4MDRiMTUxYTZkZGNiMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjY2YjRmNjIwNTJhMDg1NWE2YzA3MWVhMDdkZDYxZjI1OWQzZGEwZjM2YTExZTk0ODA3ZWZlNjcyMDhkYWQxZiJ9"
+          "resource": "repo://eslint.config.mjs#L9-L41",
+          "version": "repo-lines-v1:sha256:f230f3c8ab62121a69173e24bb53de426ac7b30a4bc1bf0342cc295fedf768f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ZDhmN2VlMzM2ZTcxMTQxOGM2ODlhZGY5MTY5OTk4NzAwMGFjMDc4NWZmN2IwNmY4ZTg2OGViMTk0YTI0ZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4MDIzNzQ1NGI0ODFmYThjODliZDY1MTFmMjIzNjgyZDQ5ZWQwMGNhNmNjOWU3NmJiMWFkOTQzZjE5OGI0NTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUifQ"
         },
         {
           "resource": "repo://package.json#L13-L24",
-          "version": "repo-lines-v1:sha256:969713f1b38b8854bbae520c116027a898c67723fcbc2aa1325983abecf99cab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ODMzZDU5NDljMDNhNDBjYTk1MjQ5MTYxMGE2NjU5NjQ0YjNhYTQ2NjM2MmY3OTkwMjBkYmYxOTgxNTQ3ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MGM3Mjc5YTJiZTM2ZDJhZjU5ZGZkZThiMzM4M2Q5OWRkMWU4NDJhNGVjNThiMjQ3MjZlMGVkY2ZhNzkxMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "version": "repo-lines-v1:sha256:ee13c08fad6eef484e5cb7c46b8488edb949e2c7d967d3478961acfdbfce2da4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ODMzZDU5NDljMDNhNDBjYTk1MjQ5MTYxMGE2NjU5NjQ0YjNhYTQ2NjM2MmY3OTkwMjBkYmYxOTgxNTQ3ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYzRkZTdlZDM1YTIzMzY0NTM5ODY0ZGFkYjkzOGI4NzIzMzM3OTE3OWQ2MjkyYjlmZjVmNjE5YTZjMTMxNjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MGM3Mjc5YTJiZTM2ZDJhZjU5ZGZkZThiMzM4M2Q5OWRkMWU4NDJhNGVjNThiMjQ3MjZlMGVkY2ZhNzkxMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkOTM2ZjFlNDYwNGVhZTYyM2JhMjU1NzViOWJlOWY5NzAwYWU0M2NjODM0MWNjYWRlYTYwNjJlNDY3YmI2MjkifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/index.ts#L3-L6",
+          "version": "repo-lines-v1:sha256:33c1881467eed5f2e14c4d5866458f6a2c18de47be314213c573ae9f0fd81c11:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmVjNzU3NzE0OTkwNWU3MzFiZWI4MmZhY2FlMDJmOWIwNGVjZTIyM2Y1ODNhNDY5ZTg4ZTQyYjg5MTBkN2E5ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmRjMzA3MWNjOGNhMzdlMzU1ZDJlNTM3ZTY3ZmQ5ODU5YjVhZGRhMjBmM2Y4NjliOWY5YTQzNDExYWNlOTc1YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmFmMWJiYTIzZDVmODA2MmU0MjYyOGYyYzMzOWU4YTgyNjNmMWMxYjhkNWMyMjE4OTQxNmE4NzYxYTA5MTZjMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/contracts/src/index.ts#L8-L8",
+          "version": "repo-lines-v1:sha256:a3f97fe11f33545776b61c598e6b72757e961dae65dde3ba70f4d22ddebfd9cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNmOTdmZTExZjMzNTQ1Nzc2YjYxYzU5OGU2YjcyNzU3ZTk2MWRhZTY1ZGRlM2JhNzBmNGQyMmRkZWJmZDljZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNmOTdmZTExZjMzNTQ1Nzc2YjYxYzU5OGU2YjcyNzU3ZTk2MWRhZTY1ZGRlM2JhNzBmNGQyMmRkZWJmZDljZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTlhZjIwODViNzg2ZTAxNjgyNzQ4MzNlODliZGZjYjgyNTBiMmE4MmI3ZTg1MTI2NDRlMTBkNGM3ODc0YzAyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
@@ -161,10 +169,172 @@
           "version": "repo-lines-v1:sha256:eb864364e611235646210866ee76c8d08c36bc646d6bdf45d00005f66383b202:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjUwZTJhZDI2ZmQ3NjA3OTBhMGVkMGFiNjA3MTg1OGQyOWQ3MTJlNzBhMzdhNzBhZDc3NzE1YjY2NjcwMDk0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ0ZGRlZDA3ZThlMGY0NmI4OTI3MTgzYjk2ZjViNjAxMjMyOTNlZjUxZDMzYzBhZjBmMTJmYTk3NmUwZTI2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE0ZjE2OGQyYjMyYWNlYTIxYzM2MzA4YzI5MDg5Y2EyNDNmNzUyOGNjZWFjY2I4MDc4NTc5OTJlYjUyNmFjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_4b71ce209e404c799030ede6c801e48b",
+      "statement": "The agent equals model plus harness: the model proposes intent, SQL, plans, charts, and prose while the deterministic harness owns validation, execution, policy, state, and audit.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L20-L22",
+          "version": "repo-lines-v1:sha256:919479b3b841c1332363f9c7199c0aa83cd6ecc900ba49f3227b9696065c67ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjM0M2I1OWU0ZTFhNDhhYjk3Y2JhYWIxNTA0MWFkNGM2NTQ0N2I4ODA3OTYwYTI4NjhiNmI3ZmFkMDRiYjU0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWRlNjNlYjFlNWU4ZmFmMmUzODdmY2I0ODRmYTNiZWQ5NDhiMjNiMzQ0ZTYxZTI2YjkxZjQ1ODhmODc2ZWQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjIxY2ZiZmZhNjQ0YTc2ZDQwY2Y5NWI0ZGFkOGZjN2I2MGFmZDQ2N2MyM2I4ODFhZWZmMTY3ZDk2MWVhODZiMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmFlODNiNDBiNWM1Yjk2ZTVjYWI3MGRkZWQ1NzRjMWYwMmQ4YWU5M2RmOGYzMDY0MGUyODAyZmIyMjY2ZjMyNiJ9"
+        },
+        {
+          "resource": "repo://docs/architecture.md#L9-L22",
+          "version": "repo-lines-v1:sha256:b9bb26306061a3afa97c851f6b56c0597c49ef89f4fb27ba685962d8a08fa619:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhN2I4ODQ3ODlmNjNhMzhkYTc3NDZhNTcxZDExZjgxNzM2NzAwMTU0OTI2NmRlMmNlN2JjMmRiNGE3MzdkYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlODBkMTE4NDQ4MmE5MzI4M2VkMmY3OGJiYzI5MWFkMmZiYjk5MTE1NjAzNjNhZjg0NzJlZmYyZjA3MGZkY2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExZDEyYjg1MjdhZWJlZDRkNjllYTY3MzE2MWQ3NDQ2MGI1MWIxZjlkOTI0ZDIxNzU5NmFiMWNjYmQwOTc5ZDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f23d185dad7649a1beb1ce2da125be0d",
+      "statement": "Agent code must not import pg, pg-cursor, or mcp-server internals and must reach the database only through the MCP client, enforced by ESLint.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L111-L122",
+          "version": "repo-lines-v1:sha256:950f5eefaf8a03c26deb6265f6a62cc653d7bc847eefe6c27379ecf63a6c341b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZWIzMzZhM2I1ZWUzOWMyMjM0Y2FhNjRlMmZiNmQ3ZDI0Y2QzYjg0YzUwNDFkODRlMWYxZjRlNTFiMDIyNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxYmM4OTZlODk4MTkxYzRjNjQwZjY0MzMyMTBkNWQxNmUyOGVmYWQyNzI3NjZjYTAyNWRiY2FmYWUwYjFkYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0YmE4ODIzZDljZjc2ODM1YjM0ZjMzOTBiN2Q4MWRlNTE4NDIwYjUyMmM2ZTI5ZGMxYWRkZDg3ZmNhNmIyZDEifQ"
+        },
+        {
+          "resource": "repo://eslint.config.mjs#L9-L41",
+          "version": "repo-lines-v1:sha256:f230f3c8ab62121a69173e24bb53de426ac7b30a4bc1bf0342cc295fedf768f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ZDhmN2VlMzM2ZTcxMTQxOGM2ODlhZGY5MTY5OTk4NzAwMGFjMDc4NWZmN2IwNmY4ZTg2OGViMTk0YTI0ZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4MDIzNzQ1NGI0ODFmYThjODliZDY1MTFmMjIzNjgyZDQ5ZWQwMGNhNmNjOWU3NmJiMWFkOTQzZjE5OGI0NTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_abd4f041a31641ebb0748e7a9b03b988",
+      "statement": "Every agent SQL query uses the shared ValidatedQueryExecutor pattern of selective describe, generation, local pre-check, run_query, and bounded repair with at most three SQL attempts.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L103-L105",
+          "version": "repo-lines-v1:sha256:78fa20c9ecfd2bc0e3b49a00bf3ae2c746f3a9bc03e3d6713cb36fed394580b6:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGI1YWZkYzViYTk3ZjhhZTM1MmMxNjBhNjI0OWYzZmE2MTBkZjhkMDUxYWU0N2M2MzlmOTU2ZDFlMTRlZTFmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjU1NDY4OTFlNGY1MDQ1NWMxZjEzZjRiNTA4YjE5MTQ4Njg2N2UyNWQ1NTdjODk0ZjM1MWNhZjY0N2FjOTE5NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODc0NzlhMmQ2YzYwYTM3Mjg2Y2I5N2M5Y2E3Njc0NWMwODgwNzQ1MjhmZTQyZGIzMWM2M2FiN2IzMDYwODRhOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTk0MTJhN2VjNjY1MTlhMzNiOTNhZWE0MWQwNWEzYzc0YjgyNTljODFiZjVmYjUyZDM0YTQ4NjJlMzA0NTgyMiJ9"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC01.md#L28-L32",
+          "version": "repo-lines-v1:sha256:338fdf9f833b0b26c2f227e71567f2095f425ada9b82595d797fd365c926c7c7:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjY1NGRiNTk0MjQ4NzE5NmY0YWU3MWFjZDFmOWI3NjE5NDMyNjgyNzJmYWU4ZGY4Mjg1NjE2ZTI1ZTYzYTdiNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjUzZTM3OWRjZTFiOTNmM2FjNzI3NDVkOTRiMDcxOWNjZTZjODA0YWJlZWY5MTZlYzQwNmQ1MjhmMDRmNTU2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmE0NzQ1ZDc1YzRjYjYwZTcyMGI3ZjNmMjAxZDBjYzE4ZTA0YzllZWEwZTRiMDhhMzNiNjZlNDhmZjhjYzI4NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWI1ZjEzMmNjNGQxNDZmODUwODBjOGRlOWJjNjNiMmYxYzkwODMzOWYwOWI5OTNiMTg3NjYzOWYwZDA3MDQ2MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1e96f103323f4d7db169c490acca30af",
+      "statement": "Shared contracts are frozen additive-only at CONTRACTS_VERSION 0.1.0, with breaking changes requiring a major bump and approval from every affected owner.",
+      "evidence": [
+        {
+          "resource": "repo://packages/contracts/README.md#L6-L19",
+          "version": "repo-lines-v1:sha256:9957a6d996b3fe38ffa62859d7bf8fe0806429919daa42d53b3eacbd4704bea5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwMzJiNDc1OGE2ZDgzZWNhYjk3NzliNWU4Yzk0NjQ1MzA3ZTUzMzM4ZTBkZWE1NzEwNjA2OTNjMzJlMDYxOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyNmNlYWZiNDkwY2MzZjc1Yjg0YjMwYzlmYjA2OTllMjQwZjc1MGFhMTY5NTc3YmVjODAzMmViMmZlNWM4NTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVkZDAwNjBjOGI3NzUzYzczNDM5MzAyM2ZjMTUyY2RiMzFiNmY3ODhlYTgyMzM1NjYxZDg4N2ZiZDI3ZmM0OWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxNmQwNzBlMTg5M2RmODJlNTQ3ZDZhODI4NTRmYmIwNTBkMTRkNGVjMGM1ZDg0ZDQ2ZGY0ZjNkNWJlNWQ3MTQifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/index.ts#L8-L8",
+          "version": "repo-lines-v1:sha256:a3f97fe11f33545776b61c598e6b72757e961dae65dde3ba70f4d22ddebfd9cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNmOTdmZTExZjMzNTQ1Nzc2YjYxYzU5OGU2YjcyNzU3ZTk2MWRhZTY1ZGRlM2JhNzBmNGQyMmRkZWJmZDljZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNmOTdmZTExZjMzNTQ1Nzc2YjYxYzU5OGU2YjcyNzU3ZTk2MWRhZTY1ZGRlM2JhNzBmNGQyMmRkZWJmZDljZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTlhZjIwODViNzg2ZTAxNjgyNzQ4MzNlODliZGZjYjgyNTBiMmE4MmI3ZTg1MTI2NDRlMTBkNGM3ODc0YzAyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_338172ee33bd467e993b66c67c040f9c",
+      "statement": "Frozen tool schemas enforce server-side scope filtering, per-column sensitive flags, run_query row caps with masked-column reporting, and a five-row sample cap.",
+      "evidence": [
+        {
+          "resource": "repo://packages/contracts/src/tools.ts#L44-L49",
+          "version": "repo-lines-v1:sha256:b439a4aaf1006aefea303e12ec1aa93c5b605074cb4d53f31036a94fd77e6050:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODIzZjU0NDc3ODY4MTZiMzQ0Y2YwNzEyN2JmOTViYjlhNDYxNGJlNDdhMDQ3ZTVjZTRhNjZlMjBlN2E1MGIwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODMyMzhlMzkyNTg5YzQ1YjBhNmFmNDZiYzYzOGQ1ZTE4OWM4NGE0YzI2ZGEyNTVhOWM1MDEzYzA1OTM4MjNiOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWY0M2E0M2U0ZTBkODMzMjAxOTNhNjdiYjdmOTkwYjI2NTJjODY1YzUxMzg3ZmVmM2U1ZmI2MzhkMjdmN2FmNCJ9"
+        },
+        {
+          "resource": "repo://packages/contracts/src/tools.ts#L71-L87",
+          "version": "repo-lines-v1:sha256:465c019af81262a8391bf6562f857c42bb9ff085da517f5a84783554492a0626:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZTI4OTc0ZTRlNmI3NjkzMGZiZjdmNGNlNTY4YzU3YmNmOTE2OTJhY2VlYjYxODIzNDljOTVlNDgxNTRmMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1ZjZhNDE0Y2JkNTg1MTM0ZjJjN2RmN2Y3ZmM2ZTUzMTViNTI2YTUzMGYzZDMzMjc1NWZiNGMxOGFmMzkxYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmY2ExZjE3Zjg0MDczNTZjNGZhZDMxMTlmYzRmNjdkYmNjOTEwM2EyNTcxM2VkZGUxMmY5OWViODk4MTc4ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjOGYzMDhmZjgxYWExMzhiMzgzMWY0MzJlMjRlNzE5MGRmOGFlYzMwMDYyYzliYjNkY2I0MDMxZWVlM2YxZTQifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/tools.ts#L8-L10",
+          "version": "repo-lines-v1:sha256:867e0f3ef6dbe93caac5940bc7bfe17a2b590ef87e0aaa49e2025e42a66726c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTgwNzI1YTQyMDhkZjAxYTViOTc1YTVjODQ5YTczZGMzYjgxMjA3YjZjNzUzMjIxZmE4ZGQzZTFjMmNmNjJkOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTVhNDg3Mjc3NmQ5YTdlZDBlYzYxYjEzMWEyMWZkZDIzMjcyMjk2MGZhYjc3Mjk0YzQ3MjY5NWE3M2I3MTdiZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmYyMDY0MGI0N2RjMjQ5YWVkZGEyZmI5MTJkNzA1Mzg4YmVkZjM2ZTBhYTBiMTQ3NmI2ODBlMDM4OTIzNmIzZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTE2ZjQ0MjZlMzM1MGUxOWZjOGY0NzQ1MGUxZTVkY2U1NWIxY2ExYzM4MjJiMTQ1ZTBhNWYwMmY2NzMxNGVkMCJ9"
+        },
+        {
+          "resource": "repo://packages/contracts/src/tools.ts#L91-L94",
+          "version": "repo-lines-v1:sha256:fc433165aa83284d514fc5eac0c0dfb9fbdb44d71f1a136a86c0c524201c32d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWY5MmJiZTAxOWI4ZjhhY2UyZjk5ZmEyNjIwYTVmMTMwNzhhYmNhNDZmYzc0ZDYyYWY0MzA1ZmI0YTJhN2Q0OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmM4ZjMwOGZmODFhYTEzOGIzODMxZjQzMmUyNGU3MTkwZGY4YWVjMzAwNjJjOWJiM2RjYjQwMzFlZWUzZjFlNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDIxOTRjYThiZTE3OTIxNTNlYWNkZmIwZDNhZTYwY2ZlYmFlNTJlYTExOTgzYWM3N2Q2N2Q5YjE5NDlkYTY3MCJ9"
+        },
+        {
+          "resource": "repo://packages/contracts/test/tools.test.ts#L21-L40",
+          "version": "repo-lines-v1:sha256:fb8804eb52eedee50135c507dd2d843765d410e3b88a43f7373958757e0171db:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxNjYwNWZiN2MxMTliMTNlOWVmYmNlMTM1MjJhYThkMWExMDNmMTM0MTBjZDQ5NWU5ZWRiNjM5ZDBmMmIyNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllOGM1YmZlYmZmZThlYmRkNWM5OWFlNzJiZWNiZTA2NDZhNjEzZmQ1MjU2NDY0OTc3NjhiMzk2YmZmYjQ3ZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1e4217b73ae049a4b71d2b886b88f236",
+      "statement": "The harness uses eleven frozen error codes where only TIMEOUT, RATE_LIMITED, and INTERNAL_ERROR are retryable, letting clients distinguish retry from repair and hard denial.",
+      "evidence": [
+        {
+          "resource": "repo://packages/contracts/src/errors.ts#L6-L34",
+          "version": "repo-lines-v1:sha256:6835ad80f8e7ea659c3653378d9d5615305d45da9714460bf84d75523f5014df:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkMmZkZGJkYTJlYmI3ZmNhNmU2YmIwMjk4MzhkOWFhNGZkMzg3ODhlMWU2YmNkYjk5ZDA3MDkxZTYyZDhhMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlMGJkZDM5MjJkMzhmZjc2MDFlZWQwYzY2NmJhYWQxM2M5ZGUwMjA0YWRhMjgyOTc5NGQwM2M0N2MzOGIxMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwZmFmZjgwZjgwMGRiMWY3MjRhZTZiMDdmNTliYWI0OWZiZTI1NjM3ZWM4ZWZjNzkzZjMzMmMwMGUzYzMyNjEifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/test/errors.test.ts#L4-L29",
+          "version": "repo-lines-v1:sha256:8beda6c60c8c9a2971b885d97d759180e919c39906504e7474c716ee0dc4eccc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxNjFmZDE4MzEwODE4ODVkMDAzZTNhYjJkNzVmMzQ2ZWYzZTc5ZjFiOGU4NGQyNDk2MzkxM2UzODQ3NGJmZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3YmM2NzNkNDc0M2UzNjVhZTQwMmJjNGJkOGIxYTVjMDg2YWJiZmZjZDkxYjIwN2YzYTNiNjU1MDY3MzVkMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_056fc37c660340e1904fad8ab010d663",
+      "statement": "SQLAnswer is bounded to at most three attempts and fifty preview rows with a closed status enum and required token and latency telemetry.",
+      "evidence": [
+        {
+          "resource": "repo://packages/contracts/src/answers.ts#L27-L55",
+          "version": "repo-lines-v1:sha256:8d3fb1c471a23d595d1c1553ce8111b0942bff44e70c774956eadcf5d39c8891:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNzU2YWJkYTA0ZWExNGU2ZGRmNmIxMzY2NzllNGY4MWE5MmJhM2NmMDgxNWQ3NzQxMDZiNjk1OWFiYTIyYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNzVlMDMzZmNjZjc2MjIwZDIxNzI0OGRhNzIxYmFmNDE4ZGRhMjMxMGZmMmRjZTI0YjdhNmM1M2NmMmY2YTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlZGY5ZTk1ZDllZmY3NGJhZTU4ZGVkYTI5ZTE0ZjMzMWU4ZGM3ODYwMGEyY2U4ZDJhZjEyNDU3Njk0ZDVmNzMifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/test/schemas.test.ts#L41-L57",
+          "version": "repo-lines-v1:sha256:5920731a87e36fe659a3ea3d89cfbc83c4b342bfd7e5e37fe2fd57a9568e7521:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzYmVmMzIzMGExNTEwYjZjOGJhNmQyOGZhZGIwMmUyYzIyMzVmZGQyNzkwZDJkYjFjMWE4MzdiNzFmMDczNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiN2Q2ZGMyM2U1N2Q1ODhhMmI0YWE3ZjgwMmNlY2Q2MThkYmVlY2E3NjkwMjhlMWM5MWZlMzUxNmQ0MDk2YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliYjkzNTc1ZjZmOTkwOTFhNjY4YjMxOWM4ODkwMDQ4N2M1NGViMzE2NmNhZWE3MzBjNjMxMjQyNmZhMDVkMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_671a222cdc5c42e1a941ff4c11d7264c",
+      "statement": "Every trace event carries run, thread, user, role, node, type, timestamp, and duration identity, and trace and audit sinks must remain redacted of raw PII values.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L66-L66",
+          "version": "repo-lines-v1:sha256:e31dd0e8fd2b95109cd4aadbf1114e15640b021db479b44df6153d180071d958:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMxZGQwZThmZDJiOTUxMDljZDRhYWRiZjExMTRlMTU2NDBiMDIxZGI0NzliNDRkZjYxNTNkMTgwMDcxZDk1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMxZGQwZThmZDJiOTUxMDljZDRhYWRiZjExMTRlMTU2NDBiMDIxZGI0NzliNDRkZjYxNTNkMTgwMDcxZDk1OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjQ1MzVkMDUwYjgzNjYxYzgxNTA5YTdiMGZhMjE3YTcxZjJhNTIyY2Q2OTNlYzgyYmI2NDM1ODU4ZmVkMWQyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2IwOTMxNDIyYzA0MWQwZmYzZTVjODIzNjI4YWM5NWFjY2IxMTAwZDk3MGM3YzY0NGUzMGMyMWUxMzUyYWIzZiJ9"
+        },
+        {
+          "resource": "repo://packages/contracts/src/trace.ts#L7-L17",
+          "version": "repo-lines-v1:sha256:16c4ea3499b84a53ca3a2fc8f9e9f2758989a07705602b9195f56d488b3ce36c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZWIyODA5NGQ4NDI4NDRiODM4MmMyZGQxY2ZiYmY5MTMzNzJiMmEyMTBjODY2MTYzMWRhNDcxYjMwZDU5ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3ZTc1ZWI2MGI4N2NhMWM3ZDQxMDZjNGJmYTIwNzliOThhMWNmYTEyMTg4MzAwNmU5NDhmOTZkNDEyYWQxMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkODY3NmQzMzE5NGViMTBhOTFiNzhiY2JjODhlNWM3NzU3NTg2YzE5MzU3MzY5MTc0ZDU5YzY2NmU0OTdmM2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_58a7ae3d1ade499a8a3b761510df54c7",
+      "statement": "Safety is enforced in code through a read-only database role with statement timeout, shared sqlGuard parsing, AccessPolicy rewriting, and PII scanning, independent of prompt compliance.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L89-L94",
+          "version": "repo-lines-v1:sha256:dd93bb128cfa34d0ce7996e18c23d3bae30cd71caa5edd80e6845f19f8cafc2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTQzZTJiNjJmMmI0OWViZDI5ZjA4ZGJmOTNjOGNkZTYzMjVjZjU1M2FjMTlhMjhlYzJmN2YzYTZmNWI5MWRmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTdiNjhjNTBiYzc4ZTYzYzdhMWQ0NzI3MGNjYTE4MDNhODljZGRiYzJkN2JiNzFkNzc5ODg2Y2I5NmY2YzU2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTU4OWIxMmUwYjJjMjE4N2QzODc4NDJkNTk0MTFkYjhmMGIzNTRmMzA1YjhlMDU3OGQ4NWMxODgyOGUwMTIyOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzkxMDQ5YWFmMzQ5OTQzODNmMDNhOGYxOTU1ODQ0NzdjYTMxZDVmNzhjN2IzYzc3NWYxYWYxYTVkNGY4NmYwNCJ9"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC01.md#L30-L31",
+          "version": "repo-lines-v1:sha256:04afaf24167b8a918dc083c2ee4efa93534061f0fdc50fddf367fe7da9547d96:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM1YjMxOGM1ZmU0MGQ4MDQzYjZmM2E2OGEwM2NlYmRiZDY5NWYwODA0MDQ2NDlmMDhmNGQ0YjliYzJmNzQwNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY5MzBjOWY2YjhmYzU5MDY0ZGFjZGJkYTIwOTMwMzQxNTFlZmRlMDI0YmQ2ODM1MWY4NzAwOTJmYzdmNzRjYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIzNjRkYjA1MTM4NGJiNDBjMWVkMjM4Mzc1NGFiYzc3ZjhhZjQxYWJmODc4NmZmYjAwYjZkMjg2MjRiM2E2NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmMyNDQ4NGI2NTRlMzJiODQyNzI1NjUyMDEyNzRjMmJiZTZiNjdhMDc1ZjUzOTY1OGU1ZGFjZTlmZDQzMjIwMiJ9"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC01.md#L50-L50",
+          "version": "repo-lines-v1:sha256:72b969f8e8094559ae4592d6fe8f0c2f19a54b4481e39bb38f0e5bbee372d237:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzJiOTY5ZjhlODA5NDU1OWFlNDU5MmQ2ZmU4ZjBjMmYxOWE1NGI0NDgxZTM5YmIzOGYwZTViYmVlMzcyZDIzNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzJiOTY5ZjhlODA5NDU1OWFlNDU5MmQ2ZmU4ZjBjMmYxOWE1NGI0NDgxZTM5YmIzOGYwZTViYmVlMzcyZDIzNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWQ4MmI0Y2Q4ODc3YzVkMGQ3MzZkZThkMzJlZDUxMjE1NWVlODQ4ZWU2MzFiZGE4YzA4NGVjNWMyYmE2NjgxZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2IxMzQyNjUwMWI2OGEzMTc2YTBmYmJlZDQ3YzZjNWNiYzZmODI0YmRiNjM1NzliNDk4MjRiNjI5OWEzYzNhNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_72c2258e7e924a48bf1410aafc717cf0",
+      "statement": "Skills stay declarative Markdown or YAML contracts with no runnable scripts, database connections, or credentials.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L60-L65",
+          "version": "repo-lines-v1:sha256:5cf56bc35d63c1526bc626497c23dd33d83ac3e07458148b23e02d952e23b8f7:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDUyYWI5OTIwNmVlZmIzNmNiODg3MGM2MDRkMTJlMDAwN2MzYjZjOTY0NGM0MmM3NmEwN2FkNTNjN2IyODA3NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmQ0MWRhZjYwZTAzZDU1YzIxYmVhM2NkYzAzNTkxMjlhMzhmMWI1N2IzMmQ2NTgwZWMyYTI2OWI3MDI3OGQzOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdmYzQ1Mjg3ZjcwYmI1NWNkNTA0ZjUxYWE1ODIxOGVhNTBjNzkwZGU4NmFjNGEzZmE3MDlhN2QzODg3YmZmZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI0NjZiYzgxODMyYjE3ODRlY2VlN2MxZmE3OTA1NDIyNjI4M2I1NTdhNDFkZTFkYmJiMDZiYThjNThjOTFiZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_46610992bf61422f8648a641b351f1d6",
+      "statement": "The current agent shell is covered only by a focused test asserting a non-empty shell marker, which Phase 5 graph, executor, and gate tests should replace.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/shell.test.ts#L4-L9",
+          "version": "repo-lines-v1:sha256:60e5e231f0396defc77755176e2557b786f05e57e0a27caeb12ca4d720545dfc:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDc3YWQzNjQyNjVkMTNhZDc3MTBiNzUwMGUyY2UyNzdhMDgyNTY4MDQ1ZDE1NTYyMWUxOWFmZWRlNTcyZDk3ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzRlZjRhYjMyMDMzYjFmNjUzOGI5OGQ3ZmI2MWU2MGVlYzI2MjU3NzFjYTE0NDBlZjRmMjUyZDIzMTc1OTdhNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T12:53:57.503Z"
+    "at": "2026-10-26T14:44:58.914Z"
   }
 }
