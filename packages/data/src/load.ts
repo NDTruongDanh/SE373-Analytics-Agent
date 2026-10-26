@@ -199,6 +199,23 @@ const CHANNEL_ROWS: (readonly [string, string])[] = [
 ];
 const CHANNEL_IDS = CHANNEL_ROWS.map(([id]) => id);
 
+// Weighted spread cycle for the seven Olist-unmapped provinces plus the two
+// thin scenario provinces (Đà Nẵng, Hà Nội). Every 4th customer/seller is
+// reassigned to the next entry, so all 34 provinces carry real base volume
+// and the seeded TP.HCM / Đà Nẵng / Hà Nội scenarios have measurable
+// baselines. Deterministic by construction (fixed cycle, file order).
+const SPREAD_CYCLE: readonly string[] = [
+  "TP.HCM", "TP.HCM", "TP.HCM", "TP.HCM", "TP.HCM", "TP.HCM",
+  "Đà Nẵng", "Đà Nẵng", "Đà Nẵng",
+  "Hà Nội", "Hà Nội", "Hà Nội",
+  "Cần Thơ", "Cần Thơ",
+  "An Giang", "An Giang",
+  "Đồng Tháp", "Đồng Tháp",
+  "Vĩnh Long", "Vĩnh Long",
+  "Tây Ninh", "Tây Ninh",
+  "Cà Mau", "Cà Mau",
+];
+
 function parseTablesFilter(argv: readonly string[]): string[] {
   const flag = argv.find((arg) => arg.startsWith("--tables="));
   if (!flag) return [...LOAD_ORDER];
@@ -309,6 +326,12 @@ async function buildDataset(
 ): Promise<{ rows: Map<string, (readonly unknown[])[]>; stats: BuildStats }> {
   const wanted = new Set(tableNames);
   const full = LOAD_ORDER.every((name) => wanted.has(name));
+  // -- Partial loads (non-full table sets) are iteration-only: they build
+  // just the requested tables and skip the manifest gate below, leaving the
+  // stored manifest untouched. Child-row FK filtering is tolerant when the
+  // parent table is not part of this build (the database FKs then enforce
+  // truthfully at COPY time). Run a full load before verify.
+  const ordersBuilt = wanted.has("orders");
   const rng = createSeededFaker(SEED);
   const stats: BuildStats = {
     clippedOrders: 0,
@@ -432,9 +455,20 @@ async function buildDataset(
     await downloadAll(["olist_customers_dataset.csv"], { cacheDir });
     const raw = await readCachedCsv(cacheDir, "olist_customers_dataset.csv");
     const out: (readonly unknown[])[] = [];
+    let spread = 0;
+    let rowIndex = 0;
     for (const row of raw) {
       const id = str(row["customer_id"]);
-      const province = stateToProvince(str(row["customer_state"]));
+      // Every 4th customer spreads into the weighted cycle so the seven
+      // Olist-unmapped provinces (and thin scenario provinces) gain real
+      // base volume; the rest keep their mapped province.
+      let province = stateToProvince(str(row["customer_state"]));
+      if (rowIndex % 4 === 3) {
+        const spreadProvince = SPREAD_CYCLE[spread % SPREAD_CYCLE.length];
+        if (spreadProvince) province = spreadProvince;
+        spread += 1;
+      }
+      rowIndex += 1;
       const region = regionOfProvince(province);
       customerById.set(id, { province, region });
       out.push([
@@ -454,9 +488,17 @@ async function buildDataset(
     await downloadAll(["olist_sellers_dataset.csv"], { cacheDir });
     const raw = await readCachedCsv(cacheDir, "olist_sellers_dataset.csv");
     const out: (readonly unknown[])[] = [];
+    let spread = 0;
+    let rowIndex = 0;
     for (const row of raw) {
       const id = str(row["seller_id"]);
-      const province = stateToProvince(str(row["seller_state"]));
+      let province = stateToProvince(str(row["seller_state"]));
+      if (rowIndex % 4 === 3) {
+        const spreadProvince = SPREAD_CYCLE[spread % SPREAD_CYCLE.length];
+        if (spreadProvince) province = spreadProvince;
+        spread += 1;
+      }
+      rowIndex += 1;
       sellerById.set(id, true);
       out.push([id, province, regionOfProvince(province)]);
     }
@@ -539,7 +581,13 @@ async function buildDataset(
       const orderId = str(row["order_id"]);
       const productId = str(row["product_id"]);
       const sellerId = str(row["seller_id"]);
-      if (!validOrderIds.has(orderId) || !productKnown(productId) || !sellerKnown(sellerId)) {
+      // Tolerant when the parent table is not part of a partial build: the
+      // database FKs enforce truthfully at COPY time instead.
+      if (
+        (ordersBuilt && !validOrderIds.has(orderId)) ||
+        !productKnown(productId) ||
+        !sellerKnown(sellerId)
+      ) {
         stats.skippedItems += 1;
         continue;
       }
@@ -557,7 +605,7 @@ async function buildDataset(
     const raw = await readCachedCsv(cacheDir, "olist_order_payments_dataset.csv");
     for (const row of raw) {
       const orderId = str(row["order_id"]);
-      if (!validOrderIds.has(orderId)) {
+      if (ordersBuilt && !validOrderIds.has(orderId)) {
         stats.skippedPayments += 1;
         continue;
       }
@@ -578,7 +626,7 @@ async function buildDataset(
     for (const row of raw) {
       const reviewId = str(row["review_id"]);
       const orderId = str(row["order_id"]);
-      if (!validOrderIds.has(orderId)) {
+      if (ordersBuilt && !validOrderIds.has(orderId)) {
         stats.skippedReviews += 1;
         continue;
       }
@@ -768,15 +816,16 @@ function injectSeeds(
   const monthOf = (purchaseDate: string): string => purchaseDate.slice(0, 7);
   const dayOf = (purchaseDate: string): string => purchaseDate.slice(0, 10);
 
-  // Revenue-drop helper: delete a revenue-proportional prefix of the slice
-  // (sorted by order_id — effectively price-blind) until at least `fraction`
-  // of the slice revenue is gone. Deterministic given the build order.
-  const deleteRevenueShare = (
+  // Revenue-delete helper: delete a revenue-ordered prefix of the slice until
+  // at least `removeRevenue` is gone (sorted by order_id — effectively
+  // price-blind, deterministic given the build order). Returns the removed
+  // revenue and the removed share of the slice total.
+  const deleteRevenueAmount = (
     slice: BuiltItem[],
-    fraction: number,
+    removeRevenue: number,
   ): { removed: number; pct: number } => {
     const total = slice.reduce((sum, item) => sum + item[3], 0);
-    const target = total * fraction;
+    const target = Math.max(0, removeRevenue);
     const sorted = [...slice].sort((a, b) =>
       a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : 1,
     );
@@ -787,6 +836,20 @@ function injectSeeds(
       removed += item[3];
     }
     return { removed, pct: total === 0 ? 0 : -removed / total };
+  };
+
+  // Slice revenue partitioned by month (August baseline vs September effect).
+  const sliceRevenueByMonth = (
+    slice: BuiltItem[],
+  ): { aug: number; sept: number } => {
+    let aug = 0;
+    let sept = 0;
+    for (const item of slice) {
+      const month = monthOf(orderOf(item)?.purchaseDate ?? "");
+      if (month === "2026-08") aug += item[3];
+      else if (month === "2026-09") sept += item[3];
+    }
+    return { aug, sept };
   };
 
   const inSlice = (
@@ -802,54 +865,163 @@ function injectSeeds(
     return categoryViOf(item[1]) === categoryVi;
   };
 
-  // UC-05 S1: Shopee × Trung × Đồ gia dụng stops 05/09/2026 → September slice
-  // loses ~18% of its August-scale revenue.
-  const s1 = items.filter(
-    (item) =>
-      !deletedItems.has(item) &&
-      inSlice(item, "shopee", "Trung", "Đồ gia dụng") &&
-      monthOf(orderOf(item)?.purchaseDate ?? "") === "2026-09",
-  );
-  const s1Result = deleteRevenueShare(s1, 0.18);
-  note(
-    `uc05-shopee-trung-dogiadung: removed ${String(s1.length === 0 ? 0 : [...deletedItems].length)} total marked items so far; sept slice ${String(s1.length)} rows, revenue pct ${s1Result.pct.toFixed(3)}`,
-  );
+  // Injection order (all post-expansion, Pitfall P6): September synthesis
+  // and S3 slice seeding establish the September population; the AOV cut
+  // lands first so the proportional S1/S3/A2 cuts are computed on final
+  // prices; spikes then flips; cascade last.
 
-  // UC-05 S3: Lazada × Nam × Điện gia dụng September dip (~-12%).
-  const s3 = items.filter(
-    (item) =>
-      !deletedItems.has(item) &&
-      inSlice(item, "lazada", "Nam", "Điện gia dụng") &&
-      monthOf(orderOf(item)?.purchaseDate ?? "") === "2026-09",
-  );
-  const s3Result = deleteRevenueShare(s3, 0.12);
-  note(
-    `uc05-lazada-nam-diengiadung: sept slice ${String(s3.length)} rows, revenue pct ${s3Result.pct.toFixed(3)}`,
-  );
+  // Child-row indexes (built once, post-expansion) so spike cloning stays
+  // linear instead of scanning the million-row arrays per clone.
+  const itemsByOrder = new Map<string, BuiltItem[]>();
+  for (const item of items) {
+    const list = itemsByOrder.get(item[0]);
+    if (list) list.push(item);
+    else itemsByOrder.set(item[0], [item]);
+  }
+  const paymentsByOrder = new Map<string, BuiltPayment[]>();
+  for (const payment of payments) {
+    const list = paymentsByOrder.get(payment[0]);
+    if (list) list.push(payment);
+    else paymentsByOrder.set(payment[0], [payment]);
+  }
+  const reviewsByOrder = new Map<string, BuiltReview[]>();
+  for (const review of reviews) {
+    const list = reviewsByOrder.get(review.orderId);
+    if (list) list.push(review);
+    else reviewsByOrder.set(review.orderId, [review]);
+  }
 
-  // UC-10 A2: sharp single-day revenue drop on 2026-09-21 (≥50% vs 09-14).
-  const d21 = items.filter(
-    (item) =>
-      !deletedItems.has(item) &&
-      dayOf(orderOf(item)?.purchaseDate ?? "") === "2026-09-21" &&
-      orderOf(item)?.status === "delivered",
-  );
-  const d21Total = d21.reduce((sum, item) => sum + item[3], 0);
-  const d14Total = items
+  // Whole-order cloner for spike synthesis (new ids, retargeted date).
+  // Cloned child rows are registered in the maps too, so later clones may
+  // themselves source from synthesized rows. Returns the new order id.
+  let spikeSeq = 0;
+  const cloneForSpike = (
+    source: BuiltOrder,
+    date: string,
+    status: string,
+    tag: string,
+  ): string => {
+    spikeSeq += 1;
+    const newId = `${source.id}-${tag}${String(spikeSeq)}`;
+    const purchaseDate = `${date} ${pad2(rng.number.int({ min: 0, max: 23 }))}:${pad2(rng.number.int({ min: 0, max: 59 }))}:${pad2(rng.number.int({ min: 0, max: 59 }))}`;
+    const order: BuiltOrder = {
+      id: newId,
+      customerId: source.customerId,
+      channelId: source.channelId,
+      status,
+      purchaseDate,
+    };
+    orders.push(order);
+    orderById.set(newId, order);
+    const newItems: BuiltItem[] = [];
+    for (const item of itemsByOrder.get(source.id) ?? []) {
+      if (deletedItems.has(item)) continue;
+      const cloned: BuiltItem = [newId, item[1], item[2], item[3], item[4]];
+      items.push(cloned);
+      newItems.push(cloned);
+    }
+    if (newItems.length > 0) itemsByOrder.set(newId, newItems);
+    const newPayments: BuiltPayment[] = [];
+    for (const payment of paymentsByOrder.get(source.id) ?? []) {
+      const cloned: BuiltPayment = [newId, payment[1], payment[2], payment[3]];
+      payments.push(cloned);
+      newPayments.push(cloned);
+    }
+    if (newPayments.length > 0) paymentsByOrder.set(newId, newPayments);
+    const newReviews: BuiltReview[] = [];
+    for (const review of reviewsByOrder.get(source.id) ?? []) {
+      const cloned: BuiltReview = {
+        id: `${review.id}-${tag}${String(spikeSeq)}`,
+        orderId: newId,
+        score: review.score,
+        title: review.title,
+        message: review.message,
+        createdAt: purchaseDate,
+      };
+      reviews.push(cloned);
+      newReviews.push(cloned);
+    }
+    if (newReviews.length > 0) reviewsByOrder.set(newId, newReviews);
+    return newId;
+  };
+
+  // September synthesis: the shifted publisher tail (Sept 2018) is thin and
+  // canceled, so September 2026 has no delivered base rows for the
+  // seeds.json scenarios to act on. Clone delivered August 2026 orders
+  // round-robin across September 01..30 (whole orders, jittered clock) to
+  // establish the September population first; scenario magnitudes below are
+  // then engineered against this baseline. Deterministic (id-sorted pool).
+  const septemberPool = orders
+    .filter((order) => {
+      if (order.status !== "delivered") return false;
+      const day = dayOf(order.purchaseDate);
+      return day >= "2026-08-01" && day <= "2026-08-31";
+    })
+    .sort((a, b) => (a.id < b.id ? -1 : 1));
+  septemberPool.forEach((source, index) => {
+    const day = 1 + (index % 30);
+    cloneForSpike(
+      source,
+      `2026-09-${String(day).padStart(2, "0")}`,
+      "delivered",
+      "sep",
+    );
+  });
+  note(`september-synthesis: cloned ${String(septemberPool.length)} August delivered orders across September 01..30`);
+
+  // S3 slice seeding: the Lazada × Nam × Điện-gia-dụng September intersection
+  // is naturally empty (three-way sparsity), so no proportional cut is
+  // possible. Clone 60 delivered September Nam orders (Lazada channel, one
+  // item retargeted to a Điện-gia-dụng product) to establish the slice; the
+  // S3 cut below then engineers the -12% against it. Clones keep their
+  // source day and never enter S1's slice (channel + category both differ).
+  const dienGDCategoryId = [...viByCategoryId.entries()].find(
+    ([, viName]) => viName === "Điện gia dụng",
+  )?.[0];
+  const dienGDProducts = [...productCategory.entries()]
+    .filter(([, categoryId]) => categoryId === dienGDCategoryId)
+    .map(([productId]) => productId)
+    .sort();
+  const s3SeedPool = orders
     .filter(
-      (item) =>
-        !deletedItems.has(item) &&
-        dayOf(orderOf(item)?.purchaseDate ?? "") === "2026-09-14" &&
-        orderOf(item)?.status === "delivered",
+      (order) =>
+        order.status === "delivered" &&
+        monthOf(order.purchaseDate) === "2026-09" &&
+        customerById.get(order.customerId)?.region === "Nam" &&
+        order.channelId !== "lazada",
     )
-    .reduce((sum, item) => sum + item[3], 0);
-  const a2Result = deleteRevenueShare(d21, 0.55);
-  note(
-    `uc10-sharp-revenue-drop: 09-21 slice ${String(d21.length)} rows (${String(d21Total)} VND) vs 09-14 ${String(d14Total)} VND, removed share ${(-a2Result.pct).toFixed(3)}`,
-  );
+    .sort((a, b) => (a.id < b.id ? -1 : 1))
+    .slice(0, 150);
+  s3SeedPool.forEach((source, index) => {
+    const product = dienGDProducts[index % Math.max(1, dienGDProducts.length)];
+    if (product === undefined) return;
+    const newId = cloneForSpike(source, dayOf(source.purchaseDate), "delivered", "s3s");
+    const seededOrder = orderById.get(newId);
+    if (seededOrder) seededOrder.channelId = "lazada";
+    const firstItem = itemsByOrder.get(newId)?.[0];
+    if (firstItem) firstItem[1] = product;
+  });
+  note(`s3-seeding: cloned ${String(s3SeedPool.length)} September Nam orders into the Lazada × Điện-gia-dụng slice`);
+  // August mirror of the S3 slice: the S3 reference SQL divides by the
+  // August slice revenue, which is naturally zero. Clone each -s3s September
+  // seed back into August (same items and prices, fixed mid-month day) so
+  // the August baseline mirrors the September pre-cut revenue and the -12%
+  // cut below reads exactly.
+  const s3SeptIds: string[] = [];
+  for (const order of orders) {
+    if (order.id.includes("-s3s")) s3SeptIds.push(order.id);
+  }
+  s3SeptIds.sort();
+  for (const septId of s3SeptIds) {
+    const source = orderById.get(septId);
+    if (!source) continue;
+    cloneForSpike(source, "2026-08-15", "delivered", "s3a");
+  }
+  note(`s3-august-mirror: mirrored ${String(s3SeptIds.length)} S3 seed rows into August`);
 
-  // UC-10 A5: AOV of week 21–27/09 drops ≥20% vs the prior week — a flat 30%
-  // price cut on delivered items in the window.
+  // UC-10 A5 FIRST (before the proportional cuts): a flat 30% price cut on
+  // delivered items in 2026-09-21..27. Runs before S1/S3/A2 so those cuts
+  // are engineered against final prices and land exactly.
   let aovTouched = 0;
   for (const item of items) {
     if (deletedItems.has(item)) continue;
@@ -863,46 +1035,8 @@ function injectSeeds(
   }
   note(`uc10-aov-drop: 30% price cut on ${String(aovTouched)} delivered items in 2026-09-21..27`);
 
-  // Whole-order cloner for spike synthesis (new ids, retargeted date).
-  let spikeSeq = 0;
-  const cloneForSpike = (
-    source: BuiltOrder,
-    date: string,
-    status: string,
-    tag: string,
-  ): void => {
-    spikeSeq += 1;
-    const newId = `${source.id}-${tag}${String(spikeSeq)}`;
-    const purchaseDate = `${date} ${pad2(rng.number.int({ min: 0, max: 23 }))}:${pad2(rng.number.int({ min: 0, max: 59 }))}:${pad2(rng.number.int({ min: 0, max: 59 }))}`;
-    const order: BuiltOrder = {
-      id: newId,
-      customerId: source.customerId,
-      channelId: source.channelId,
-      status,
-      purchaseDate,
-    };
-    orders.push(order);
-    orderById.set(newId, order);
-    for (const item of items) {
-      if (item[0] !== source.id || deletedItems.has(item)) continue;
-      items.push([newId, item[1], item[2], item[3], item[4]]);
-    }
-    for (const payment of payments) {
-      if (payment[0] !== source.id) continue;
-      payments.push([newId, payment[1], payment[2], payment[3]]);
-    }
-    for (const review of reviews) {
-      if (review.orderId !== source.id) continue;
-      reviews.push({
-        id: `${review.id}-${tag}${String(spikeSeq)}`,
-        orderId: newId,
-        score: review.score,
-        title: review.title,
-        message: review.message,
-        createdAt: purchaseDate,
-      });
-    }
-  };
+  // UC-10 A2 runs LAST among revenue mutations (after S1/S3/EC-02), so its
+  // d14/d21 baselines are final and the cut lands exactly. See below.
 
   const deliveredIn = (
     province: string,
@@ -978,6 +1112,77 @@ function injectSeeds(
   }
   note(`uc10-danang-returns-x4: synthesized ${String(danangPrior.length > 0 ? a1Count : 0)} returned orders on 2026-09-14`);
 
+  // UC-05 proportional cuts LAST (after every other revenue mutation), so the
+  // logged pcts are the final ones. Both compensate dynamically against
+  // their August baselines (which include the intentional September
+  // interactions: the AOV week and the synthesized-September shape), so the
+  // final August-to-September ratios land on the designed magnitudes.
+  // Granularity note: the S3 cut overshoots by up to one row, so the S3 seed
+  // below clones 150 rows to keep the final ratio within a point of -0.12.
+  const s1All = items.filter(
+    (item) =>
+      !deletedItems.has(item) && inSlice(item, "shopee", "Trung", "Đồ gia dụng"),
+  );
+  const s1Rev = sliceRevenueByMonth(s1All);
+  const s1 = s1All.filter(
+    (item) => monthOf(orderOf(item)?.purchaseDate ?? "") === "2026-09",
+  );
+  const s1Result = deleteRevenueAmount(s1, s1Rev.sept - 0.82 * s1Rev.aug);
+  const s1Final =
+    s1Rev.aug === 0 ? 0 : (s1Rev.sept - s1Result.removed - s1Rev.aug) / s1Rev.aug;
+  note(
+    `uc05-shopee-trung-dogiadung: sept slice ${String(s1.length)} rows, aug ${String(s1Rev.aug)} VND, final ratio ${s1Final.toFixed(3)} (removed share ${(-s1Result.pct).toFixed(3)})`,
+  );
+
+  // UC-05 S3: Lazada × Nam × Điện gia dụng September dip (designed -0.12).
+  // A2 (below) skips S1/S3-slice rows, so nothing after this cut touches the
+  // slice except the revenue-neutral cascade: the final ratio lands exactly.
+  const s3All = items.filter(
+    (item) =>
+      !deletedItems.has(item) && inSlice(item, "lazada", "Nam", "Điện gia dụng"),
+  );
+  const s3Rev = sliceRevenueByMonth(s3All);
+  const s3 = s3All.filter(
+    (item) => monthOf(orderOf(item)?.purchaseDate ?? "") === "2026-09",
+  );
+  const s3Result = deleteRevenueAmount(s3, s3Rev.sept - 0.88 * s3Rev.aug);
+  const s3Final =
+    s3Rev.aug === 0 ? 0 : (s3Rev.sept - s3Result.removed - s3Rev.aug) / s3Rev.aug;
+  note(
+    `uc05-lazada-nam-diengiadung: sept slice ${String(s3.length)} rows, aug ${String(s3Rev.aug)} VND, final ratio ${s3Final.toFixed(3)} (removed share ${(-s3Result.pct).toFixed(3)})`,
+  );
+
+  // UC-10 A2 LAST: sharp single-day revenue drop on 2026-09-21 to just over
+  // half of 09-14 (designed "at least -0.50"). d14/d21 are final here (all
+  // other mutations applied). The cut set SKIPS S1/S3-slice rows, so A2 can
+  // no longer erode the S1/S3 ratios measured above; keeping 0.49*d14 lands
+  // the wow ratio at ≈ -0.51 with margin, and the cascade afterwards is
+  // revenue-neutral.
+  const inProtectedSlice = (item: BuiltItem): boolean =>
+    inSlice(item, "shopee", "Trung", "Đồ gia dụng") ||
+    inSlice(item, "lazada", "Nam", "Điện gia dụng");
+  const d21All = items.filter(
+    (item) =>
+      !deletedItems.has(item) &&
+      dayOf(orderOf(item)?.purchaseDate ?? "") === "2026-09-21" &&
+      orderOf(item)?.status === "delivered",
+  );
+  const d21Total = d21All.reduce((sum, item) => sum + item[3], 0);
+  const d14Total = items
+    .filter(
+      (item) =>
+        !deletedItems.has(item) &&
+        dayOf(orderOf(item)?.purchaseDate ?? "") === "2026-09-14" &&
+        orderOf(item)?.status === "delivered",
+    )
+    .reduce((sum, item) => sum + item[3], 0);
+  const d21 = d21All.filter((item) => !inProtectedSlice(item));
+  const a2Result = deleteRevenueAmount(d21, d21Total - 0.49 * d14Total);
+  const a2Final = d14Total === 0 ? 0 : (d21Total - a2Result.removed - d14Total) / d14Total;
+  note(
+    `uc10-sharp-revenue-drop: 09-21 slice ${String(d21All.length)} rows (${String(d21Total)} VND) vs 09-14 ${String(d14Total)} VND, final wow ${a2Final.toFixed(3)} (removed share ${(-a2Result.pct).toFixed(3)} from ${String(d21.length)} unprotected rows)`,
+  );
+
   // Prompt-injection product rows (payloads from seeds.json, categories by
   // Vietnamese name so the reference SQL LIKE clauses hit).
   const seeds = loadSeedsFile();
@@ -1019,7 +1224,7 @@ function injectSeeds(
     keptItems.push(item);
   }
   items.length = 0;
-  items.push(...keptItems);
+  for (const item of keptItems) items.push(item);
   const removedOrders = new Set<string>();
   const keptOrders = orders.filter((order) => {
     if (liveItems.has(order.id)) return true;
@@ -1028,15 +1233,13 @@ function injectSeeds(
     return false;
   });
   orders.length = 0;
-  orders.push(...keptOrders);
-  for (let i = payments.length - 1; i >= 0; i--) {
-    const payment = payments[i];
-    if (payment && removedOrders.has(payment[0])) payments.splice(i, 1);
-  }
-  for (let i = reviews.length - 1; i >= 0; i--) {
-    const review = reviews[i];
-    if (review && removedOrders.has(review.orderId)) reviews.splice(i, 1);
-  }
+  for (const order of keptOrders) orders.push(order);
+  const keptPayments = payments.filter((payment) => !removedOrders.has(payment[0]));
+  payments.length = 0;
+  for (const payment of keptPayments) payments.push(payment);
+  const keptReviews = reviews.filter((review) => !removedOrders.has(review.orderId));
+  reviews.length = 0;
+  for (const review of keptReviews) reviews.push(review);
   note(`cascade: removed ${String(removedOrders.size)} item-less orders`);
 }
 
@@ -1078,28 +1281,55 @@ export async function loadTables(
   for (const line of stats.injectionNotes) console.log(`inject: ${line}`);
 
   const tables: SeedManifest["tables"] = {};
-  // Reset in reverse FK order (children first) so DELETE never trips a
-  // reference; DELETE (not TRUNCATE) stays safe on a partially loaded DB.
+  // Reset children-first. A full twelve-table reset runs as one TRUNCATE
+  // statement (instant, RESTART IDENTITY so reloads are fully deterministic;
+  // same-statement truncation needs no CASCADE). Partial --tables resets keep
+  // the old per-table DELETE, which stays FK-safe for leaf/static tables.
   const resetOrder = [...tableNames].reverse();
-  await withOwnerTx(pool, async (client) => {
-    for (const name of resetOrder) {
-      const def = TABLE_LOADERS[name];
-      if (!def) throw new Error(`Unknown table "${name}"`);
-      if (!rows.has(name)) continue;
-      await client.query(`DELETE FROM ${def.table}`);
-    }
-  });
+  if (tableNames.length === LOAD_ORDER.length) {
+    await withOwnerTx(pool, async (client) => {
+      const targets = resetOrder
+        .map((name) => {
+          const def = TABLE_LOADERS[name];
+          if (!def) throw new Error(`Unknown table "${name}"`);
+          return def.table;
+        })
+        .join(", ");
+      await client.query(`TRUNCATE ${targets}`);
+    });
+  } else {
+    await withOwnerTx(pool, async (client) => {
+      for (const name of resetOrder) {
+        const def = TABLE_LOADERS[name];
+        if (!def) throw new Error(`Unknown table "${name}"`);
+        if (!rows.has(name)) continue;
+        await client.query(`DELETE FROM ${def.table}`);
+      }
+    });
+  }
+  // COPY in bounded chunks: copyTable streams one COPY per call, so a single
+  // million-row call buffers the whole formatted stream in memory and GC
+  // thrashes. Chunked COPYs inside one transaction keep memory flat.
+  const COPY_CHUNK_SIZE = 50_000;
   for (const name of tableNames) {
     const def = TABLE_LOADERS[name];
     if (!def) throw new Error(`Unknown table "${name}"`);
     const data = rows.get(name);
     if (!data) continue;
     await withOwnerTx(pool, async (client) => {
-      const count = await copyTable(client, def.table, def.columns, data);
+      let written = 0;
+      for (let offset = 0; offset < data.length; offset += COPY_CHUNK_SIZE) {
+        written += await copyTable(
+          client,
+          def.table,
+          def.columns,
+          data.slice(offset, offset + COPY_CHUNK_SIZE),
+        );
+      }
       const checksum = await canonicalCsvFor(client, def);
-      if (checksum.rows !== count) {
+      if (checksum.rows !== written) {
         throw new Error(
-          `COPY/readback mismatch on ${def.table}: wrote ${String(count)}, read ${String(checksum.rows)}`,
+          `COPY/readback mismatch on ${def.table}: wrote ${String(written)}, read ${String(checksum.rows)}`,
         );
       }
       tables[name] = checksum;
@@ -1113,17 +1343,24 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   const pool = createOwnerPool();
   try {
     const manifest = await loadTables(pool, tableNames);
-    // Determinism gate: every table loaded now that also exists in the
-    // previous manifest must match it byte for byte; then merge (fresh rows
-    // win) so --tables iteration on static tables stays green.
-    let previous: SeedManifest | null = null;
-    try {
-      previous = readManifest(DEFAULT_MANIFEST_PATH);
-    } catch {
-      previous = null; // First load: no manifest yet, write it below.
-    }
-    let merged: SeedManifest = manifest;
-    if (previous) {
+    // Determinism gate (full twelve-table loads only): every table loaded
+    // now that also exists in the previous manifest must match it byte for
+    // byte; then merge (fresh rows win). Partial --tables loads skip the
+    // gate and leave the stored manifest untouched: they are explicitly
+    // iteration-only (base rows without expansion), never canonical.
+    if (tableNames.length !== LOAD_ORDER.length) {
+      console.log(
+        "partial load — manifest gate skipped, stored manifest left untouched; run a full load before verify",
+      );
+    } else {
+      let previous: SeedManifest | null = null;
+      try {
+        previous = readManifest(DEFAULT_MANIFEST_PATH);
+      } catch {
+        previous = null; // First load: no manifest yet, write it below.
+      }
+      let merged: SeedManifest = manifest;
+      if (previous) {
       const overlap = tableNames.filter((name) => previous?.tables[name]);
       const scopedActual: SeedManifest = {
         ...manifest,
@@ -1158,6 +1395,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
       }
     }
     console.log(`manifest: ${DEFAULT_MANIFEST_PATH}`);
+    }
   } finally {
     await pool.end();
   }
