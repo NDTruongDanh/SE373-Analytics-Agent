@@ -9,7 +9,10 @@ export default tseslint.config(
     files: [
       "packages/agent/**/*.ts",
       "packages/access-policy/**/*.ts",
-      "apps/**/*.ts",
+      // 01-13: apps/api is the harness_state host and MUST import pg (the
+      // AppStateStore DAO); the ban stays on apps/web (UI) only. Full §5.2
+      // graph pass lands in 01-15 (REPO-01).
+      "apps/web/**/*.ts",
     ],
     rules: {
       "no-restricted-imports": [

@@ -78,3 +78,14 @@ ALTER DEFAULT PRIVILEGES FOR ROLE indexer IN SCHEMA semantic
 
 -- harness_state: owns its schemas (above), holds zero grants on public and
 -- semantic — any read there fails 42501 by the absence of any grant.
+
+-- FIX 3 (live-found, 01-13): PostgresSaver.setup() unconditionally issues
+-- CREATE SCHEMA IF NOT EXISTS "langgraph" before its migrations, and PG
+-- checks CREATE on the database even when the schema already exists
+-- (observed live: 42501 permission denied for database chosen as
+-- harness_state). harness_state therefore needs CREATE on the database
+-- itself. This grants no access to public.* or semantic.* (still 42501 by
+-- the absence of any grant); it only lets harness_state own schemas — the
+-- langgraph/app_state D-08 intent. Without it, setup() cannot run as
+-- harness_state and the PORT-01 role-proof fails.
+GRANT CREATE ON DATABASE chosen TO harness_state;

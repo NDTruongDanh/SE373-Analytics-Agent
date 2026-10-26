@@ -13,3 +13,7 @@ export type AgentShellError = DbToolError;
 export * from "./state.js";
 export * from "./graph.js";
 export * from "./subgraphs/registry.js";
+// 01-13 ports barrel: re-exported at the root so the apps/api host builds
+// the PostgresSaver via the barrel (direct deep imports are blocked by the
+// package exports map). Additive only; no 01-10 surface changed.
+export * from "./ports/index.js";
