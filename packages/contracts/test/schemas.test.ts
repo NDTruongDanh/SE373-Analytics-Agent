@@ -88,8 +88,8 @@ describe("contract surface", () => {
         id: "q01",
         question: "Revenue?",
         difficulty: "expert",
-        gold_sql: "SELECT 1",
-        gold_result_path: "results/q01.json",
+        goldSql: "SELECT 1",
+        goldResultPath: "results/q01.json",
       }),
     ).toThrow();
   });

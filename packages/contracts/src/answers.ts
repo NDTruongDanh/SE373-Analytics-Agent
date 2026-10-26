@@ -28,6 +28,8 @@ export const SQLAnswerStatusSchema = z.enum([
   "ok",
   "no_data",
   "cannot_answer",
+  "needs_clarification",
+  "restricted",
   "error",
 ]);
 

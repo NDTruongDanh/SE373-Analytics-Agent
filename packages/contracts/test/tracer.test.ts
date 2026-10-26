@@ -11,13 +11,12 @@ import {
 } from "../src/index.js";
 
 // Tracer slice: additive contracts delta only (CONT-05 span fields, CONT-08
-// catalog, SQL_EXECUTION_ERROR + repairable). CONTRACTS_VERSION stays 0.1.0;
-// the 1.0.0 breaking release (camelCase renames, semantic/benchmark deltas)
-// lands in 01-02.
+// catalog, SQL_EXECUTION_ERROR + repairable). Kept green through the 01-02
+// 1.0.0 breaking release: version bumped, field renames applied.
 
 describe("tracer contracts delta", () => {
-  it("keeps CONTRACTS_VERSION at 0.1.0", () => {
-    expect(CONTRACTS_VERSION).toBe("0.1.0");
+  it("keeps CONTRACTS_VERSION at 1.0.0", () => {
+    expect(CONTRACTS_VERSION).toBe("1.0.0");
   });
 
   it("inserts SQL_EXECUTION_ERROR after SENSITIVE_COLUMN_DENIED", () => {

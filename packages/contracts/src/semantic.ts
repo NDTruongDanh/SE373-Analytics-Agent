@@ -4,8 +4,8 @@ import * as z from "zod";
 // Sensitivity values align with policies/sensitive_columns.yaml.
 
 export const SemanticChunkMetadataSchema = z.object({
-  chunk_id: z.string(),
-  doc_type: z.enum([
+  chunkId: z.string(),
+  docType: z.enum([
     "table",
     "column",
     "metric",
@@ -15,11 +15,11 @@ export const SemanticChunkMetadataSchema = z.object({
   ]),
   table: z.string().nullable(),
   tables: z.array(z.string()),
-  metric_name: z.string().nullable(),
+  metricName: z.string().nullable(),
   aliases: z.array(z.string()).default([]),
   sensitivity: z.enum(["public", "internal", "restricted_pii"]),
   additive: z.boolean().optional(),
-  updated_at: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 export type SemanticChunkMetadata = z.infer<typeof SemanticChunkMetadataSchema>;
