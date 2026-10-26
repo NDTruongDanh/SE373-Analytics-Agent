@@ -2,6 +2,12 @@
   "name": "@se373/agent",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "typecheck": "tsc -b",
     "test": "vitest run"
@@ -10,6 +16,10 @@
     "@langchain/core": "^1.3.0",
     "@langchain/langgraph": "^1.5.2",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@se373/contracts": "workspace:*"
+    "@se373/contracts": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5"
   }
 }
