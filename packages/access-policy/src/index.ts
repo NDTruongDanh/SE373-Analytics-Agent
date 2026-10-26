@@ -5,7 +5,6 @@ export const ACCESS_POLICY_SHELL =
 
 export type AccessPolicyShellError = DbToolError;
 
-export * from "./tracerPrecheck.js";
 export * from "./guard.js";
 export * from "./denylist.js";
 // 01-06 policy stage (re-exports land here, not in a later wave, because

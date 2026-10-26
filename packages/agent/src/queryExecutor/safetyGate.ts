@@ -126,7 +126,8 @@ function largeScannedTables(
     .map((table) => table.name);
 }
 
-function hasWhereFilter(ast: GuardAst): boolean {
+/** True when any WHERE clause exists anywhere in the tree (filter present). */
+export function hasWhereFilter(ast: GuardAst): boolean {
   return findNodes(ast, "whereClause").some(
     (value) => value !== undefined && value !== null,
   );

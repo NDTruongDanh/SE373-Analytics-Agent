@@ -41,7 +41,6 @@ class FakeChatModel implements ChatModelLike {
 
   withStructuredOutput(
     schema: typeof SqlProposalSchema,
-    _opts?: { name?: string },
   ): { invoke(input: string): Promise<SqlProposal> } {
     const runnable = this.inner.withStructuredOutput(schema);
     return {
