@@ -4,6 +4,7 @@ export default [
   "packages/agent",
   "packages/mcp-server",
   "packages/access-policy",
+  "packages/data",
   "apps/api",
   "apps/web",
 ];

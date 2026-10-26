@@ -20,6 +20,10 @@ dist/
 # Generated runtime outputs (01-01 tracer; curated evidence committed explicitly)
 traces/*.jsonl
 logs/*.jsonl
+results/
+# keep skeleton dirs tracked via their .gitkeep files
+!traces/.gitkeep
+!logs/.gitkeep
 
 # GSD skill working state (local planning artifacts — never commit)
 .planning/
