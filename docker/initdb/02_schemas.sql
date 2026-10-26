@@ -31,6 +31,13 @@ REVOKE TEMP ON DATABASE chosen FROM agent_ro;
 -- and the 01-07 loader fail.
 GRANT CREATE, USAGE ON SCHEMA public TO owner;
 
+-- Owner is the DDL role for semantic_chunks (04_semantic_state.sql runs its
+-- semantic section under SET ROLE owner), and semantic is owned by
+-- harness_state — so owner needs explicit CREATE + USAGE there too.
+-- Found live during 01-04 task 2: without this, CREATE TABLE in semantic
+-- as owner fails with permission denied for database chosen.
+GRANT CREATE, USAGE ON SCHEMA semantic TO owner;
+
 -- Least privilege from zero (D-08). Grants are the load-bearing read-only
 -- boundary; agent_ro USERSET session defaults (01_roles.sql) are defense
 -- in depth only.
