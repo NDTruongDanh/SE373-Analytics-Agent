@@ -30,7 +30,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Faker, base, en, vi } from "@faker-js/faker";
 import { parse } from "csv-parse";
-import type { Pool, PoolClient } from "pg";
+import { types as pgTypes, type Pool, type PoolClient } from "pg";
 import { copyTable, createOwnerPool, withOwnerTx } from "./copy.js";
 import {
   downloadAll,
@@ -1285,13 +1285,25 @@ function injectSeeds(
   note(`cascade: removed ${String(removedOrders.size)} item-less orders`);
 }
 
+// node-postgres parses DATE as local midnight, so toISOString() would shift
+// it by the machine's UTC offset and make the hash time-zone dependent. Keep
+// DATE as its raw YYYY-MM-DD text; timestamptz stays an absolute instant.
+const DATE_OID = 1082;
+const CANONICAL_TYPES = {
+  getTypeParser: ((oid: number, format?: "text" | "binary") =>
+    oid === DATE_OID
+      ? (value: string) => value
+      : pgTypes.getTypeParser(oid, format)) as typeof pgTypes.getTypeParser,
+};
+
 async function canonicalCsvFor(
   client: PoolClient,
   def: TableDef,
 ): Promise<{ rows: number; sha256: string }> {
-  const result = await client.query(
-    `SELECT ${def.columns.join(", ")} FROM ${def.table} ORDER BY ${def.pk}`,
-  );
+  const result = await client.query({
+    text: `SELECT ${def.columns.join(", ")} FROM ${def.table} ORDER BY ${def.pk}`,
+    types: CANONICAL_TYPES,
+  });
   const lines = (result.rows as Record<string, unknown>[]).map((row) =>
     def.columns
       .map((column) => {
