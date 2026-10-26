@@ -253,8 +253,11 @@ async function main(): Promise<void> {
   }
 
   mkdirSync(path.join(repoRoot, "results"), { recursive: true });
-  let unwired = false;
-  let failed = false;
+  // The stub adapter never wires a case, so every run through main() is
+  // unwired until 01-14 replaces the adapter and computes this per case.
+  const unwired = true;
+  // Wired-adapter failures land here once 01-14 replaces the stub.
+  const failed = false;
 
   for (const uc of ucs) {
     const cases = loadUcCases(repoRoot, uc);
@@ -270,7 +273,6 @@ async function main(): Promise<void> {
     console.log(
       `eval ${uc}: ${results.summary.passed}/${results.summary.total} EX pass (dataset ${results.datasetVersion}, harness not wired)`,
     );
-    unwired = true;
   }
 
   const safety = loadSafety(repoRoot);
