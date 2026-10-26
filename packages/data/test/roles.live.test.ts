@@ -2,7 +2,11 @@
 // grant layer with committed vitest legs instead of throwaway psql probes.
 // The whole suite gates on all four role URLs: without them it skips green
 // (CI has no DB per D-10/D-21). Credentials never appear in assertions or
-// test names — only SQLSTATE codes are asserted.
+// test names — only SQLSTATE codes are asserted. G-02 hygiene: a
+// current_user preflight asserts every URL maps to its expected role before
+// any write attempt, and every public.* probe write runs inside a
+// transaction that always ROLLBACKs, so a mis-mapped DATABASE_URL can never
+// leave __probe__ residue behind.
 //
 // Probe tables: owner creates the semantic probe (ALTER DEFAULT PRIVILEGES
 // already grants indexer DML on owner-created semantic tables); harness_state
@@ -16,6 +20,34 @@ const OWNER_URL = process.env["OWNER_DATABASE_URL"];
 const RO_URL = process.env["DATABASE_URL"];
 const INDEXER_URL = process.env["INDEXER_DATABASE_URL"];
 const HARNESS_URL = process.env["HARNESS_STATE_DATABASE_URL"];
+
+// G-02: every configured URL must resolve to its expected role BEFORE any
+// probe write runs. A mis-mapped DATABASE_URL (e.g. owner) would turn the
+// denial legs into real writes and leave __probe__ residue in public.*.
+const EXPECTED_ROLES: Record<string, { url: string | undefined; role: string }> = {
+  OWNER_DATABASE_URL: { url: OWNER_URL, role: "owner" },
+  DATABASE_URL: { url: RO_URL, role: "agent_ro" },
+  INDEXER_DATABASE_URL: { url: INDEXER_URL, role: "indexer" },
+  HARNESS_STATE_DATABASE_URL: { url: HARNESS_URL, role: "harness_state" },
+};
+
+async function preflightRoleIdentity(): Promise<void> {
+  for (const [envVar, expected] of Object.entries(EXPECTED_ROLES)) {
+    const client = newClient(expected.url);
+    try {
+      await client.connect();
+      const seen = await client.query("SELECT current_user AS role");
+      const actual = (seen.rows[0] as { role: string }).role;
+      if (actual !== expected.role) {
+        throw new Error(
+          `role preflight failed: ${envVar} is connected as '${actual}', expected '${expected.role}' — refusing probe writes (a mis-mapped DATABASE_URL would leave __probe__ residue in public.*)`,
+        );
+      }
+    } finally {
+      await client.end();
+    }
+  }
+}
 
 // DATABASE_URL is the agent_ro URL in this suite's invocation (the plan's
 // <verify> passes the agent_ro URL explicitly); owner/indexer/harness_state
@@ -36,16 +68,24 @@ async function codeOf(
   );
 }
 
-// One write attempt as agent_ro with the read-only default switched off in a
-// PRIOR call, returning the pg error code. Combining SET with the write in
-// one string stays in a single implicit transaction and yields a misleading
-// 25006 instead of the grant-level 42501 this suite asserts.
+// One write attempt as agent_ro with the read-only default switched off via
+// a session SET in a PRIOR call (same reason as the old comment: folding SET
+// into the write transaction keeps the read-only snapshot and yields a
+// misleading 25006 instead of the grant-level 42501 this suite asserts), then
+// the probe statement inside an explicit transaction that always ROLLBACKs,
+// so even a mis-mapped connection (which the preflight above already
+// rejects) can never persist a __probe__ row.
 async function attemptRoWrite(sql: string): Promise<string | undefined> {
   const client = newClient(RO_URL);
   try {
     await client.connect();
     await client.query("SET default_transaction_read_only = off");
-    return await codeOf(client, sql);
+    await client.query("BEGIN");
+    try {
+      return await codeOf(client, sql);
+    } finally {
+      await client.query("ROLLBACK");
+    }
   } finally {
     await client.end();
   }
@@ -59,6 +99,7 @@ describe.skipIf(!hasAll)(
     let harness: Client;
 
     beforeAll(async () => {
+      await preflightRoleIdentity();
       owner = newClient(OWNER_URL);
       indexer = newClient(INDEXER_URL);
       harness = newClient(HARNESS_URL);
@@ -134,11 +175,16 @@ describe.skipIf(!hasAll)(
       const client = newClient(RO_URL);
       try {
         await client.connect();
-        const code = await codeOf(
-          client,
-          "INSERT INTO public.customers (customer_id, name, phone, email, address, province, region_group) VALUES ('__probe__', 'x', 'x', 'x', 'x', 'Hà Nội', 'Bắc')",
-        );
-        expect(code).toBe("25006");
+        await client.query("BEGIN");
+        try {
+          const code = await codeOf(
+            client,
+            "INSERT INTO public.customers (customer_id, name, phone, email, address, province, region_group) VALUES ('__probe__', 'x', 'x', 'x', 'x', 'Hà Nội', 'Bắc')",
+          );
+          expect(code).toBe("25006");
+        } finally {
+          await client.query("ROLLBACK");
+        }
       } finally {
         await client.end();
       }
