@@ -5,7 +5,7 @@ description: Build and runtime entrypoints, provider and session-header configur
 tags: [operations, repository, openwiki-automation, configuration, ci]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T12:53:57.503Z
+    at: 2026-10-26T14:44:58.914Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -15,15 +15,29 @@ sources:
     resource: repo://.openwikiignore
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
+  - id: openwiki-source-959b64ff54cd1f30f8828ba2
+    resource: repo://docs/mcp_interface.md
   - id: openwiki-source-a53a8de5929686354550dafa
     resource: repo://docs/prd.md
+  - id: openwiki-source-2fda883e9b76745f69f487f7
+    resource: repo://eslint.config.mjs
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
+  - id: openwiki-source-40275cb92c3610938f16ade3
+    resource: repo://pnpm-workspace.yaml
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
+  - id: openwiki-source-448c9d8aa919e800fae5eedb
+    resource: repo://scripts/generate-interface.mjs
   - id: openwiki-source-a11884925ded039ec27120f5
     resource: repo://scripts/openwiki-fetch-patch.mjs
-generated: { by: "openwiki/0.7.2", at: "2026-10-25T12:53:57.503Z" }
+  - id: openwiki-source-df1e4d0dc0a35c64fd0e652b
+    resource: repo://tsconfig.base.json
+  - id: openwiki-source-98d5ddb014a0fd4d678f6f2a
+    resource: repo://tsconfig.json
+  - id: openwiki-source-b6f224d26b4ec604e90101e3
+    resource: repo://vitest.workspace.ts
+generated: { by: "openwiki/0.7.2", at: "2026-10-26T14:44:58.914Z" }
 ---
 
 # Repository operations and wiki automation
@@ -36,7 +50,7 @@ This repository is the SE373 Analytics Agent course project in initial setup: wi
 - Local activation sequence is `corepack enable`, `corepack prepare pnpm@11.25.0 --activate`, then `pnpm install --frozen-lockfile` (`README.md:22-28`).
 - Wiki engine is [`openwiki`](https://github.com/langchain-ai/openwiki) `0.7.2`, pinned in `package.json:23` plus `pnpm-lock.yaml` (`README.md:7-10`).
 - CI runs on Node `24` with `pnpm/action-setup` version `11.25.0` and `actions/setup-node` with the pnpm cache (`.github/workflows/openwiki-update.yml:30-41`).
-- `pnpm-workspace.yaml:1-3` records the pnpm v11 build approval for `better-sqlite3`; it is not a second package definition.
+- `pnpm-workspace.yaml:1-8` records the pnpm v11 build approvals for `better-sqlite3` and `esbuild`, and defines the workspace globs `apps/*` and `packages/*`; it is not a second package definition.
 
 ## 2. Build and runtime entrypoints
 
@@ -51,6 +65,17 @@ Every `wiki:*` script preloads the session-header patch with Node `--import` bef
 | `pnpm wiki:visualize` | `... cli.js visualize` | Static-site export under `docs/openwiki-visualizer` (`package.json:18`, `README.md:31-33`) |
 
 The canonical local run is copy `.env.example` to `.env`, fill in the API key variable, then run `pnpm wiki:update:print` (`README.md:22-28`). The brief every OpenWiki run reads is [`openwiki/INSTRUCTIONS.md`](../INSTRUCTIONS.md); the read boundary is [`.openwikiignore`](../../.openwikiignore) (`README.md:33-34`).
+
+Root quality and interface scripts share the same `package.json:19-22` entrypoint layer (`AGENTS.md:34-44`):
+
+| Command | Invocation | Purpose |
+|---|---|---|
+| `pnpm typecheck` | `tsc -b` | Typecheck all project references in `tsconfig.json:4` against the strict ESM `nodenext` base in `tsconfig.base.json:3-6` |
+| `pnpm lint` | `eslint .` | Lint with `eslint.config.mjs:3-7` (ignores `node_modules/`, `dist/`, `coverage/`); `packages/agent` plus `apps` carry the `no-restricted-imports` guard that forbids direct `pg`, `pg-cursor`, and `mcp-server` imports (`eslint.config.mjs:9-41`, `AGENTS.md:111-121`) |
+| `pnpm test` | `vitest run` | Run the Vitest workspace in `vitest.workspace.ts:2-8` (`packages/contracts`, `packages/agent`, `packages/mcp-server`, `packages/access-policy`, `apps/api`, `apps/web`) |
+| `pnpm docs:interface` | `tsx scripts/generate-interface.mjs` | Regenerate [`docs/mcp_interface.md`](../../docs/mcp_interface.md) from the frozen zod schemas in `packages/contracts` (`scripts/generate-interface.mjs:1-18`); never hand-edit the output (`docs/mcp_interface.md:1-3`, `AGENTS.md:75-77`) |
+
+The root gate is `pnpm typecheck && pnpm lint && pnpm test`; scoped iteration uses `pnpm --filter @se373/<pkg> test`, and contracts changes must include a regenerated `docs/mcp_interface.md` (`AGENTS.md:41-44`, `AGENTS.md:124-130`).
 
 ## 3. Environment and provider configuration
 
@@ -126,3 +151,4 @@ Future agent implementation constraint: use Python (recommended) or TypeScript f
 - [Quickstart](../quickstart.md): one-command setup, command table, and task-routing map.
 - [Workflow architecture](../agent/workflow-architecture.md): future LangGraph loop, state, and harness ownership.
 - [Eval and safety harness](../evals/eval-and-safety-harness.md): one-command eval runs, EX scoring, regression, and safety cases.
+- [MCP server](../integrations/mcp-server.md): DB I/O ownership, tool contracts, and the generated interface this page's `docs:interface` entrypoint refreshes.
