@@ -160,10 +160,9 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   return graph;
 }
 
-export interface TracerGraphContext extends TracerDefaultContext {
-  // runTracerGraph input: MCP transport plus trace identity. The 01-14 host
-  // populates the same fields into RunnableConfig.configurable per D-11.
-}
+export type TracerGraphContext = TracerDefaultContext;
+// runTracerGraph input: MCP transport plus trace identity. The 01-14 host
+// populates the same fields into RunnableConfig.configurable per D-11.
 
 export interface TracerRunResult {
   status: "ok" | "no_data";

@@ -43,17 +43,27 @@ const SemanticChunkSchema = z.object({
   text: z.string().optional(),
 });
 
-const BudgetStateSchema = z.object({
-  llmCalls: z.number().int().nonnegative().default(0),
-  tokensUsed: z.number().int().nonnegative().default(0),
-  maxLlmCalls: z.number().int().positive().default(BUDGET_DEFAULTS.maxLlmCalls),
-  maxTokens: z.number().int().positive().default(BUDGET_DEFAULTS.maxTokens),
-  runDeadlineMs: z
-    .number()
-    .int()
-    .positive()
-    .default(BUDGET_DEFAULTS.runDeadlineMs),
-});
+const BudgetStateSchema = z
+  .object({
+    llmCalls: z.number().int().nonnegative().default(0),
+    tokensUsed: z.number().int().nonnegative().default(0),
+    maxLlmCalls: z.number().int().positive().default(BUDGET_DEFAULTS.maxLlmCalls),
+    maxTokens: z.number().int().positive().default(BUDGET_DEFAULTS.maxTokens),
+    runDeadlineMs: z
+      .number()
+      .int()
+      .positive()
+      .default(BUDGET_DEFAULTS.runDeadlineMs),
+  })
+  // Object-level default seeds the reducer channel so limits are present on
+  // a fresh run and partial writes merge against full defaults (D-13).
+  .default(() => ({
+    llmCalls: 0,
+    tokensUsed: 0,
+    maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls,
+    maxTokens: BUDGET_DEFAULTS.maxTokens,
+    runDeadlineMs: BUDGET_DEFAULTS.runDeadlineMs,
+  }));
 type BudgetState = z.infer<typeof BudgetStateSchema>;
 const BudgetUpdateSchema = z.object({
   llmCalls: z.number().int().nonnegative().optional(),
@@ -64,11 +74,14 @@ const BudgetUpdateSchema = z.object({
 });
 type BudgetUpdate = z.infer<typeof BudgetUpdateSchema>;
 
-const TelemetryStateSchema = z.object({
-  promptTokens: z.number().int().nonnegative().default(0),
-  completionTokens: z.number().int().nonnegative().default(0),
-  latencyMs: z.number().nonnegative().default(0),
-});
+const TelemetryStateSchema = z
+  .object({
+    promptTokens: z.number().int().nonnegative().default(0),
+    completionTokens: z.number().int().nonnegative().default(0),
+    latencyMs: z.number().nonnegative().default(0),
+  })
+  // Seeds the reducer channel with zero counters (same pattern as budget).
+  .default(() => ({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }));
 type TelemetryState = z.infer<typeof TelemetryStateSchema>;
 const TelemetryUpdateSchema = z.object({
   promptTokens: z.number().int().nonnegative().optional(),
