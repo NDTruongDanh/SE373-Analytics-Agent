@@ -33,3 +33,6 @@ data/seeded_scenarios.md
 packages/data/src/seeds.json
 **/seed_manifest.json
 *.log
+
+# GSD skill working state (planning artifacts — never read, scan, or reproduce)
+.planning/
