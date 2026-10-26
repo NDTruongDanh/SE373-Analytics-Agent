@@ -27,14 +27,14 @@
 
 ### Database & Roles (DB)
 
-- [ ] **DB-01**: `pnpm db:up` starts PostgreSQL 16 + pgvector (pinned `pgvector/pgvector:0.8.7-pg16`) via Docker Compose; `pnpm db:reset` recreates it
-- [ ] **DB-02**: Init SQL creates roles `owner` (DDL/load), `agent_ro` (SELECT on business schema only; no TEMP/CREATE; no role memberships; `default_transaction_read_only=on`; `statement_timeout=30s`), `indexer` (writes only to semantic/state schemas)
-- [ ] **DB-03**: Automated test proves `agent_ro` cannot INSERT/UPDATE/DELETE/CREATE/TEMP even after `SET default_transaction_read_only=off` / `BEGIN READ WRITE`
-- [ ] **DB-04**: Schemas are separated: business tables, `semantic` (pgvector `semantic_chunks`), `langgraph` (checkpointer), `app_state` (audit/alert history) with per-role grants
+- [x] **DB-01**: `pnpm db:up` starts PostgreSQL 16 + pgvector (pinned `pgvector/pgvector:0.8.7-pg16`) via Docker Compose; `pnpm db:reset` recreates it
+- [x] **DB-02**: Init SQL creates roles `owner` (DDL/load), `agent_ro` (SELECT on business schema only; no TEMP/CREATE; no role memberships; `default_transaction_read_only=on`; `statement_timeout=30s`), `indexer` (writes only to semantic/state schemas)
+- [x] **DB-03**: Automated test proves `agent_ro` cannot INSERT/UPDATE/DELETE/CREATE/TEMP even after `SET default_transaction_read_only=off` / `BEGIN READ WRITE`
+- [x] **DB-04**: Schemas are separated: business tables, `semantic` (pgvector `semantic_chunks`), `langgraph` (checkpointer), `app_state` (audit/alert history) with per-role grants
 
 ### Data & Seeds (DATA)
 
-- [ ] **DATA-01**: Localized schema has ≥8 tables with FKs (customers, orders, order_items, products, categories, sellers, payments, reviews, regions, channels, employees, promotions) over 2025–2026, VND, Vietnamese provinces grouped into 3 regions
+- [x] **DATA-01**: Localized schema has ≥8 tables with FKs (customers, orders, order_items, products, categories, sellers, payments, reviews, regions, channels, employees, promotions) over 2025–2026, VND, Vietnamese provinces grouped into 3 regions
 - [ ] **DATA-02**: `pnpm data:load` loads the Olist-derived dataset deterministically (seeded RNG, checksums) with `order_items` ≥ 1,000,000 rows
 - [ ] **DATA-03**: PII columns (`customers.phone/email/address`, `employees.salary`) are synthetic via `@faker-js/faker` vi locale (with en fallback); no real personal data
 - [ ] **DATA-04**: Loader injects ≥3 known-cause variance scenarios (UC-05), ≥5 anomaly points (UC-10), and ≥3 prompt-injection text rows, documented in `data/seeded_scenarios.md`
@@ -139,11 +139,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONT-04 | Phase 1 | Complete |
 | CONT-05 | Phase 1 | Complete |
 | CONT-06 | Phase 1 | Complete |
-| DB-01 | Phase 2 | Pending |
-| DB-02 | Phase 2 | Pending |
-| DB-03 | Phase 2 | Pending |
-| DB-04 | Phase 2 | Pending |
-| DATA-01 | Phase 2 | Pending |
+| DB-01 | Phase 2 | Complete |
+| DB-02 | Phase 2 | Complete |
+| DB-03 | Phase 2 | Complete |
+| DB-04 | Phase 2 | Complete |
+| DATA-01 | Phase 2 | Complete |
 | DATA-02 | Phase 2 | Pending |
 | DATA-03 | Phase 2 | Pending |
 | DATA-04 | Phase 2 | Pending |

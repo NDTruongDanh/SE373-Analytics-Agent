@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 2
 current_phase_name: Postgres Roles + Seeded Data
 status: executing
-stopped_at: Phase 3 complete, ready to plan Phase 2
-last_updated: "2026-10-26T05:17:38.123Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-10-26T05:57:20.452Z"
 last_activity: 2026-10-26
-last_activity_desc: Phase 3 complete, transitioned to Phase 2
-state_head: aed9c2650d6f63c24f1cb38fc16753a42d9cc20d
+last_activity_desc: Phase 2 execution started
+state_head: ffe7b2d2b0cf5a2d2659098032a06672d2d5d29b
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 11
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-26)
 
 **Core value:** Every UC owner can clone the repo, run one setup command, and build their UC against a stable, enforced harness: shared contracts, a read-only Postgres with seeded data, a guarded `db-tools` path, a LangGraph.js agent skeleton, and a single trace/eval format.
-**Current focus:** Phase 3 — SQL Guard + Read-Only Executor
+**Current focus:** Phase 2 — Postgres Roles + Seeded Data
 
 ## Current Position
 
-Phase: 2 (Postgres Roles + Seeded Data) — READY TO EXECUTE
-Plan: Not started
+Phase: 2 (Postgres Roles + Seeded Data) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-10-25 — Phase 3 complete, transitioned to Phase 2
+Last activity: 2026-10-26 — Phase 2 execution started
 
 Progress: [███░░░░░░░] 29%
 
@@ -64,6 +64,7 @@ Progress: [███░░░░░░░] 29%
 | Phase 03-sql-guard-read-only-executor P2 | 3min | 2 tasks | 2 files |
 | Phase 03-sql-guard-read-only-executor P3 | 6min | 3 tasks | 8 files |
 | Phase 03-sql-guard-read-only-executor P4 | 12min | 3 tasks | 9 files |
+| Phase 2 P1 | 7 min | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Recent decisions affecting current work:
 - [Phase 03-sql-guard-read-only-executor]: Path redaction applies to detail/hint only, never message, preserving SQL division; error-path ROLLBACK plus release satisfies T-3-10
 - [Phase 03-sql-guard-read-only-executor]: ColumnScopePolicy constructor re-validates defensively with no loader dependency so an invalid config can never build a runnable policy
 - [Phase 03-sql-guard-read-only-executor]: @types/node@^24 as devDependency of @se373/access-policy only plus types node in its tsconfig (human-approved TS2591 fix, overrides plan no-new-specifiers note)
+- [Phase 2]: Compose uses --project-directory . so initdb resolves from repo root; clean clones work on :- defaults
+- [Phase 2]: 03_business.sql runs DDL as SET ROLE owner plus search_path business; loader reset uses DELETE FROM, not TRUNCATE CASCADE
 
 ### Pending Todos
 
@@ -120,6 +123,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-25T15:59:42.354Z
-Stopped at: Phase 3 complete, ready to plan Phase 2
+Last session: 2026-10-26T05:57:20.400Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

@@ -49,7 +49,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `pnpm data:verify` confirms row counts, FK integrity, and that every seeded scenario (≥3 variance, ≥5 anomaly, ≥3 injection rows) is detectable by a reference SQL
   4. Gold SQL, gold results, and `data/seeded_scenarios.md` are unreachable from agent code and OpenWiki (a test fails if agent code reads them), and the README documents source, CC BY-NC-SA 4.0 attribution, and every transformation
 
-**Plans**: TBD
+**Plans**: 1/4 plans executed
+- [x] 02-01-PLAN.md
+- [ ] 02-02-PLAN.md
+- [ ] 02-03-PLAN.md
+- [ ] 02-04-PLAN.md
 
 ### Phase 3: SQL Guard + Read-Only Executor
 
@@ -128,7 +132,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7, except p
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Monorepo + Contracts Freeze | 3/3 | Complete    | 2026-10-25 |
-| 2. Postgres Roles + Seeded Data | 0/TBD | Not started | - |
+| 2. Postgres Roles + Seeded Data | 1/4 | In Progress | - |
 | 3. SQL Guard + Read-Only Executor | 4/4 | Complete    | 2026-10-25 |
 | 4. MCP db-tools Server + Scope Auth | 0/TBD | Not started | - |
 | 5. Agent Skeleton + Root Graph | 0/TBD | Not started | - |
