@@ -2,15 +2,23 @@
   "name": "@se373/api",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "typecheck": "tsc -b",
     "test": "vitest run"
   },
   "dependencies": {
+    "@se373/agent": "workspace:*",
     "@se373/contracts": "workspace:*",
     "express": "^5.3.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6"
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5"
   }
 }

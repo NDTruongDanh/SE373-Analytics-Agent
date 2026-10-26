@@ -1,0 +1,12 @@
+{
+  "id": "tracer-01",
+  "question": "How many orders do we have per status?",
+  "goldSql": "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status",
+  "expectedPerStatus": {
+    "cancelled": 2,
+    "completed": 7,
+    "pending": 3
+  },
+  "datasetVersion": "tracer-1",
+  "_note": "TRACER fixture: the eval runner, EX grader, comparator, and safety suite in 01-09 finalize the fixture schema."
+}
