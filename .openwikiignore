@@ -27,3 +27,6 @@ data/*.db
 data/*.sqlite
 data/*.duckdb
 *.log
+
+# GSD skill working state (planning artifacts — never read, scan, or reproduce)
+.planning/
