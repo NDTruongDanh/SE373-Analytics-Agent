@@ -28,5 +28,13 @@ data/*.sqlite
 data/*.duckdb
 *.log
 
+# Seeded and gold signals must never be indexed (DB-07 source-scan gate):
+# eval cases, seeded scenarios, seed fixtures, trace and audit payloads.
+evals/**
+data/seeded_scenarios.md
+packages/data/src/seeds.json
+traces/*.jsonl
+logs/*.jsonl
+
 # GSD skill working state (planning artifacts — never read, scan, or reproduce)
 .planning/
