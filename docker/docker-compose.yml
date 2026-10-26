@@ -15,7 +15,9 @@ services:
       AGENT_RO_PASSWORD: ${AGENT_RO_PASSWORD:-agent_ro_dev_pw}
       INDEXER_PASSWORD: ${INDEXER_PASSWORD:-indexer_dev_pw}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      # Loopback only: the dev roles use committed default passwords, so the
+      # DB must never be reachable from other machines on the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
