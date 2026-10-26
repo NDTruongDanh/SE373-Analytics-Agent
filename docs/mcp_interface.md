@@ -175,7 +175,7 @@ Required scope: `schema:read`.
 
 ## explain_query
 
-Required scope: `schema:read`.
+Required scope: `data:read`.
 
 ### Input
 
@@ -380,20 +380,29 @@ Required scope: `data:read`.
 
 ## Error codes
 
-| Code | Name | Meaning |
-|------|------|---------|
-| E1 | UNAUTHORIZED | Missing or invalid token (HTTP 401) |
-| E2 | SCOPE_DENIED | Caller lacks the scope the tool requires |
-| E3 | INVALID_PARAMS | zod rejects the input shape |
-| E4 | INVALID_SQL | SQL does not parse; cursor position returned |
-| E5 | FORBIDDEN_STATEMENT | DDL/DML, multi-statement, SELECT INTO, FOR UPDATE, DML in CTE |
-| E6 | FORBIDDEN_FUNCTION | Banned function call (pg_sleep, pg_read_file, dblink, set_config, …) |
-| E7 | UNKNOWN_TABLE | Table/column missing, outside whitelist, or system schema |
-| E8 | SENSITIVE_COLUMN_DENIED | Sensitive column outside projection without data:sensitive (fail-closed) |
-| E9 | TIMEOUT | statement_timeout exceeded (PG 57014) |
-| E10 | — (truncated flag) | Over maxRows: cut off, truncated = true (not an error) |
-| E11 | INTERNAL_ERROR | DB or connection failure; details stay in the internal log |
-| F17 | RATE_LIMITED (reserved) | Per-client rate limit exceeded |
+Row order follows the frozen `ErrorCodes` array in `@se373/contracts`.
+
+| Code | Name | Meaning | retryable | repairable |
+|------|------|---------|-----------|------------|
+| E1 | UNAUTHORIZED | Missing or invalid token (HTTP 401) | no | no |
+| E2 | SCOPE_DENIED | Caller lacks the scope the tool requires | no | no |
+| E3 | INVALID_PARAMS | zod rejects the input shape | no | no |
+| E4 | INVALID_SQL | SQL does not parse; cursor position returned | no | yes |
+| E5 | FORBIDDEN_STATEMENT | DDL/DML, multi-statement, SELECT INTO, FOR UPDATE, DML in CTE | no | no |
+| E6 | FORBIDDEN_FUNCTION | Banned function call (pg_sleep, pg_read_file, dblink, set_config, …) | no | no |
+| E7 | UNKNOWN_TABLE | Table/column missing, outside whitelist, or system schema | no | yes |
+| E8 | SENSITIVE_COLUMN_DENIED | Sensitive column outside projection without data:sensitive (fail-closed) | no | no |
+| E12 | SQL_EXECUTION_ERROR | Runtime data error from valid-parse SQL (PG classes 22/42); repaired, never retried | no | yes |
+| E9 | TIMEOUT | statement_timeout exceeded (PG 57014) | yes | no |
+| E10 | — (truncated flag) | Over maxRows: cut off, truncated = true (not an error) | n/a | n/a |
+| E11 | INTERNAL_ERROR | DB or connection failure; details stay in the internal log | yes | no |
+| F17 | RATE_LIMITED (reserved) | Per-client rate limit exceeded | yes | no |
+
+Routing mirror of architecture §5.1:
+
+- `retryable: yes` (transport: `TIMEOUT`, `RATE_LIMITED`, `INTERNAL_ERROR`) → MCP client retries with backoff; `TIMEOUT` allows at most one simplification rewrite.
+- `repairable: yes` (`INVALID_SQL`, `UNKNOWN_TABLE`, `SQL_EXECUTION_ERROR`) → `ValidatedQueryExecutor` feeds the sanitized code plus `cursorPosition` back to the generator (≤3 attempts total).
+- Both `no` (hard security/policy) → immediate hard abort on attempt 1, never retried or rewritten around.
 
 ## Worked example: run_query
 
