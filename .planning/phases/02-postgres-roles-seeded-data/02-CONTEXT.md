@@ -38,7 +38,7 @@ benchmark questions (UC-01), anomaly detection or RCA logic (UC-10 / UC-05).
 - **D-07:** Docker 29 + Compose v2 are installed. In the current session the user's shell predates the `docker` group, so Docker commands may need `sg docker -c "…"`; scripts must use plain `docker compose` (works after re-login) and the docs should mention the `sg` workaround.
 
 ### Research
-- **D-08:** (user) Run phase research first: Olist file list/columns and download options, Vietnamization mappings, role/grant SQL verified against a real `pgvector/pgvector:0.8.7-pg16` container, fast deterministic loading of ≥ 1M rows (COPY via `pg-copy-streams` vs batched INSERT), seeded RNG, and how to make seeded scenarios detectable by reference SQL.
+- **D-08 [informational]:** (user) Run phase research first: Olist file list/columns and download options, Vietnamization mappings, role/grant SQL verified against a real `pgvector/pgvector:0.8.7-pg16` container, fast deterministic loading of ≥ 1M rows (COPY via `pg-copy-streams` vs batched INSERT), seeded RNG, and how to make seeded scenarios detectable by reference SQL.
 
 ### Post-research decisions (2026-10-26)
 - **D-09:** (user) Database name **`chosen`** (Chợ Sen), host port **5433** (avoids clashing with a local Postgres on 5432). All `.env.example` URLs, compose and docs use these.
