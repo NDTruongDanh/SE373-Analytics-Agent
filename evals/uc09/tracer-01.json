@@ -5,11 +5,12 @@
   "role": "sales_south",
   "goldSql": "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status",
   "goldRows": [
-    { "status": "cancelled", "n": 2 },
-    { "status": "completed", "n": 7 },
-    { "status": "pending", "n": 3 }
+    { "status": "canceled", "n": 10410 },
+    { "status": "delivered", "n": 976087 },
+    { "status": "returned", "n": 238 },
+    { "status": "shipped", "n": 10930 }
   ],
   "ordered": true,
-  "datasetVersion": "tracer-1",
+  "datasetVersion": "olist-vi-2025-2026-v1",
   "tags": ["tracer", "uc09", "group-by"]
 }

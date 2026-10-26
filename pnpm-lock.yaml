@@ -14,6 +14,9 @@ importers:
       '@se373/access-policy':
         specifier: workspace:*
         version: link:packages/access-policy
+      '@se373/agent':
+        specifier: workspace:*
+        version: link:packages/agent
       eslint:
         specifier: ^10.13.0
         version: 10.13.0
