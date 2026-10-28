@@ -66,26 +66,7 @@ Other scripts: `pnpm wiki:init` (first generation), `pnpm wiki:update`,
 site). The brief OpenWiki reads every run is `openwiki/INSTRUCTIONS.md`; the
 read boundary is `.openwikiignore`.
 
-### 3. Scheduled CI (auto-merge docs PRs)
-
-`.github/workflows/openwiki-update.yml` runs daily (`08:00 UTC`) + on demand
-(`workflow_dispatch`) on Node 24, installs with `pnpm/action-setup` +
-`actions/setup-node` (pnpm cache), runs OpenWiki, and opens
-a docs-only PR (`openwiki`, `AGENTS.md`, `CLAUDE.md`) with auto-merge enabled
-on success. Workflow-file changes are excluded from the PR so auto-merge never
-touches executable CI.
-
-Create two Actions secrets (Settings → Secrets and variables → Actions):
-
-| Secret | Value | Why a dedicated token |
-|---|---|---|
-| `OPENCODE_GO_API_KEY` | your OpenCode Go key | mapped to `OPENAI_COMPATIBLE_API_KEY` for the `openai-compatible` provider |
-| `OPENWIKI_PR_TOKEN` | fine-grained PAT or GitHub App token, this repo only, `Contents: read+write`, `Pull requests: read+write` | PRs opened with default `GITHUB_TOKEN` don't trigger most `pull_request` workflows, so required checks would never run |
-
-Also enable **Allow auto-merge** in repo pull-request settings and add branch
-protection/ruleset for the default branch (this repo already protects `main`).
-
-### 4. Provider + session-header caveat (researched)
+### 3. Provider + session-header caveat (researched)
 
 - Provider: `OPENWIKI_PROVIDER=openai-compatible`,
   `OPENAI_COMPATIBLE_BASE_URL=https://opencode.ai/inference/go/openai/v1`,
