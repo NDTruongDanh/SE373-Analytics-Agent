@@ -77,9 +77,13 @@ jobs:
       - name: Set up JS + install
         uses: ./.github/actions/setup-js
 
+      # Workspace packages export from ./dist (gitignored), so build first:
+      # each runner is isolated, typecheck's tsc -b output never reaches here.
       # Unit tests only: live *.live.test.ts files skip without DB env
-      # (describe.skipIf). tsc is covered by the typecheck job, so run
-      # vitest directly instead of `pnpm test` (which re-runs tsc -b).
+      # (describe.skipIf).
+      - name: Build workspace packages
+        run: pnpm build
+
       - name: Test
         run: pnpm exec vitest run
 
