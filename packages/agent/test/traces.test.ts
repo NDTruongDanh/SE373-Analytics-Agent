@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { TraceEventSchema } from "@se373/contracts";
-import { MASKED_EMAIL, MASKED_PHONE } from "@se373/access-policy";
+import { TraceEventSchema } from "@shared/contracts";
+import { MASKED_EMAIL, MASKED_PHONE } from "@shared/access-policy";
 import { appendTraceEvent } from "../src/traces/writer.js";
 
 // TraceWriter suite: span linkage survives the round trip, every

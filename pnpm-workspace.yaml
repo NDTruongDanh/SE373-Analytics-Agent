@@ -11,3 +11,19 @@ allowBuilds:
 packages:
   - "apps/*"
   - "packages/*"
+
+# Shared version source of truth (pnpm default catalog, native — no extra deps).
+# All workspace packages must reference these via `catalog:` instead of
+# repeating ranges, so shared deps can never drift between packages.
+catalog:
+  "@langchain/langgraph": ^1.5.2
+  "@langchain/langgraph-checkpoint-postgres": ^1.1.2
+  "@modelcontextprotocol/sdk": ^1.32.2
+  "@types/express": ^5.0.6
+  "@types/node": ^26.6.5
+  "@types/pg": ^8.23.1
+  express: ^5.3.0
+  pg: ^8.23.1
+  pino: ^10.4.0
+  yaml: ^2.9.1
+  zod: ^4.6.7

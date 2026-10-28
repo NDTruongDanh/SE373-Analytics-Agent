@@ -74,7 +74,7 @@ const lines = [];
 lines.push("# MCP Interface (generated)");
 lines.push("");
 lines.push(
-  "> Generated from `@se373/contracts` via `z.toJSONSchema()`. Do not hand-edit — run `pnpm docs:interface`.",
+  "> Generated from `@shared/contracts` via `z.toJSONSchema()`. Do not hand-edit — run `pnpm docs:interface`.",
 );
 lines.push("");
 
@@ -95,7 +95,7 @@ for (const tool of TOOLS) {
 
 lines.push("## Error codes");
 lines.push("");
-lines.push("Row order follows the frozen `ErrorCodes` array in `@se373/contracts`.");
+lines.push("Row order follows the frozen `ErrorCodes` array in `@shared/contracts`.");
 lines.push("");
 lines.push("| Code | Name | Meaning | retryable | repairable |");
 lines.push("|------|------|---------|-----------|------------|");

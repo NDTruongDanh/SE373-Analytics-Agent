@@ -28,8 +28,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildRootGraph } from "@se373/agent";
-import { createCheckpointer } from "@se373/agent/ports";
+import { buildRootGraph } from "@shared/agent";
+import { createCheckpointer } from "@shared/agent/ports";
 // Relative source import, not the frozen root barrel: graph.test.ts pins the
 // barrel to the root surface only, so the eval-only HTTP caller resolves from
 // the agent source file (same module graph the agent tests use).
@@ -39,9 +39,9 @@ import {
   localQuerySafetyGate,
   type ChatModelLike,
   type McpToolCaller,
-} from "@se373/agent/queryExecutor";
-import { sqlGuard, warmupSqlGuard } from "@se373/access-policy";
-import type { SchemaCatalog } from "@se373/contracts";
+} from "@shared/agent/queryExecutor";
+import { sqlGuard, warmupSqlGuard } from "@shared/access-policy";
+import type { SchemaCatalog } from "@shared/contracts";
 import { LARGE_TABLES } from "../packages/mcp-server/src/catalog.js";
 import { gradeExecution } from "./exGrader.js";
 import { compareRuns, type EvalResultsFile } from "./regression.js";

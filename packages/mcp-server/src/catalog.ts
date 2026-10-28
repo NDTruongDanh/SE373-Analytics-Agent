@@ -6,8 +6,8 @@
 // an empty catalog throws so the server never serves nothing as something.
 // Primary keys and foreign keys ride alongside (describe_table shape) but
 // are not part of the frozen catalog zod shape.
-import type { SchemaCatalog } from "@se373/contracts";
-import type { SensitiveColumns } from "@se373/access-policy";
+import type { SchemaCatalog } from "@shared/contracts";
+import type { SensitiveColumns } from "@shared/access-policy";
 
 export const LARGE_TABLES: readonly string[] = ["order_items"];
 

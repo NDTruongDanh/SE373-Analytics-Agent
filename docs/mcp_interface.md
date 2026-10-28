@@ -1,6 +1,6 @@
 # MCP Interface (generated)
 
-> Generated from `@se373/contracts` via `z.toJSONSchema()`. Do not hand-edit — run `pnpm docs:interface`.
+> Generated from `@shared/contracts` via `z.toJSONSchema()`. Do not hand-edit — run `pnpm docs:interface`.
 
 ## list_tables
 
@@ -380,7 +380,7 @@ Required scope: `data:read`.
 
 ## Error codes
 
-Row order follows the frozen `ErrorCodes` array in `@se373/contracts`.
+Row order follows the frozen `ErrorCodes` array in `@shared/contracts`.
 
 | Code | Name | Meaning | retryable | repairable |
 |------|------|---------|-----------|------------|

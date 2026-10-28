@@ -1,4 +1,4 @@
-import type { DbToolError } from "@se373/contracts";
+import type { DbToolError } from "@shared/contracts";
 
 export const ACCESS_POLICY_SHELL =
   "Access-policy shell: the AccessPolicy interface seam lands in Phase 3";

@@ -160,7 +160,7 @@ jobs:
           OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
 
       - name: Role and grant live tests
-        run: pnpm --filter @se373/data test test/roles.live.test.ts
+        run: pnpm --filter @shared/data test test/roles.live.test.ts
         env:
           OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
           DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
@@ -169,9 +169,9 @@ jobs:
 
       - name: Executor and MCP live tests
         run: |
-          pnpm --filter @se373/mcp-server test test/live.test.ts
-          pnpm --filter @se373/agent test test/ports.live.test.ts
-          pnpm --filter @se373/api test test/e2e.live.test.ts
+          pnpm --filter @shared/mcp-server test test/live.test.ts
+          pnpm --filter @shared/agent test test/ports.live.test.ts
+          pnpm --filter @shared/api test test/e2e.live.test.ts
         env:
           OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
           DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen

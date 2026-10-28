@@ -1,5 +1,5 @@
 {
-  "name": "@se373/agent",
+  "name": "@shared/agent",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -20,6 +20,7 @@
       "default": "./dist/queryExecutor/index.js"
     }
   },
+  "files": ["dist"],
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
@@ -27,17 +28,17 @@
   },
   "dependencies": {
     "@langchain/core": "^1.3.0",
-    "@langchain/langgraph": "^1.5.2",
-    "@langchain/langgraph-checkpoint-postgres": "^1.1.2",
+    "@langchain/langgraph": "catalog:",
+    "@langchain/langgraph-checkpoint-postgres": "catalog:",
     "@langchain/mcp-adapters": "~1.1.4",
     "@langchain/openai": "^1.7.0",
-    "@modelcontextprotocol/sdk": "^1.32.2",
-    "@se373/access-policy": "workspace:*",
-    "@se373/contracts": "workspace:*",
-    "pino": "^10.4.0",
-    "zod": "^4.6.7"
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@shared/access-policy": "workspace:*",
+    "@shared/contracts": "workspace:*",
+    "pino": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5"
+    "@types/node": "catalog:"
   }
 }

@@ -13,8 +13,8 @@ import {
   dbToolError,
   type DbToolError,
   type ErrorCode,
-} from "@se373/contracts";
-import { redactPII } from "@se373/access-policy";
+} from "@shared/contracts";
+import { redactPII } from "@shared/access-policy";
 
 // postgres://user:pass@host:port/db — kills credentials, host, port, dbname.
 const DSN_PATTERN = /postgres(ql)?:\/\/[^\s"'`]+/gi;

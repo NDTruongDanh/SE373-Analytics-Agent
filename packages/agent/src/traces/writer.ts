@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { redactPII, redactRow } from "@se373/access-policy";
-import { TraceEventSchema } from "@se373/contracts";
+import { redactPII, redactRow } from "@shared/access-policy";
+import { TraceEventSchema } from "@shared/contracts";
 
 // Full OBS-01 TraceWriter (01-09 expansion of the 01-01 TRACER slice): stamps
 // runId/threadId/spanId via randomUUID (D-13), redacts every payload through
-// the shared @se373/access-policy redactor before serialization, and appends
+// the shared @shared/access-policy redactor before serialization, and appends
 // one JSON line per event under traces/<runId>.jsonl. No inline mask remains.
 
 export interface TracerTraceEvent {

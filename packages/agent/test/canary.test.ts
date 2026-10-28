@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { MASKED_EMAIL, MASKED_PHONE } from "@se373/access-policy";
+import { MASKED_EMAIL, MASKED_PHONE } from "@shared/access-policy";
 import { appendTraceEvent } from "../src/traces/writer.js";
 
 // OBS-01 canary: synthetic Vietnamese PII in spaced and compact forms must

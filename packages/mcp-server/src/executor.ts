@@ -6,7 +6,7 @@
 // INTERNAL_ERROR for query failures.
 import { Pool } from "pg";
 import Cursor from "pg-cursor";
-import { dbToolError, type DbToolError } from "@se373/contracts";
+import { dbToolError, type DbToolError } from "@shared/contracts";
 import { sanitizeError } from "./errors.js";
 
 export interface ReadOnlyResult {

@@ -1,5 +1,5 @@
 {
-  "name": "@se373/access-policy",
+  "name": "@shared/access-policy",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -15,12 +15,12 @@
   },
   "dependencies": {
     "@pgsql/traverse": "^18.8.1",
-    "@se373/contracts": "workspace:*",
+    "@shared/contracts": "workspace:*",
     "pgsql-parser": "^18.3.1",
-    "yaml": "^2.9.1",
-    "zod": "^4.6.7"
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5"
+    "@types/node": "catalog:"
   }
 }

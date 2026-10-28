@@ -1,4 +1,4 @@
-import type { SchemaCatalog } from "@se373/contracts";
+import type { SchemaCatalog } from "@shared/contracts";
 
 // Shared Olist-modelled fixture catalog for guard tests. Ported from the
 // archived Phase 3 reference (origin/feat/phase-3-sql-guard, read via

@@ -39,7 +39,7 @@ corepack prepare pnpm@11.25.0 --activate
 pnpm install --frozen-lockfile
 cp .env.example .env   # fill in keys locally; never commit .env
 pnpm typecheck && pnpm lint && pnpm test   # root gate, keep green
-pnpm --filter @se373/<pkg> test            # scoped: contracts | agent | mcp-server | access-policy | api | web
+pnpm --filter @shared/<pkg> test            # scoped: contracts | agent | mcp-server | access-policy | api | web
 pnpm docs:interface                         # regenerate docs/mcp_interface.md after contracts change
 ```
 
@@ -68,7 +68,7 @@ Wiki scripts (`pnpm wiki:init | wiki:update | wiki:dry-run`) need
 ## Boundaries — always / ask first / never (ESLint + CI enforce)
 
 - ✅ Always: DB access via MCP client (`run_query`, `describe_table`); `web` types
-  from `@se373/contracts`; server order auth → scope → zod → sqlGuard →
+  from `@shared/contracts`; server order auth → scope → zod → sqlGuard →
   AccessPolicy → executor → PII scan → audit; branch per UC/feature.
 - ⚠️ Ask first: schema/role changes, new dependencies, CI config edits,
   `CONTRACTS_VERSION` major bumps.
@@ -123,8 +123,8 @@ import { Client } from "pg";
 
 ## Done means — scale validation to the change
 
-- While iterating: run the affected Vitest file, e.g. `pnpm --filter @se373/agent test <file>`.
-- Before done: `pnpm typecheck` + `pnpm lint` + `pnpm --filter @se373/<pkg> test`.
+- While iterating: run the affected Vitest file, e.g. `pnpm --filter @shared/agent test <file>`.
+- Before done: `pnpm typecheck` + `pnpm lint` + `pnpm --filter @shared/<pkg> test`.
 - Full `pnpm test` only when touching shared `packages/*`; `main` stays green via
   `.github/workflows/ci.yml` (typecheck + lint + test + gitleaks) + code-owner review.
 - Contracts changes include regenerated `docs/mcp_interface.md` and a version note.

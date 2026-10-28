@@ -16,11 +16,11 @@ import express from "express";
 import type { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { dbToolError } from "@se373/contracts";
+import { dbToolError } from "@shared/contracts";
 import {
   ColumnScopePolicy,
   DEFAULT_SENSITIVE_COLUMNS_PATH,
-} from "@se373/access-policy";
+} from "@shared/access-policy";
 import {
   loadMcpClients,
   loadSensitiveColumns,
@@ -47,7 +47,7 @@ import {
 } from "./executor.js";
 import { initAudit } from "./audit.js";
 import { TOOL_SPECS } from "./tools.js";
-import { warmupSqlGuard } from "@se373/access-policy";
+import { warmupSqlGuard } from "@shared/access-policy";
 import { hybridSearch } from "./semantic/retriever.js";
 import { selectEmbedderFromEnv } from "./semantic/embedder.js";
 

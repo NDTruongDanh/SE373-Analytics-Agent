@@ -11,7 +11,7 @@ import type { AddressInfo } from "node:net";
 import { MemorySaver, interrupt } from "@langchain/langgraph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
-import type { UcEntryHandler } from "@se373/agent";
+import type { UcEntryHandler } from "@shared/agent";
 
 interface SseBlock {
   event: string;

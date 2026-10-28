@@ -13,7 +13,7 @@
 // after send_alert succeeds — never speculatively, never inside the send
 // path itself. Check store.hasFingerprint(fp) before sending (24h dedup).
 
-import { createCheckpointer, type Checkpointer } from "@se373/agent/ports";
+import { createCheckpointer, type Checkpointer } from "@shared/agent/ports";
 import { AppStateStore } from "./store/alertStore.js";
 
 /** Both persistence ports injected into the graph host. */

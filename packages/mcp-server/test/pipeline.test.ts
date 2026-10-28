@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { warmupSqlGuard, ColumnScopePolicy } from "@se373/access-policy";
-import type { SearchSemanticLayerChunk } from "@se373/contracts";
+import { warmupSqlGuard, ColumnScopePolicy } from "@shared/access-policy";
+import type { SearchSemanticLayerChunk } from "@shared/contracts";
 import { setAuditDestinationForTests } from "../src/audit.js";
 import type { SessionFactory } from "../src/executor.js";
 import {

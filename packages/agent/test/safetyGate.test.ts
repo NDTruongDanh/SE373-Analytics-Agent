@@ -5,8 +5,8 @@ import {
   sqlGuard,
   warmupSqlGuard,
   type GuardSuccess,
-} from "@se373/access-policy";
-import type { SchemaCatalog } from "@se373/contracts";
+} from "@shared/access-policy";
+import type { SchemaCatalog } from "@shared/contracts";
 import {
   DETAIL_QUERY_LIMIT,
   clampLimit,

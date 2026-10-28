@@ -21,9 +21,9 @@ import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync } from "node:fs";
 import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
-import { buildRootGraph, runTracerGraph, type AgentState, type UcEntryHandler } from "@se373/agent";
-import { createSpanEmitter } from "@se373/agent/telemetry";
-import { dbToolError, type DbToolError } from "@se373/contracts";
+import { buildRootGraph, runTracerGraph, type AgentState, type UcEntryHandler } from "@shared/agent";
+import { createSpanEmitter } from "@shared/agent/telemetry";
+import { dbToolError, type DbToolError } from "@shared/contracts";
 import { createHostPorts, type HostPorts } from "./ports.js";
 import {
   assertTokensPresent,

@@ -3,7 +3,7 @@ import {
   StateSchema,
   type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
-import { SQLAnswerStatusSchema } from "@se373/contracts";
+import { SQLAnswerStatusSchema } from "@shared/contracts";
 import * as z from "zod";
 
 // AGENT-01 shared root state (01-10). Plain JSON only: no Pool, class

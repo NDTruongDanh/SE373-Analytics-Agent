@@ -12,7 +12,7 @@ import { hybridSearch } from "../src/semantic/retriever.js";
 import { indexCorpus } from "../src/semantic/index.js";
 import { executeResourceRead } from "../src/pipeline.js";
 import type { GatewayDeps } from "../src/pipeline.js";
-import { ColumnScopePolicy } from "@se373/access-policy";
+import { ColumnScopePolicy } from "@shared/access-policy";
 import { buildCatalog, fetchCatalogSource } from "../src/catalog.js";
 import { loadSensitiveColumns } from "../src/config.js";
 

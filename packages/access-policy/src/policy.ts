@@ -10,8 +10,8 @@
 import { walk } from "@pgsql/traverse";
 import type { NodePath } from "@pgsql/traverse";
 import { deparse, parse } from "pgsql-parser";
-import type { DbToolError, ErrorCode, SchemaCatalog } from "@se373/contracts";
-import { dbToolError } from "@se373/contracts";
+import type { DbToolError, ErrorCode, SchemaCatalog } from "@shared/contracts";
+import { dbToolError } from "@shared/contracts";
 import { sqlGuard } from "./guard.js";
 import type { GuardAst } from "./guard.js";
 import { DEFAULT_SENSITIVE_COLUMNS } from "./sensitive-columns.js";

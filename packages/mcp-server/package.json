@@ -1,27 +1,34 @@
 {
-  "name": "@se373/mcp-server",
+  "name": "@shared/mcp-server",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "tsc -b && vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2",
-    "@se373/access-policy": "workspace:*",
-    "@se373/contracts": "workspace:*",
-    "express": "^5.3.0",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@shared/access-policy": "workspace:*",
+    "@shared/contracts": "workspace:*",
+    "express": "catalog:",
     "openai": "^7.43.0",
-    "pg": "^8.23.1",
+    "pg": "catalog:",
     "pg-cursor": "^2.22.1",
-    "pino": "^10.4.0",
-    "yaml": "^2.9.1",
-    "zod": "^4.6.7"
+    "pino": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/pg": "^8.23.1",
+    "@types/express": "catalog:",
+    "@types/pg": "catalog:",
     "@types/pg-cursor": "^2.7.2"
   }
 }

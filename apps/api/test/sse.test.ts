@@ -1,5 +1,5 @@
 // D-20 conformance legs (01-15, wave 6): the SSE host validates every emit
-// against the per-event zod schemas exported by @se373/contracts — no direct
+// against the per-event zod schemas exported by @shared/contracts — no direct
 // zod import in apps/api, no hand-written structural validator on this path.
 // A schema-invalid payload must degrade to failed, never hit the wire raw.
 
@@ -9,7 +9,7 @@ import {
   SseCompletedEventSchema,
   type SseEnvelope,
   type SseEventName,
-} from "@se373/contracts";
+} from "@shared/contracts";
 import { emitSseEvent, SSE_ALLOWLIST as HOST_ALLOWLIST } from "../src/sse.js";
 
 interface CapturedWrite {

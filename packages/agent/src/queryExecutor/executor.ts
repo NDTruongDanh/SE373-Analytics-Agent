@@ -1,6 +1,6 @@
 // ValidatedQueryExecutor (AGENT-02/03/04, 01-11): the ONLY agent-side SQL path.
 // Selective describe_table for candidate tables -> structured SQL proposal
-// -> local pre-check (sqlGuard from @se373/access-policy per D-01, then
+// -> local pre-check (sqlGuard from @shared/access-policy per D-01, then
 // LocalQuerySafetyGate) -> explain_query -> run_query, with a bounded repair
 // loop (D-02), one TIMEOUT simplification, and a single-pass zero-row
 // diagnostic. The seams below are stable for 01-12.
@@ -19,8 +19,8 @@ import {
   type DbToolError,
   type ErrorCode,
   type SchemaCatalog,
-} from "@se373/contracts";
-import { sqlGuard } from "@se373/access-policy";
+} from "@shared/contracts";
+import { sqlGuard } from "@shared/access-policy";
 import * as z from "zod";
 import {
   checkBudget,

@@ -9,7 +9,7 @@ import * as z from "zod";
 import {
   loadSensitiveColumns as loadAccessPolicySensitiveColumns,
   type SensitiveColumns,
-} from "@se373/access-policy";
+} from "@shared/access-policy";
 
 const ScopeSchema = z.enum(["schema:read", "data:read", "data:sensitive"]);
 

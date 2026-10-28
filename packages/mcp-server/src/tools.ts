@@ -9,7 +9,7 @@ import {
   RunQueryInputSchema,
   SampleRowsInputSchema,
   SearchSemanticLayerInputSchema,
-} from "@se373/contracts";
+} from "@shared/contracts";
 
 export const TOOL_SCOPES = {
   list_tables: "schema:read",

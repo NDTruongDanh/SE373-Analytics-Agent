@@ -48,7 +48,7 @@ export default tseslint.config(
                 "Agent, policy, and app code must not import mcp-server internals — DB access goes through the MCP client only (architecture §5.2).",
             },
             {
-              group: ["@se373/mcp-server", "@se373/mcp-server/*"],
+              group: ["@shared/mcp-server", "@shared/mcp-server/*"],
               message:
                 "Agent, policy, and app code must not import the MCP server package — DB access goes through the MCP client only (architecture §5.2).",
             },
@@ -74,44 +74,44 @@ export default tseslint.config(
             {
               name: "pg",
               message:
-                "Web UI must not import the DB driver — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import the DB driver — shared types come from @shared/contracts only (architecture §5.2).",
             },
             {
               name: "pg-cursor",
               message:
-                "Web UI must not import the DB cursor — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import the DB cursor — shared types come from @shared/contracts only (architecture §5.2).",
             },
             {
-              name: "@se373/agent",
+              name: "@shared/agent",
               message:
-                "Web UI must not import the agent package — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import the agent package — shared types come from @shared/contracts only (architecture §5.2).",
             },
             {
-              name: "@se373/mcp-server",
+              name: "@shared/mcp-server",
               message:
-                "Web UI must not import the MCP server package — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import the MCP server package — shared types come from @shared/contracts only (architecture §5.2).",
             },
             {
-              name: "@se373/access-policy",
+              name: "@shared/access-policy",
               message:
-                "Web UI must not import the access-policy package — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import the access-policy package — shared types come from @shared/contracts only (architecture §5.2).",
             },
             {
-              name: "@se373/api",
+              name: "@shared/api",
               message:
-                "Web UI must not import the API package — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import the API package — shared types come from @shared/contracts only (architecture §5.2).",
             },
             {
-              name: "@se373/data",
+              name: "@shared/data",
               message:
-                "Web UI must not import the operator data-loader package — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import the operator data-loader package — shared types come from @shared/contracts only (architecture §5.2).",
             },
           ],
           patterns: [
             {
               group: ["**/mcp-server/src/**"],
               message:
-                "Web UI must not import mcp-server internals — shared types come from @se373/contracts only (architecture §5.2).",
+                "Web UI must not import mcp-server internals — shared types come from @shared/contracts only (architecture §5.2).",
             },
           ],
         },

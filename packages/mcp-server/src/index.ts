@@ -1,4 +1,4 @@
-import type { DbToolError } from "@se373/contracts";
+import type { DbToolError } from "@shared/contracts";
 
 export const MCP_SERVER_SHELL =
   "MCP server shell: the 5-tool db-tools server lands in Phase 4";

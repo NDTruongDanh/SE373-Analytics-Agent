@@ -3,7 +3,7 @@
 // API key, no DB, no network.
 import { describe, expect, it } from "vitest";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
-import { dbToolError } from "@se373/contracts";
+import { dbToolError } from "@shared/contracts";
 import {
   SqlProposalSchema,
   ValidatedQueryExecutor,

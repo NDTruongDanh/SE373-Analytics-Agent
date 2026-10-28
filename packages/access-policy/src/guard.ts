@@ -1,8 +1,8 @@
 import { walk } from "@pgsql/traverse";
 import type { NodePath } from "@pgsql/traverse";
 import { parse } from "pgsql-parser";
-import type { DbToolError, SchemaCatalog } from "@se373/contracts";
-import { dbToolError } from "@se373/contracts";
+import type { DbToolError, SchemaCatalog } from "@shared/contracts";
+import { dbToolError } from "@shared/contracts";
 import { FORBIDDEN_FUNCTION_SET, SYSTEM_SCHEMA_SET } from "./denylist.js";
 
 /**

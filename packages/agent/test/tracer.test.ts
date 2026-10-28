@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TraceEventSchema } from "@se373/contracts";
+import { TraceEventSchema } from "@shared/contracts";
 import { runTracerGraph } from "../src/graph.js";
 import {
   TRACER_SQL_PROPOSAL,

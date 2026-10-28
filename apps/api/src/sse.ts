@@ -1,7 +1,7 @@
 // SSE allowlist plus sanitized emitter (API-01/API-03, 01-14, wave 6).
 //
 // The allowlist matches exactly the 01-02 per-event zod schemas in
-// @se373/contracts (D-20): intent_parsed, schema_retrieved, sql_generated,
+// @shared/contracts (D-20): intent_parsed, schema_retrieved, sql_generated,
 // sql_repaired, query_running, viz, completed, failed, interrupt_waiting.
 // Every emit validates against its per-event schema before writing and
 // degrades to a failed event on mismatch — raw payloads never reach the
@@ -28,7 +28,7 @@ import {
   SseSqlRepairedEventSchema,
   SseVizEventSchema,
   type SseEventName,
-} from "@se373/contracts";
+} from "@shared/contracts";
 
 /** Allowlist exactly matching the contracts per-event schemas (D-20). */
 export const SSE_ALLOWLIST: readonly SseEventName[] = SSE_EVENT_NAMES;

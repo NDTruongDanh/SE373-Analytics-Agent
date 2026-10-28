@@ -5,8 +5,8 @@
 // X-Run-Id / X-User-Id / X-Role-Scope headers are transport only (telemetry
 // and run correlation) — never proof; scopes come from the yaml map alone.
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { dbToolError, type DbToolError } from "@se373/contracts";
-import type { Principal } from "@se373/access-policy";
+import { dbToolError, type DbToolError } from "@shared/contracts";
+import type { Principal } from "@shared/access-policy";
 import type { ResolvedClient } from "./config.js";
 
 export interface AuthContext {

@@ -17,7 +17,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { connect } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
-import { redactPII } from "@se373/access-policy";
+import { redactPII } from "@shared/access-policy";
 
 process.loadEnvFile();
 

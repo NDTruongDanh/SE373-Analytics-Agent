@@ -33,7 +33,7 @@ $$\text{Analytics Agent} = \underbrace{\text{LLM Proposal Engine}}_{\text{Stocha
    - **100% Citation Validity (UC-02):** Every cited `metric:*`, `table:*`, `column:*`, or `event:*` ID exists in the semantic catalog and is injected into `-- @citations:` SQL headers.
    - **100% Chart Spec Validity (UC-03):** `render_chart` compiles Vega-Lite/Plotly specs headlessly and verifies every bound field exists in `RunQueryOutput.columns`.
    - **100% Numeric & Attribution Fidelity (UC-03 / UC-05):** Every number in `insights[].claim` matches `evidence` and query rows within $\le 1\%$ rounding tolerance, ungrounded causal claims are stripped, and UC-05 root-cause contributions sum to the total baseline delta within $\le 5\%$.
-5. **Contract-First & Propagated Principal Identity:** Every package communicates through frozen `camelCase` Zod schemas in `@se373/contracts`. A single `runId` and propagated principal context (`userId`, `role`, `scopes`, `rowScope`) link the HTTP/SSE request, every LangGraph span, and every MCP audit log entry.
+5. **Contract-First & Propagated Principal Identity:** Every package communicates through frozen `camelCase` Zod schemas in `@shared/contracts`. A single `runId` and propagated principal context (`userId`, `role`, `scopes`, `rowScope`) link the HTTP/SSE request, every LangGraph span, and every MCP audit log entry.
 
 ---
 
@@ -249,9 +249,9 @@ This section details every architectural component in the harness, its exact pac
 
 | Harness Subsystem | Monorepo Location | Primary Role in the Harness | UCs & K Areas | Status |
 |---|---|---|---|---|
-| **Shared Contracts (`@se373/contracts`)** | `packages/contracts/src/*` | Frozen `camelCase` Zod schemas for all tool I/O, answers, errors (`retryable` vs `repairable`), semantic metadata, benchmarks, and traces. Zero runtime dependencies except `zod`. | All UCs (K1–K8) | Base ✅ · UC-03/05/10 🔜 |
+| **Shared Contracts (`@shared/contracts`)** | `packages/contracts/src/*` | Frozen `camelCase` Zod schemas for all tool I/O, answers, errors (`retryable` vs `repairable`), semantic metadata, benchmarks, and traces. Zero runtime dependencies except `zod`. | All UCs (K1–K8) | Base ✅ · UC-03/05/10 🔜 |
 | **Host & Session Boundary** | `apps/api/src/*` | Mints `threadId`/`runId`, maps user persona to MCP principal headers, injects `PostgresSaver` and `AppStateStore` (`harness_state` role), streams SSE events, handles HITL `/resume`. | All UCs (K4, K5, K8) | Shell ✅ · Logic 🔜 |
-| **Operator & Analyst Web UI** | `apps/web/src/*` | Streaming chat, expandable SQL & citation drawer, Vega-Lite/Plotly chart viewer, persona Role Switcher, HITL plan editor, Dictionary re-index admin, Alerts & Audit pages. Imports types from `@se373/contracts` only. | All UCs (PRD §5) | Shell ✅ · UI 🔜 |
+| **Operator & Analyst Web UI** | `apps/web/src/*` | Streaming chat, expandable SQL & citation drawer, Vega-Lite/Plotly chart viewer, persona Role Switcher, HITL plan editor, Dictionary re-index admin, Alerts & Audit pages. Imports types from `@shared/contracts` only. | All UCs (PRD §5) | Shell ✅ · UI 🔜 |
 | **Run Governance & Skill Loader** | `packages/agent/src/harness/*`, `skills/*/SKILL.md` | Enforces run-level budget circuit breaker (`maxLlmCalls`, `maxTokens`, `runDeadlineMs`), loads declarative Markdown/YAML skills at node entry, emits hierarchical `TraceEvent` spans. | All UCs (K2, K5, K8) | 🔜 Phase 5 |
 | **Intent & Semantic Grounding Engine** | `packages/agent/src/semantic/*`, `packages/mcp-server/src/semantic/*`, `semantic/*.yaml` | Two-tier entity extraction (`requestedMetrics` vs `schemaEntities`), 3-way hybrid RAG (`pgvector` + hot-reloaded BM25 + alias RRF), join-rule graph expansion, unknown-term guardrail, incremental SHA-256 indexer. | UC-02, UC-01 (K3, K1) | 🔜 Phase 4–5 |
 | **`ValidatedQueryExecutor` & `LocalQuerySafetyGate`** | `packages/agent/src/queryExecutor/*`, `packages/agent/src/subgraphs/uc01*` | Shared SQL execution primitive across all UCs: selective `describe_table` → candidate generation → local AST & safety gate → MCP `run_query` → bounded repair ($\le 3$) + 1-pass zero-row diagnostic + `Clarify-Then-Query`. | UC-01, UC-05, UC-10 (K1, K2, K8) | 🔜 Phase 5 |
@@ -347,7 +347,7 @@ This section details every architectural component in the harness, its exact pac
   1. **Bearer Authentication (`auth.ts`):** Verifies token against `policies/mcp_clients.yaml` $\rightarrow$ `{clientId, role, scopes}` + reads `X-Run-Id`, `X-User-Id`, `X-Role-Scope` (`UNAUTHORIZED` on failure).
   2. **Scope Enforcement:** Checks required tool scope (`schema:read` for metadata/resources, `data:read` for `explain_query`/`run_query`/`sample_rows`, `data:sensitive` for unmasked PII/salary; `SCOPE_DENIED` on failure).
   3. **Zod Schema Validation:** Enforces strict input bounds (`maxRows <= 1000`, default `200`; `sample_rows` $n \le 5$; `INVALID_PARAMS` on failure).
-  4. **Full-AST `sqlGuard` (`packages/access-policy` — no `@se373/sql-guard` package):** Called here at gateway stage 4 and by the agent local pre-check in `ValidatedQueryExecutor`. Uses `pgsql-parser` (WASM loaded once at startup) to require a single `SelectStmt` (`SELECT`/`WITH`), recursively blocking `InsertStmt`/`UpdateStmt`/`DeleteStmt` (including inside CTEs), `intoClause`, `lockingClause` (`FORBIDDEN_STATEMENT`), denylisted functions (`FORBIDDEN_FUNCTION`), and non-whitelisted/system tables (`UNKNOWN_TABLE`).
+  4. **Full-AST `sqlGuard` (`packages/access-policy` — no `@shared/sql-guard` package):** Called here at gateway stage 4 and by the agent local pre-check in `ValidatedQueryExecutor`. Uses `pgsql-parser` (WASM loaded once at startup) to require a single `SelectStmt` (`SELECT`/`WITH`), recursively blocking `InsertStmt`/`UpdateStmt`/`DeleteStmt` (including inside CTEs), `intoClause`, `lockingClause` (`FORBIDDEN_STATEMENT`), denylisted functions (`FORBIDDEN_FUNCTION`), and non-whitelisted/system tables (`UNKNOWN_TABLE`).
   5. **`AccessPolicy` AST Rewrite & Fail-Closed Check (`packages/access-policy`):** Runs `resolveColumns()` to expand `*`, `t.*`, table aliases, joins, and single-level CTEs. If the caller lacks `data:sensitive`:
      - Sensitive columns in `SELECT` projections are rewritten to masking expressions in the AST and deparsed back to SQL.
      - Sensitive columns in `WHERE`, `JOIN ON`, `GROUP BY`, `HAVING`, `ORDER BY`, function arguments, aggregates (e.g., `AVG(salary)`), or unresolvable multi-level CTEs/LATERAL joins touching sensitive tables are rejected fail-closed with `SENSITIVE_COLUMN_DENIED`.
@@ -364,7 +364,7 @@ The harness is organized around eight orthogonal engineering dimensions that map
 | Dimension | Knowledge Areas | Primary Owners | Core Harness Mechanism |
 |---|---|---|---|
 | **4.1 Context engineering** | K3, K4, K8 | `packages/agent`, `packages/mcp-server` (UC-01, UC-02) | Progressive schema disclosure (`list_tables` → selective `describe_table`), 3-way hybrid RAG + join-rule expansion, `<untrusted_data>` delimiting, tool-free synthesis, `resultPreview` ($\le 50$ rows) |
-| **4.2 Tool integration** | K2, K6, K8 | `packages/mcp-server`, `packages/access-policy`, `packages/contracts` (UC-09, UC-03, UC-10) | Remote MCP `db-tools` (`agent_ro` role, 7-stage pipeline) + local deterministic tools (`render_chart`, `send_alert`), shared Zod contracts (`@se373/contracts`) |
+| **4.2 Tool integration** | K2, K6, K8 | `packages/mcp-server`, `packages/access-policy`, `packages/contracts` (UC-09, UC-03, UC-10) | Remote MCP `db-tools` (`agent_ro` role, 7-stage pipeline) + local deterministic tools (`render_chart`, `send_alert`), shared Zod contracts (`@shared/contracts`) |
 | **4.3 Memory management** | K4, K5 | `apps/api`, `packages/agent`, `packages/mcp-server` (UC-01, UC-02, UC-05, UC-10) | 4-tier memory: transient 1,000-row validation buffer, `PostgresSaver` thread/task checkpoints (`langgraph`), `AppStateStore` (`app_state.alert_history`), `semantic.semantic_chunks` (`pgvector` + hot-reloaded BM25) |
 | **4.4 Skill composition** | K2, K8 | `skills/*/SKILL.md`, `packages/agent` (UC-01, UC-05, UC-08, UC-10) | Declarative Markdown/YAML contracts (zero scripts/credentials), `loadSkill()` node entry hook with `skill_call` trace spans, hierarchical composition over `ValidatedQueryExecutor` |
 | **4.5 Runtime orchestration** | K1, K5, K6 | `packages/agent`, `apps/api` (All UCs) | Compiled LangGraph.js root graph + UC subgraphs + scheduled UC-10 runner, host-injected ports (`PostgresSaver`, `AppStateStore`, MCP headers), hierarchical spans, run-level budget circuit breaker |
@@ -417,9 +417,9 @@ The harness is organized around eight orthogonal engineering dimensions that map
 
 ---
 
-## 5. Shared Contracts (`@se373/contracts`) & Package Boundaries
+## 5. Shared Contracts (`@shared/contracts`) & Package Boundaries
 
-All packages communicate through `@se373/contracts` (`CONTRACTS_VERSION = "1.0.0"`). Full JSON Schemas are generated into [`docs/mcp_interface.md`](mcp_interface.md) via `pnpm docs:interface` (never hand-edited).
+All packages communicate through `@shared/contracts` (`CONTRACTS_VERSION = "1.0.0"`). Full JSON Schemas are generated into [`docs/mcp_interface.md`](mcp_interface.md) via `pnpm docs:interface` (never hand-edited).
 
 | Contract File | Key Exports | Consumers |
 |---|---|---|
@@ -452,8 +452,8 @@ web            → contracts only
 
 ✅ **Enforced by ESLint (`no-restricted-imports`, final 01-15 pass):**
 - `packages/agent/**`, `packages/access-policy/**`, and `apps/api/**` (except the `AppStateStore` DAO `apps/api/src/store/**` and its test) may never import `pg` or `pg-cursor`; `apps/web/**` may never import them either. Only `packages/mcp-server`, the operator-only `packages/data` loader, and the `apps/api` `AppStateStore` host touch the driver.
-- `packages/agent/**`, `packages/access-policy/**`, and `apps/**` (both `api` and `web`) may never import `@se373/mcp-server` or `**/mcp-server/src/**`.
-- `apps/web/**` may only import workspace types from `@se373/contracts` (every other workspace package is enumerated in the ban, so a future package cannot slip through silently).
+- `packages/agent/**`, `packages/access-policy/**`, and `apps/**` (both `api` and `web`) may never import `@shared/mcp-server` or `**/mcp-server/src/**`.
+- `apps/web/**` may only import workspace types from `@shared/contracts` (every other workspace package is enumerated in the ban, so a future package cannot slip through silently).
 
 ---
 
@@ -492,7 +492,7 @@ The 6 use cases in this project cover **all 8 Knowledge Areas (K1–K8)** with a
 
 - **Add your own files; do not rewrite shared harness plumbing:** Register your subgraph/nodes in `packages/agent` without altering another UC's subgraph or the fixed 7-stage pipeline in `packages/mcp-server`.
 - **Every agent SQL query must use `ValidatedQueryExecutor`:** Never bypass `sqlGuard`, `LocalQuerySafetyGate`, or the MCP client.
-- **Additive contract evolution:** Adding optional fields or new schemas in `@se373/contracts` requires 1 code-owner review and running `pnpm docs:interface`. Breaking changes require a `CONTRACTS_VERSION` major bump and sign-off from all affected UC owners.
+- **Additive contract evolution:** Adding optional fields or new schemas in `@shared/contracts` requires 1 code-owner review and running `pnpm docs:interface`. Breaking changes require a `CONTRACTS_VERSION` major bump and sign-off from all affected UC owners.
 - **Per-UC verification gate (U3):** Each UC ships with its declarative `skills/<name>/SKILL.md` (where applicable), $\ge 5$ acceptance eval cases under `evals/<uc>/` ($\ge 30$ benchmark questions for UC-01 + $\ge 5$ shared safety attack cases in `evals/safety/`), Baseline vs. Regression eval reports (PRD §6.3), and at least 1 PII-redacted trace under `traces/<uc>/`.
 
 ```sh
@@ -500,13 +500,13 @@ nvm use 24                                    # Node >= 24
 corepack enable                               # pnpm 11.25.0 (pinned)
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm lint && pnpm test      # root CI gate
-pnpm --filter @se373/<pkg> test               # scoped package test
+pnpm --filter @shared/<pkg> test               # scoped package test
 pnpm docs:interface                           # regenerate docs/mcp_interface.md
 ```
 
 ### 7.2 Phased Implementation Order
 
-1. **Phase 1 (Complete ✅):** Monorepo workspace, ESLint import boundaries, base `@se373/contracts` schemas, and CI pipeline (`typecheck + lint + test + gitleaks`).
+1. **Phase 1 (Complete ✅):** Monorepo workspace, ESLint import boundaries, base `@shared/contracts` schemas, and CI pipeline (`typecheck + lint + test + gitleaks`).
 2. **Phase 2 (Database & Seeding):** Docker PostgreSQL 16 + `pgvector`, 4 isolated roles (`owner`, `agent_ro`, `indexer`, `harness_state`), localized Vietnamese Olist dataset (`order_items >= 1M` rows, fake `vi_VN` PII), and hidden `data/seeded_scenarios.md` (3 RCA scenarios, 5 anomalies, 3 prompt-injection rows).
 3. **Phase 3 (Guardrails & Policy Core):** `pgsql-parser` `sqlGuard`, `resolveColumns()`, `ColumnScopePolicy`, shared PII regex redactor, and read-only cursor executor (`db.ts`).
 4. **Phase 4 (MCP Gateway & Semantic Layer):** `packages/mcp-server` (`db-tools` + 2 resources + `search_semantic_layer`), YAML semantic corpus (`semantic/*.yaml`), SHA-256 incremental indexer, and 3-way hybrid RRF retriever with hot-reload BM25.

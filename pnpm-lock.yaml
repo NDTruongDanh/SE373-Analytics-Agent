@@ -4,17 +4,53 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@langchain/langgraph':
+      specifier: ^1.5.2
+      version: 1.5.2
+    '@langchain/langgraph-checkpoint-postgres':
+      specifier: ^1.1.2
+      version: 1.1.2
+    '@modelcontextprotocol/sdk':
+      specifier: ^1.32.2
+      version: 1.32.2
+    '@types/express':
+      specifier: ^5.0.6
+      version: 5.0.6
+    '@types/node':
+      specifier: ^26.6.5
+      version: 26.6.5
+    '@types/pg':
+      specifier: ^8.23.1
+      version: 8.23.1
+    express:
+      specifier: ^5.3.0
+      version: 5.3.0
+    pg:
+      specifier: ^8.23.1
+      version: 8.23.1
+    pino:
+      specifier: ^10.4.0
+      version: 10.4.0
+    yaml:
+      specifier: ^2.9.1
+      version: 2.9.1
+    zod:
+      specifier: ^4.6.7
+      version: 4.6.7
+
 importers:
 
   .:
     devDependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.32.2
+        specifier: 'catalog:'
         version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      '@se373/access-policy':
+      '@shared/access-policy':
         specifier: workspace:*
         version: link:packages/access-policy
-      '@se373/agent':
+      '@shared/agent':
         specifier: workspace:*
         version: link:packages/agent
       eslint:
@@ -45,43 +81,43 @@ importers:
   apps/api:
     dependencies:
       '@langchain/langgraph':
-        specifier: ^1.5.2
+        specifier: 'catalog:'
         version: 1.5.2(@langchain/core@1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0))(react@18.3.1)(zod@4.6.7)
       '@langchain/langgraph-checkpoint-postgres':
-        specifier: ^1.1.2
+        specifier: 'catalog:'
         version: 1.1.2(@langchain/core@1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0))(@langchain/langgraph-checkpoint@1.2.1(@langchain/core@1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0)))
-      '@se373/agent':
+      '@shared/agent':
         specifier: workspace:*
         version: link:../../packages/agent
-      '@se373/contracts':
+      '@shared/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       express:
-        specifier: ^5.3.0
+        specifier: 'catalog:'
         version: 5.3.0
       pg:
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       pino:
-        specifier: ^10.4.0
+        specifier: 'catalog:'
         version: 10.4.0
       yaml:
-        specifier: ^2.9.1
+        specifier: 'catalog:'
         version: 2.9.1
     devDependencies:
       '@types/express':
-        specifier: ^5.0.6
+        specifier: 'catalog:'
         version: 5.0.6
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 'catalog:'
         version: 26.6.5
       '@types/pg':
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
 
   apps/web:
     dependencies:
-      '@se373/contracts':
+      '@shared/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
 
@@ -90,21 +126,21 @@ importers:
       '@pgsql/traverse':
         specifier: ^18.8.1
         version: 18.8.1
-      '@se373/contracts':
+      '@shared/contracts':
         specifier: workspace:*
         version: link:../contracts
       pgsql-parser:
         specifier: ^18.3.1
         version: 18.3.1
       yaml:
-        specifier: ^2.9.1
+        specifier: 'catalog:'
         version: 2.9.1
       zod:
-        specifier: ^4.6.7
+        specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 'catalog:'
         version: 26.6.5
 
   packages/agent:
@@ -113,10 +149,10 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0)
       '@langchain/langgraph':
-        specifier: ^1.5.2
+        specifier: 'catalog:'
         version: 1.5.2(@langchain/core@1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0))(react@18.3.1)(zod@4.6.7)
       '@langchain/langgraph-checkpoint-postgres':
-        specifier: ^1.1.2
+        specifier: 'catalog:'
         version: 1.1.2(@langchain/core@1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0))(@langchain/langgraph-checkpoint@1.2.1(@langchain/core@1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0)))
       '@langchain/mcp-adapters':
         specifier: ~1.1.4
@@ -125,29 +161,29 @@ importers:
         specifier: ^1.7.0
         version: 1.7.0(@aws-sdk/credential-provider-node@3.972.88)(@langchain/core@1.3.0(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0))(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)
       '@modelcontextprotocol/sdk':
-        specifier: ^1.32.2
+        specifier: 'catalog:'
         version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      '@se373/access-policy':
+      '@shared/access-policy':
         specifier: workspace:*
         version: link:../access-policy
-      '@se373/contracts':
+      '@shared/contracts':
         specifier: workspace:*
         version: link:../contracts
       pino:
-        specifier: ^10.4.0
+        specifier: 'catalog:'
         version: 10.4.0
       zod:
-        specifier: ^4.6.7
+        specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 'catalog:'
         version: 26.6.5
 
   packages/contracts:
     dependencies:
       zod:
-        specifier: ^4.6.7
+        specifier: 'catalog:'
         version: 4.6.7
 
   packages/data:
@@ -155,24 +191,24 @@ importers:
       '@faker-js/faker':
         specifier: ^10.6.0
         version: 10.6.0
-      '@se373/contracts':
+      '@shared/contracts':
         specifier: workspace:*
         version: link:../contracts
       csv-parse:
         specifier: ^7.0.3
         version: 7.0.3
       pg:
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       pg-copy-streams:
         specifier: ^7.0.0
         version: 7.0.0
       zod:
-        specifier: ^4.6.7
+        specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
       '@types/pg':
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       '@types/pg-copy-streams':
         specifier: ^1.2.5
@@ -181,41 +217,41 @@ importers:
   packages/mcp-server:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.32.2
+        specifier: 'catalog:'
         version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      '@se373/access-policy':
+      '@shared/access-policy':
         specifier: workspace:*
         version: link:../access-policy
-      '@se373/contracts':
+      '@shared/contracts':
         specifier: workspace:*
         version: link:../contracts
       express:
-        specifier: ^5.3.0
+        specifier: 'catalog:'
         version: 5.3.0
       openai:
         specifier: ^7.43.0
         version: 7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7)
       pg:
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       pg-cursor:
         specifier: ^2.22.1
         version: 2.22.1(pg@8.23.1)
       pino:
-        specifier: ^10.4.0
+        specifier: 'catalog:'
         version: 10.4.0
       yaml:
-        specifier: ^2.9.1
+        specifier: 'catalog:'
         version: 2.9.1
       zod:
-        specifier: ^4.6.7
+        specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
       '@types/express':
-        specifier: ^5.0.6
+        specifier: 'catalog:'
         version: 5.0.6
       '@types/pg':
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       '@types/pg-cursor':
         specifier: ^2.7.2

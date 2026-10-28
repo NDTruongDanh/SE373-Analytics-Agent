@@ -1,4 +1,4 @@
-# @se373/contracts
+# @shared/contracts
 
 Shared zod schemas (v4) for the SE373 Analytics Agent harness. Every package
 imports these types — nothing in `packages/contracts` imports anything else.

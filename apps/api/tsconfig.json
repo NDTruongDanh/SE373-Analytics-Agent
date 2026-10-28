@@ -9,5 +9,5 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/contracts" }]
+  "references": [{ "path": "../../packages/contracts" }, { "path": "../../packages/agent" }]
 }

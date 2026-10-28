@@ -1,5 +1,5 @@
 {
-  "name": "@se373/api",
+  "name": "@shared/api",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -8,24 +8,25 @@
       "default": "./dist/index.js"
     }
   },
+  "files": ["dist"],
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "tsc -b && vitest run"
   },
   "dependencies": {
-    "@langchain/langgraph": "^1.5.2",
-    "@langchain/langgraph-checkpoint-postgres": "^1.1.2",
-    "@se373/agent": "workspace:*",
-    "@se373/contracts": "workspace:*",
-    "express": "^5.3.0",
-    "pg": "^8.23.1",
-    "pino": "^10.4.0",
-    "yaml": "^2.9.1"
+    "@langchain/langgraph": "catalog:",
+    "@langchain/langgraph-checkpoint-postgres": "catalog:",
+    "@shared/agent": "workspace:*",
+    "@shared/contracts": "workspace:*",
+    "express": "catalog:",
+    "pg": "catalog:",
+    "pino": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.6.5",
-    "@types/pg": "^8.23.1"
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:"
   }
 }

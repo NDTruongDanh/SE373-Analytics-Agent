@@ -6,7 +6,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import pino from "pino";
-import { redactPII } from "@se373/access-policy";
+import { redactPII } from "@shared/access-policy";
 
 export interface AuditRecord {
   ts: string;

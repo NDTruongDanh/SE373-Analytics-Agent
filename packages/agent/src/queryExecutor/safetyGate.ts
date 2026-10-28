@@ -1,5 +1,5 @@
 // LocalQuerySafetyGate (GUARD-03, 01-11). Pure agent-side pre-check that runs
-// AFTER sqlGuard from @se373/access-policy and BEFORE any MCP call: sqlGuard
+// AFTER sqlGuard from @shared/access-policy and BEFORE any MCP call: sqlGuard
 // owns syntax/table/column validity, this gate owns the agent-side policy
 // extras — sensitive-column denial in any clause, cross/conditionless-join
 // denial, large-table clarification, and the detail-query LIMIT clamp.
@@ -10,8 +10,8 @@ import {
   dbToolError,
   type DbToolError,
   type SchemaCatalog,
-} from "@se373/contracts";
-import type { GuardAst, GuardSuccess } from "@se373/access-policy";
+} from "@shared/contracts";
+import type { GuardAst, GuardSuccess } from "@shared/access-policy";
 
 /** Cap applied to non-aggregate detail queries (GUARD-03). */
 export const DETAIL_QUERY_LIMIT = 200;

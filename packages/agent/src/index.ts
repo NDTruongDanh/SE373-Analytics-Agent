@@ -1,4 +1,4 @@
-import type { DbToolError } from "@se373/contracts";
+import type { DbToolError } from "@shared/contracts";
 
 export const AGENT_SHELL =
   "Agent shell: LangGraph.js root graph skeleton (AGENT-01) with registry seam; services land in sibling plans";

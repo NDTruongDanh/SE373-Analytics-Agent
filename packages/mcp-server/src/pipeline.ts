@@ -9,14 +9,14 @@ import {
   dbToolError,
   type DbToolError,
   type SearchSemanticLayerChunk,
-} from "@se373/contracts";
+} from "@shared/contracts";
 import {
   redactPII,
   redactRow,
   sqlGuard,
   type AccessPolicy,
   type Principal,
-} from "@se373/access-policy";
+} from "@shared/access-policy";
 import {
   authenticateRequest,
   requireScope,

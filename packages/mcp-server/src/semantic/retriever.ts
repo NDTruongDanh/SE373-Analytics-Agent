@@ -3,7 +3,7 @@
 // sensitivity restricted_pii are filtered out unless the caller holds
 // data:sensitive. Storage snake_case maps to the camelCase
 // SearchSemanticLayer contract shapes from 01-02 at the boundary.
-import type { SearchSemanticLayerChunk } from "@se373/contracts";
+import type { SearchSemanticLayerChunk } from "@shared/contracts";
 import { fuseRRF, rrfScore, RRF_K } from "./rrf.js";
 import type { Embedder } from "./embedder.js";
 
