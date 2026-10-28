@@ -4,108 +4,96 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+# Least privilege: jobs only read the repo. (The OpenWiki workflow is the
+# exception — it needs write to open docs PRs.)
+permissions:
+  contents: read
+
+# Cancel stale PR runs; never cancel main so its gate result stays trustworthy.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.25.0
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Set up JS + install
+        uses: ./.github/actions/setup-js
 
       - name: Typecheck
         run: pnpm typecheck
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.25.0
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Set up JS + install
+        uses: ./.github/actions/setup-js
 
       - name: Lint
         run: pnpm lint
 
-  test:
+  policy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - name: Set up JS + install
+        uses: ./.github/actions/setup-js
+
+      - name: Check workspace invariants
+        run: pnpm check:workspace
+
+      - name: Check skills gate
+        run: pnpm skills:check
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          version: 11.25.0
-          run_install: false
+          fetch-depth: 1
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "pnpm"
+      - name: Set up JS + install
+        uses: ./.github/actions/setup-js
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      # Unit tests only: live *.live.test.ts files skip without DB env
+      # (describe.skipIf). tsc is covered by the typecheck job, so run
+      # vitest directly instead of `pnpm test` (which re-runs tsc -b).
       - name: Test
-        run: pnpm test
+        run: pnpm exec vitest run
 
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.25.0
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Set up JS + install
+        uses: ./.github/actions/setup-js
 
       - name: Regenerate interface
         run: pnpm docs:interface
@@ -116,72 +104,57 @@ jobs:
   db:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Dev-only loopback credentials. These literals are committed in
+      # docker/docker-compose.yml (POSTGRES_* defaults) for a local-only DB
+      # and are NOT secrets. Never reuse this pattern for real tokens or
+      # deployed environments — those must come from Actions secrets.
+      OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
+      DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
+      AGENT_RO_DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
+      INDEXER_DATABASE_URL: postgresql://indexer:chosen_indexer_dev@127.0.0.1:5433/chosen
+      HARNESS_STATE_DATABASE_URL: postgresql://harness_state:chosen_harness_state_dev@127.0.0.1:5433/chosen
+      # Fake CI-only MCP tokens (test fixtures, not secrets).
+      MCP_TOKEN_SALES_SOUTH: ci-sales-south-token
+      MCP_TOKEN_MARKETING: ci-marketing-token
+      MCP_TOKEN_HR: ci-hr-token
+      MCP_TOKEN_ADMIN: ci-admin-token
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.25.0
-          run_install: false
+      - name: Set up JS + install
+        uses: ./.github/actions/setup-js
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      # docker-compose.yml carries the initdb roles, so compose (not a plain
+      # services: postgres) is required. --wait reuses its pg_isready
+      # healthcheck instead of a hand-rolled sleep loop.
       - name: Start loopback database
-        run: docker compose -f docker/docker-compose.yml up -d
-
-      - name: Wait for database
-        run: |
-          for i in $(seq 1 18); do
-            if docker compose -f docker/docker-compose.yml exec -T db pg_isready -U postgres -d chosen; then exit 0; fi
-            sleep 5
-          done
-          echo "database did not become ready in 90s"
-          exit 1
+        run: docker compose -f docker/docker-compose.yml up -d --wait --wait-timeout 90
 
       - name: Load small seed scale
         run: pnpm data:load --scale=small
-        env:
-          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
 
       - name: Verify loaded volume
         run: pnpm data:verify --scale=small
-        env:
-          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
 
       - name: Role and grant live tests
         run: pnpm --filter @shared/data test test/roles.live.test.ts
-        env:
-          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
-          DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
-          INDEXER_DATABASE_URL: postgresql://indexer:chosen_indexer_dev@127.0.0.1:5433/chosen
-          HARNESS_STATE_DATABASE_URL: postgresql://harness_state:chosen_harness_state_dev@127.0.0.1:5433/chosen
 
-      - name: Executor and MCP live tests
-        run: |
-          pnpm --filter @shared/mcp-server test test/live.test.ts
-          pnpm --filter @shared/agent test test/ports.live.test.ts
-          pnpm --filter @shared/api test test/e2e.live.test.ts
-        env:
-          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
-          DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
-          AGENT_RO_DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
-          INDEXER_DATABASE_URL: postgresql://indexer:chosen_indexer_dev@127.0.0.1:5433/chosen
-          HARNESS_STATE_DATABASE_URL: postgresql://harness_state:chosen_harness_state_dev@127.0.0.1:5433/chosen
-          MCP_TOKEN_SALES_SOUTH: ci-sales-south-token
-          MCP_TOKEN_MARKETING: ci-marketing-token
-          MCP_TOKEN_HR: ci-hr-token
-          MCP_TOKEN_ADMIN: ci-admin-token
+      - name: MCP server live tests
+        run: pnpm --filter @shared/mcp-server test test/live.test.ts
+
+      - name: Agent ports live tests
+        run: pnpm --filter @shared/agent test test/ports.live.test.ts
+
+      - name: API e2e live tests
+        run: pnpm --filter @shared/api test test/e2e.live.test.ts
+
+      - name: Dump database logs on failure
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs db
 
       - name: Teardown database
         if: always()
@@ -189,13 +162,34 @@ jobs:
 
   secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Single required check for branch protection: require `gate`, not each
+  # job, so adding a job never silently breaks protection.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [typecheck, lint, policy, test, docs, db, secrets]
+    if: always()
+    steps:
+      - name: Verify all required checks passed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "gate: a required job failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "gate: a required job was cancelled"
+            exit 1
+          fi
+          echo "gate: all required jobs passed"
