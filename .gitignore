@@ -17,5 +17,16 @@ Thumbs.db
 dist/
 *.tsbuildinfo
 
+# Generated runtime outputs (01-01 tracer; curated evidence committed explicitly)
+traces/*.jsonl
+logs/*.jsonl
+results/
+# Olist publisher CSVs (01-07 loader cache — 61 MB, pinned-SHA verified at
+# load time, never committed per T-01-07-01)
+data/.cache/
+# keep skeleton dirs tracked via their .gitkeep files
+!traces/.gitkeep
+!logs/.gitkeep
+
 # GSD skill working state (local planning artifacts — never commit)
 .planning/

@@ -11,24 +11,38 @@
     "pnpm": ">=10"
   },
   "scripts": {
+    "db:up": "docker compose -f docker/docker-compose.yml up -d",
+    "db:reset": "docker compose -f docker/docker-compose.yml down -v && docker compose -f docker/docker-compose.yml up -d",
+    "demo:tracer": "tsx scripts/demo-tracer.ts",
+    "external-client": "tsx scripts/externalClient.ts",
+    "data:load": "tsx packages/data/src/load.ts",
+    "data:verify": "tsx packages/data/src/verify.ts",
+    "eval": "tsx evals/run.ts",
+    "skills:check": "tsx scripts/skills-check.ts",
     "wiki:init": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --init",
     "wiki:update": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --update",
     "wiki:update:print": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js code --update --print",
     "wiki:dry-run": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js --dry-run",
     "wiki:visualize": "node --import ./scripts/openwiki-fetch-patch.mjs ./node_modules/openwiki/dist/cli/cli.js visualize",
     "typecheck": "tsc -b",
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "check:workspace": "node scripts/check-workspace.mjs",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "tsc -b && vitest run",
     "docs:interface": "tsx scripts/generate-interface.mjs"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@shared/access-policy": "workspace:*",
+    "@shared/agent": "workspace:*",
+    "eslint": "^10.13.0",
     "jsdom": "29.1.1",
     "mermaid": "11.16.0",
     "openwiki": "0.7.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3",
-    "eslint": "^10.13.0",
     "typescript-eslint": "^8.72.0",
-    "vitest": "^5.0.5",
-    "tsx": "^4.23.15"
+    "vitest": "^5.0.5"
   }
 }

@@ -7,8 +7,10 @@ describe("DbToolError", () => {
       code: "TIMEOUT",
       message: "Query exceeded statement timeout",
       retryable: true,
+      repairable: false,
     });
     expect(parsed.retryable).toBe(true);
+    expect(parsed.repairable).toBe(false);
   });
 
   it("dbToolError SCOPE_DENIED yields retryable false", () => {
@@ -20,11 +22,16 @@ describe("DbToolError", () => {
 
   it("rejects an unknown code", () => {
     expect(() =>
-      DbToolErrorSchema.parse({ code: "NOPE", message: "x", retryable: false }),
+      DbToolErrorSchema.parse({
+        code: "NOPE",
+        message: "x",
+        retryable: false,
+        repairable: false,
+      }),
     ).toThrow();
   });
 
-  it("exposes exactly 11 error codes", () => {
-    expect(ErrorCodes).toHaveLength(11);
+  it("exposes exactly 12 error codes", () => {
+    expect(ErrorCodes).toHaveLength(12);
   });
 });

@@ -84,6 +84,109 @@ jobs:
       - name: Test
         run: pnpm test
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate interface
+        run: pnpm docs:interface
+
+      - name: Fail on interface drift
+        run: git diff --exit-code -- docs/mcp_interface.md
+
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start loopback database
+        run: docker compose -f docker/docker-compose.yml up -d
+
+      - name: Wait for database
+        run: |
+          for i in $(seq 1 18); do
+            if docker compose -f docker/docker-compose.yml exec -T db pg_isready -U postgres -d chosen; then exit 0; fi
+            sleep 5
+          done
+          echo "database did not become ready in 90s"
+          exit 1
+
+      - name: Load small seed scale
+        run: pnpm data:load --scale=small
+        env:
+          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
+
+      - name: Verify loaded volume
+        run: pnpm data:verify --scale=small
+        env:
+          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
+
+      - name: Role and grant live tests
+        run: pnpm --filter @shared/data test test/roles.live.test.ts
+        env:
+          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
+          DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
+          INDEXER_DATABASE_URL: postgresql://indexer:chosen_indexer_dev@127.0.0.1:5433/chosen
+          HARNESS_STATE_DATABASE_URL: postgresql://harness_state:chosen_harness_state_dev@127.0.0.1:5433/chosen
+
+      - name: Executor and MCP live tests
+        run: |
+          pnpm --filter @shared/mcp-server test test/live.test.ts
+          pnpm --filter @shared/agent test test/ports.live.test.ts
+          pnpm --filter @shared/api test test/e2e.live.test.ts
+        env:
+          OWNER_DATABASE_URL: postgresql://owner:chosen_owner_dev@127.0.0.1:5433/chosen
+          DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
+          AGENT_RO_DATABASE_URL: postgresql://agent_ro:chosen_agent_ro_dev@127.0.0.1:5433/chosen
+          INDEXER_DATABASE_URL: postgresql://indexer:chosen_indexer_dev@127.0.0.1:5433/chosen
+          HARNESS_STATE_DATABASE_URL: postgresql://harness_state:chosen_harness_state_dev@127.0.0.1:5433/chosen
+          MCP_TOKEN_SALES_SOUTH: ci-sales-south-token
+          MCP_TOKEN_MARKETING: ci-marketing-token
+          MCP_TOKEN_HR: ci-hr-token
+          MCP_TOKEN_ADMIN: ci-admin-token
+
+      - name: Teardown database
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down -v
+
   secrets:
     runs-on: ubuntu-latest
     steps:

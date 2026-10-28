@@ -1,12 +1,13 @@
 {
-  "name": "@se373/web",
+  "name": "@shared/web",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run"
+    "test": "tsc -b && vitest run"
   },
   "dependencies": {
-    "@se373/contracts": "workspace:*"
+    "@shared/contracts": "workspace:*"
   }
 }

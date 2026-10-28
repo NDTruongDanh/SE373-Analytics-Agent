@@ -14,6 +14,11 @@ export const TraceEventSchema = z.object({
   ts: z.iso.datetime(),
   durationMs: z.number().nonnegative(),
   payload: z.unknown().optional(),
+  // CONT-05 span fields (additive): link events into a causal chain for
+  // OBS-01 traces. Optional so older writers stay valid.
+  spanId: z.string().min(1).optional(),
+  parentSpanId: z.string().min(1).optional(),
+  attempt: z.number().int().nonnegative().optional(),
 });
 
 export type TraceEvent = z.infer<typeof TraceEventSchema>;

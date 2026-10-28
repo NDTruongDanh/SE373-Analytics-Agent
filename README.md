@@ -5,6 +5,36 @@ Initial setup for main branch.
 **Start here:** [`docs/architecture.md`](docs/architecture.md) — harness
 architecture, package boundaries, shared contracts, and where each UC's code goes.
 
+## Operator setup (harness)
+
+Prerequisites: Node `>= 24`, `pnpm >= 10` (repo pins `pnpm@11.25.0`;
+`corepack enable` activates it), Docker for the loopback database.
+
+```sh
+corepack enable
+corepack prepare pnpm@11.25.0 --activate
+pnpm install --frozen-lockfile
+cp .env.example .env   # then fill in role URLs, bearer tokens, model key
+pnpm db:up             # Postgres 16 + pgvector on 127.0.0.1:5433 (loopback only)
+pnpm data:load         # full Olist-VN seed (~1M order_items, a few minutes)
+pnpm data:load --scale=small  # CI-speed seed: same FK graph, ~53 s + verify
+pnpm data:verify       # pins the loaded volume to data/seed_manifest.json
+                       #   (after a small load: pnpm data:verify --scale=small,
+                       #    pinned to data/seed_manifest.small.json)
+pnpm demo:tracer       # end-to-end proof: gateway + host, 7 PII-clean trace events
+pnpm eval --uc uc09    # live harness eval (or --all); needs the DB + gateway env
+pnpm skills:check      # declarative-skills invariant (no scripts/credentials)
+```
+
+External MCP clients (MCP Inspector, `scripts/externalClient.ts`) connect to
+the gateway over Streamable HTTP with a per-role bearer token from
+`policies/mcp_clients.yaml` (token values stay in `.env`, never in the repo).
+
+Dataset attribution: the seeded business data derives from the
+[Olist Brazilian E-Commerce](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+dataset (localized to Vietnamese, synthetic `vi_VN` PII), used under the
+**CC BY-NC-SA** license — non-commercial course use only, share-alike.
+
 ## OpenWiki docs (pnpm + GitHub Actions + OpenCode Go)
 
 Repository wiki lives in `openwiki/` and is maintained by

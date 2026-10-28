@@ -1,12 +1,26 @@
 {
-  "name": "@se373/access-policy",
+  "name": "@shared/access-policy",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
+    "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run"
+    "test": "tsc -b && vitest run"
   },
   "dependencies": {
-    "@se373/contracts": "workspace:*"
+    "@pgsql/traverse": "^18.8.1",
+    "@shared/contracts": "workspace:*",
+    "pgsql-parser": "^18.3.1",
+    "yaml": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
   }
 }

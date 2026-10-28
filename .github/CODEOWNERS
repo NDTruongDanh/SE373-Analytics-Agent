@@ -9,3 +9,9 @@ packages/agent/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with ha
 apps/api/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
 apps/web/ @NDTruongDanh @HungPham-VNU # TODO(UC-02 owner): replace with handle during review
 policies/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
+packages/data/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
+docker/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
+semantic/ @NDTruongDanh @HungPham-VNU # TODO(UC-02 owner): replace with handle during review
+skills/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
+evals/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
+data/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review

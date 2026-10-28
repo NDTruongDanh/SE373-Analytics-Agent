@@ -1,8 +1,12 @@
 export * from "./errors.js";
 export * from "./tools.js";
 export * from "./answers.js";
+export * from "./search.js";
+export * from "./render.js";
+export * from "./alert.js";
 export * from "./trace.js";
+export * from "./catalog.js";
 export * from "./semantic.js";
 export * from "./benchmark.js";
 
-export const CONTRACTS_VERSION = "0.1.0";
+export const CONTRACTS_VERSION = "1.0.0";
