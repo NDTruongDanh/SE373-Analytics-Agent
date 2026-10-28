@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:167bb882893b169ebcb72cee6f7f870a6300836919060f7559e7e539f0068edc",
+  "pageVersion": "sha256:8e53ed31b32957737d3facd22615bf10a3e3b0f8551894a8a8a80eac822d3970",
   "claims": [
     {
       "id": "claim_67cb28f975154c3dab2eee2e110ffe62",
@@ -171,10 +171,222 @@
           "version": "repo-lines-v1:sha256:b4bf7784f1e75fc6ad6866c07d241d7757e7d520ed4ed9da3c9c9fa38721ad17:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFlMTk2ZDUxZjQyN2QwOTdhMmFlYjg4MzA5OWY5OTJhNmVmOGJmMWFjMzk1YmI4OGMyOGVhNWEwZGM1YjFjNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4YzIzMDY1ZmE2ZjIzMzYwZDk3YTJkNTY1ZTMwNGIzNTE4MzhhZjQ0MTI1NjkzOTI0Y2RkZGQwZjQ1MDVhOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjIxYzc2ZmI1YzA2NjUxYjYwNWQzN2JkMzMyMmUzZjBiM2I2ZDBlZWMxOTU0NGE0ZWQ3ZTM5MmUzNDY4ZTQ0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDcyNzJjN2MxOWRmNTQyZTRhNTJhOTg3NWM4ZmE3NjNmYmEyOGRhOGIxNWNjNDFkZTA5ZjRjZDg3YTFjNGU3NSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_33b9bc01c3874ad9a94f2df849de19e4",
+      "statement": "The semantic corpus is two versioned Markdown files (data_dictionary.md with twelve business tables and metrics.md with six metrics) chunked by ## sections, with Table/Tables/Metric/Aliases lead lines kept in content and [restricted_pii] headers marking withheld sections.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/index.ts#L47-L56",
+          "version": "repo-lines-v1:sha256:87d0c0c5a4f2463f4808bca4cd27337a10510f5d8b7424051ed0d31633412ec0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNjkxYTdhMDE2MzQ1MTdlY2VjZTM4OGZlMWMzMDQ0NDEzZTcwZTBiYzUyNzBlOTc5MDkyZjc2MjI5Y2UxMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5NDdhMThlOTMwMGE5MjcyNzE0MjRiNmYxNmVhY2VmODQyODA3NTlmZmJiMTNmZDA3MzQ1ZTEwZWY3OTgxZWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiY2Y3OGE5YjZhZTc1M2RiN2RkZmVkZWM1MjIzYmI0M2Q5MzExY2Q0NzlkNzc5OWFkYmVhNmFiMDRjOTBiN2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzOTg2YTU3MjkxZmUzZmNiZTk2NTU2ZTgzZTU2YzBjNzM3M2NmODJiZDlkM2UwYTY2YWI5YjEyM2RjMjUwMWQifQ"
+        },
+        {
+          "resource": "repo://semantic/data_dictionary.md#L52-L57",
+          "version": "repo-lines-v1:sha256:2de7ba81f34b869eb00c6ffe93878907574b298fd7c9edae335b5933a4118dc6:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzYzOTRjN2IxNjA0ZGM2ZDVlMTc4OGVmYWE5MjI1ZTA0MTRjYTllNDc4M2U1YjNjNTljNTQ1MGE4MWJhZjU1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzhiZTYwNjUxZjI2NzIyOWFmZjJhZWM1NTk3MmM0Y2RjNDY5YzExNmFjMDZjMTFhZDIyZDllYWI1OWEyMGJhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2JlYThhYWJhNzJiNTY0NGM1ZTNhN2NhNTU2YTQzNDM2NzFlYTJiYTYzNzE3YzFhZWM5ZDExMWFiYmY3NTlhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDNmYjcyODJiYjg0MWQxODU4ZTQ1YjkwODc2YWZlODdiZTAxYzM3MzU2MzIxYWIyMmMwYmJhMmEyYjI5YWViNCJ9"
+        },
+        {
+          "resource": "repo://semantic/data_dictionary.md#L8-L13",
+          "version": "repo-lines-v1:sha256:4ee3d2956b4ff6dfd49b83643bfa00933337e093f56fb913ed7cde513c59d78f:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTdhMTI2ZjA1NTgxYWVjNDZjY2Q3MGM5MTc5ZTQ3NDg3NDIyYjk3MTBmNjc5OTQwZjM3NzZkYTFkMzM2MDk3NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzRmZmJkZjMxNTAzNzBjYjkzZjY3MjgxYjFmYjAyZGYyNzNiZGJlNDIzNDI2NjA3YWY0ZDZkZGRkMzQyMTk0OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmMyOTJjNjliNjk3Y2YzNDNhYmE2Zjc5Y2EwYWJiZDhiYTdmMTA1ZDdlZjZjMmNkOWUzZWUwOTExMTUyOTEyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODRlNTdiMWExMmI2N2ViNWU0NGUzZjI2YTU5MTk4NTI2MGU5MTFmZTRkMTRjOThkMjFiYzg5MTk2MGU2MWE5NiJ9"
+        },
+        {
+          "resource": "repo://semantic/metrics.md#L46-L51",
+          "version": "repo-lines-v1:sha256:eece25a3d964a4acb1124b24c7f788d59d2314b2ae7d88d9e14ff07bc385f135:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmE5YjEzMDZkYTk2YzkwOGQ5NjJlOTYyYjY2ZjViZWEyMzAyN2NjNWZlNDZhYTU5NTU2NzZjYzk0ZDA5OTBlMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWNkNGYxMzFiYzlmZWY5ZjAzN2ExZGNlNTQxZTg5Njk3MmFhZmNkYzgxMzg0ODExYjAzYjczNWJjMjMzNjM5NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTlhZWFiODllZTUyZjhjODU0MDUxN2QyYzY5ZmQ3ZjJhYTI0NzNkYzVmOTE1ODc5ODlmMDQ4MjEyZTNmNjdjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWVkYTU2MjA5NGM3NmUzNzY4OWRmN2UyMzcyMjVjYTcwNGZlY2ZiNDA2NTM5N2E5NTRkZWY3MDEyODc3M2RmMSJ9"
+        },
+        {
+          "resource": "repo://semantic/metrics.md#L9-L15",
+          "version": "repo-lines-v1:sha256:b906a0e84f34cdcdce5d88e565eb8002dd7beca5db41be349ac6dc1cc5040331:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWU2NDBlMGUwYzBjMDQwMjJjYTliYzMxZGYwYTZiN2MwNDVhNzNiMWZiZjVkN2RlMDViZmI0NWY4NGEyMGI1MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTZhMjdjNjg5ZTkxYzZhYWM4YWJjZjQ4YWM5ZTZiNzM2ZjhkOWI3ZDM4OWIyOTdjMzk1MTJkOTI2ZWU1YzAxNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWEwMzdiOWU5MTdlNGE5MTJhZWI1ZWU0YWY3NmQ1NzUxMDZiZDZiNjY2N2YzZmFhNDM2OTRlNGMyMzQ2NzM5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGJkMzg4OTU1NjA1YTczZGY2NjE5NTlhMzIwMGEwNTM0NGIwYWJhYjU2NjE5ZjI1Y2Q4YTI2MmRlYTM1MWVlZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9409a2bab5ab47d0a17e34e4a06651eb",
+      "statement": "chunkMarkdown splits on ## headings, parses Table/Tables/Metric/Aliases metadata, derives table and tables from each other when only one is present, slugs headings into source:slug chunkIds, and tags restricted_pii headers while skipping preamble and empty sections.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/index.ts#L47-L102",
+          "version": "repo-lines-v1:sha256:cdd0a030e38e45e656f3f592257890f412030200270627eb42214a7c478f792b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNjkxYTdhMDE2MzQ1MTdlY2VjZTM4OGZlMWMzMDQ0NDEzZTcwZTBiYzUyNzBlOTc5MDkyZjc2MjI5Y2UxMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiY2Y3OGE5YjZhZTc1M2RiN2RkZmVkZWM1MjIzYmI0M2Q5MzExY2Q0NzlkNzc5OWFkYmVhNmFiMDRjOTBiN2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyMDE4YjA0OTA1MGEwZjM4YzY4N2Q5NjdiNjQxOTY4YTQyNjY4ZjYwZmFmYmU2MzUxNGE0Njc2NWFhNmZmMzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_12831f52fe954f80915ccb100c6461a0",
+      "statement": "indexCorpus is incremental via SHA-256 contentHash over canonical chunk JSON: it embeds only dirty chunks, INSERTs new ids and UPDATEs changed rows with refreshed hash/embedding/updated_at, returns {added, updated, skipped} with no delete pass and no token/cost telemetry, and runs as an operator tsx module against INDEXER_DATABASE_URL with two default files.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/index.ts#L104-L116",
+          "version": "repo-lines-v1:sha256:6198ed42b5f91e0a6a2430310234608109f7a9acf86559222367164d06bf44dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzOWRhOWE2MzE0OWZiODM1OTM5YmU2OTRiZDIyNjk1YjZmMWVkODdlZWJlY2JjYzA4YzViNDBiY2ZhNmQzMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjNzBjYjNkZjljZmVjMjZlM2Y2ZDQ1OTRiMzQ0MDliYWU1MzY1OTM5MTIzZTQ0YzhhODgzNTdmMWY4ZTM4YWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxNmQ3OWEyMWY2NTFlMjg0MTIwMmZkYmNjYmE4NTVhNjBkY2U0MDkwNzUwY2YzNjA1NmI3MWI3NWZhNDRjMWUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/index.ts#L124-L187",
+          "version": "repo-lines-v1:sha256:740a7784665928ea4fecc4c19b37e4553d9136f678a022a774867eafa55ac610:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0ZDA3ZmI1YWUwMjA2NzhkMWEyYTRhMTE1YTI1MDZiZDNiZjZhZDM3YTNiNDgzMmMyMDU4NGJiOTI5Njc3ZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4NTgxYzgxOWVlNGIxODk1ZTY2ZTY4NGVhMjFiZWVmY2VhZWM0ZjViY2RmMGY2MjE4ZWRlNjlkZGE5OTM5MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkNjg3Yzg0Mjg3Mzk1NTg2ZDAyOWQ2OWU3NWZkMDEwNDRmNTc3NDliMGUyZTI0ODhmZDYwMTM2NmM3M2Q1N2EifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/index.ts#L189-L213",
+          "version": "repo-lines-v1:sha256:333da93bdbd243b56d49f2be1136a7219864043c5b413717a459566f5b0955cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3OWE3NTRjNDFkOTAzMTYxODk0MTg2MTliZWE1NWEzZjVhM2VhMmZkYjY1ODVjZTc4YTQ5YWU1ODgzNjRmODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3049b2f1c0764f3bb26ceeba16b16a66",
+      "statement": "Embeddings come from a deterministic 1536-dim L2-normalized fake embedder (FNV-1a plus mulberry32) used by tests/CI, or an OpenAI-compatible endpoint configured by EMBEDDING_MODEL_ID, OPENAI_COMPATIBLE_BASE_URL, EMBEDDING_API_KEY and EMBEDDING_DIM; selectEmbedderFromEnv prefers OpenAI only when model and key are set.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/embedder.ts#L35-L48",
+          "version": "repo-lines-v1:sha256:e2e6b0b18b7fc41c06a60cd4c036ef561ee584e9836d09174f364f18e7287271:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjYmQzNWYxZTFiNTMyNmNjNjZkNWQ3OTBlNjRlNmU1ZDJlYmNiZGY2OWZjMGM1ODY4Y2Y4ZmU2NjBiMWMyYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiY2FkNjhjOWMwN2Q2YzIxNWYzZTYwMWFjYWQzMjAxY2M0MDAyZTJkNTVjNGQ2NDc4MTQzNDE1ZjhjNjE0ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYzNmZjYjJlNjg3OGYyYzFjMWU4YmE2NTEwNmM2MzFiZTU4Njk5YTMwNWVhYzI4YmFjYjIyZGFhMjk0MGQzYmMifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/embedder.ts#L57-L75",
+          "version": "repo-lines-v1:sha256:cdf592dc6b174bd05efa1db4ef7921f1555c41eaf07ffd290d236b52e4abff4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyYjEzZjRiMjQ0NmQwOThmYjA0M2JkYzI1NmFiYzlkYWZkMDU4NTcxMjZmNGNmMTdmOTM1NzIxYzgwNGRmYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlNzdkNDk5YjNiZThkMTMwZTY5ODU1MjgwNmU3ZTk5NTE1OTI1NTgyMTliZTQyYjI3NmE4MDM4YWIzZWFjYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3YWJjMjEzYTM2ZmE5YTU0NWZiZGY0ZGYxMzZiY2E3ZWUxZjI1OWVlNzkwYTVmOWVkOGQwNDRiYTI2NTYyYzMifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/embedder.ts#L80-L88",
+          "version": "repo-lines-v1:sha256:f9b9bdb357474f1eddadd49aeb42342eda519cc290682bacc6afc9dcea2447d9:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA2ODM5ZTFjMmFjMjcxNjM4MzA0NzBmMTA0Yzg3Mjg0MGUwN2Y4YWEzOTYyYzRiYjRhMDViMDg3MDE0MDQyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODFkYjE5NjRmNTc5ZGQzOTVkZGJmMzJiNjI1NzEwYTliNTRhZDNlYjZlYmY4YmJlODEwNTY2ZTRkZTJiNTliMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_71947d79e7ac41d58f9dad50ec3db6eb",
+      "statement": "semantic.semantic_chunks stores snake_case metadata plus content, SHA-256 content_hash, updated_at watermark, vector(1536) embedding, and a generated tsvector fts column via immutable_unaccent, served by HNSW cosine and GIN FTS indexes.",
+      "evidence": [
+        {
+          "resource": "repo://docker/initdb/04_semantic_state.sql#L16-L18",
+          "version": "repo-lines-v1:sha256:4f7ba2ddff40ca91a493b4184041d238dd1b553fdcd850a2b73e06fd771588db:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzNhOThhYTQ2YTNmYmY0MzFhODZiOTU5YTZjMDFlOGU2NjIxYjg1ZDRjMjI0MTZhNmNhMTg4NGE0ZmQxMmFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FiNDRjM2NmNjRiYTE1OTJlYWMyYTM3OTAyMWZlM2RhZTU2MmE0ZDRiMmI1MzJlZTUzNmJlZmI5ODdiNTE1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWNhYmFlMjMxOTIwMDYwNzE5OWYxMGFhMjA1OWFkNDlhNzNlMTc2OTBkMGM3ZTkzODI0YmJkZTg5OWY1NWUxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWU3MGRjM2Y1YjYzNzVlMDRlMGJhMDAxYTY1ZDkxMDgzZWQzNGYyZjI3NGRhZGYyYzc4NDIyODM4OTQ1OGY0YSJ9"
+        },
+        {
+          "resource": "repo://docker/initdb/04_semantic_state.sql#L27-L44",
+          "version": "repo-lines-v1:sha256:f8133b578b70b8d6f6e994e9c5f2fdf68fdf1373cc8b67200fea00c42a456ea3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYTRiYTRiOGVlNDljMTEyNWViY2E5MzM3NTAwZGVhN2MyZGFhZDBlZjNlYmI2OGM5OTNmYjYzMzFjOGU2YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOThkMDMyNmQwODBmNTczYThhODViZGI2MWM4M2ZlZDUwNDk2MTE2MzU4NWFmYWEwNTI3ODIwZGFlMmVmZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0NjlkODhkOWI5YTZiODA3ZDk5ODZhNjBiMDRhMjhlZmI1MWVlNTQxMDkzOGY3ZmNjOTViODI0ZjA3Y2I0Y2EifQ"
+        },
+        {
+          "resource": "repo://docker/initdb/04_semantic_state.sql#L47-L53",
+          "version": "repo-lines-v1:sha256:9725ef6815592918c96b9bfb3b1e3b72c64f63e993224070588f5f3f5e6c51fd:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTAyNTcxNWM2YzZkM2ZiMGZhNmQ1Njk0NGYwMzA2Njk2YjMyODEwMjExNTk4NjUzYmJiYzhlZTMwMjYxYmNkNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGY1NmJhYjI1NzE4YWM0ODNkNjk3NjMyNzNiZjZkYWRmNzIwYmIxOWUwZjM5MzFhYmM0MWFmMTI2MzY1MDUyZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGRiYTg0N2UwYWIxYzQzZjU1MGI5NmU1NDg3MzNmYzUwYjVjZTFlNjlkMzVjYWY1ZmI3OWI3ZjdlMzczY2MwMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzFjNDI3YmI4NGMxMDdmODc0MzQ2MDliZTJhYmI4MTRkZTcxMmVlNDFmYzczNTMyNzY0YzRjN2M3ZWE2OGMzNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b01b1ee45f5d40b2814f43f4f47192ca",
+      "statement": "Database roles isolate the layer: agent_ro has only USAGE plus chunk-only SELECT on semantic_chunks with no default privileges for future tables, while indexer holds full write grants on semantic tables and zero rights on public.",
+      "evidence": [
+        {
+          "resource": "repo://docker/initdb/02_schemas.sql#L62-L77",
+          "version": "repo-lines-v1:sha256:70034c58aa3c4c8140491776050dc71446df1a3198242a29fb713b7ad65863d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkZjg4ZTE2YWE5MmYxODE0MWU3ZDcxMDRhYmJiMWRhZGNkZmZjZDBlYWEyM2I5YmMwYjFlZTU0NTg5MzdkMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzOGZiNzIyNjcyYmMzYzEzNTMyNTA1ZmNjMzBjYmZmMjVlNzE0NWJlODFlY2IwNmQ4MDg5YzlhYjBhZGFlNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViZjgxNGE1ZTJkNjlmY2I5MDRjMWE5ZDFmMTc0OGIzMjg1NzYwOTQ0MTk2MTFjZGJiODZlNWJmM2I1MTVhYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNTVjYzU2MzA0NzY0NWZjNTRhMGFhOThlZTk3NTY0M2Y2ZjljZGJkMjg3ZTkxMmYxYzM1M2Q3MzhjMjFlY2EifQ"
+        },
+        {
+          "resource": "repo://docker/initdb/04_semantic_state.sql#L61-L65",
+          "version": "repo-lines-v1:sha256:007eea1129807dfc24e2bf7fdecaf2eb7d99f4262ff4e31809a3334b5ee201be:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmNjYWUwZmMwNDAzNDNhN2Y4NjVlNjg0NjgyMDA1MGUyMGJiNWY4ODcxNzRiMGU1NmNkYzVkNTM5YWNlMGUwZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWViYmZmNjdiYmRlYjkxNTRlYzhlZTkwZDJjY2UyODQ1OTBjM2JkN2MwYWI1MmI2N2IzYjgwOTM4ZmEzOTUxZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDYxZDUzNzI5ZTRhMmRiNGIzNGRjMzZmMjdjOTI3Y2ZhNTYxODQyNjI5OGQ1NjExMDk1NGFhZWIxY2IyNWNlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk2Yzk1MGJkMTBkNmI2NGQzNDk1NDE1OTk1MDgwYjU5YzVlYmE3OTY4MWRjM2UyMDI1NzJiMmI4NDE0NzBjOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_af4a8d27e27f490e81a0f0304910e49d",
+      "statement": "hybridSearch fuses exactly two legs — pgvector cosine distance and Postgres FTS with plainto_tsquery plus immutable_unaccent ordered by ts_rank — each fetching topK*3 candidates and filtering sensitivity != restricted_pii unless the caller holds data:sensitive.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/retriever.ts#L50-L77",
+          "version": "repo-lines-v1:sha256:28d916cbdbc23f28bcb8a5e65f22b493f26b05d6bff51ebf5cf18357813c75eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YThmMzNjYjhjZmVjNTUyNDRkNjAyMjJiZTM3MzI2NzllYTgzYTkwMDQ5NTFhNTk5NzZlMTg0Y2IxNTFlYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZmJkN2MzM2NiYzU0MWQyYjkxM2EwMDg3OTYwYzMwNWVjOTdkZWNkYzc0MzZlZWFjYjI3ODAxYjI1YWFjOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlMTY3MGVlY2NmYjM3NjlkYzZhOWU3ODU4MWMyYWZhZTRmN2FkZmRjNmRkNWNmZGZjMDAwMzVkZTdlMTI3NDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7b4c88962c5140ed87dd9a331925295d",
+      "statement": "Fusion is unweighted RRF at k=60 via pure fuseRRF/rrfScore with first-seen tie-breaking and topK truncation, and storage rows map to the camelCase contract shape by splitting comma-joined tables with the fused score attached.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/retriever.ts#L30-L44",
+          "version": "repo-lines-v1:sha256:8585efbdd9c53a9d660c9d8d7ee08e57c3aa1743132383b079f2078953b8ad62:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5YjYwYjE0OTVkOTg5ODk2ZTYyOThjMTVkNzI5MjI4YzU2OTgyMDZkZmEzYTA3MTA3MGY4ZTNkMWMxM2JkOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkYTU5MWIwYWY4MTcwMDRiNzI3N2E1YWMzZTVkOTA2NzhhMjkzNGEyMDAwNGU0YjU5NmFjYWVhNWYxOGQ1MzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1NmM3NmNhNzAxNTI4NDEwMmFmZDUzMjViNTNhMWZiOWY2YzAwMTc0MmVmYjkzMGQzMGRmODhmYTEzMGIyMjMifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/retriever.ts#L79-L106",
+          "version": "repo-lines-v1:sha256:596e96f4def5b0cff88dff5bd0fcaf80684174ae5cca818885192fc60faa3bbd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1MzY4NmM3YzlkYmFkMjQzYmIwNDVkZjdjOTU2NGQxOTdlYzE2ZTM2ZWQ4YWU3ZDIzYWQ1M2Y0YWI2MGVkOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0NmNmZjE4MjU4NjI4ODg1Nzg0Zjg0YjgwN2FhMGU5ZmZiMWJiZWQxY2I0NzQ4OWYxYmQwYjZkOTM5ODExMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/rrf.ts#L23-L53",
+          "version": "repo-lines-v1:sha256:2ae4fc7d1e22b762b9aba6c893ffa72d4f4a4ef6e8e570e98deb8242c7c1adbc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiZTVjOGMzMGFlNzQwNjkyYmFkZDQxNjFjNzc2M2Y5OTNjODIyNzhhZTNlM2FiNGU5MDk0ZGY4NmE2ZDY0MDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmNDFkMTY5OTNkNjdlOTRhNGJkYzUxNmRkZGIyN2EwN2E5M2M3ZTgxYzYwNmNiYmNlMTZiMjY3ZmI2OGI3ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5NGZjMGMxNzNkMWVjM2ZjNTAxZDdkZmE5Mjg1NTAxYzUyN2NmYjQ3MTI1ODNkYTNjYzM2MTgwNTY2YjRiZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/rrf.ts#L8-L21",
+          "version": "repo-lines-v1:sha256:2cc896d80f741c79943faa64cf76d1cb5557b4ec97aca7189288136088918fda:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4Zjg5OGM0YzAzYmQyOGI0ZjlmNDlhOTZlMzkwOWZjMjE3YTZlNzE0MDQ4YzAzYmNkMDMwODg2ZjE0MTllNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5NjlkZjc4NzkxMWM0MzAxZGZhNWUzYzBkMTg2ZWY2Zjc4NmM1NDVkNzFkNmQxODliZjhlZjZiZWNkYTY4ZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ODgxNTU5YmJjZjI4YzRkYzE2ZTg3ODg1OGRkODQxZjEwN2Y3ZDNjOGY0NGI1NDIyZDMxYjczMjRiYzkwNDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_66b3e6702e384ec2aec6c9699ab9e073",
+      "statement": "The frozen contract defines SearchSemanticLayer input {query, topK default 5 max 20} and output chunks {chunkId, docType enum of six values, table, tables, metricName, content, score} covering planned types even though only table and metric chunks are indexed today.",
+      "evidence": [
+        {
+          "resource": "repo://packages/contracts/src/search.ts#L17-L40",
+          "version": "repo-lines-v1:sha256:da0eb12ed92b790188e38271bfcf7356931670ce9ee0f368e78b0b6d0bda54a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTIyYjQwNDQ5MmNhYThkODZmYmNjMWJkMDc1N2QyN2UzYWRmOTliOTk5ZjFjMGZiMzE3OGQyOWZiZTZkN2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkNjMyNzQ2NTdiYjZkZDg3OGY2NjU4ODA2M2U4NjZmNjY2MDk3ODQ4ZWFlZWJjNmU5ZTg3MTFlOWE1YzUyZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzODUwZTgwMTIwNjQ4OWU2Y2Y3YWMyODYzNDdhNWUyYjE4ZjdhNjNkYTdhMWQ3YTU0ZGRmYzlhOTEzNzE2ZmQifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/search.ts#L8-L11",
+          "version": "repo-lines-v1:sha256:bb1ed73bf89c04921fad74008c034ff61d03667dea25f57fd749a3c82c242dbd:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTg4ZGM4OGZlZGY2MzYzZmUyY2U2NjVmNWQyY2ZiN2EzNDQ5NGZiZWYzZThlOGY2MzAyMmU1ZTE5ZTdmZGM3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjMyZjNhYmQxODgxYzY2OGE2N2JiMDI4NDcwNmNkMTE4MGNiZWZiMzI1OTYxMmI2ODQwZTg3YjNiMDRlMzJlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODE0YmM5NTQxMzQ2NWE2OTcxOTEyNGRiYjlhNDE1N2ZhYTBhZmQ4YThhNzhjYTE3NDY4YzdiMTMwMmQ3MzE0ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_152b878577284299b9644e713c19d425",
+      "statement": "The gateway exposes search_semantic_layer under data:read scope through the fixed pipeline (auth, scope, zod, skipped SQL stages, injected search, per-chunk redactPII with hit counting, single audit line) with PII redaction applied to every chunk body.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L286-L303",
+          "version": "repo-lines-v1:sha256:9f079e523299e11581f43aac3e5368a86217b9e58f51747f61d2bfcfe3feca78:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhZDJiNDc1NDAxMzNmYmM1MTM1ZjQ3NTA2Y2UyZjQ5NTg1NGI0Yjc1MTlhNGRlZDU1YzgxOTNlNDQ4YzdjNGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmM2ZiOTliZjlkMWIyMjAwOTE5N2VjZjg1MjAwYzNkNWNiM2UwYWUyM2YyYWZjYTUxMjNmMzQ1OWIzNTExODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjYzM0NGVjYzFiZWY1YjU0YTk5NmIzZGExYTI0NWNlNDgyY2UzNWFhNjkyMmIyMmMzYzE5NTY5NmQwMTkxMWYifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools.ts#L14-L21",
+          "version": "repo-lines-v1:sha256:7dfcdc82f1ea30410634d6c4f5b372c1c2c523812fb9c473c5ec9b17cf9190c0:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTc0OTdkOTczMDFiM2I5OWU4ZWIwZDU1YzM3N2M3ZTI4MzdhNzkzNTM0NmY5NGU3NTQ0MWU3NDY3MmZlOWRlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc0ZWU4YThkMWFhODQ1MzkxYmM2NzllYjcwY2U3ZjQ2YTNjZDZmYjJkMTZmY2NhNjdmYTE3OGY0ZjhjMWUwZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODNiYWZiMTk0OTA2NTI4N2QwN2JkMTUxY2YxMjExYzljYTA2ZmI5YmEwZDM5NDBjNDg3MWE4OWU1YmJkNjYwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDFjN2M1N2U1ZDlmODZmMzAwZmMzNDg3ZjkyOWYwYjllZDkwMmZiY2UyZWIyMDYyNWIxNGRlNDI2NzQ3YTRlMyJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools.ts#L72-L77",
+          "version": "repo-lines-v1:sha256:70ba13cc2058e358e71886e555348a09d14c18a2610c17b3d0b24864c04a4ea3:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQwYWY2NDQ3NDdkN2QzMDYyZWJjNzJmM2E2YzEwMTJmNDVmOTRmNGIyZmE3ODhhZjUwNGUyYTc5MjkyODBlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWU5MzgwMTE2YTMzZGI4YmU5ZjdmMjMxZGMxY2NkYWUwMWRlODhmNmNkYmRjN2VmMWE2YTQ2MGVlOWUxOGVlMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fe60d521d5bf4bd78643d7013e485362",
+      "statement": "The gateway serves semantic://data-dictionary and semantic://metrics resources from checked-in Markdown under schema:read scope, withholding ## sections ending in [restricted_pii] without data:sensitive via filterResourceSections before PII redaction and audit.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L369-L436",
+          "version": "repo-lines-v1:sha256:f3343cc13adf28517ed08fb78d77c04f27738cda4e6aaaae8c759dbf3564add5:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZjg0NzgwN2RhZWViN2Y5ZmZjNjhlNTcxZWYyZGUyYTZmN2Q1ZWU1OGFjNTYxZDYxNTRlNTRkY2E1ZmNkYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiNjYwMTE2NDFjMzg3YWZhZjFkNjQ4ZDNlODQyYWE1NTBhNmE2ZjdhNTQ2NGNlNzljYzEwZmM2NTRjYWRiZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L62-L83",
+          "version": "repo-lines-v1:sha256:03ed3a5dc2fe19e67359d0aaf4574bc7ba4311ae5852c52e6f1dc0b4409f9d53:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4ODQzYTFmYTE3MDM4N2YwZDQzZDAwOTY1NmIxOGJhMDQyMDg0NThkYWEzYzA1NjkwYWM3NGRiOGY3YjE0MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3YmNlZGI0YTc1YmFiN2M3ZTY3OGJkYzVlMzk2ODRmZDkzMjAxNTI3ZDgwYWU1YTcyNGZiOGFkZTYxODM0ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MWVkZmJiOGM5YTVlNzUxYzZhM2U1ODQ3OWQ1M2VlYjJlY2YyZWFkMjQxZDAyZWY5MGQwMDNiYjUxOTkyZTUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/server.ts#L68-L83",
+          "version": "repo-lines-v1:sha256:08efb9f191c3b6b40b45ca62b0c65896f03593736bc60c5a88e8f0fd10b5c0fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhZGY5YmVlNDg5ZWZiNWE5YjM1OTVlMTZiZGY3MmM2ODE3NDg1MTQwYjVlOWMzMmNmYzAxNjMyMDFlZTM4OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1Y2IzMGE1ZTIyNzcwNzcxMjAzODZkNzI0NGQ4Yzg0MDFlZDg1MDMxODJkMjI4MjUxYWM2NmM2MDFmMTZlZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNTFjMDZhMjQ2NTE0ZmZlZjM5Yzg2N2Q5YWE0ZGQyZDc1ZGVjOGM2NDAwMGZhZGQxNzUzMDM5ZWZjZTE4OWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a7d1f16717cd4a1ab6eb9add00b38c5b",
+      "statement": "The UC-02 three-way BM25 plus alias matcher with weighted RRF and join-rule expansion, LangGraph retrieveSemantic node with two-tier requested_metrics versus schema_entities guardrail, deterministic dual JSON plus SQL-header citation validator, and recall/lift/citation/reindex acceptance gates remain plan in docs/UC-plan/UC02.md with no corresponding retrieve/citation implementation in packages/agent.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L100-L121",
+          "version": "repo-lines-v1:sha256:f414bb7a42f456a765a137826d5d4f6a9066ef9a72518973f61f15be883c9838:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0NTBjMzQ2YjU1MDA0NWM3MmE5NjgwYTEyOTFjZGRjNGJkZTZkZmNlZGQ4NGM0MzhjZWQwMjBjN2EzMTJiY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxNzM0NTA3YTM1ZGNlOThiNmNhYmVkOTBhYzJkYjMyNTE0NDQwYmQ3YmJhNmRiZjI1MzllOTM1ZjZmODRlOGYifQ"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L124-L141",
+          "version": "repo-lines-v1:sha256:fca77e97c41df4abafbea18914674f9540904302c388076c7d5ee2e3f1667bcf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNDRjYTlmMDBlNDE1ZDA5ZTAwMjczNTcxMzEyMTIxNTQ1Y2YyMjUyMTFhOTM0ZjFkYzZhNGE3ZTBkMTBjMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2YmQzZTZkYWM0ODVlMWQ2NTBkYTgzM2U5YWJiOGY2YTdmMDJhOWZkOGI1NTg3NmU4NzBkZWM5NGFhMGI2OWEifQ"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC02.md#L144-L181",
+          "version": "repo-lines-v1:sha256:6803505aa8cbd0a88412595bbc4fe18bedaa5004868d9ce6678ac63d2ae20b9e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5ZDI4NjA2NDJjNzM2MTYzYTU4YmI5MDY3NmE2MzdmNmZmNzRhNTRjZmY3ZWNhYTcwOTkyZjczMWQ2OTAzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzYjM2OGI2Y2Q3YmMyMTU1ZDRhZmIzNzg0MzM1ZDg3OWM5ZGEyOTNiZDQ5NzBkY2IzMDQzMzg1ZjZjMDJkODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/graph.ts#L36-L49",
+          "version": "repo-lines-v1:sha256:d02cdb2b5f3a8905f5367524cf24d0783c9e9a0dd1d700dfde787c26b6cee76e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNTJmNjBlNDdkMmVkN2E0MDI1NDFjZDQwYjk5NDQ0Y2I5OTE1ZDgyNjc3YTg2YjRlOTRlYTNjZWYxZDUwMTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkMDM1ZDk5YjQxNDM4Y2NjM2ZhZTMxZWJlMWUzOWNhYjI2ZmRhMGQwZDlmNmIzMjI0NGQ0NjllMDRlMGFhYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNTY1ZWRiNDlmMGVlZjBmODUwNDlhOTFiN2YyYTc4NDNjNzI4ODFhOTM1YWUwYzIxNGIxOTUyNmY4MjMyMzQifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/state.ts#L40-L44",
+          "version": "repo-lines-v1:sha256:1ed1c1bae57161a05cb788c5bf278d23833ed2b1a6789f0a00828dff67254aa3:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWYwZTMxMzEwNWVmMTIzNjk5ZTNlM2U0MjYwZDNhZDBhODM0N2Q3ZmEwNzJhMzNjN2Q2MDVlODdjOWY4NmMyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWU5Y2E4YjJkY2EzODVkMmY3YTk2ZmNiYjI2MDQ5OGFiMDM0OWVlZTk5YTQ2ZDRjMDYwYzg3NDZjZjZhNWRlNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDJjMGU4MGM2ZjMwZGU0MjNhZDQ3NzA1MjgyZGVhM2VlODljOWYzNzBmYmEzZmU4MDg4ZmY0OGM3MzNmN2U2MiJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T12:53:57.503Z"
+    "at": "2026-10-28T14:46:19.230Z"
   }
 }

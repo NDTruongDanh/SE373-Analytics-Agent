@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1d9d1c35dc04af89ffb11ef906aad72a3a2e7b22da85f7606f1c2f162d1d7e66",
+  "pageVersion": "sha256:419896b74abe6a32d194e3abaf42d187b16db1c92ba8ef902b26dbae6daefa29",
   "claims": [
     {
       "id": "claim_7900d07fa59e42b2827a0c0d856025b0",
@@ -167,10 +167,154 @@
           "version": "repo-lines-v1:sha256:dc6793687cb1c158ef96fefb643101be5d3a4028d1ed3407e16072994aa4a17f:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTFhNDEwMzc5NWNjZjYxZDU4MTYwOTE4NGEzOTgwMDQxOTBmYjg1MjZiZDIxZmE0YTQ4NmU2MThmNTRlNmQ0MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmJkYTI0Mjg4YTRlZjQ5YmY0MmY2Y2RiNGM3ZGNmM2E4NGU3NjMwMTFjZmM3NzE5YTJkMTg0ZWNlOWRmMTYxOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjI0MmVlOWEyMzE2NjRkM2U4ODQyYTI0ZDZkODUwOTRlZThhYjI4N2I0MTcwM2RlOWE4ZThmMzQ0N2MwMjliYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGQwNTg4MDFiYmZhMjFhZDMwZDk5NmRlMWNhODJmOWExMGQ5M2FhNTYxYTY3MjljNDE0NzE0ZDhiY2U2ZmNkYiJ9"
         }
       ]
+    },
+    {
+      "id": "claim_0f72310c7f844a008f2e2e8ea3029907",
+      "statement": "The business database is built from eight pinned Olist publisher CSVs plus the category-translation CSV, downloaded at load time into git-ignored data/.cache with byte-size, blob-SHA, and SHA-256 verification before parsing",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/download.ts",
+          "version": "repo-file-v1:sha256:bc180878e3c8acdbf402375fce2a71174f61793beccd8f6d64fef7e08d8570ac"
+        }
+      ]
+    },
+    {
+      "id": "claim_f43c0ae334204432a49ef5b816666b41",
+      "statement": "Vietnamesization is implemented as pure transforms in transform.ts: 27 Olist states to 34 post-merger provinces in 3 region groups, 71-category English-to-Vietnamese map with explicit fallbacks, BRL-to-VND rate 5150, +2905-day date shift with pre-2025 clipping, and Olist status folding where returned is injection-only",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/transform.ts",
+          "version": "repo-file-v1:sha256:5d8e993cf80529ae73c4060d78e423ba3ec4b6231e0f91b0e4db7fb747ae099c"
+        }
+      ]
+    },
+    {
+      "id": "claim_be1157779ef94581906e121fb3f1fb7a",
+      "statement": "Business DDL lives in docker/initdb/03_public.sql as 12 FK-linked public tables with TEXT ids, INT VND amounts, TIMESTAMPTZ dates, identity keys for order_items/payments, and PII columns customers.phone/email/address plus employees.salary",
+      "evidence": [
+        {
+          "resource": "repo://docker/initdb/03_public.sql",
+          "version": "repo-file-v1:sha256:4c2f8cf013db3d0e606bb26d28a06b024e1e49cc0154f16e705ebfec987d48b2"
+        },
+        {
+          "resource": "repo://policies/sensitive_columns.yaml",
+          "version": "repo-file-v1:sha256:b00c953098cc6930b83f8776e450d7bf90e0a72932632ea0f0bc5ffb9db3c938"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b48fe9f67bc4eadaea12a6c999e20ca",
+      "statement": "Read-only access is enforced by PostgreSQL grants, not prompts: agent_ro gets CONNECT plus USAGE plus SELECT on public tables only with no TEMP/CREATE/sequence rights, indexer writes only semantic, and harness_state owns semantic/langgraph/app_state with zero public grants",
+      "evidence": [
+        {
+          "resource": "repo://docker/initdb/01_roles.sql",
+          "version": "repo-file-v1:sha256:348b308792746bfba81370b90893010caf0cb6f5865d78a3d3e96a6be0e73eea"
+        },
+        {
+          "resource": "repo://docker/initdb/02_schemas.sql",
+          "version": "repo-file-v1:sha256:b529b2d6278e7f779a2abf44f9c97b1bf964d0343f9a5f2db75a3eaefdd336ce"
+        }
+      ]
+    },
+    {
+      "id": "claim_6eb1e1a2d89648c2a27c058dac427b52",
+      "statement": "The database runs as pgvector/pgvector pg16 bound to loopback 127.0.0.1 with pgdata volume, initdb bind-mount, and pg_isready healthcheck, using loopback-only dev passwords shared between docker-compose defaults and 01_roles.sql literals",
+      "evidence": [
+        {
+          "resource": "repo://docker/docker-compose.yml",
+          "version": "repo-file-v1:sha256:a65c651bdcd24c73f88860157a7caa965af0be7fa239ff624843c8631bdf926f"
+        }
+      ]
+    },
+    {
+      "id": "claim_8a3e780b03dd45859fa873d3b99ceec7",
+      "statement": "Loading is done as the owner role via pnpm data:load using csv-parse plus chunked COPY FROM STDIN transactions from the TABLE_LOADERS registry, requiring OWNER_DATABASE_URL and resetting full loads with TRUNCATE RESTART IDENTITY in FK-safe LOAD_ORDER",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/copy.ts",
+          "version": "repo-file-v1:sha256:157cead51f084b8e2d0a5c65b2bfc2bb4081c6078e1cc850878b8d935c60dd2a"
+        },
+        {
+          "resource": "repo://packages/data/src/load.ts",
+          "version": "repo-file-v1:sha256:d653babc1a7fa66aeec2b961838c056f1ce1f4c387e5fb4406eae35fa9d19de2"
+        }
+      ]
+    },
+    {
+      "id": "claim_2a3c4c2b1eba4c61827cc4de1c64d068",
+      "statement": "Full loads expand by cloning whole orders to 1,000,000 order_items (nine passes plus top-up; small scale uses one pass plus 60,000 target) and inject seeded scenarios strictly after expansion as data mutations with a final cascade removing item-less orders and orphaned payments/reviews",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/load.ts",
+          "version": "repo-file-v1:sha256:d653babc1a7fa66aeec2b961838c056f1ce1f4c387e5fb4406eae35fa9d19de2"
+        }
+      ]
+    },
+    {
+      "id": "claim_6dc2ed4001f04a00bc4f2cc534e3690b",
+      "statement": "Determinism comes from a single seeded Faker instance plus pinned publisher bytes, recorded as per-table row counts and SHA-256 over canonical ORDER BY pk CSV; the loader refuses to finish when overlapping tables mismatch the scale-pinned seed manifest",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/load.ts",
+          "version": "repo-file-v1:sha256:d653babc1a7fa66aeec2b961838c056f1ce1f4c387e5fb4406eae35fa9d19de2"
+        },
+        {
+          "resource": "repo://packages/data/src/manifest.ts",
+          "version": "repo-file-v1:sha256:7be551b5a1df4b0eec67110c86751cbe619f0106985a865d25c20438aa141fb5"
+        }
+      ]
+    },
+    {
+      "id": "claim_1ad0e7c2cfc1402485cd59ecf16446eb",
+      "statement": "Seeded scenarios are declared in seeds.json under a strict version-1 schema requiring at least 3 UC-05 scenarios, 5 UC-10 anomalies, and 3 injections, each with dimension filter, period, magnitude, SELECT-only reference_sql, and optional payload",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/seeds.ts",
+          "version": "repo-file-v1:sha256:3e11a24b29903b4e53bacd3a3ecf16f7be269096cd0eccfc8004b8a23ec15605"
+        }
+      ]
+    },
+    {
+      "id": "claim_99258401dffa43948515ec86fea8baed",
+      "statement": "pnpm data:verify connects as owner with SELECT/COUNT only and asserts manifest row counts, zero FK orphans across eleven child-parent checks, and per-seed magnitude bands or floors, exiting 0 on pass and 1 naming the first failure",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/verify.ts",
+          "version": "repo-file-v1:sha256:8ffc738a76c2145de54573c61804db5670a92a142e589b1ea43f72fb79acb069"
+        }
+      ]
+    },
+    {
+      "id": "claim_0d098c12e51c4ae390396ad4ce963db6",
+      "statement": "Seed secrecy is enforced by a build-time scan that fails when any committed scenario id, injection payload, or manifest path pointer appears in agent, app, skills, evals, docs, policies, semantic, or script trees, complemented by the .openwikiignore read boundary",
+      "evidence": [
+        {
+          "resource": "repo://.openwikiignore",
+          "version": "repo-file-v1:sha256:8c967f469dc4887c8a056723825d40d0178b89b4bd566f09fe632cdc25d0eadc"
+        },
+        {
+          "resource": "repo://packages/data/test/seedHiding.test.ts",
+          "version": "repo-file-v1:sha256:9f90536bd87676d1f14727dc86b54e579b5a17d61566de5cf3a65604a79a7bae"
+        }
+      ]
+    },
+    {
+      "id": "claim_93b03d80a79b457cbf20b1b6ff3fd401",
+      "statement": "Synthetic PII for customers and employees is generated by the seeded Faker locale chain and the four sensitive columns are exactly customers.phone/email/address and employees.salary",
+      "evidence": [
+        {
+          "resource": "repo://packages/data/src/transform.ts",
+          "version": "repo-file-v1:sha256:5d8e993cf80529ae73c4060d78e423ba3ec4b6231e0f91b0e4db7fb747ae099c"
+        },
+        {
+          "resource": "repo://policies/sensitive_columns.yaml",
+          "version": "repo-file-v1:sha256:b00c953098cc6930b83f8776e450d7bf90e0a72932632ea0f0bc5ffb9db3c938"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T12:53:57.503Z"
+    "at": "2026-10-28T14:46:19.230Z"
   }
 }
