@@ -1,15 +1,8 @@
-import type { DbToolError } from "@shared/contracts";
-
-export const ACCESS_POLICY_SHELL =
-  "Access-policy shell: the AccessPolicy interface seam lands in Phase 3";
-
-export type AccessPolicyShellError = DbToolError;
-
+// @shared/access-policy public barrel: pure guard, policy, and redaction
+// stages consumed by mcp-server (gateway stages 4, 5, 7) and the agent-side
+// pre-check. No DB or network I/O lives behind any of these exports.
 export * from "./guard.js";
 export * from "./denylist.js";
-// 01-06 policy stage (re-exports land here, not in a later wave, because
-// mcp-server/src/errors.ts imports redactPII from this barrel and the
-// task-3 typecheck gate must resolve it now).
 export * from "./policy.js";
 export * from "./sensitive-columns.js";
 export * from "./redactor.js";
