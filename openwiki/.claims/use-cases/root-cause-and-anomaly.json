@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8492ce02dd6ed98faf4e9883ac5781f739b3f26129470783d0e376acde655086",
+  "pageVersion": "sha256:9d269d01996701b18cc7f6de147f66143097a592c19ad6c44557e729f5e68cfe",
   "claims": [
     {
       "id": "claim_c092349b60ee43fdab0b26417119585d",
@@ -211,10 +211,148 @@
           "version": "repo-lines-v1:sha256:9edee0caede1b15cd6f86b3db9d16b0e4a5b9827c15008b39f1b16a23fa2daf5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDUwYzgxODcyNGViOTg2YTVkZmY4YWNjYWYzYmY0ZTFiOGU2YzMwZmRmNjdjZGRiMWU2NjlkODQxMzZiY2QyNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjU5NDYwNTEyM2FiNzQ1YjYxODM3YzExOWQ4YWE0YTI5ZTNlZTJjY2I3ODQ1NzllMTVlMzQyNTRkYjdkOTBiNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTMxMjk1YjQ1MzE0YjNjMzg0ZjI2MGVhZWM4OTRlMzdlODZhY2UwM2NkNTVmMTZjMTA5OTY1ZTM0ZjEzZmEwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjI0MmVlOWEyMzE2NjRkM2U4ODQyYTI0ZDZkODUwOTRlZThhYjI4N2I0MTcwM2RlOWE4ZThmMzQ0N2MwMjliYyJ9"
         }
       ]
+    },
+    {
+      "id": "claim_377a4ce3ed57475c84d3dc44d906d1c1",
+      "statement": "UC-05 is an interactive hierarchical diagnostic flow (validate baseline delta, build decomposition plan, HITL plan review, budgeted drill-down with branching/pruning, attribution synthesis) while UC-10 is a scheduled code-first scan (28-day z-score / WoW / absolute threshold, LLM drill-down only on anomalies, severity routing, deduped delivery).",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md",
+          "version": "repo-file-v1:sha256:359ea1c53d2feec9a8a547aad378bc7f0dcf534b24d33ab79eb7384eca3b7ea2"
+        },
+        {
+          "resource": "repo://docs/UC-plan/UC10.md",
+          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+        },
+        {
+          "resource": "repo://docs/prd.md",
+          "version": "repo-file-v1:sha256:defd5a8bd93f7855a52c6e986b3d860b4498fe482033314870f850201df23951"
+        }
+      ]
+    },
+    {
+      "id": "claim_2c448f7c3a4e4372bf7cde566a5783a0",
+      "statement": "UC-05 enforces branching on dominant contribution share, depth cap 4, query cap 20, per-query bounded retries marking steps failed without failing the run, and waterfall attribution reconciliation within 5% with no fabricated causes.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC05.md",
+          "version": "repo-file-v1:sha256:359ea1c53d2feec9a8a547aad378bc7f0dcf534b24d33ab79eb7384eca3b7ea2"
+        },
+        {
+          "resource": "repo://docs/prd.md",
+          "version": "repo-file-v1:sha256:defd5a8bd93f7855a52c6e986b3d860b4498fe482033314870f850201df23951"
+        }
+      ]
+    },
+    {
+      "id": "claim_70d655f8bd6244ac87930d06edfd2abf",
+      "statement": "UC-10 detection uses trimmed 28-day mean/std with sigma_eff floor, WoW% with EPS guard, min_support gating with skipped_insufficient_support, and critical/warning/info severity routing where normal days emit no alert.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md",
+          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+        }
+      ]
+    },
+    {
+      "id": "claim_5b63477c0dad4355a423da1a8b0b67b3",
+      "statement": "Generic HITL pause/resume plumbing has landed: pauseForApproval wraps LangGraph interrupt, resumeDecision builds Command resume on the same stable chat thread id, proven DB-free on MemorySaver without re-running completed nodes.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/hitl.ts#L70-L92",
+          "version": "repo-lines-v1:sha256:5cdbd2e59b3daef5bdc285773bb035b78427971d015076e1043c5837063d3f71:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ZTU2OTM0ZGRhMzVjMjg1MzFhYWNiOTMyZThhZGQ0YTJkYjUzOGQ2MzNmYmUzMjU2NDk1ZDk4YWRjMTlkZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/test/resume.test.ts#L85-L100",
+          "version": "repo-lines-v1:sha256:e1132a51594f8835d9de31760882398a6bb85a4732794c3d25283e4e2e30e12d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDc5ZmYyMzcyZTkwMWVmODRkZGI0YWZjMDI3Mjk1MDg4YTM0ZDNmOWRlYWI2NWRmOTEwNzNlYzk4ZmJjOTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ZjFhODlkNzU2MjlkM2Q2NTUzYzVmMjRjMjFiODgyYTAzZTY4MGY3YjRlMGQwODUzNjc5OTkzZjgxNGI3Y2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxM2ZmZjhjYWJkMTYzOTkxMDIwNTY2ZWVmZTdiNzQzNjdmMzU0NGE0MTY5NWYyNTBlMGViNTBjYzI4OTAxNjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c61ffeaec8cc4374bf3bb14f42ca4708",
+      "statement": "Durable checkpoint and host resume path has landed: createCheckpointer builds PostgresSaver on langgraph schema from HARNESS_STATE_DATABASE_URL with fail-fast setup and agent_ro rejection, createHostPorts injects it with AppStateStore, and POST /api/runs/:runId/resume resumes via Command on the same thread.",
+      "evidence": [
+        {
+          "resource": "repo://apps/api/src/index.ts#L294-L317",
+          "version": "repo-lines-v1:sha256:f436aad8b1b71dbc312cbc3225f8b781bae782b29f993e9f9dcc1415917e1590:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxY2EwYjQ0MzhlZWU5ZGExOWNjNmEyM2JiNTE5OGViYTc3NmNmYmJjM2M4OTE0ZmNhNzliZmM2ZWMwNGQyOWQifQ"
+        },
+        {
+          "resource": "repo://apps/api/src/ports.ts#L29-L42",
+          "version": "repo-lines-v1:sha256:67557482dceb319f7a512204a82e9a732dab93f9712cc8af4446e480499a975a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxODIxN2IwOGFlNjgzNmIzMzM1M2U2ZjA1ODRhNDA1Yzg0Njk1NjhlNTc4MWE2NDQwY2FlMTUwMDgyNGQ3ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3MWQ0MmEyYjNiN2EwNDQyODA4N2ZhZTgyYmI5MDBhNDNhNDdhYTUwMTk2MDczNTAxMjEyZDQwY2ZmYmI1NzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/ports/checkpoints.ts#L54-L72",
+          "version": "repo-lines-v1:sha256:b3787eaf9a4d278d1d591ee8fd431abd2cbf52793b779eec0ee9af3d8dfa8ae7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MzQ3NGRlYWUzYmMyM2NlNjgwOTE0NmQ2YTdjOTg1YzdmMjY0YmZjMTkxOTYwMmFiY2IyOTcyNGQ2NDAyZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyMGNkZmJlZjYwNDUxOGM1NGZkZDhiOThhMGQyMmQ5OTkzYWY2ZjllYTQ0ZDQ3ZGViZWEyMTlhMWVhZWJlYjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlNzRmNjkxY2Y1OTM5ZGYxYTY2NmI2MzYyZTkwNTY1NTVkMjRkYmQ0MWZmNjg1ZWE3YjdlOWI5Y2M3MTUxOWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5edafdd4c01e4fbd80225e28850f4350",
+      "statement": "Alert dedup persistence has landed with write-after-send semantics: canonical sha256Fingerprint over recipientId|metric|dimensionKey|date|direction, hasFingerprint pre-send SELECT, recordSent single INSERT only after send success with 23505 treated as already-sent, over app_state.alert_history owned by harness_state.",
+      "evidence": [
+        {
+          "resource": "repo://apps/api/src/store/alertStore.ts#L42-L55",
+          "version": "repo-lines-v1:sha256:71add5e93139f52dc3808d2a0eac3c178c55508339c6bb20879f5123461b6aaf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMjBlNzExNDI0Yjk1NDNiY2MyZTk3MWNiNTBiOGM4OWI4MDM2NGNlYjY4MjZmYTU5MjY2NDFjZjRlYjJjMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2ZmRmZmVlYzM5NmQ5ZjMzZDMxMzY1YWRiNGYyYTJlYjI1ZTQ1YzE0YjE0MGIyMmI2YzA0NGQ0ODcyNjIxYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2YjUyOWE5ZDkwYjNhZjcwNWJiOGQ5YTZmMmQzN2E2YzQzZjcxMTc0MDg3ODM1MDdmMjI5MmI5MzM1YTk2ZTAifQ"
+        },
+        {
+          "resource": "repo://apps/api/src/store/alertStore.ts#L90-L120",
+          "version": "repo-lines-v1:sha256:21d5fb850c3982daa4ebe1937d3aa0f47375b0c4b5d2eadc09a5b3436acfe19a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZjljMzIzNDI3MzQ2MDg5NjRkMGQzYTUwMDIwNDljNzRmNmYzOGJkNjk2YmFiYjZmOTA1ZDhjYmM5NzQ3YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4NmFlNDViNmNmYTQ0NWI1YmFkMDMzODI3NjA1MTg2NGQzYjVhNzQ1MThlYzI2ODBiZWRhZTYyNDRlMmE4ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlOTgxNmZlYWJhODg1OWJlMjA4YWIxMjNiMTM2ZjQ1YWZlYjI5Y2M2NWI3YjAwMjQ1ZTlmYzcyMjc0NWFlMzcifQ"
+        },
+        {
+          "resource": "repo://apps/api/test/store.test.ts#L45-L66",
+          "version": "repo-lines-v1:sha256:ec10817ec9fc0025d8492db22cfa5b4377aadbf4368604455ff9a4fde5a173e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZDZjMDE1NGVhZWM2MTY2ZjA0Y2Q5MzNmNWRkYThjODAzNWZkZGQ1MTMwYzlhYTZjMDlhMWRmMDM5MWQ3ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyNjI3NmE5N2FkNmI4OTQ5MWJlMzgyOWQ0MTgwY2ViNWNlNmQ5OTRiZmVlMDQ5MGQ5NzFhMzA5NWFjODU3YmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjMzU2MmE1MWI4NjViOGIyZjk5ZjY4Mzg5ODQ1NGViNGFmM2YyZWNiNGIwZjE1YWQyYTdiM2QxZjYzN2YxOTgifQ"
+        },
+        {
+          "resource": "repo://docker/initdb/04_semantic_state.sql#L74-L82",
+          "version": "repo-lines-v1:sha256:e3d9cd81f4e757d05e8252530336714d09e21bbb6b530bc4df01c92187a68a66:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzk5ZTNjM2EwZjA4OWY0YTFjZmU0ZTI0YjY4MjgwM2I2ZmIwYzdjNmUxNmU0MDc1NzkyODU3NDE2Njc4YWU4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk5NjdlYzFlZDM4MzZmOGViMTdhZmYxNzJiNWJmZWY3ZGU2MDQ4NWE0MzljNmNhMTFjNTkxZTE3NTU3MzlhZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjBhYTg5NWIxZTJlZTYwNDU3OWE5NWMxNzQ0NjIwMTE1M2JmYTE3MDQwMGQ0MWZkYWVmZmM4ZjU1NjI2NmNhNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGExZjAyOTQwNmYxZDYzNGRlZTUxYzY4MGZlMWFlZTIzM2M4ZDA0NTMxMmJjOTk1ZTU3NDIwNmJkYzIxNjYwNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c5ccc9ff6e6548e7aaee2350fe36c3b2",
+      "statement": "UC-05 orchestrator subgraph (RCAState/PlanStep, validate/create/execute/evaluate/synthesize nodes), UC-10 runner/detector/sender (alerts/*, subscriptions.yaml, node-cron/manual CLI, sendAlert with timeout/retries/queue), and both domain skills are still planned with no implementation files; only the frozen registry seam and two unrelated skills exist.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md",
+          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+        },
+        {
+          "resource": "repo://docs/architecture.md",
+          "version": "repo-file-v1:sha256:2842dd8822c863734c7a2ea788f319891a481668296fd8aef2eb1fc5dc046f78"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L16-L45",
+          "version": "repo-lines-v1:sha256:40470414c85923365d56017142459ca679c91747cf3d518be670132f195df2ca:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZTk2NzBkNDBlMmNmNTFhNDNiMzRmYjcyZjQxYTU3NjY1NjBjYjhlNmNjNzFkZDViMmQ2ZWMyMDgwODFiY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxYjMyYmRhYzk3ZTQ1ZTMyZmNhMTY1N2Y2NzY4YjVjOTIwZmRlYjY2ZGI4ZjJlMzMzNjA0NTEwYmMzZmRhMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjNjliYzg0YzUwOGMxY2QyNDY3ZGFkZWQ2ZTg2MGRhZjkwNjU3MDk0MWY3ZDVlOGE5NzI3MjU4ODU2ZmFmOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_efc9a024e78542efa09742874031d712",
+      "statement": "UC-10 applies recipient policy at SQL build time via row predicates and MCP scope tokens with column denial/masking, plus a second PII regex scan before send that blocks delivery with PII_BLOCKED.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md",
+          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+        }
+      ]
+    },
+    {
+      "id": "claim_42f6301f8d0e4afa846ee573a06dbb90",
+      "statement": "UC-05/UC-10 acceptance requires at least 5 eval cases each with 2/3 seeded RCA accuracy and 5% attribution tolerance, 4/5 anomaly detection with at most 3 false alarms per normal week, no same-day duplicate resend, queued retry on channel failure, and zero PII leak with token/cost/latency reporting.",
+      "evidence": [
+        {
+          "resource": "repo://docs/UC-plan/UC10.md",
+          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+        },
+        {
+          "resource": "repo://docs/prd.md",
+          "version": "repo-file-v1:sha256:defd5a8bd93f7855a52c6e986b3d860b4498fe482033314870f850201df23951"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T12:53:57.503Z"
+    "at": "2026-10-28T14:46:19.230Z"
   }
 }

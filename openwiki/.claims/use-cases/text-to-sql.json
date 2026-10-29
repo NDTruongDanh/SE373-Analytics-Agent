@@ -1,20 +1,186 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5eabc812cc15723693a6e8e5e4cbb6bbc278a9a34ffd647c44e4846ad6129210",
+  "pageVersion": "sha256:fcf3398cbcd08ef16baad9ff952243c51bb1febb7f1cb8ddb932673181c4141d",
   "claims": [
     {
-      "id": "claim_9130d13e96824047afd4753eb07555fc",
-      "statement": "test",
+      "id": "claim_87f0cddf56f543a2830db9c835497351",
+      "statement": "ValidatedQueryExecutor is the only agent-side SQL path: it describes only candidate tables, proposes one SQL proposal per attempt, then runs sqlGuard followed by LocalQuerySafetyGate before any explain_query or run_query, with a hard cap of 3 total attempts.",
       "evidence": [
         {
-          "resource": "repo://docs/prd.md#L163-L164",
-          "version": "repo-lines-v1:sha256:59c58c5d17c8767cde5dd16f45444720b64df488039e7a08a1a2fc2b71e1fa5a:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzI3MDUyZWI3MmI0YTFlMTFiNGQ1NDMwYmE3NzljZGYzYjU0NTRjY2YwMjZmZWQyYjY0N2YwMmE5ZWIzYjNiMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjQwZmI1NjU0MTkxMjY1OTcxNWNmMGY2YmI0N2NmMWUxYTI0NWI2OWI5MDYxNjNlZGYzY2MzZmJmNWQzNTlmNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzM1M2JiZTY2ODBjNmE2MDYyMzQ1OTVhMjQyNmE2OGUwYmY2MzUyYmM3ZTI2ZTNmYWU2MGYzNDRiYjgzNmUyNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTdhNThkM2RmOWRkYjI4NzJkNTM3YTYwODk0YzM4Y2ZlNmMwMDI1Y2U5ODJiZDEzZTAxY2U3MjdiNzA5OTQ2OSJ9"
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L315-L359",
+          "version": "repo-lines-v1:sha256:ef08739952f03a0377dea25808dd4352b8e6d195848a8fd66686e91bd3733e9b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MzhjYmQ4Y2M1MDEyNjUxZjkwYmQxNzU2YTFhMmNhNmM3MjE0MTUwOTUzY2M1OTlkYTgxMTBlODViNmExZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0MTAwZTkxZDU3NDIwZjcyMjUwNTgxZTgyNGI4Y2JkMDAyZmE1YWIwOTgzMjI1NzhkMTY0N2JhNTllMDFkMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4NzI1NWYwNmE5NDA5OWIzOGVkNTdmNWJiNDJkMTAyMzUyM2NlODBiNDdhNDg1MmEwYmRlYjJmMzQ4MzQ1NmQifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L38-L39",
+          "version": "repo-lines-v1:sha256:07d2bd2a0c33fa8400e8bff5f16a0ccadb779ed8c73d5897fd9bde54ce6c3aef:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDFiNjc1YWYyYTBlZThkZWY4NTQ1OGEyOWIxNGUyNDAzZDdhOWY0ZTc5NWM4OTNkMGVhNDE1ZmVkODI4ODg2MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjM2Mzg1N2ZmNGI0MzJhZWNlZGE3YzNkOWY4N2EwYzBiMmZiNGZhMTJiYzE2Y2Y2Nzg5MzEzOTc1NDlkMDY4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjU5NjZmNjVlYTQ3NWQxZmYyNzVjMWM3ZmJjYmRlM2ZhM2MxMDljODcwYjg2YTAwNGEwMGRkYzg3YzExZmQzNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWIwNzY5NGUwNTlkNDYyMjkzNmRmNTI3OWNmYmI2NGU0Nzg1YzRmZThjZWY0ZGE3NGEwMWQzNjYxYjM3OWVjZCJ9"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L420-L466",
+          "version": "repo-lines-v1:sha256:95efb38002afb0dd282b8bab4ed7014a71e15944051f17cc2063e727604be0e1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZTliYzk4Yjg3MTU1ZjA1ZWI0YzliMjlmMThhOTViOTVlODliNmVlMzg0NGJjMzAyMTZmYzk1OGQ3YjhkMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MTk2YTIxODhlMGI5ZDM5NDI2MDY0MWE1Yjk4NGRjOGFlMGM0OTQwMTk2ZWQzMDFhOTM3YTQ2MTQ3YzE5NTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3MzAxZTA0ODZlYWJmYTc0MmJmMzg0Njc4NWJiMTEwY2UyNzc4ZGVhNGZiZDMxZTBhNmFiNTk5ODRkZGIwYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlM2FkMmVhNDlmNWE3YjhjNGIxNmRhZTVkMzA3ZTU2Y2QwM2ZlM2NhZTA1MzNkNzM5MDY2NTczNzI2YzYyOGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e3979f49d6cc47088a91c1dcaefd589a",
+      "statement": "The executor interacts through two narrow seams: ChatModelLike structured output returning SqlProposal {sql, tablesUsed}, and McpToolCaller.call carrying runId, userId, and roleScope inside every call args.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L44-L73",
+          "version": "repo-lines-v1:sha256:692e6a3f65a852eac3a391b652bf11379561a2f1ab95a8e84800be901992623d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3MGI2OTdhYWI5YTZiNTYyMmZjOTZkY2VkYzc1ZDM5MjlmNWI5MzlhYzllYmFlNmY1MWEzN2RmODk1ZDZkZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhMjI1ZmE5NGE2NjlkNWYyNzc5MmU4MzRkNWUzYzIwYjM1OGY5N2Q4MzYyZWE2NTMwNWQ4NGNhMmRkODNiMzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3ZjlmMDNlMWY1YWI4ZmRkMGM1Mjg0ZjNmODhiZjUxYjU1NGI3MDAwOTYzNGMyNDNiMDY1MWQ5NDA2ZjU0MzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c3307f6dccb345cb8dafe3a0970bcee9",
+      "statement": "Shared sqlGuard parses with pgsql-parser, allows exactly one SelectStmt, denies DDL/DML and execution tags anywhere in the tree, denies dangerous functions and system schemas, and checks tables and columns against the catalog before any MCP execution call.",
+      "evidence": [
+        {
+          "resource": "repo://packages/access-policy/src/denylist.ts#L13-L37",
+          "version": "repo-lines-v1:sha256:e5b530f461a187546654873b53c1c56192e07d78c0c2fa5458aa432e502c1768:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZmViYTBhOTVhZmVhYzQ0OTdhNDgyZmY4MDQzZDNiYTBkMzZmMDBjNTJjMzI2NmQxNWE1NTcxZDY1ZmU4NTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlNTcwYmEzZjI1MDg5NDM3OTdiMGMxOTdkZGJkNzYyMjIxNTA1MjY5YWYzMWJiODk2NzYxMGFkMTVlNGY1NDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5NTNiZTIzOTcxYTc4NTllZTVkMmY4YzA2MjM5MjRlYTY4NDVlOGJlOTQ1MDY3NzIxNjY5MTg1N2YwZDYwNzUifQ"
+        },
+        {
+          "resource": "repo://packages/access-policy/src/guard.ts#L39-L78",
+          "version": "repo-lines-v1:sha256:eeba032bdbb06be0ae037bd2f1d1c299764bc568f62785f248690c96fef77778:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlZDE5NjhiYTRkZTAwNzlmMzgzN2Q5Y2RlMDliMTFkNzQwMDVhNzI4MzFmNDQyNjFhNGFlMzU0ZTg0M2E3YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1ZTI2Y2Q5MjM2NmY2MGQ4ZWQ5MmQwMjM5ZjA3ZmVmNzRjYWMxNGFhNjlhZGRmOWMyY2MwZDExZWIwMGE0NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmYjQxYTY1MmZiMGMwY2VkN2JmNTJlMmYxZWU0MDI1YjEzZDQ3MWM3NGQ0MDhkN2Q4YTgyYTE2ZDY0MmY5MGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0OTIzNGM0NTljNzYyZWI0NzVjMjU5MmEyZGM3MmI1N2EyYzBiNTViYzdiZmIzZDFjYTUxMjE0ZmU3MWJiNzcifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L422-L441",
+          "version": "repo-lines-v1:sha256:a11a5063e410333bb827c81e4fe8fbb78c30f4eebe94fd54d66cee43e0a1c6fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwOTRhZDJhN2NmODA1MGE4N2NjOWI3ZWEzYzBlMGRlYzdkZjY3MGNhMTliMDliZDc1NTI4NzI4OTMyM2U5NjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmZjczZTQ1NzRlNjVhMmY2NTAzNDE5NzZmNTYwOGFlMjBjMTk5MTdjZDNjMWFkNDM2NWQ5YzgzOTIxNzE1MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3MTFiYmUzYTUyZjlmMGMxNWRiMDMzMjg1MGQxZTA0NjJkMTA3MGNhYmRlYTllMTBlYmMzZDUzNTBkZjFlZTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_959709c9c89f4e1aab99c55533a81c0f",
+      "statement": "LocalQuerySafetyGate runs after sqlGuard and before any MCP call, denying sensitive-column references in any clause, denying CROSS JOIN and conditionless or comma-separated joins, returning needs_clarification for unfiltered non-aggregate scans of large tables, and clamping detail queries to LIMIT 200.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/safetyGate.ts#L204-L223",
+          "version": "repo-lines-v1:sha256:803b110945e2f40dde5024c4ce28058280d69fd9205c474878fc0af62bf7d84d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3ODVlM2VjYzVkYjlhMzEyNzFiNzI1YTA3NjI5ODFmZjYzMDg4YjI0OGRiNTgzYjQ4MGU0NmQ4YWVhZTVmODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyZDNkZGRkNjlkOTc4MjE4OTEwNDUyMzA5MjNmYmEwN2QzZjM4NWY3OTVkOTlmOTBjZmRmNDk2MWQ3MjE1YWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/safetyGate.ts#L57-L82",
+          "version": "repo-lines-v1:sha256:7a3188f499452db24bea698c13dcf0a2ade160327a7dcc45b7fc069db15d4ead:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MTNkNjZlOGQ3NmNhODMzYzU5M2ViOTg3YTFhYjBlMTc2ZjJjZWJkZDFjMzZkNDY0ZmY3ZWJiOWZmZWRlM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhZGM3YTA5NWMxYWUzMmM5M2IyYWM1NDkzYzBiMjVjYjE2MmJlMWU4ZTg1NDUxYzQ5MTI5ZjM4ZWVhYjI1YjgifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/safetyGate.ts#L84-L112",
+          "version": "repo-lines-v1:sha256:f438b8de46229d17f454d42ee9aebd89063f23b1f2672ff565527ccbb82e27d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2Yjg1ZGI4ZTI4YjI4ODZlMzExMmRjZDJhZjgzNzA5NjYzNjEwOWFkNjdkNzQyZDhlZDY5ZDg1MDVmM2JhYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3ZGIwMDRmMWQ1YzY4ZmQwMmQxMDExYjBjNmJiMzlhNzg2Y2U2YWIxY2UzYjdlM2U4MWUyYTdlMWMzNTlhYjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3cd22cd8207a4754a61984d687790f25",
+      "statement": "Bounded repair retries only INVALID_SQL, UNKNOWN_TABLE, and SQL_EXECUTION_ERROR with sanitized feedback, while TIMEOUT gets exactly one simplification rewrite that drops the ORDER BY tail and tightens LIMIT to 50 before re-passing guard and gate.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L232-L243",
+          "version": "repo-lines-v1:sha256:e0eaf1992214e878a952797f0f470d70b7e475818e9af8f2040d5a92347a3b6c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkZjUxZjQ5NDg5MTkxNmZkZTI1MzBiNDlkNjZkNjI1ZGZmNGRlNjY2ZTVlNjUwODBkYTdjMDJkMWIyN2MwNGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ZDYwM2MxNmU3ZDQ1ZDk2ZGJhMWRjYzM2MWVhYjhiYWFlMjkzMzUwODVhOGFiYWI3OGZhMWZlYzdiYzU3NWUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L642-L685",
+          "version": "repo-lines-v1:sha256:ab69dc910cc0f4a88baeb5536f29ee4e0ea9a15bdb28b819a90a2a97db0f8fbf:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYzMzNjhkMWJmZGYwMzljNGFjMTQ5MWY2YWYwMmFkZDA1ZDAwOTgxZjhjNDVhMmY2MjRhMWNjZGU0NDA1MTkifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/errors.ts#L41-L45",
+          "version": "repo-lines-v1:sha256:2d6b3a698a7eb83f979a783439ff471667db4934d4482735d788902002b83fc2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmQyZjNkZmE2NjM3ZjBmMWRkOGU1NWQ2Yzg5N2JhMjdjZjIyYjI5NDAyOTc2ZGE2ZmI4MzU0MzM0OTFhMTI4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzk5NTBlMTdhMDdkODQ1MWMwYzUyNTA1MDU4MGZkM2U0YzY2ZTg2MWY3OWUxZjJjMDNhOGI1YTJkNGI1ZWRhYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWUwOTAzMjU4ZDJiOTFmM2ExZDM1NjQ5NjhhZWQ1ZDIzZGZjM2ZhNThiYzBjY2JmOWJkYzdlMTc0OGU0OGUwYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_44bf45340f85409c90d487cf0afcf972",
+      "statement": "Gate-passing SQL runs explain_query before run_query with maxRows 200, and run_query rows pass through untouched with no numeric coercion in the executor.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L468-L537",
+          "version": "repo-lines-v1:sha256:884ed34b73f40de178e93390cc5222e8c963b64037ad5d021fdce6f835fdb321:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczMmNmOWMyOWE1ZDZjZjAwODdjOTE0ZmQwZjIyOGI5YTg0OTMyNzJlNDE2MWRlNjlkYWZkMWVlMTk1NTMzNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzEzNTkwNjY1NjMyM2QxYzVlYTQxNjU0ZWU2NmFmYjU4NWFjZGNmYWVhY2ExMjFkNWUzMGJmMTkzZWVkZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3MzdhMmVkYmYwYmZkOGU3ZWQ2MDU0MDc0YzFmNDc2OTliOTY2NzE1ZWFiMjQ0MjUxNzMxYWQxZGMxMmM3MjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhODhhYjc2ZTBkNzVjMmM4NGE0ZGYyMTUzNzZlNGQzMWU1ZWQwYmI0MmViYTUzNDliZjczNGY3ZDBlMzMzZTgifQ"
+        },
+        {
+          "resource": "repo://packages/agent/test/executor.test.ts#L141-L142",
+          "version": "repo-lines-v1:sha256:e18cde8ce79dd2054ba4e1af965cf650b38955bff81afe70cea1311fb3625674:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzM4MDE0ZTA2YzRmMmU4MDQzZjRiMGJiZWZjMTVjOWFmZmJkNGE3YTYyZjMzYzRlNGU1ZTdlMzU3OGE2MDNjNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDI5ZDg3YTJjYzdmOTdiYTlhYmQ4MGQzYWMzYmJkZDYxYTc5NDMxNjMyNjMwOGQ4NDE2NzY0NDk2YWY1MmExZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2YyZTQ5Zjc4NmJhN2U0ZTA3Njg4YjRjMzUxN2ZjMDY5YmM2ZTY4NDI4ZDU3NTFiOGYxYjk0ZmM2ZDVlNmY3MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTc5NTI1MmYyZjYzNjcxY2I1YmZiM2E2ZWIxNjA2MGY2N2Q1MzJlM2E2ODE1MDY2NDZkNGEwZWRhYWU0OGMyMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1ce54ba0ca0746d2a30228f01c861eec",
+      "statement": "Empty results conclude no_data via a single-pass zero-row diagnostic: only at attempt 1 with a WHERE filter does the executor issue one capped sample_rows n=5 probe, otherwise it concludes immediately without burning remaining attempts.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L583-L618",
+          "version": "repo-lines-v1:sha256:c568763685e6ff6b4959e9eab8ade131593317b64eab1f6f11f2eebf2f89e705:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MGQzNzIxMGIwNWZiY2FhMDg5NjU3YzJhNmRmMWE5NDQxODRlZTViZTRjMmJmN2M2NDA5Zjk0OWExNjhmNTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkOWM1MTIyYTgxZmU2ZTE5M2VlNTAzODUzMmU0OTliMmVkZDgxMmIxYTEzZDE1MDM1ZTA1YzJiMTE5ZTBhMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiOTJkYjhiYzNhZjVjYWRiOTEwN2FiZDdhZGVhMjg4ODg4MjQ1NzU5ZDJlMzRmZmVhYmFiYjQwMDY5NjdjZTYifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L692-L735",
+          "version": "repo-lines-v1:sha256:1b32fb5748d5cf1a084fd0a161188602bb5e7cfba426ac0c7692a8117ac2943b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMzM5MTY3ZWQ0MmI0YmRkYWY2YzIzODMzODlhMDA3ZjQ5YWIwYjdhODY1ZDJlZTlmNWQ1M2UxYzNiMDRjY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4YzUzNjY1MjM1NTViNTdkMzJlMGVjNmJjZGVmODJhMWIwMGJjYTVmODQwZTI2MzJkNjg3YjUyMzI3ZWQ1MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0ZmExYWQzZmQ4YWU0ZjY4NDc0MThlYTIzM2ZkZjRkZGZlOTU0MWVjZjA3NTY3ODM5MzRhOWUxYjUxZDEzODUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e172f66577234c54b98407e1bcd7cf13",
+      "statement": "A run-level budget of 20 LLM calls, 60000 tokens, and 120000ms is checked before every LLM and MCP call, and a trip degrades to cannot_answer with budgetExceeded, tripReason, and partial findings instead of making further calls.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/budgets.ts#L7-L12",
+          "version": "repo-lines-v1:sha256:ec1e403851ad1f2dbf450d187fe17ba01d801d4e5b85ac34c078b29ed1f0196f:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2E2N2Q1ZmQ5MzhmYmJkNjU4OGMyZDA2ZDcwMzg4NjEzN2ViY2YxYmM4ZDZkMzI2NThlNzA2Y2I0NjI2NjM2MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc0ZWU4YThkMWFhODQ1MzkxYmM2NzllYjcwY2U3ZjQ2YTNjZDZmYjJkMTZmY2NhNjdmYTE3OGY0ZjhjMWUwZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTQ0M2E2MWI2ZDQ0ZmMzZjlhYzA0NjQyNDA3NzA1NDU1ZTFkNzAzODZmYWQwNzkyODAzYmZkYjIyMjRmMGViNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWU4ZjBkMWMwZjAwYTQ4OTZlZTQwOWY5YjNjNzU3ZTU5N2ViNmNmODg5MmQ5NzFiZTJmMmViZTQ1NWViMjU1ZiJ9"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L302-L313",
+          "version": "repo-lines-v1:sha256:9488390274b3277c9074cd38c077b9a977d4a57b6555bea31c9f438963619c0a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5MTYwMjIxMmUzZjU4Y2ViOTEwNjU2YTE4Y2ZiZWQ0NjQyZGE2NzZkZWU0ODQ0OTQzMjAwY2Q4NDYyZWU0NWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwNWRjNjQxOWYxZGMzNGNmYTg3OTBjYzFjN2VhYjFiNzQzNWJlNzM3OWNkMjhmNTVlNGUwYTQ3ZjM2NzI4NTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjZDYxYTQzNDYzYTZiMDcwNDI5NDViZTc5YzNkY2U1OTQzZjU0M2E0MmFjMTkxN2FhYWNiOWQzMjA4MzBiMGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c5010226feac4c2d8d37ea62fcf79f8b",
+      "statement": "Executor errors fail closed: policy codes map to restricted while other codes map to error, and unknown thrown shapes or malformed tool outputs coerce to non-repairable INTERNAL_ERROR with truncated messages and preserved cursorPosition.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L175-L226",
+          "version": "repo-lines-v1:sha256:ed030b775c74db1c2f6b1e63008aa8cd2071702018711147f4f99dcf6e371d64:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjZWU2NTkyMDA0MGM5YzdlOTJlZTNkY2VjNzI0NWE2MDk2YTYxNzBmNGVhNmY4ZWI2OTIxMmZkODVmNjBhY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5OGEyZmZjMzM4NGZhM2QyNTg0NzhhZjQzMmIzZGEzZTU3NjcxMGU2NWZkYTg4ZTQ3YzdkMTJmNjJiZDEyY2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlOTE2YzM0ZmQyYzBjYjdlM2IzNWE5MWMwNzdkNDIyMWFjZjE3MTQzM2Y5ZTA0NjhhNDI1MjNhOTg0YjlhN2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1e5b2a4d142f4166bb24dc922fb61056",
+      "statement": "SQLAnswer is the frozen zod contract with intent, nullable sql, tablesUsed, citations defaulting to empty, at most 3 attempts, at most 50 preview rows, non-empty answerText, six statuses, and telemetry, while AgentState checkpoints at most 50 preview rows plus additive budget and telemetry counters.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/state.ts#L93-L141",
+          "version": "repo-lines-v1:sha256:4b90c6e3d8d72664c470ffbb80bbb864bdc99a28d1bc614dbe2e745780adfca4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkZWFjOTdjMWY4YmQwM2FkYTZiOWRkZDRkM2UyNzhiZWYzYjUzNGJhMWUzZDZjMDM3N2IyOWZmYjFmYTJlMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5ZmUzMDA5NmRmMDcxMzVhMGZiYWViN2UyMzk5NzJiOGQ2MDY5YjRlODY2MWUyZTQ3ZmIzZTdjYjI1YTFjYzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxYTlkOWUxZmU5YzExZTNhNjYxYjhmYzMzMTcxNTQ1ZGVjMjAzOTVmYTUyMGE0OGNjMWExOTYwMmUwNjIzMmIifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/answers.ts#L36-L57",
+          "version": "repo-lines-v1:sha256:0b42bb30a8ea3a89e791737c85ec16a2f37cc199eb33e9d8ef2aed81868c5ead:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5N2JjZjdjMTIyMDQ0NDRmMmRkZmE2YzU0YWZiMzZhYzNiZWQzNGY3YTFlYzlhZGVmMDA5N2U1N2M0YmIyZGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYmM2ODVlODZlMTYxZTUyMDY1ZjA5OGY4Zjc1ZmQwMDkxYjkzOGRmMDAxZWExNzM5YjBiZDljMDRlMzE2MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2NTgxYjExOGVlNjQwYmZhY2JlMmJkM2E5MzY1NTg5ZDUwYzQ1MmQ0N2JiNTkzOTM4OGZkZGJmMDA0ODEwMGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_48f1c71cf43743aa8e46d8108fe6d6c4",
+      "statement": "Defense in depth holds because the db-tools MCP server independently revalidates through a fixed 7-stage pipeline of auth, scope, zod, sqlGuard, AccessPolicy, read-only execution, and PII audit across list_tables, describe_table, explain_query, run_query, sample_rows, and search_semantic_layer.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L1-L7",
+          "version": "repo-lines-v1:sha256:20fe8d122d479deb190ce133187cae37848b1d989189fd512f90d030fc1fcbec:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjQ0Y2I1YTZkZWI3YTcyMzYwZWRiODIzYmQwYzZjMmJmYTdiYzc3ZTk3NDBlNjk4MWRlNGJjZmFjYWMwYTU5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWUwZjYxZTM2MTBlMWRjMmM1NzZhNjIyY2RlNWJiMWRjZGVmYTkzY2I5Mzc2NzE3ODJlMGEyZTJkNDJmYjIxOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODk0YzhmYTE1M2U0MzUzODA1OTM0YTY4YjI4OTZlYjZlYjVhNmQzNTI1N2E5MTI0OGIwOTNkZjMyYjhhNjliYiJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools.ts#L38-L64",
+          "version": "repo-lines-v1:sha256:4490c6a0d4619184282d4685fbe418800a737bb50c0f9ee38a3e91e27fb602b0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NjI3M2YyZDRkY2ZiOWE5NGRiM2U1NDQzNzIyNWFlY2RjYmU3YzhiZTVlM2QyMmZiZmNmNjhhZDdiNWNiMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwMWY3NDU0MTg2NDdmZGI2YjM2ZGY2NzA2YWU4NTEyNDRjZjNiZmUzNGQzZTQ2NWNjZjJmOTcxZmQ2NDliZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyODU0YjJjNzg1N2RjODE4NzY5ZmJlZWJhY2YxMDkxM2FlYzRjMjIzMDc1YTA4NmY1OTkxYzcyN2I5NWQ2MjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_41d1a41113ab43ad85e7acb5f0f92aa4",
+      "statement": "Deterministic executor tests cover describe-propose-precheck-explain-run ordering with per-call run identity, denial without any run call for cross joins and sensitive columns, unknown-table errors, and large-table needs_clarification.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/executor.test.ts#L103-L157",
+          "version": "repo-lines-v1:sha256:b40e28f8621c2b00f45da2baa684b7ce34acb921bf0d42e4aab9ec051040490d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NTVjZWRhMDY2MzdiNmZiZDczNGEyYmYzZTc1YjhhNmYwMGQyNzdiOGI2ZmJiYzUwNDExNTc3M2RiZjdkMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhNzAxMDQ4ZDA2ODFlMjVlZGU2YTM2NzQxZDhiNmRjNzdiYmE2ZTMxZmM2NGMxNjRkZjQxMjQ2OWU4M2MxYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxMTY3NmVlYjcxNTAwYjBhNzMwY2Y2MTQxZWI0ZmUwMDQ4MGRjMDRlMTIwN2VkMDA4NDk4NjM4MGU0YzMzYWYifQ"
+        },
+        {
+          "resource": "repo://packages/agent/test/executor.test.ts#L159-L258",
+          "version": "repo-lines-v1:sha256:b529d0492843f2fdd96c89ad6b4655882e6de7047721d409d1a20189b3d908ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjOGIxNDQ3M2RiY2Q5N2RiNWVhNzVmZGEyMTc2NGYxMTRjZGM0MWRlMjhmOWQwY2FkZjJhMDFmYzk1NWNlNjYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzYTNlNDZmOTQyNzZiNmY2ZjRlZDFmMDJhZjc4YmVmNmEyZWUxYzQzOWRkNTU4NGI5NzM5NDgzMTMyMTRkMmI3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MjBmYzllNjdkYjA3ZWQyMzliYjNhZDIzMTJlYWFiOWE3MGUxZjZmYmEwMTI4OGIwYmE2ZTYxZDdmOGVlNzg4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkOGI0Mzk3ZGIzMjJkMjA2YThhMzZiNDI2MWNhZTBlZjM4OTYwMzM1NTQ5MjgzN2YzNGY2MWIwNmM4NjJkNTcwIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T12:53:57.503Z"
+    "at": "2026-10-28T14:46:19.230Z"
   }
 }

@@ -1,3 +1,3 @@
 # Files
 
-- [Database MCP server and operator software](mcp-server.md) - Planned db-tools MCP server with scoped tools, independent SQL validation, audit logging, plus Web CLI Notebook operator surfaces and external-client demo.
+- [Database MCP server and gateway](mcp-server.md) - Implemented db-tools MCP gateway with scoped tools, 7-stage pipeline, read-only executor, audit, and operator surfaces.
