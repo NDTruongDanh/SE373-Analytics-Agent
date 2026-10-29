@@ -1,0 +1,120 @@
+name: Sync to teacher repo
+
+# Periodically mirrors this repo (team work) to the teacher's submission repo
+#   team (origin):    NDTruongDanh/SE373-Analytics-Agent
+#   teacher (target): se373agenticengineering/nhom-32
+#
+# History + contributors are preserved because we push real commits
+# (fetch + merge + push). No squash, no rebase, never --force.
+#
+# Setup (one time):
+#   1. Create a fine-grained PAT (or classic PAT with `repo` scope) as a user
+#      with write access to se373agenticengineering/nhom-32.
+#      Fine-grained: Repository access -> "Only select repositories" -> nhom-32,
+#      permissions -> Contents: read+write.
+#   2. Save it as an Actions secret in THIS repo:
+#      Settings -> Secrets and variables -> Actions -> New repository secret
+#      Name: TEACHER_SYNC_TOKEN
+#   3. Run manually once: Actions -> "Sync to teacher repo" -> Run workflow,
+#      then verify teacher repo log shows your commits with authors intact.
+
+on:
+  schedule:
+    # 06:00 + 18:00 ICT (Vietnam) = 23:00 UTC prev day + 11:00 UTC same day.
+    - cron: "0 11,23 * * *"
+  workflow_dispatch:
+
+# Least privilege: we only read this repo. Pushing to the teacher repo uses
+# TEACHER_SYNC_TOKEN, not GITHUB_TOKEN, so no write permission needed here.
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-to-teacher
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TEAM_REPO: NDTruongDanh/SE373-Analytics-Agent
+      TEACHER_REPO: se373agenticengineering/nhom-32
+      TEACHER_BRANCH: main
+    steps:
+      - name: Check out team repo (full history)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history is required: we push real commits (not patches), so
+          # contributor attribution stays intact. A shallow clone would break
+          # the merge-base checks below.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Verify teacher repo access (gh cli)
+        env:
+          GH_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Missing TEACHER_SYNC_TOKEN secret. See workflow header for setup."
+            exit 1
+          fi
+          gh repo view "$TEACHER_REPO" --json nameWithOwner,defaultBranchRef --jq '{repo: .nameWithOwner, branch: .defaultBranchRef.name}'
+
+      - name: Push team history to teacher repo (merge, never force)
+        env:
+          GH_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Teacher remote authenticated with the PAT. The x-access-token
+          # prefix keeps special characters in the token URL-safe.
+          git remote add teacher "https://x-access-token:${GH_TOKEN}@github.com/${TEACHER_REPO}.git" 2>/dev/null || \
+            git remote set-url teacher "https://x-access-token:${GH_TOKEN}@github.com/${TEACHER_REPO}.git"
+          # Never leave the token in logs.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+
+          git fetch origin main
+          git fetch teacher "$TEACHER_BRANCH"
+
+          TEAM_HEAD="$(git rev-parse origin/main)"
+          TEACHER_HEAD="$(git rev-parse "teacher/$TEACHER_BRANCH")"
+          echo "team(origin/main)   = $TEAM_HEAD"
+          echo "teacher($TEACHER_BRANCH) = $TEACHER_HEAD"
+
+          if [ "$TEAM_HEAD" = "$TEACHER_HEAD" ]; then
+            echo "Already in sync: nothing to push."
+            exit 0
+          fi
+
+          # Teacher already contains all team commits (e.g. re-run with no new
+          # team work): nothing to push. Teacher-side feedback commits stay
+          # untouched; the next run with new team work will merge them in.
+          if git merge-base --is-ancestor "$TEAM_HEAD" "$TEACHER_HEAD"; then
+            echo "Teacher repo already contains team HEAD: nothing to push."
+            exit 0
+          fi
+
+          git checkout -B sync-to-teacher "$TEAM_HEAD"
+
+          if git merge-base --is-ancestor "$TEACHER_HEAD" "$TEAM_HEAD"; then
+            echo "Fast-forward: teacher history already merged."
+          else
+            echo "Merging teacher history (unrelated histories allowed, team files win on conflict)..."
+            # --allow-unrelated-histories: first sync merges two roots (team
+            # history + teacher Initial commit), keeping both + all authors.
+            # -X ours: both repos have README.md; prefer team content instead
+            # of failing the scheduled run on conflict.
+            git merge --no-edit --allow-unrelated-histories -X ours "teacher/$TEACHER_BRANCH" \
+              -m "chore(sync): merge teacher repo history into team snapshot"
+          fi
+
+          # Plain push (no --force): preserves hashes, authors, contributors.
+          git push teacher "HEAD:$TEACHER_BRANCH"
+
+          echo "::notice title=Synced to teacher repo::$TEACHER_REPO@$TEACHER_BRANCH"
