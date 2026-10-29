@@ -9,7 +9,8 @@
 import type { SchemaCatalog } from "@shared/contracts";
 import type { SensitiveColumns } from "@shared/access-policy";
 
-export const LARGE_TABLES: readonly string[] = ["order_items"];
+// Row counts from data/seed_manifest.json: order_items 1,138,526; orders 997,665.
+export const LARGE_TABLES: readonly string[] = ["order_items", "orders"];
 
 export interface ForeignKeyRef {
   column: string;

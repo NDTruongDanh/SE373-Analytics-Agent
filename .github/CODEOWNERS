@@ -3,15 +3,15 @@
 # Replace with your approvers, e.g.: * @user1 @user2
 * @NDTruongDanh @HungPham-VNU
 packages/contracts/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
-packages/mcp-server/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
-packages/access-policy/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
+packages/mcp-server/ @HungPham-VNU @NDTruongDanh
+packages/access-policy/ @HungPham-VNU @NDTruongDanh
 packages/agent/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
 apps/api/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
 apps/web/ @NDTruongDanh @HungPham-VNU # TODO(UC-02 owner): replace with handle during review
-policies/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
-packages/data/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
-docker/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
+policies/ @HungPham-VNU @NDTruongDanh
+packages/data/ @HungPham-VNU @NDTruongDanh
+docker/ @HungPham-VNU @NDTruongDanh
 semantic/ @NDTruongDanh @HungPham-VNU # TODO(UC-02 owner): replace with handle during review
 skills/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
 evals/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace with handle during review
-data/ @HungPham-VNU @NDTruongDanh # TODO(UC-09 owner): replace with handle during review
+data/ @HungPham-VNU @NDTruongDanh
