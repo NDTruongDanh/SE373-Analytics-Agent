@@ -7,7 +7,7 @@ description: Toolchain, build and test entrypoints, provider and session-header
 tags: [operations, repository, openwiki-automation, configuration, ci]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T04:50:00.189Z
+    at: 2026-10-29T14:52:58.907Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -45,6 +45,8 @@ sources:
     resource: repo://policies/sensitive_columns.yaml
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
+  - id: openwiki-source-c16f849ab0d34fad871ef3b2
+    resource: repo://ruleset-main.json
   - id: openwiki-source-1d017c2ee320a152b05389a3
     resource: repo://scripts/check-workspace.mjs
   - id: openwiki-source-0414973c1f692e417872f6fc
@@ -63,7 +65,7 @@ sources:
     resource: repo://tsconfig.json
   - id: openwiki-source-b6f224d26b4ec604e90101e3
     resource: repo://vitest.workspace.ts
-generated: { by: "openwiki/0.7.2", at: "2026-10-28T04:50:00.189Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-29T14:52:58.907Z" }
 ---
 
 # Repository operations and wiki automation
@@ -347,15 +349,23 @@ Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows
 - Creation and merge: `peter-evans/create-pull-request` opens branch
   `openwiki/update` with the dedicated `OPENWIKI_PR_TOKEN`
   (`.github/workflows/openwiki-update.yml:94-115`). On success the workflow
-  merges immediately with `gh pr merge --squash --admin --delete-branch`;
+  merges immediately with `gh pr merge --merge --admin --delete-branch`;
   `--admin` is needed because the token identity is a ruleset bypass actor and
   `gh pr merge --auto` would wait on the one code-owner review forever
+  (`.github/workflows/openwiki-update.yml:116-128`). Use `--merge` because
+  the repository only allows merge commits and rebase merges; squash is
+  disabled, so `--squash` fails
+  (`.github/workflows/openwiki-update.yml:116-128`). The merge step validates
+  the PR number with `[[ "$PR_NUMBER" =~ ^[0-9]+$ ]]` before merging
   (`.github/workflows/openwiki-update.yml:116-128`). On failure it disables
-  auto-merge, annotates the PR URL, and propagates the failure with `exit 1`
-  (`.github/workflows/openwiki-update.yml:130-145`).
-- Also enable **Allow auto-merge** in repository pull-request settings; the
-  default branch is protected and requires one code-owner review plus the `gate`
-  status check (`ruleset-main.json:31-47`).
+  auto-merge with `gh pr merge --disable-auto`, annotates the PR URL with a
+  `::notice`, and propagates the failure with `exit 1`
+  (`.github/workflows/openwiki-update.yml:133-148`).
+- The default branch is protected and requires one code-owner review plus the
+  `gate` status check; the `OPENWIKI_PR_TOKEN` identity is a ruleset bypass
+  actor so the docs-only merge can use `--admin` without affecting human code
+  PRs (`ruleset-main.json:31-47`,
+  `.github/workflows/openwiki-update.yml:116-128`).
 
 ## 7. Configuration and security consequences
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6d7ac7e0d222c2ce3f750cd73e9af0493c666632d5fbac5e831a613f000fc3b2",
+  "pageVersion": "sha256:5ab2a56282d329ad554dc645643fb0d287737c158e14a21fc0e0c153a713a399",
   "claims": [
     {
       "id": "claim_fb880a6112554a6c93dd71e222eca5d7",
@@ -94,15 +94,19 @@
     },
     {
       "id": "claim_82a6041311fa4832bb17ce81e05d07fa",
-      "statement": "Wiki CI produces docs-only PRs limited to openwiki, AGENTS.md, and CLAUDE.md when present, excludes workflow-file changes and transient openwiki/.run.json, and squash-merges with --admin on success because auto-merge would wait on the required code-owner review.",
+      "statement": "Wiki CI produces docs-only PRs limited to openwiki, AGENTS.md, and CLAUDE.md when present, excludes workflow-file changes and transient openwiki/.run.json, validates the numeric PR number, and merges with --merge --admin on success because squash is disabled and auto-merge would wait on the required code-owner review that the bypass actor skips.",
       "evidence": [
         {
           "resource": "repo://.github/workflows/openwiki-update.yml#L116-L128",
-          "version": "repo-lines-v1:sha256:b32adda11d85c1441bc419adbe34fb2cf70ff86e2bfb2133cd705d831338a0f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1MjIwYzFjZTEyYzRmOTU2OTFlOTk1MzUxZWMzNGU1NDBmZmU2YmFlY2EyNzc5MmNlMTUwYmM3ZWJjZmM4MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzN2NkZTM4ZGQ2YmJmNzk3NDI2MTExZGRhZmQwODk4ZTdkYjRhMDcxYmM3N2VlMjZjOWU5YTZhMmI3NzBiMDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4YTgxOTc1MWIzNDhmYzY0MDBkZTc2N2Q4N2E2MjFkODUxMjZhZDZhNjRkNzJiYjZjYjY3ODE1OTYxMDdkZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1MmRjZDJlZWY0ZDVhNTAzZjJiMmY4N2JiOThmNjg3OGM3ODcyM2I0OWFiZmE1Nzg0OGQ1ZDNkOTgzOWYzMzQifQ"
+          "version": "repo-lines-v1:sha256:3d8000e6a4a94cedd25eb9f6f49e8c4b1c9581d500eb4cf4df1a7c68a710b39a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1MjIwYzFjZTEyYzRmOTU2OTFlOTk1MzUxZWMzNGU1NDBmZmU2YmFlY2EyNzc5MmNlMTUwYmM3ZWJjZmM4MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNDA0MDEwN2NjMTIwNWNjMGZjZDVjZWQ0Nzk3OGJmOWJhNDdhOTc0ZGJiNzQ1MmQ0ZTJhMzEyNjVkMGY0OTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4YTgxOTc1MWIzNDhmYzY0MDBkZTc2N2Q4N2E2MjFkODUxMjZhZDZhNjRkNzJiYjZjYjY3ODE1OTYxMDdkZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2ZDNiZDNjMDJlOTVhZGZmNGRjYzBkOWMwMTAxY2Q5ODEwNDRlOTcwZjMxZWY2OGZiNmE2NDZjMzRkZjY3ZDkifQ"
         },
         {
           "resource": "repo://.github/workflows/openwiki-update.yml#L74-L92",
           "version": "repo-lines-v1:sha256:6dd55c5c68c89d67b6b1a575ce2a3317cae75d0c7afffa3afd4310cedca8a894:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkNTRmN2YzZTVmNzc0ZTQ3Mjk5MjdlMTA4NTAxNzYzMTZiOTFiYzI4NTQ2ZTY4YmQ2ZDZkZmIyZWFlY2M5Y2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NjdjMzczOGYwNmI5MGQwNjAxNWE0ZDYyNjRkNTIwOTE0ZjhjZDNkMTM0YTA1YTUxNzA4NjZlNGYxMzkzZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ZWIyZTk0ZmEyYmE2ZWViZGZjNTcyMjJmMzQ5NjgyOGZjNzUxODAxODA2NTRhOTAwZjUyN2QzYWM3Y2JlNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkZWVlZWUzZTEyMGQ5ZDEwNGI3NmU1YzcxYTYyMjZlNDVjMDkzNWNiNWM2ZjI1MTIyZTUyNTdmYjFjMzgyNDIifQ"
+        },
+        {
+          "resource": "repo://ruleset-main.json#L31-L47",
+          "version": "repo-lines-v1:sha256:c13fc1b809354059f6f72c93271ee8f6fcebc31a39e782583e3e2f5fceaa2a56:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkZGRkMmZmNmU3YjY0N2U0ZDUwYjUxZmM3ZTI1YjVlYjllN2VjNTViYTdiZWIwNGEyZDE1ZjYzMWVkYWZlMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmYjBjMzE3MWViNzBlYzYzZWQyNDc0ZTlkMTg2Nzc1NTZlOWZlMmJlYzllOWNmZTMwMmQ1NmY4NGRlMjYzNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3ZjY5OTZlM2IxNWRmYjQzODYzMDAxYzcyZDNhNTM5ZGU3MGUzOGUyYTllZDIwZGU1OTExMDRhODI4NjRmNjYifQ"
         }
       ]
     },
@@ -337,11 +341,11 @@
       "statement": "General CI splits the root gate into typecheck, lint, policy with check:workspace and skills:check, unit test, docs interface-drift, live-database with small load plus verify plus role and gateway live tests, and gitleaks secrets jobs behind one required gate check for branch protection.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L104-L161",
+          "resource": "repo://.github/workflows/ci.yml#L108-L165",
           "version": "repo-lines-v1:sha256:d687c050e764f445ddf3fee265dc187be7f1d5dfc509e951cd0c3d1e217efa5a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmMzRmNWY0ZTFmMGJlZTc5MzAwNzc0MDM3ZjUzZmZhZGUxZGQ4ZTg4YjUyYzAxMTlhMmUzN2E2N2ZiYWJlYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjZjhhN2JlZDllYjM2ZDM3ZjJjZjE3YjFmMzY4NDNiZDYwZDBlNWE2ZjE3ZjkwNDJlYThiNGZmNjc1Yjk2YTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3ZTEwNDdhNzE1Yzg1OTk1MmNkZGY4ZDhhMDEyNzY2ODMxOTk2ZWJiY2RkZGNkODVhNjg2OWFjNWExNDc5YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiODgxZGRkMGQ2MDAzOWFjNDVkMDhlNzU5ZmI3NjY5NjhmNzEyODdiNzkxMTRhMzdhMWRjOGI1ZDFhNTM0NjEifQ"
         },
         {
-          "resource": "repo://.github/workflows/ci.yml#L177-L195",
+          "resource": "repo://.github/workflows/ci.yml#L181-L199",
           "version": "repo-lines-v1:sha256:4d47283db265d420ac7107cdf5567a0200b51db2cd89ce34f615be4bcc2ded78:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0Yjk0MDliN2ZjZGE0OTA5ZDA5NGI4YjgxN2Q1YmJlMTFlMjRiZDg2NTQ2ZjczNDBiNzdhZDNjNjdjY2UyNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4OGFiMGZiNTUxZTJmOTdkOTFhNjg0NjY3MDc1ZDFlZDkxMTJjZjI4YWYxMTRlZjAyNzVlNTNiZjc3Yjc3OTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmOWQyZTZjODVkZDA2MjYyZmIwNWM4M2NkOTkzNDdkMDA4YmZkY2RiYTU4Y2UxYTg0MDc1YzkxOWUzZmRlMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
@@ -349,7 +353,7 @@
           "version": "repo-lines-v1:sha256:4dc58ae9faaaea88db374a3e5d9a66db52e924edb629cf9656e48962f4796624:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDgwMTU0ZWQ0MmZjNWM3NzliMTMzMTU3OGI1OGI4OWM4MDFlYWNlNzRmMjRjZDQ4ZWI0YTIzNTc5NDBhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxNzk5YjhjMjlhZTQ0NWFjOTk1MTUzMzhiODUxNmFjMDRlZTVjNmUzYmU1MzQ0MGUwZWExZjMwNGQyOWI3N2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA2ZThmZWY2M2Q2NTg0NGFjYzZiZTlmYWU1ODJjMmJmNDUyZWM3ZWQ3ZjhkN2I0OWVlNTlkMTg3ZGYyYWIxYmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYjYyYzE4MTk5Yzc5YTkxMjNlNzNhMzhjMGIxZTU1YWUzNjlmNjgxM2UzMTYzNjY2OTU0N2NjMjM3OTBkMGIifQ"
         },
         {
-          "resource": "repo://.github/workflows/ci.yml#L86-L102",
+          "resource": "repo://.github/workflows/ci.yml#L90-L106",
           "version": "repo-lines-v1:sha256:76cc109e3df99bed390eb64ee3ffae70bc3d98c943e3bb6f5dacfaeea9cd2765:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5MmE5Mzk1NzkwN2Q2NjA4YmI4MGQ1MDM0YWFjNGY0YTkxNzc3NzJhNWVjNzQ4ZGQ2YzJmMzRhM2NlMzkzYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMGEzNTVkOTBmMDAwZWZmOWFiMWEzMmVkOTExNzIyNmY4NzhmNmY0YmVhMzA4Y2EwYTY0MTBmNTMxMzI2NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3ZDhiNjE3MGJmNWI3YWRkY2JjYzEzZjJiNDg3MGUxNWM4NmJkMTAyYzIzMDZiZWRlYzBlYThiNTU3MTkwODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjNzhjODk3M2JkOTkyZDJjMTM5ZmZlMWY5MTVlYWQ3MThlYWZlZTA4MDc1N2NjM2ZjMjBhMzY4ODgxYTc0NmYifQ"
         }
       ]
@@ -395,10 +399,20 @@
           "version": "repo-lines-v1:sha256:1779bbc0cbaf8b97e999d247864044b163236e8dfa48836fd312158d0a3e35b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4MDA1OTllMGM3ZjRlODNlN2RhNmM4MWE3YzllY2U5MzMxZjE0OGZhZGJjY2ZkNzU0MzM4MjRkN2RmYWY5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmOTNiZjRiNjU0MmI5NzY5Y2RmMGMxMDgxMzFjZjY1NTI3N2FiMTVhY2YyNDNmMmQ0Mzg0NzZmNDk4ZDIwMjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwNWEzNmQ5YmExZDZlNTU5OWY0OTY1ZDNlMzVhYmM2YjMyMDQ1ZDg4ZTA0MzMxZWEyODAyYjkwMDRmYTFjYWQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_e95a46ebe52349af9c976b3626a7fd3d",
+      "statement": "On OpenWiki failure the workflow disables auto-merge for the docs PR, annotates the PR URL with a notice, and propagates the failure with exit 1.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L133-L148",
+          "version": "repo-lines-v1:sha256:dafd0ef40d844c4b3df377e07130338fd7a92896b041f51bef11ae94886476c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1ODM0YTBkMGM2MmMxZDFkNjNlYWQ0NTQxOTRhM2JkZDY0YjVmYzYxNGNhZjk2ZDg1NWVjYzQwYmViY2M3NjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzZhODk3OGQ4OWZmYjc5MjA4NWZjNWYyZTVhNDdiMGIyNGI4YTM5ZjQwNTkwOTdiMGJlMWMxNzVkMDQ0NTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T04:50:00.189Z"
+    "at": "2026-10-29T14:52:58.907Z"
   }
 }
