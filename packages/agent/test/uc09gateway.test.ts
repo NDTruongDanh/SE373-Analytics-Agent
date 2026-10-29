@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertNoSecretsInMessage,
+  gradeAuditLines,
   gradeGatewayCase,
   validateGatewayRecord,
   type GatewayCase,
@@ -63,7 +64,7 @@ describe("validateGatewayRecord", () => {
 
   it("rejects an unknown top-level key", () => {
     const checked = validateGatewayRecord(
-      goodCase({ driver: "mcp" }),
+      goodCase({ mode: "mcp" }),
     );
     expect(checked.ok).toBe(false);
     expect(checked.errors?.join(" ")).toMatch(/unknown top-level key/);
@@ -109,6 +110,58 @@ describe("validateGatewayRecord", () => {
     const checked = validateGatewayRecord(goodCase({ notes: "  " }));
     expect(checked.ok).toBe(false);
     expect(checked.errors?.join(" ")).toMatch(/notes/);
+  });
+
+  it("accepts the Task-3 legs: driver, timeoutMs, tags", () => {
+    const checked = validateGatewayRecord(
+      goodCase({ driver: "http401", timeoutMs: 120000, tags: ["slow"] }),
+    );
+    expect(checked.ok).toBe(true);
+    expect(checked.value?.driver).toBe("http401");
+  });
+
+  it("rejects an unknown driver and a bad timeoutMs", () => {
+    expect(
+      validateGatewayRecord(goodCase({ driver: "manual" })).ok,
+    ).toBe(false);
+    expect(
+      validateGatewayRecord(goodCase({ timeoutMs: -5 })).ok,
+    ).toBe(false);
+    expect(validateGatewayRecord(goodCase({ tags: "slow" })).ok).toBe(
+      false,
+    );
+  });
+
+  it("accepts errorCodeAnyOf, denyOrMask, pgDenyCodes, table rowCountUnchanged", () => {
+    const checked = validateGatewayRecord(
+      goodCase({
+        expect: {
+          denyOrMask: {
+            codes: ["SENSITIVE_COLUMN_DENIED", "UNKNOWN_TABLE"],
+            maskedColumn: "customers.phone",
+          },
+        },
+        driver: "mcp",
+      }),
+    );
+    expect(checked.ok).toBe(true);
+    expect(
+      validateGatewayRecord(goodCase({ expect: { errorCodeAnyOf: [] } })).ok,
+    ).toBe(false);
+    expect(
+      validateGatewayRecord(
+        goodCase({ expect: { denyOrMask: { codes: ["NOPE"], maskedColumn: "x" } } }),
+      ).ok,
+    ).toBe(false);
+    expect(
+      validateGatewayRecord(
+        goodCase({ expect: { rowCountUnchanged: "orders" } }),
+      ).ok,
+    ).toBe(true);
+    expect(
+      validateGatewayRecord(goodCase({ expect: { rowCountUnchanged: 5 } }))
+        .ok,
+    ).toBe(false);
   });
 });
 
@@ -299,6 +352,198 @@ describe("gradeGatewayCase", () => {
   });
 });
 
+describe("gradeGatewayCase Task-3 legs", () => {
+  it("grades errorCodeAnyOf accept-sets", () => {
+    const c = goodCase({
+      expect: { ok: false, errorCodeAnyOf: ["TIMEOUT", "INTERNAL_ERROR"] },
+    }) as unknown as GatewayCase;
+    expect(
+      gradeGatewayCase(c, {
+        ok: false,
+        httpStatus: 200,
+        code: "TIMEOUT",
+        message: "timeout",
+        isError: true,
+      }).pass,
+    ).toBe(true);
+    const graded = gradeGatewayCase(c, {
+      ok: false,
+      httpStatus: 200,
+      code: "FORBIDDEN_STATEMENT",
+      message: "denied",
+      isError: true,
+    });
+    expect(graded.pass).toBe(false);
+    expect(graded.reason).toMatch(/not in/);
+  });
+
+  it("grades denyOrMask both branches", () => {
+    const c = goodCase({
+      tool: "run_query",
+      expect: {
+        denyOrMask: {
+          codes: ["SENSITIVE_COLUMN_DENIED", "UNKNOWN_TABLE"],
+          maskedColumn: "customers.phone",
+        },
+      },
+    }) as unknown as GatewayCase;
+    expect(
+      gradeGatewayCase(c, {
+        ok: true,
+        httpStatus: 200,
+        maskedColumns: ["customers.phone"],
+        rows: [],
+        message: "",
+      }).pass,
+    ).toBe(true);
+    expect(
+      gradeGatewayCase(c, {
+        ok: false,
+        httpStatus: 200,
+        code: "UNKNOWN_TABLE",
+        message: "denied",
+        isError: true,
+      }).pass,
+    ).toBe(true);
+    const unmasked = gradeGatewayCase(c, {
+      ok: true,
+      httpStatus: 200,
+      maskedColumns: [],
+      rows: [],
+      message: "",
+    });
+    expect(unmasked.pass).toBe(false);
+    expect(unmasked.reason).toMatch(/does not mask/);
+    const outside = gradeGatewayCase(c, {
+      ok: false,
+      httpStatus: 200,
+      code: "FORBIDDEN_FUNCTION",
+      message: "denied",
+      isError: true,
+    });
+    expect(outside.pass).toBe(false);
+  });
+
+  it("grades pgDenyCodes for the guard-off proof", () => {
+    const c = goodCase({
+      expect: { ok: true, pgDenyCodes: ["25006", "42501"] },
+    }) as unknown as GatewayCase;
+    expect(
+      gradeGatewayCase(c, {
+        ok: true,
+        httpStatus: 0,
+        code: "25006",
+        message: "read-only",
+        rowCountBefore: 4,
+        rowCountAfter: 4,
+      }).pass,
+    ).toBe(true);
+    const graded = gradeGatewayCase(c, {
+      ok: true,
+      httpStatus: 0,
+      code: "XX000",
+      message: "weird",
+      rowCountBefore: 4,
+      rowCountAfter: 4,
+    });
+    expect(graded.pass).toBe(false);
+    expect(graded.reason).toMatch(/pg denial code/);
+  });
+});
+
+function auditLine(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ts: "2026-10-29T00:00:00.000Z",
+    runId: "run-1",
+    userId: "sales_south",
+    role: "sales_south",
+    clientId: "sales_south",
+    scopes: ["schema:read", "data:read"],
+    tool: "run_query",
+    params: { sql: "SELECT '?'", maxRows: 1 },
+    rowCount: 0,
+    durationMs: 3,
+    decision: "deny",
+    errorCode: "FORBIDDEN_STATEMENT",
+    piiHits: 0,
+    ...overrides,
+  };
+}
+
+describe("gradeAuditLines", () => {
+  it("passes exact cardinality with full fields", () => {
+    const graded = gradeAuditLines(
+      [
+        JSON.stringify(auditLine({ runId: "a" })),
+        JSON.stringify(auditLine({ runId: "a", decision: "allow", errorCode: undefined })),
+        JSON.stringify(auditLine({ runId: "b", decision: "allow", errorCode: undefined })),
+      ],
+      [
+        { runId: "a", expectedLines: 2 },
+        { runId: "b", expectedLines: 1 },
+      ],
+    );
+    expect(graded.pass).toBe(true);
+  });
+
+  it("fails cardinality mismatches and ignores unattributed runIds", () => {
+    const graded = gradeAuditLines(
+      [
+        JSON.stringify(auditLine({ runId: "a" })),
+        JSON.stringify(auditLine({ runId: "stray-dev-line" })),
+      ],
+      [{ runId: "a", expectedLines: 2 }],
+    );
+    expect(graded.pass).toBe(false);
+    expect(graded.reason).toMatch(/owns 1 audit line/);
+  });
+
+  it("fails lines with missing fields or PII shapes", () => {
+    const missing = gradeAuditLines(
+      [JSON.stringify(auditLine({ runId: "a", clientId: "" }))],
+      [{ runId: "a", expectedLines: 1 }],
+    );
+    expect(missing.pass).toBe(false);
+    expect(missing.reason).toMatch(/clientId/);
+    const phoneLeak = gradeAuditLines(
+      [
+        JSON.stringify(
+          auditLine({ runId: "a", userId: "0901234567" }),
+        ),
+      ],
+      [{ runId: "a", expectedLines: 1 }],
+    );
+    expect(phoneLeak.pass).toBe(false);
+    expect(phoneLeak.reason).toMatch(/phone or email/);
+  });
+
+  it("fails an IPv4 leak inside an attributed line", () => {
+    const graded = gradeAuditLines(
+      [
+        JSON.stringify(
+          auditLine({
+            runId: "a",
+            params: { sql: "connect ECONNREFUSED 127.0.0.1:5433" },
+          }),
+        ),
+      ],
+      [{ runId: "a", expectedLines: 1 }],
+    );
+    expect(graded.pass).toBe(false);
+    expect(graded.reason).toMatch(/IPv4/);
+  });
+
+  it("fails a deny without errorCode", () => {
+    const graded = gradeAuditLines(
+      [JSON.stringify(auditLine({ runId: "a", errorCode: undefined }))],
+      [{ runId: "a", expectedLines: 1 }],
+    );
+    expect(graded.pass).toBe(false);
+    expect(graded.reason).toMatch(/errorCode/);
+  });
+});
 describe("assertNoSecretsInMessage", () => {
   it("passes a clean denial message", () => {
     expect(assertNoSecretsInMessage("query blocked by sql guard").pass).toBe(
@@ -324,6 +569,20 @@ describe("assertNoSecretsInMessage", () => {
     expect(
       assertNoSecretsInMessage("contact an.nguyen@example.vn").pass,
     ).toBe(false);
+  });
+
+  it("accepts the sanitizer's own redaction placeholders", () => {
+    expect(
+      assertNoSecretsInMessage("postgres://<redacted> unreachable").pass,
+    ).toBe(true);
+    expect(
+      assertNoSecretsInMessage(
+        'password authentication failed for user "<redacted>"',
+      ).pass,
+    ).toBe(true);
+    expect(
+      assertNoSecretsInMessage("host=<redacted> refused").pass,
+    ).toBe(true);
   });
 
   it("is repeatable across consecutive calls", () => {

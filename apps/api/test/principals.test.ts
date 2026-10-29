@@ -78,6 +78,7 @@ function stubEnv(): NodeJS.ProcessEnv {
     MCP_TOKEN_MARKETING: "stub-marketing",
     MCP_TOKEN_HR: "stub-hr",
     MCP_TOKEN_ADMIN: "stub-admin",
+    MCP_TOKEN_EVAL_SCOPE: "stub-eval-scope",
   } as NodeJS.ProcessEnv;
 }
 
@@ -133,11 +134,11 @@ describe("persona to principal mapping (D-11)", () => {
     expect(() => resolvePersona("hr", registry, env)).toThrow(/MCP_TOKEN_HR/);
   });
 
-  it("loads the real policies file with four clients", () => {
+  it("loads the real policies file with five clients", () => {
     const registry = loadRegistryFromFile();
     expect(registry.version).toBe(1);
     expect(registry.clients.map((c) => c.clientId).sort()).toEqual(
-      ["admin", "hr", "marketing", "sales_south"].sort(),
+      ["admin", "eval_schema_only", "hr", "marketing", "sales_south"].sort(),
     );
   });
 });
