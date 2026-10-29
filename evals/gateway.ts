@@ -37,6 +37,7 @@ const TOOL_SET: ReadonlySet<string> = new Set(GATEWAY_TOOLS);
 
 export const GATEWAY_EXPECT_KEYS = [
   "errorCode",
+  "errorCodeAnyOf",
   "httpStatus",
   "ok",
   "truncated",
@@ -47,11 +48,20 @@ export const GATEWAY_EXPECT_KEYS = [
   "noSecretsInMessage",
   "rowCountUnchanged",
   "outputSchemaValid",
+  "denyOrMask",
+  "pgDenyCodes",
 ] as const;
 
 const EXPECT_KEY_SET: ReadonlySet<string> = new Set(GATEWAY_EXPECT_KEYS);
 
 const ERROR_CODE_SET: ReadonlySet<string> = new Set(ErrorCodes);
+
+/** Drivers: mcp (callMcpTool) plus the Task-3 special legs. */
+export const GATEWAY_DRIVERS = ["mcp", "http401", "direct-pg", "bad-dsn-boot"] as const;
+
+export type GatewayDriver = (typeof GATEWAY_DRIVERS)[number];
+
+const DRIVER_SET: ReadonlySet<string> = new Set(GATEWAY_DRIVERS);
 
 const TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
   "id",
@@ -61,6 +71,9 @@ const TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
   "auth",
   "expect",
   "notes",
+  "driver",
+  "timeoutMs",
+  "tags",
 ]);
 
 export interface GatewayAuth {
@@ -68,8 +81,21 @@ export interface GatewayAuth {
   token?: string;
 }
 
+/**
+ * denyOrMask: the CTE-rename accept-set (research open question 1). The
+ * static derivation says re-guard fails closed but the exact code is not
+ * live-proven, so EITHER a denial with a code in `codes` OR an ok result
+ * with `maskedColumn` in maskedColumns passes. The live plan pins the exact
+ * code after the first probe; until then no single unproven code is locked.
+ */
+export interface DenyOrMask {
+  codes: ErrorCode[];
+  maskedColumn: string;
+}
+
 export interface GatewayExpect {
   errorCode?: ErrorCode;
+  errorCodeAnyOf?: ErrorCode[];
   httpStatus?: number;
   ok?: boolean;
   truncated?: boolean;
@@ -78,8 +104,15 @@ export interface GatewayExpect {
   rawValuesVisible?: string[];
   valuesMasked?: string[];
   noSecretsInMessage?: boolean;
-  rowCountUnchanged?: boolean;
+  /**
+   * true: driver fills before/after counts and the grader asserts equality.
+   * "table": same, counting that table (DELETE probes, direct-pg guard-off).
+   */
+  rowCountUnchanged?: boolean | string;
   outputSchemaValid?: boolean;
+  denyOrMask?: DenyOrMask;
+  /** Direct-pg SQLSTATE accept-set (guard-off proof: 25006 or 42501). */
+  pgDenyCodes?: string[];
 }
 
 export interface GatewayCase {
@@ -90,6 +123,9 @@ export interface GatewayCase {
   auth: GatewayAuth;
   expect: GatewayExpect;
   notes: string;
+  driver?: GatewayDriver;
+  timeoutMs?: number;
+  tags?: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -181,22 +217,84 @@ export function validateGatewayRecord(raw: unknown): {
       "ok",
       "truncated",
       "noSecretsInMessage",
-      "rowCountUnchanged",
       "outputSchemaValid",
     ] as const) {
       if (expect[key] !== undefined && typeof expect[key] !== "boolean") {
         errors.push(`expect.${key} must be a boolean`);
       }
     }
+    if (
+      expect["rowCountUnchanged"] !== undefined &&
+      typeof expect["rowCountUnchanged"] !== "boolean" &&
+      !isNonEmptyString(expect["rowCountUnchanged"])
+    ) {
+      errors.push(
+        "expect.rowCountUnchanged must be a boolean or a table name",
+      );
+    }
     for (const key of [
       "maskedColumns",
       "maskedColumnsExact",
       "rawValuesVisible",
       "valuesMasked",
+      "pgDenyCodes",
     ] as const) {
       if (expect[key] !== undefined && !isStringArray(expect[key])) {
         errors.push(`expect.${key} must be an array of non-empty strings`);
       }
+    }
+    if (
+      expect["pgDenyCodes"] !== undefined &&
+      (expect["pgDenyCodes"] as string[]).length === 0
+    ) {
+      errors.push("expect.pgDenyCodes must not be empty");
+    }
+    if (expect["errorCodeAnyOf"] !== undefined) {
+      if (
+        !isStringArray(expect["errorCodeAnyOf"]) ||
+        (expect["errorCodeAnyOf"] as string[]).length === 0 ||
+        !(expect["errorCodeAnyOf"] as string[]).every((code) =>
+          ERROR_CODE_SET.has(code),
+        )
+      ) {
+        errors.push(
+          `expect.errorCodeAnyOf must be a non-empty array of [${ErrorCodes.join(", ")}]`,
+        );
+      }
+    }
+    if (expect["denyOrMask"] !== undefined) {
+      const denyOrMask = expect["denyOrMask"];
+      if (
+        !isRecord(denyOrMask) ||
+        !isStringArray(denyOrMask["codes"]) ||
+        !(denyOrMask["codes"] as string[]).every((code) =>
+          ERROR_CODE_SET.has(code),
+        ) ||
+        !isNonEmptyString(denyOrMask["maskedColumn"])
+      ) {
+        errors.push(
+          "expect.denyOrMask must be { codes: ErrorCode[], maskedColumn: string }",
+        );
+      }
+    }
+  }
+  if (raw["driver"] !== undefined) {
+    if (typeof raw["driver"] !== "string" || !DRIVER_SET.has(raw["driver"])) {
+      errors.push(`driver must be one of [${GATEWAY_DRIVERS.join(", ")}]`);
+    }
+  }
+  if (raw["timeoutMs"] !== undefined) {
+    if (
+      typeof raw["timeoutMs"] !== "number" ||
+      !Number.isInteger(raw["timeoutMs"]) ||
+      (raw["timeoutMs"] as number) <= 0
+    ) {
+      errors.push("timeoutMs must be a positive integer");
+    }
+  }
+  if (raw["tags"] !== undefined) {
+    if (!isStringArray(raw["tags"])) {
+      errors.push("tags must be an array of non-empty strings");
     }
   }
   if (!isNonEmptyString(raw["notes"])) {
@@ -221,13 +319,18 @@ export interface GatewayObserved {
 }
 
 // postgres://user:pass@host:port/db — kills credentials, host, port, dbname.
-const DSN_PATTERN = /postgres(ql)?:\/\/[^\s"'`]+/gi;
+// The (?!<redacted>) lookaheads exempt the sanitizer's own placeholders:
+// `postgres://<redacted>` and `user "<redacted>"` are the PROOF of
+// redaction, not a leak, and the grader must agree with the server's
+// redaction contract (errors.test.ts locks those outputs).
+const DSN_PATTERN = /postgres(ql)?:\/\/(?!<redacted>)[^\s"'`]+/gi;
 // host= fragments in connection errors.
-const HOST_ASSIGN_PATTERN = /host\s*=\s*[^\s;,]+/gi;
+const HOST_ASSIGN_PATTERN = /host\s*=\s*(?!<redacted>)[^\s;,]+/gi;
 // Bare IPv4 literals.
 const IPV4_PATTERN = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
-// `for user "…"` — never echo which credential failed.
-const USER_PATTERN = /\buser\s+"[^"]*"/gi;
+// `for user "…"` — never echo which credential failed. The lookahead
+// exempts the sanitized `user "<redacted>"` residue.
+const USER_PATTERN = /\buser\s+"(?!<redacted>)[^"]+"/gi;
 
 /**
  * Shared secret-shape assertion (mirrors the sanitizeError choke-point plus
@@ -288,6 +391,18 @@ export function gradeGatewayCase(
     if (observed.code !== expect.errorCode) {
       failures.push(
         `errorCode '${observed.code ?? "none"}' is not '${expect.errorCode}'`,
+      );
+    } else if (observed.isError === false) {
+      failures.push("denial arrived as data (isError false), not a tool error");
+    }
+  }
+  if (expect.errorCodeAnyOf !== undefined) {
+    if (
+      observed.code === undefined ||
+      !expect.errorCodeAnyOf.includes(observed.code as ErrorCode)
+    ) {
+      failures.push(
+        `errorCode '${observed.code ?? "none"}' is not in [${expect.errorCodeAnyOf.join(", ")}]`,
       );
     } else if (observed.isError === false) {
       failures.push("denial arrived as data (isError false), not a tool error");
@@ -371,7 +486,7 @@ export function gradeGatewayCase(
     const checked = assertNoSecretsInMessage(observed.message ?? "");
     if (!checked.pass) failures.push(checked.reason);
   }
-  if (expect.rowCountUnchanged === true) {
+  if (expect.rowCountUnchanged !== undefined) {
     if (
       typeof observed.rowCountBefore !== "number" ||
       typeof observed.rowCountAfter !== "number"
@@ -380,6 +495,35 @@ export function gradeGatewayCase(
     } else if (observed.rowCountBefore !== observed.rowCountAfter) {
       failures.push(
         `row count changed ${observed.rowCountBefore} -> ${observed.rowCountAfter}`,
+      );
+    }
+  }
+  if (expect.denyOrMask !== undefined) {
+    if (observed.ok) {
+      const seen = new Set(observed.maskedColumns ?? []);
+      if (!seen.has(expect.denyOrMask.maskedColumn)) {
+        failures.push(
+          `allowed result does not mask '${expect.denyOrMask.maskedColumn}'`,
+        );
+      }
+    } else if (
+      observed.code === undefined ||
+      !expect.denyOrMask.codes.includes(observed.code as ErrorCode)
+    ) {
+      failures.push(
+        `denial code '${observed.code ?? "none"}' is not in [${expect.denyOrMask.codes.join(", ")}] and '${expect.denyOrMask.maskedColumn}' is not masked`,
+      );
+    } else if (observed.isError === false) {
+      failures.push("denial arrived as data (isError false), not a tool error");
+    }
+  }
+  if (expect.pgDenyCodes !== undefined) {
+    if (
+      observed.code === undefined ||
+      !expect.pgDenyCodes.includes(observed.code)
+    ) {
+      failures.push(
+        `pg denial code '${observed.code ?? "none"}' is not in [${expect.pgDenyCodes.join(", ")}]`,
       );
     }
   }
@@ -396,4 +540,120 @@ export function gradeGatewayCase(
   }
   const asserted = Object.keys(expect).length;
   return { pass: true, reason: `${asserted} expectation(s) hold` };
+}
+
+export interface AuditExpectation {
+  runId: string;
+  expectedLines: number;
+}
+
+/**
+ * Grade the audit tail for one gateway suite: every expected runId must
+ * own exactly its call count of lines, every attributed line must carry
+ * the full AuditRecord fields, and no attributed line may carry secret
+ * shapes. Lines from unattributed runIds (concurrent dev activity in the
+ * shared file) are ignored, never graded.
+ */
+export function gradeAuditLines(
+  newLines: string[],
+  perCase: AuditExpectation[],
+): { pass: boolean; reason: string } {
+  const failures: string[] = [];
+  const byRunId = new Map<string, Record<string, unknown>[]>();
+  newLines.forEach((line, index) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line) as unknown;
+    } catch {
+      failures.push(`audit line ${index} is not JSON`);
+      return;
+    }
+    if (!isRecord(parsed)) {
+      failures.push(`audit line ${index} is not an object`);
+      return;
+    }
+    if (typeof parsed["runId"] !== "string") {
+      failures.push(`audit line ${index} has no runId`);
+      return;
+    }
+    const bucket = byRunId.get(parsed["runId"] as string) ?? [];
+    bucket.push(parsed);
+    byRunId.set(parsed["runId"] as string, bucket);
+  });
+
+  const wanted = new Map(perCase.map((c) => [c.runId, c.expectedLines]));
+  for (const [runId, expectedLines] of wanted) {
+    const lines = byRunId.get(runId) ?? [];
+    if (lines.length !== expectedLines) {
+      failures.push(
+        `runId owns ${lines.length} audit line(s), expected ${expectedLines}`,
+      );
+      continue;
+    }
+    lines.forEach((record, lineIndex) => {
+      for (const field of [
+        "ts",
+        "runId",
+        "userId",
+        "role",
+        "clientId",
+        "tool",
+        "params",
+        "decision",
+      ] as const) {
+        if (
+          record[field] === undefined ||
+          record[field] === null ||
+          record[field] === ""
+        ) {
+          failures.push(
+            `audit line ${lineIndex} for a suite case misses '${field}'`,
+          );
+        }
+      }
+      if (!Array.isArray(record["scopes"])) {
+        failures.push(`audit line ${lineIndex} for a suite case misses scopes`);
+      }
+      if (
+        typeof record["rowCount"] !== "number" ||
+        typeof record["durationMs"] !== "number" ||
+        typeof record["piiHits"] !== "number"
+      ) {
+        failures.push(
+          `audit line ${lineIndex} for a suite case has non-numeric counters`,
+        );
+      }
+      if (record["decision"] !== "allow" && record["decision"] !== "deny") {
+        failures.push(
+          `audit line ${lineIndex} for a suite case has decision '${String(record["decision"])}'`,
+        );
+      }
+      if (
+        record["decision"] === "deny" &&
+        !isNonEmptyString(record["errorCode"])
+      ) {
+        failures.push(
+          `audit line ${lineIndex} for a suite case denies without errorCode`,
+        );
+      }
+    });
+  }
+
+  for (const [runId, lines] of byRunId) {
+    if (!wanted.has(runId)) continue;
+    lines.forEach((record, lineIndex) => {
+      const secret = assertNoSecretsInMessage(JSON.stringify(record));
+      if (!secret.pass) {
+        failures.push(`audit line ${lineIndex} for a suite case: ${secret.reason}`);
+      }
+    });
+  }
+
+  if (failures.length > 0) {
+    return { pass: false, reason: failures.join("; ") };
+  }
+  return {
+    pass: true,
+    reason: `${perCase.length} case(s) own exactly their audit line(s)`,
+  };
 }

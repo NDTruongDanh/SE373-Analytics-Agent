@@ -33,3 +33,12 @@ clients:
       - schema:read
       - data:read
       - data:sensitive
+  # Eval-only scope probe (issue #39, 02-01 Task 2 APPROVED): the single
+  # client carrying only schema:read, so the SCOPE_DENIED case proves the
+  # scope stage live. Token value lives in MCP_TOKEN_EVAL_SCOPE (local
+  # .env, CI secrets); every gateway boot fails closed when it is missing.
+  - clientId: eval_schema_only
+    role: eval_schema_only
+    tokenEnv: MCP_TOKEN_EVAL_SCOPE
+    scopes:
+      - schema:read

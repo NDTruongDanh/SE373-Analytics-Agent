@@ -123,6 +123,7 @@ jobs:
       MCP_TOKEN_MARKETING: ci-marketing-token
       MCP_TOKEN_HR: ci-hr-token
       MCP_TOKEN_ADMIN: ci-admin-token
+      MCP_TOKEN_EVAL_SCOPE: ci-eval-scope-token
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
