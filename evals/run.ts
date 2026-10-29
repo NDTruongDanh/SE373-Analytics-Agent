@@ -47,9 +47,13 @@ import { gradeExecution } from "./exGrader.js";
 import { compareRuns, type EvalResultsFile } from "./regression.js";
 import {
   gatewayStageFor,
+  gradeAnswerCase,
   gradeResubmitPair,
   gradeSafetyCase,
+  isAnswerLiveReady,
+  scrapeDeniedCode,
   validateSafetyRecord,
+  type AnswerObserved,
   type SafetyCase,
 } from "./safety.js";
 import {
@@ -85,6 +89,8 @@ export interface EvalCase {
 export interface HarnessOutcome {
   status: string;
   rows?: Record<string, unknown>[];
+  /** Agent answer text (tracer synthesis). Graded in memory only — never persisted raw. */
+  answerText?: string;
   reason?: string;
   ms: number;
   tokens: number;
@@ -341,10 +347,16 @@ export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
         ),
         150_000,
         `eval: case ${c.id} timed out after 150s`,
-      )) as { status?: string; resultPreview?: Record<string, unknown>[] };
+      )) as {
+        status?: string;
+        resultPreview?: Record<string, unknown>[];
+        answerText?: unknown;
+      };
       return {
         status: out.status ?? "error",
         rows: out.resultPreview ?? [],
+        answerText:
+          typeof out.answerText === "string" ? out.answerText : undefined,
         reason: out.status === "ok" || out.status === "no_data" ? undefined : `harness status '${out.status}'`,
         ms: Date.now() - t0,
         tokens: 0,
@@ -657,6 +669,71 @@ async function driveSafetyCase(
     observedBlockingLayer: "gateway:executor",
     status: result.status,
     code: result.status,
+  };
+}
+
+// Agent-answer safety leg (D-04, issue #39): the case question runs through
+// the real agent graph under the case role token (same buildRootGraph path
+// as the EX adapter), then rows plus answerText are graded in memory. Rows
+// plus answerText may carry PII when masking regresses, so they are graded
+// and dropped — never written to results, traces, or the console. Without
+// EVAL_USE_LIVE_MODEL=1 plus a model key the case reports not_wired
+// infra-skip: never a pass, never counted in pass-rate math.
+async function driveAnswerCase(
+  adapter: HarnessAdapter,
+  c: SafetyCase,
+): Promise<{
+  grade: { pass: boolean; reason: string; notWired: boolean };
+  observedBlockingLayer: string;
+  status: string;
+  blocked: boolean;
+  skipped: boolean;
+}> {
+  if (!isAnswerLiveReady(process.env)) {
+    const observed: AnswerObserved = {
+      status: "not_wired",
+      rows: [],
+      answerText: "",
+      wired: false,
+    };
+    return {
+      grade: gradeAnswerCase(c, observed),
+      observedBlockingLayer: "not_wired",
+      status: "not_wired",
+      blocked: false,
+      skipped: true,
+    };
+  }
+  const outcome = await adapter({
+    id: c.id,
+    question: c.question,
+    role: c.role,
+    datasetVersion: "safety-1",
+  });
+  const observed: AnswerObserved = {
+    status: outcome.status,
+    rows: outcome.rows ?? [],
+    answerText: outcome.answerText ?? "",
+    wired: outcome.wired !== false,
+  };
+  const grade = gradeAnswerCase(c, observed);
+  let observedBlockingLayer: string;
+  if (!grade.pass) {
+    observedBlockingLayer = "none-allowed";
+  } else if (observed.status === "error" || observed.status === "restricted") {
+    const text = `${outcome.reason ?? ""} ${observed.status}`;
+    const code = scrapeDeniedCode(text);
+    observedBlockingLayer =
+      code === undefined ? "gateway:executor" : gatewayStageFor(code, text);
+  } else {
+    observedBlockingLayer = "agent:answer";
+  }
+  return {
+    grade,
+    observedBlockingLayer,
+    status: observed.status,
+    blocked: grade.pass,
+    skipped: false,
   };
 }
 
@@ -1210,6 +1287,28 @@ async function main(): Promise<void> {
     const safety = loadSafety(repoRoot);
     const safetyOut: Record<string, unknown>[] = [];
     for (const s of safety) {
+      if ((s.mode ?? "scripted") === "answer") {
+        const leg = await driveAnswerCase(live.adapter, s);
+        safetyOut.push({
+          id: s.id,
+          attack: s.attack,
+          mode: "answer",
+          expectedBlockingLayer: s.expectedBlockingLayer,
+          observedBlockingLayer: leg.observedBlockingLayer,
+          expectBlocked: s.expectBlocked,
+          blocked: leg.blocked,
+          pass: leg.grade.pass,
+          reason: leg.grade.reason,
+          status: leg.status,
+          skipped: leg.skipped,
+          fix: s.fix,
+          notes: s.notes,
+        });
+        console.log(
+          `  safety ${s.id}: ${leg.skipped ? "SKIP (not_wired)" : leg.grade.pass ? "PASS" : "FAIL"} — ${leg.grade.reason} (expected ${s.expectedBlockingLayer})`,
+        );
+        continue;
+      }
       const resubmit = s.id === "safety-05-resubmit";
       const first = await driveSafetyCase(live.mcpUrl, s);
       let observed = first.observedBlockingLayer;
@@ -1249,10 +1348,18 @@ async function main(): Promise<void> {
       `${JSON.stringify({ datasetVersion: "safety-1", cases: safetyOut }, null, 2)}\n`,
       "utf8",
     );
+    const failedSafety = safetyOut.filter(
+      (s) => s["pass"] !== true && s["skipped"] !== true,
+    );
+    if (failedSafety.length > 0) failed = true;
     const passedCount = safetyOut.filter((s) => s["pass"] === true).length;
-    if (passedCount !== safetyOut.length) failed = true;
+    const skippedCount = safetyOut.filter((s) => s["skipped"] === true).length;
     console.log(
-      `eval safety: ${passedCount}/${safetyOut.length} cases pass (scripted attacks through the real executor plus gateway; any miss fails the run)`,
+      `eval safety: ${passedCount}/${safetyOut.length - skippedCount} cases pass` +
+        (skippedCount > 0
+          ? ` (${skippedCount} not_wired infra-skip, never a pass)`
+          : "") +
+        ` (scripted attacks through the real executor plus gateway, answers through the live graph; any miss fails the run)`,
     );
   } finally {
     await live.close();
