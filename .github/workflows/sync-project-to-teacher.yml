@@ -10,21 +10,17 @@ name: Sync project status to teacher board
 # so this keeps the teacher-visible board aligned instead: same issues,
 # same Status. Status is per (project, item), hence the need for a sync.
 #
-# Setup (one time):
-#   1. Create a PAT as a user with write access to BOTH projects:
-#      classic PAT scopes: `project` + `repo` (read), or fine-grained:
-#      Projects read+write on both owners + Issues read on NDTruongDanh.
-#   2. Save it as an Actions secret in THIS repo:
-#      Settings -> Secrets and variables -> Actions -> New repository secret
-#      Name: PROJECT_SYNC_TOKEN
-#   3. Run manually once: Actions -> "Sync project status to teacher board"
-#      -> Run workflow, then verify project 32 shows the 23 issues with
-#      matching Status (Todo / In Progress / Done; source "In Review"
-#      maps to target "In Progress", which has no In Review option).
+# Setup: reuses the existing TEACHER_SYNC_TOKEN secret (classic PAT with
+# repo + workflow + project scopes, same token as sync-to-teacher.yml).
+# No new secret needed. Run manually once: Actions
+# -> "Sync project status to teacher board" -> Run workflow, then verify
+# project 32 shows the 23 issues with matching Status (Todo / In Progress /
+# Done; source "In Review" maps to target "In Progress", which has no
+# In Review option).
 #
 # Notes:
 #   - Never deletes items from the target board, only adds + updates Status.
-#   - Uses PROJECT_SYNC_TOKEN, not GITHUB_TOKEN (cross-owner Projects
+#   - Uses TEACHER_SYNC_TOKEN, not GITHUB_TOKEN (cross-owner Projects
 #     writes are not reliable with GITHUB_TOKEN).
 
 on:
@@ -64,21 +60,21 @@ jobs:
 
       - name: Verify project token
         env:
-          PROJECT_SYNC_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN }}
+          TEACHER_SYNC_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
         run: |
-          if [ -z "$PROJECT_SYNC_TOKEN" ]; then
-            echo "::error::Missing PROJECT_SYNC_TOKEN secret. See workflow header for setup."
+          if [ -z "$TEACHER_SYNC_TOKEN" ]; then
+            echo "::error::Missing TEACHER_SYNC_TOKEN secret. See workflow header for setup."
             exit 1
           fi
 
       - name: Sync project status (dry run)
         if: ${{ inputs.dry_run }}
         env:
-          PROJECT_SYNC_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN }}
+          TEACHER_SYNC_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
         run: node scripts/sync-project-status.mjs
 
       - name: Sync project status (apply)
         if: ${{ !inputs.dry_run }}
         env:
-          PROJECT_SYNC_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN }}
+          TEACHER_SYNC_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
         run: node scripts/sync-project-status.mjs --apply

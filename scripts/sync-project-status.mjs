@@ -18,12 +18,12 @@
 //   node scripts/sync-project-status.mjs --apply   # perform adds + status updates
 //
 // Auth (first non-empty wins):
-//   PROJECT_SYNC_TOKEN, GH_TOKEN, GITHUB_TOKEN
+//   TEACHER_SYNC_TOKEN, PROJECT_SYNC_TOKEN, GH_TOKEN, GITHUB_TOKEN
 // The token needs `project` scope (classic PAT) or Projects read+write
 // (fine-grained) plus repo read for the source issues. GITHUB_TOKEN from
 // Actions cannot be relied on for cross-owner Projects writes, so the
-// workflow uses a PAT stored as the PROJECT_SYNC_TOKEN secret (same pattern
-// as TEACHER_SYNC_TOKEN in sync-to-teacher.yml).
+// workflow uses the existing TEACHER_SYNC_TOKEN secret (classic PAT with
+// repo + workflow + project scopes, shared with sync-to-teacher.yml).
 //
 // Exit 0 on success (including dry-run with pending changes), 1 on API/config errors.
 
@@ -50,13 +50,14 @@ const APPLY = process.argv.includes("--apply");
 
 function token() {
   const t =
+    process.env.TEACHER_SYNC_TOKEN ||
     process.env.PROJECT_SYNC_TOKEN ||
     process.env.GH_TOKEN ||
     process.env.GITHUB_TOKEN ||
     "";
   if (!t) {
     console.error(
-      "Missing token: set PROJECT_SYNC_TOKEN (preferred), GH_TOKEN, or GITHUB_TOKEN.",
+      "Missing token: set TEACHER_SYNC_TOKEN (preferred), PROJECT_SYNC_TOKEN, GH_TOKEN, or GITHUB_TOKEN.",
     );
     process.exit(1);
   }
