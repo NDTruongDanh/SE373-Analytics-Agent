@@ -120,9 +120,12 @@ jobs:
         # direct merge with --admin bypasses the 1 code-owner review that
         # `gh pr merge --auto` would wait on forever. The PR is restricted to
         # docs paths via add-paths above, so human code PRs are unaffected.
+        # NOTE: use --merge because the repo only allows merge commits and
+        # rebase merges (squash is disabled in repo settings). --squash fails
+        # with "Squash merges are not allowed on this repository".
         run: |
           [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
-          gh pr merge --squash --admin --delete-branch "$PR_NUMBER"
+          gh pr merge --merge --admin --delete-branch "$PR_NUMBER"
         env:
           GH_TOKEN: ${{ secrets.OPENWIKI_PR_TOKEN }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
