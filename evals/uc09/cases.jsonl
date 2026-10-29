@@ -1,0 +1,1 @@
+{"id":"uc09-valid-describe-table","group":"valid","tool":"describe_table","params":{"table":"customers"},"auth":{"role":"sales_south"},"expect":{"ok":true,"outputSchemaValid":true},"notes":"UC09.md B.1 Hop-le: describe_table voi scope du -> ok, dung outputSchema"}
