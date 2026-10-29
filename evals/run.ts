@@ -52,6 +52,12 @@ import {
   validateSafetyRecord,
   type SafetyCase,
 } from "./safety.js";
+import {
+  gradeGatewayCase,
+  validateGatewayRecord,
+  type GatewayCase,
+  type GatewayObserved,
+} from "./gateway.js";
 
 export { gradeExecution } from "./exGrader.js";
 export { compareRuns } from "./regression.js";
@@ -651,6 +657,165 @@ async function driveSafetyCase(
   };
 }
 
+// Direct-MCP gateway driver (UC-09 D-02, issue #39): one tool call per case
+// over the live gateway child booted by buildLiveAdapter, graded by the
+// pure helpers in gateway.ts. Results merge with the untouched EX path into
+// the same EvalResultsFile envelope under a constant datasetVersion so
+// `pnpm eval --compare` keeps working across Run 1 vs Run 2.
+
+/** Gateway-suite dataset version: constant across runs (compare-compatible). */
+export const GATEWAY_DATASET_VERSION = "uc09-gateway-1";
+
+/** Per-case ceiling: gateway calls are milliseconds except the slow probe. */
+const GATEWAY_CASE_TIMEOUT_MS = 60_000;
+
+/** Strict load of the direct-MCP records for one UC dir. */
+export function loadGatewayCases(repoRoot: string, uc: string): GatewayCase[] {
+  const file = path.join(repoRoot, "evals", uc, "cases.jsonl");
+  return readFileSync(file, "utf8")
+    .trim()
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line, index) => {
+      const checked = validateGatewayRecord(JSON.parse(line) as unknown);
+      if (!checked.ok || !checked.value) {
+        throw new Error(
+          `invalid gateway case ${uc} line ${index + 1}: ${checked.errors?.join("; ")}`,
+        );
+      }
+      return checked.value;
+    });
+}
+
+function observedFromPayload(
+  parsed: unknown,
+  isError: boolean | undefined,
+  httpStatus: number,
+): GatewayObserved {
+  if (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "code" in parsed &&
+    typeof (parsed as { code: unknown }).code === "string"
+  ) {
+    const denied = parsed as { code: string; message?: unknown };
+    return {
+      ok: false,
+      httpStatus,
+      code: denied.code,
+      message:
+        typeof denied.message === "string" ? denied.message : "denied",
+      isError,
+    };
+  }
+  const record = (parsed ?? {}) as Record<string, unknown>;
+  return {
+    ok: true,
+    httpStatus,
+    data: parsed,
+    rows: Array.isArray(record["rows"])
+      ? (record["rows"] as Record<string, unknown>[])
+      : undefined,
+    truncated:
+      typeof record["truncated"] === "boolean"
+        ? (record["truncated"] as boolean)
+        : undefined,
+    maskedColumns: Array.isArray(record["maskedColumns"])
+      ? (record["maskedColumns"] as string[])
+      : undefined,
+    message: "",
+  };
+}
+
+/** Drive one gateway case through callMcpTool (authed legs only). */
+async function driveGatewayCase(
+  mcpUrl: string,
+  c: GatewayCase,
+): Promise<GatewayObserved> {
+  if (!("role" in c.auth) || typeof c.auth.role !== "string") {
+    throw new Error(
+      `gateway case ${c.id}: no-or-bad-token legs land in Task 3 — refusing to guess a token`,
+    );
+  }
+  const role = c.auth.role;
+  const tokenEnv = ROLE_TOKEN_ENV[role];
+  if (!tokenEnv) {
+    throw new Error(`unknown gateway role '${role}' for case ${c.id}`);
+  }
+  const token = process.env[tokenEnv] ?? "";
+  if (!token) {
+    throw new Error(`eval: ${tokenEnv} is not set for gateway case ${c.id}`);
+  }
+  const runId = randomUUID();
+  const result = await withTimeout(
+    callMcpTool(
+      { mcpUrl, token, runId, userId: role, roleScope: role },
+      c.tool,
+      c.params,
+    ),
+    GATEWAY_CASE_TIMEOUT_MS,
+    `eval: gateway case ${c.id} timed out after ${GATEWAY_CASE_TIMEOUT_MS}ms`,
+  );
+  return observedFromPayload(
+    JSON.parse(result.text) as unknown,
+    result.isError,
+    200,
+  );
+}
+
+/** Drive every gateway case, grading each into the shared GradedCase shape. */
+export async function driveGatewaySuite(
+  mcpUrl: string,
+  cases: GatewayCase[],
+): Promise<GradedCase[]> {
+  const graded: GradedCase[] = [];
+  for (const c of cases) {
+    const t0 = Date.now();
+    try {
+      const observed = await driveGatewayCase(mcpUrl, c);
+      const grade = gradeGatewayCase(c, observed);
+      graded.push({
+        id: c.id,
+        status: observed.ok ? "ok" : "error",
+        exPass: grade.pass,
+        ms: Date.now() - t0,
+        tokens: 0,
+        ...(grade.pass ? {} : { note: grade.reason }),
+      });
+    } catch (error) {
+      graded.push({
+        id: c.id,
+        status: "error",
+        exPass: false,
+        ms: Date.now() - t0,
+        tokens: 0,
+        note: `driver error: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+  return graded;
+}
+
+/** Merge EX results with gateway results under the constant version. */
+export function mergeGatewayResults(
+  exResults: EvalResultsFile,
+  gatewayGraded: GradedCase[],
+): EvalResultsFile {
+  const merged = [...exResults.cases, ...gatewayGraded];
+  const passed = merged.filter((g) => g.exPass).length;
+  return {
+    datasetVersion: GATEWAY_DATASET_VERSION,
+    cases: merged,
+    summary: {
+      total: merged.length,
+      passed,
+      exRate: merged.length === 0 ? 0 : passed / merged.length,
+      avgMs: 0,
+      avgTokens: 0,
+    },
+  };
+}
+
 async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const args = process.argv.slice(2);
@@ -695,6 +860,29 @@ async function main(): Promise<void> {
   try {
     for (const uc of ucs) {
       const cases = loadUcCases(repoRoot, uc);
+      const gatewayFile = path.join(repoRoot, "evals", uc, "cases.jsonl");
+      if (existsSync(gatewayFile)) {
+        // UC-09 dispatch (D-02): gateway records drive direct-MCP; the EX
+        // path for *.json cases (tracer-01) keeps working in the same run
+        // and both merge into one compare-compatible envelope.
+        const gatewayCases = loadGatewayCases(repoRoot, uc);
+        const exResults = await runEval(cases, live.adapter);
+        const gatewayGraded = await driveGatewaySuite(
+          live.mcpUrl,
+          gatewayCases,
+        );
+        const results = mergeGatewayResults(exResults, gatewayGraded);
+        writeFileSync(
+          path.join(repoRoot, "results", `${uc}.json`),
+          `${JSON.stringify({ uc, ...results }, null, 2)}\n`,
+          "utf8",
+        );
+        if (results.summary.passed !== results.summary.total) failed = true;
+        console.log(
+          `eval ${uc}: ${results.summary.passed}/${results.summary.total} EX pass (dataset ${results.datasetVersion}, live harness + gateway driver)`,
+        );
+        continue;
+      }
       const results = await runEval(cases, live.adapter);
       if (cases.length > 0 && results.datasetVersion !== cases[0].datasetVersion) {
         throw new Error(`datasetVersion drift inside ${uc}`);
