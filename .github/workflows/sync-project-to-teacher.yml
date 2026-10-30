@@ -1,0 +1,80 @@
+name: Sync project status to teacher board
+
+# One-way sync of item membership + Status:
+#   source (truth): NDTruongDanh/projects/3 ("SE373 Member Tasks")
+#   mirror:         se373agenticengineering/projects/32 ("Nhóm 32 — Analytics Agent"),
+#                   the project linked to se373agenticengineering/nhom-32
+#
+# GitHub forbids linking a user-owned project to an org-owned repo
+# ("Only projects owned by the same owner as the repository can be linked"),
+# so this keeps the teacher-visible board aligned instead: same issues,
+# same Status. Status is per (project, item), hence the need for a sync.
+#
+# Setup: reuses the existing TEACHER_SYNC_TOKEN secret (classic PAT with
+# repo + workflow + project scopes, same token as sync-to-teacher.yml).
+# No new secret needed. Run manually once: Actions
+# -> "Sync project status to teacher board" -> Run workflow, then verify
+# project 32 shows the 23 issues with matching Status (Todo / In Progress /
+# Done; source "In Review" maps to target "In Progress", which has no
+# In Review option).
+#
+# Notes:
+#   - Never deletes items from the target board, only adds + updates Status.
+#   - Uses TEACHER_SYNC_TOKEN, not GITHUB_TOKEN (cross-owner Projects
+#     writes are not reliable with GITHUB_TOKEN).
+
+on:
+  schedule:
+    # 07:00 + 19:00 ICT (Vietnam) = 00:00 + 12:00 UTC.
+    - cron: "0 0,12 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (read-only, no adds/updates)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-project-status
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out team repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: Verify project token
+        env:
+          TEACHER_SYNC_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
+        run: |
+          if [ -z "$TEACHER_SYNC_TOKEN" ]; then
+            echo "::error::Missing TEACHER_SYNC_TOKEN secret. See workflow header for setup."
+            exit 1
+          fi
+
+      - name: Sync project status (dry run)
+        if: ${{ inputs.dry_run }}
+        env:
+          TEACHER_SYNC_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
+        run: node scripts/sync-project-status.mjs
+
+      - name: Sync project status (apply)
+        if: ${{ !inputs.dry_run }}
+        env:
+          TEACHER_SYNC_TOKEN: ${{ secrets.TEACHER_SYNC_TOKEN }}
+        run: node scripts/sync-project-status.mjs --apply
