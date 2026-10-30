@@ -48,8 +48,13 @@ import {
 import { initAudit } from "./audit.js";
 import { TOOL_SPECS } from "./tools.js";
 import { warmupSqlGuard } from "@shared/access-policy";
-import { hybridSearch } from "./semantic/retriever.js";
+import { hybridSearch, resetSemanticCache } from "./semantic/retriever.js";
 import { selectEmbedderFromEnv } from "./semantic/embedder.js";
+import {
+  discoverDefaultFiles,
+  indexCorpus,
+  type IndexCounts,
+} from "./semantic/index.js";
 
 export interface GatewayAppOptions {
   clientsYaml?: string;
@@ -61,6 +66,7 @@ export interface GatewayAppOptions {
   catalogOverride?: BuiltCatalog;
   search?: SearchFn;
   documents?: ResourceDocument[];
+  reindex?: () => Promise<IndexCounts>;
 }
 
 const DEFAULT_CLIENTS_PATH = path.resolve("policies/mcp_clients.yaml");
@@ -273,6 +279,51 @@ export async function createGatewayApp(
   });
   app.get("/mcp", (_req: Request, res: Response) => {
     res.status(405).json(dbToolError("INVALID_PARAMS", "use POST /mcp"));
+  });
+
+  app.post("/reindex", async (req: Request, res: Response) => {
+    const auth = authenticateRequest(
+      req.headers as Record<string, string | string[] | undefined>,
+      clients,
+    );
+    if ("error" in auth) {
+      res.status(401).json(auth.error);
+      return;
+    }
+    if (auth.auth.principal.role !== "admin") {
+      res
+        .status(403)
+        .json(
+          dbToolError(
+            "SCOPE_DENIED",
+            "only admin may trigger semantic re-indexing",
+          ),
+        );
+      return;
+    }
+    try {
+      const counts = options.reindex
+        ? await options.reindex()
+        : await indexCorpus({
+            dbUrl:
+              process.env["INDEXER_DATABASE_URL"] ??
+              process.env["DATABASE_URL"] ??
+              "",
+            embedder: selectEmbedderFromEnv().embedder,
+            files: discoverDefaultFiles(),
+          });
+      resetSemanticCache();
+      res.status(200).json(counts);
+    } catch (error) {
+      res
+        .status(500)
+        .json(
+          dbToolError(
+            "INTERNAL_ERROR",
+            error instanceof Error ? error.message : "semantic re-index failed",
+          ),
+        );
+    }
   });
 
   return app;

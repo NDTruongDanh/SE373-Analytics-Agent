@@ -5,10 +5,11 @@
 // chunks skipped). Operator-run via tsx against this module directly — no
 // new package script. Writes as the indexer role over INDEXER_DATABASE_URL.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Pool } from "pg";
+import { parse as parseYaml } from "yaml";
 import { selectEmbedderFromEnv, type Embedder } from "./embedder.js";
 
 export interface CorpusFile {
@@ -101,6 +102,130 @@ export function chunkMarkdown(
   return chunks.filter((entry) => entry.content.length > 0);
 }
 
+// YAML chunker: parses YAML array/object entries into ParsedChunk[].
+export function chunkYaml(
+  source: string,
+  text: string,
+  docType: string,
+): ParsedChunk[] {
+  let data: unknown;
+  try {
+    data = parseYaml(text);
+  } catch {
+    return [];
+  }
+  let entries: unknown[];
+  if (Array.isArray(data)) {
+    entries = data;
+  } else if (data !== null && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (Array.isArray(obj["chunks"])) {
+      entries = obj["chunks"] as unknown[];
+    } else if (
+      obj["content"] !== undefined ||
+      obj["body"] !== undefined ||
+      obj["text"] !== undefined ||
+      obj["description"] !== undefined ||
+      obj["chunk_id"] !== undefined ||
+      obj["chunkId"] !== undefined ||
+      obj["id"] !== undefined
+    ) {
+      entries = [obj];
+    } else {
+      const values = Object.values(obj);
+      if (
+        values.length > 0 &&
+        values.every((value) => typeof value === "object" && value !== null)
+      ) {
+        entries = values;
+      } else {
+        entries = [obj];
+      }
+    }
+  } else {
+    return [];
+  }
+  const chunks: ParsedChunk[] = [];
+  entries.forEach((entry, index) => {
+    if (entry === null || typeof entry !== "object") return;
+    const record = entry as Record<string, unknown>;
+    const rawTables = record["tables"];
+    let tables: string[] = [];
+    if (Array.isArray(rawTables)) {
+      tables = (rawTables as unknown[])
+        .map((value) => String(value).trim())
+        .filter((value) => value.length > 0);
+    } else if (typeof rawTables === "string" && rawTables.trim()) {
+      tables = rawTables
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+    }
+    const rawAliases = record["aliases"];
+    let aliases: string[] = [];
+    if (Array.isArray(rawAliases)) {
+      aliases = (rawAliases as unknown[])
+        .map((value) => String(value).trim())
+        .filter((value) => value.length > 0);
+    } else if (typeof rawAliases === "string" && rawAliases.trim()) {
+      aliases = rawAliases
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+    }
+    let table: string | null = null;
+    if (typeof record["table"] === "string" && (record["table"] as string).trim()) {
+      table = (record["table"] as string).trim();
+    }
+    if (table === null && tables.length === 1) table = tables[0] as string;
+    if (tables.length === 0 && table !== null) tables = [table];
+    const metricRaw =
+      record["metricName"] ?? record["metric_name"] ?? record["metric"];
+    let metricName: string | null = null;
+    if (typeof metricRaw === "string" && metricRaw.trim()) {
+      metricName = metricRaw.trim();
+    }
+    const idRaw = record["chunkId"] ?? record["chunk_id"] ?? record["id"];
+    let chunkId: string;
+    if (typeof idRaw === "string" && idRaw.trim()) {
+      chunkId = idRaw.trim();
+    } else {
+      const titleRaw =
+        record["title"] ?? record["name"] ?? metricName ?? table ?? `chunk-${index}`;
+      chunkId = `${source}:${slug(String(titleRaw))}`;
+    }
+    const docTypeRaw = record["docType"] ?? record["doc_type"] ?? docType;
+    const sensitivityRaw =
+      typeof record["sensitivity"] === "string"
+        ? (record["sensitivity"] as string)
+        : "public";
+    const contentRaw =
+      record["content"] ??
+      record["body"] ??
+      record["description"] ??
+      record["text"] ??
+      "";
+    const content = String(contentRaw).trim();
+    if (!content) return;
+    chunks.push({
+      chunkId,
+      docType: String(docTypeRaw),
+      table,
+      tables,
+      metricName,
+      aliases,
+      sensitivity:
+        sensitivityRaw === "restricted_pii"
+          ? "restricted_pii"
+          : sensitivityRaw === "internal"
+            ? "internal"
+            : "public",
+      content,
+    });
+  });
+  return chunks;
+}
+
 export function contentHash(chunk: ParsedChunk): string {
   const canonical = JSON.stringify({
     chunkId: chunk.chunkId,
@@ -119,6 +244,7 @@ export interface IndexCounts {
   added: number;
   updated: number;
   skipped: number;
+  deleted: number;
 }
 
 export async function indexCorpus(options: {
@@ -132,7 +258,11 @@ export async function indexCorpus(options: {
     for (const file of options.files) {
       const text = readFileSync(file.path, "utf8");
       const source = path.basename(file.path, path.extname(file.path));
-      chunks.push(...chunkMarkdown(source, text, file.docType));
+      if (file.path.endsWith(".yaml") || file.path.endsWith(".yml")) {
+        chunks.push(...chunkYaml(source, text, file.docType));
+      } else {
+        chunks.push(...chunkMarkdown(source, text, file.docType));
+      }
     }
     const existing = await pool.query(
       "SELECT chunk_id, content_hash FROM semantic.semantic_chunks",
@@ -141,7 +271,15 @@ export async function indexCorpus(options: {
     for (const row of existing.rows) {
       known.set(String(row["chunk_id"]), String(row["content_hash"]));
     }
-    const counts: IndexCounts = { added: 0, updated: 0, skipped: 0 };
+    const counts: IndexCounts = { added: 0, updated: 0, skipped: 0, deleted: 0 };
+    const currentIds = new Set(chunks.map((chunk) => chunk.chunkId));
+    const toDelete = [...known.keys()].filter((id) => !currentIds.has(id));
+    if (toDelete.length > 0) {
+      await pool.query(`DELETE FROM semantic.semantic_chunks WHERE chunk_id = ANY($1)`, [
+        toDelete,
+      ]);
+      counts.deleted = toDelete.length;
+    }
     const dirty = chunks.filter((chunk) => known.get(chunk.chunkId) !== contentHash(chunk));
     const vectors = await options.embedder.embed(dirty.map((chunk) => chunk.content));
     for (let index = 0; index < dirty.length; index++) {
@@ -191,6 +329,36 @@ const DEFAULT_FILES: CorpusFile[] = [
   { path: path.resolve("semantic/metrics.md"), docType: "metric" },
 ];
 
+function inferDocType(fileBase: string, fallback: string): string {
+  const lower = fileBase.toLowerCase();
+  if (lower.includes("join")) return "join_rule";
+  if (lower.includes("table")) return "table";
+  if (lower.includes("column")) return "column";
+  if (lower.includes("metric")) return "metric";
+  if (lower.includes("example")) return "example";
+  if (lower.includes("event")) return "event";
+  return fallback;
+}
+
+export function discoverDefaultFiles(): CorpusFile[] {
+  const files: CorpusFile[] = [...DEFAULT_FILES];
+  try {
+    const dir = path.resolve("semantic");
+    if (!existsSync(dir)) return files;
+    const entries = readdirSync(dir);
+    for (const entry of entries) {
+      if (!(entry.endsWith(".yaml") || entry.endsWith(".yml"))) continue;
+      const full = path.resolve("semantic", entry);
+      if (files.some((file) => file.path === full)) continue;
+      const base = path.basename(entry, path.extname(entry));
+      files.push({ path: full, docType: inferDocType(base, "metric") });
+    }
+  } catch {
+    // Ignore filesystem errors; fall back to DEFAULT_FILES.
+  }
+  return files;
+}
+
 if (
   process.argv[1] !== undefined &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
@@ -205,9 +373,9 @@ if (
   const counts = await indexCorpus({
     dbUrl,
     embedder: selection.embedder,
-    files: DEFAULT_FILES,
+    files: discoverDefaultFiles(),
   });
   console.log(
-    `[semantic-index] added=${counts.added} updated=${counts.updated} skipped=${counts.skipped}`,
+    `[semantic-index] added=${counts.added} updated=${counts.updated} skipped=${counts.skipped} deleted=${counts.deleted}`,
   );
 }
