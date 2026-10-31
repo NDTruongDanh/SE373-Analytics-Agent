@@ -14,6 +14,7 @@ import {
   registerUC,
 } from "../src/subgraphs/registry.js";
 import { UC01_ID } from "../src/subgraphs/uc01.js";
+import type { ExecutorRunInput } from "../src/queryExecutor/executor.js";
 
 // AGENT-01 seam tests (01-10): FakeListChatModel doubles plus stubbed
 // retrieve and UC handlers injected through RootGraphDeps — no API key and
@@ -272,7 +273,7 @@ describe("root graph seam", () => {
 
   it("runs UC-01 intent extraction, skill tracing, and the injected executor", async () => {
     const spans: { node: string; type: string }[] = [];
-    const runs: unknown[] = [];
+    const runs: ExecutorRunInput[] = [];
     const graph = buildRootGraph({
       emitSpan: ({ node, type }) => {
         spans.push({ node, type });
@@ -332,6 +333,7 @@ describe("root graph seam", () => {
       expect.objectContaining({
         candidateTables: ["orders"],
         principal: { runId: "run-uc01", userId: "user-uc01", roleScope: "sales_south" },
+        budget: expect.objectContaining({ llmCalls: 1 }),
       }),
     ]);
     expect(spans).toContainEqual({ node: "skills", type: "skill_call" });

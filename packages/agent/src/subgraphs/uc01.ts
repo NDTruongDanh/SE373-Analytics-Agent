@@ -1,10 +1,15 @@
+import { dbToolError, type DbToolError } from "@shared/contracts";
 import * as z from "zod";
 import { createChatModel, withStructured } from "../models/factory.js";
-import { checkBudget, createBudgetState } from "../queryExecutor/budgets.js";
+import { checkBudget, createBudgetState, type BudgetState } from "../queryExecutor/budgets.js";
 import {
+  ValidatedQueryExecutor,
+  type ChatModelLike,
   type ExecutorResult,
   type ExecutorRunInput,
+  type McpToolCaller,
 } from "../queryExecutor/executor.js";
+import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import { loadSkill } from "../skills/loader.js";
 import {
   IntentSchema,
@@ -37,6 +42,8 @@ export interface Uc01ExecutorLike {
 
 export interface Uc01RuntimeDeps {
   intentModel?: IntentModelLike;
+  /** SQL model seam; omitted in production to use the configured profile. */
+  sqlModel?: ChatModelLike;
   executor?: Uc01ExecutorLike;
 }
 
@@ -77,6 +84,67 @@ function configuredIdentity(rt: RootRuntime): {
   const userId = read("userId");
   const roleScope = read("roleScope");
   return runId && userId && roleScope ? { runId, userId, roleScope } : null;
+}
+
+function configuredTransport(rt: RootRuntime): TracerRunConfig | null {
+  const config = (rt.config.configurable ?? {}) as Record<string, unknown>;
+  const read = (key: string): string | null => {
+    const value = config[key];
+    return typeof value === "string" && value.length > 0 ? value : null;
+  };
+  const mcpUrl = read("mcpUrl");
+  const token = read("token");
+  const runId = read("runId");
+  const userId = read("userId");
+  const roleScope = read("roleScope");
+  return mcpUrl && token && runId && userId && roleScope
+    ? { mcpUrl, token, runId, userId, roleScope }
+    : null;
+}
+
+function asMcpFailure(tool: string, text: string): DbToolError {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "code" in parsed &&
+      typeof (parsed as { code: unknown }).code === "string" &&
+      "message" in parsed &&
+      typeof (parsed as { message: unknown }).message === "string"
+    ) {
+      return parsed as DbToolError;
+    }
+  } catch {
+    // A malformed gateway failure is deliberately normalized below.
+  }
+  return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${text.slice(0, 200)}`);
+}
+
+/** MCP adapter for the shared executor. Identity stays in transport headers. */
+function createRuntimeMcpCaller(config: TracerRunConfig): McpToolCaller {
+  return {
+    call: async (tool, args) => {
+      const toolArgs = { ...args };
+      delete toolArgs.runId;
+      delete toolArgs.userId;
+      delete toolArgs.roleScope;
+      const result = await callMcpTool(config, tool, toolArgs);
+      if (result.isError) throw asMcpFailure(tool, result.text);
+      try {
+        return JSON.parse(result.text) as unknown;
+      } catch {
+        throw dbToolError(
+          "INTERNAL_ERROR",
+          `MCP tool ${tool} returned invalid JSON`,
+        );
+      }
+    },
+  };
+}
+
+function estimateTokens(...texts: string[]): number {
+  return Math.max(1, Math.ceil(texts.join("").length / 4));
 }
 
 function intentPrompt(question: string, skillContract: string): string {
@@ -153,7 +221,10 @@ export function createUc01Runtime(deps: Uc01RuntimeDeps = {}): {
           name: "intent_proposal",
         }).invoke(prompt);
     const intent = IntentProposalSchema.parse(proposal);
-    return { intent, budget: { llmCalls: 1 } };
+    return {
+      intent,
+      budget: { llmCalls: 1, tokensUsed: estimateTokens(prompt, JSON.stringify(intent)) },
+    };
   };
 
   const entry: UcEntryHandler = async (
@@ -166,10 +237,11 @@ export function createUc01Runtime(deps: Uc01RuntimeDeps = {}): {
         answerText: "Definition lookup is not configured for UC-01 yet.",
       };
     }
-    if (!deps.executor) {
+    const transport = deps.executor ? null : configuredTransport(rt);
+    if (!deps.executor && !transport) {
       return {
         status: "error",
-        answerText: "UC-01 query executor is not configured.",
+        answerText: "UC-01 MCP transport identity is incomplete.",
       };
     }
     const identity = configuredIdentity(rt);
@@ -188,13 +260,52 @@ export function createUc01Runtime(deps: Uc01RuntimeDeps = {}): {
         answerText: "No candidate data tables were identified for this question.",
       };
     }
-    return updateFromExecutor(
-      await deps.executor.run({
-        question: state.question,
-        candidateTables,
-        principal: identity,
-      }),
-    );
+    const executor =
+      deps.executor ??
+      new ValidatedQueryExecutor({
+        model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
+        mcp: createRuntimeMcpCaller(transport!),
+        emitSpan: (event) =>
+          rt.emit({
+            node: event.node,
+            type: event.type,
+            durationMs: event.durationMs ?? 0,
+            payload: event.payload,
+            attempt: event.attempt,
+          }),
+      });
+    const budget: BudgetState = {
+      llmCalls: state.budget.llmCalls,
+      tokensUsed: state.budget.tokensUsed,
+      deadlineMs: state.budget.deadlineMs,
+      maxLlmCalls: state.budget.maxLlmCalls,
+      maxTokens: state.budget.maxTokens,
+    };
+    const result = await executor.run({
+      question: state.question,
+      candidateTables,
+      principal: identity,
+      budget,
+    });
+    const update = updateFromExecutor(result);
+    return {
+      ...update,
+      ...(result.status === "ok" || result.status === "no_data"
+        ? {
+            toolsCalled: [
+              ...state.toolsCalled,
+              "describe_table",
+              "explain_query",
+              "run_query",
+            ],
+          }
+        : {}),
+      budget: {
+        llmCalls: budget.llmCalls - state.budget.llmCalls,
+        tokensUsed: budget.tokensUsed - state.budget.tokensUsed,
+        deadlineMs: budget.deadlineMs,
+      },
+    };
   };
 
   return { understand, entry };

@@ -103,9 +103,9 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   for (const [id, handler] of Object.entries(deps.ucHandlers ?? {})) {
     overlay.set(id, handler);
   }
-  if (deps.uc01) {
-    overlay.set(UC01_ID, uc01.entry);
-  }
+  // Always prefer the per-graph runtime over the import-time registry entry:
+  // production transport and trace dependencies are only available at run time.
+  overlay.set(UC01_ID, uc01.entry);
   if (!overlay.has(DEFAULT_ROUTE_ID)) {
     throw new Error(
       `root graph requires a '${DEFAULT_ROUTE_ID}' default route (registry or deps.ucHandlers)`,
