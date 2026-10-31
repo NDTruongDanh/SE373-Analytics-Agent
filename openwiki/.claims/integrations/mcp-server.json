@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ec0a1d85dd702eaf52f0b5d3d3c8e0fa256fecafaa6279dd65d8567453937073",
+  "pageVersion": "sha256:17394c142d011865f945b1c4e57792887a4757e8e98b7ddd6af8ffb8305b955d",
   "claims": [
     {
       "id": "claim_9c1fc350f353418b8d9d22eb711ef8c4",
@@ -51,7 +51,7 @@
           "version": "repo-lines-v1:sha256:e7becc345530ef8039fee215459a81cddbb828e0b68812bba1e9fb9853d4d0d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMWYxZjQ0MjFjMDg3NDUzOTE2YTdmMzYyZTRkMzI5MjQzMmY5Y2FlN2YyNzBhYTI1MDQxZDhlM2NmMjdjMjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3MzFhZGNlNjY2NzhhYmJmNGIxNmJhNDI4MjQ0NmM4ZTdjNTExZTM1ODliZDk5NzIwYTA5ODA2MTkzZjE2ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MWVkZmJiOGM5YTVlNzUxYzZhM2U1ODQ3OWQ1M2VlYjJlY2YyZWFkMjQxZDAyZWY5MGQwMDNiYjUxOTkyZTUifQ"
         },
         {
-          "resource": "repo://packages/mcp-server/src/server.ts#L199-L242",
+          "resource": "repo://packages/mcp-server/src/server.ts#L205-L248",
           "version": "repo-lines-v1:sha256:18caf391c9472127700a72882b7ae36e3e61eea88b1b634382ff33aefdb56df7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5OTE2MGY2ZWZkYTViNDk1NDFmNjUyZWZlNTNjYjZmMzIyMDY4ODYzMThkNGJhMDcyMDk1M2MwYzAzMGE5ODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmYTdmNDA4MWRlMzU1YzM5MmIwYzFkOTZjMTdiYzQ0MTg3ZDllOTlmZTMzMWFiN2FlYWI3NmNhZTc1Njg5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3NGIxMzViZjJhNmYwNzJlZGM5MDJlNGZkZDU5NTNlN2IyY2E5ZTZhNzAxNTYyZjQ4NjkwNmE0NGZjYjA1ZTEifQ"
         }
       ]
@@ -69,7 +69,7 @@
           "version": "repo-lines-v1:sha256:568e6882ef9f98892d564138048d28f23a2dd043fe5d04c52fd92a87ab89b16d:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjAyZGE2NzljN2IxZmY3MWVjMDY1NjdlMjdlMGI2MGEwYTY0ODVlYTQyOTg0YmY0Mjg5NzZiNzdjNjlkMDA3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjg4ZjU0N2FhNjJlN2YzODVlNDNjNTg4ZjZlZDYxMTYxZjNmMmZiZjJlZmU2NzNkNGNlM2E0YjdiZWM4NTdlYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
-          "resource": "repo://packages/mcp-server/src/server.ts#L254-L263",
+          "resource": "repo://packages/mcp-server/src/server.ts#L260-L269",
           "version": "repo-lines-v1:sha256:2fcbdd2230955c6e2c952346d67e51f9549ba8aa00be3bace579eac2662b7303:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlZTliZmVjNDQxYWY2OGMwZjBiY2U3YjQ4ZTM5NWVjNTVlOTZmZjQ2MmRmOWI5M2EyMGFjMmE0MGU1ZDAwMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyMzI4ODM5MTU1OWM2Y2JiOWJhZWQxMzI2ZDBkYzM1NmVkMzhmZDkyNDEzNjk3ZmM2Njg4ZDAzMDM3ZDU0OGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwMDYxMzM3OGI1ZTZjMDcwYWFhYWZiNmQzYmUzMzEwNzFhMmJjOTkwNmU5OTI4YjY4MDkxN2IwNjI0NDNiMTUifQ"
         }
       ]
@@ -191,8 +191,8 @@
           "version": "repo-lines-v1:sha256:fa12a0964f98a383cb3f9496f663567499c1ff5582574d9640ba2b9d5ebc9140:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZTExMzNkMzVhNWJmZTAyMzA3NGFlMTRkMjc4YjVkZTBiZmE1MjI1YjI2ZWY3MmFmNTk1ZDUxNjM2ZjBiMjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ODYwOTQyZjk4M2UyYjA3OTQzNmM0ZTA1YzZjNmRjOTlkZDg5NjY4ZjI3ZjRhMmUzMDMzN2JhNDc3Njk4MzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmYTk4ZTU5MGUwNGNjOWFjMjQxYmMyZmFjOWZmMjcwZTM2NzE1YWUwYWRiMGI5YWU0YThkNjgzYmYyNmNlNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3OTk4Mjk0YTlkZDc1MTJiNDE1MTgwZTQ3MDhjMThjM2JkYmQ5OTczMjBmMGQwZTYwMDdlOTdhNzMzM2U4YTcifQ"
         },
         {
-          "resource": "repo://packages/mcp-server/src/server.ts#L247-L279",
-          "version": "repo-lines-v1:sha256:b321201b214ce1e68db71d86638840438c8a58d2429455e6b7d7a99d68983e14:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0MGEwYjMxNmFiOTI3MTQzMmZkNTlkNGI2ZGQ0ZGJhNzcwNDM4MmQ4ZTg5NjFjMDRiNTBiMWQ1YmE2MGU4NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3MWU5MWIwZDAyYzcxZjQyNmMyMzc5MTUxZjE1MzMwYjdhNTI4YzU1N2MyZWNiMmQ4Yjc3NDFmOGZlOTYxY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5OTQ4NDY3YTIxODAwNjFiYTBmNjhmN2JhZGQwOTBkN2IwMDgwZGRjYjA2YjBkYTY4OWM4Zjk3YTIyMWZlNjcifQ"
+          "resource": "repo://packages/mcp-server/src/server.ts#L253-L330",
+          "version": "repo-lines-v1:sha256:b6e593b0a2c68c3b0afd1bfd7bed124c8cc2de8e89634910bd97f3241a7225de:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0MGEwYjMxNmFiOTI3MTQzMmZkNTlkNGI2ZGQ0ZGJhNzcwNDM4MmQ4ZTg5NjFjMDRiNTBiMWQ1YmE2MGU4NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3MWU5MWIwZDAyYzcxZjQyNmMyMzc5MTUxZjE1MzMwYjdhNTI4YzU1N2MyZWNiMmQ4Yjc3NDFmOGZlOTYxY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5OTQ4NDY3YTIxODAwNjFiYTBmNjhmN2JhZGQwOTBkN2IwMDgwZGRjYjA2YjBkYTY4OWM4Zjk3YTIyMWZlNjcifQ"
         },
         {
           "resource": "repo://packages/mcp-server/src/server.ts#L8-L11",
@@ -223,15 +223,15 @@
       "statement": "The serving catalog is built at boot from information_schema tables, columns, and key constraints merged with sensitive-column flags, refusing to serve an empty catalog.",
       "evidence": [
         {
-          "resource": "repo://packages/mcp-server/src/catalog.ts#L48-L84",
+          "resource": "repo://packages/mcp-server/src/catalog.ts#L49-L85",
           "version": "repo-lines-v1:sha256:f31d809e4d14738468711c90c6813f78fd7ed870d381cb7452a8bd0be8162fb5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwOGM5NGI0ZDE1NzllNTNhNGFkYzkxOWZjYjdmZDc1ZGZmYTc0NDA1MWVjYzFkMzcyNmNhNjUxNzE0NmMxMWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3ZGU4NGQ1Nzc5NzRiNTFmMmZmNjYyOWYyODlhOGJmZDc0MTUyZGE1OGZiNzc1NjliMTUyYzBlZmNkZjdhNmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmYmVjNTZkZmM1ZjBmZDM1NmFiNTdkMTZhNjcxMmM5ZjkwNzVmMDdmZjAyYWE3MWQ5MzgwNDY2MjM0YjAwY2UifQ"
         },
         {
-          "resource": "repo://packages/mcp-server/src/catalog.ts#L86-L92",
+          "resource": "repo://packages/mcp-server/src/catalog.ts#L87-L93",
           "version": "repo-lines-v1:sha256:9e20e510cf33b8e25dacf46ec551e24d17548f83f1a0acb54a63044ef42cc14d:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzhmMTllYjE3YzQ4YjUyM2ExOTgzYzM1YjBhNzgyY2YxMzIyNTg2ZDI2NzlkNTZlOTUzY2M2MDBmMDNiMmFmMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTIwNDBlMDk1YTk0ZTJhZGE3NGU0MjFmMzcxODc1MWE5MWE4MTBiZmQ2NmY0OGY0ZTkzOWM3Yjc0ODBlYjY3MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjkxMTVhZDJhYWNhM2JjNzQ0MTk5YWY3NGM4OWM3MTg2ZDlkOTk4ZjEwYWQyYmY0YTUwMGU3ZDRhZGUxMzY4ZSJ9"
         },
         {
-          "resource": "repo://packages/mcp-server/src/server.ts#L114-L123",
+          "resource": "repo://packages/mcp-server/src/server.ts#L120-L129",
           "version": "repo-lines-v1:sha256:a9e18509e6ae8e0b5ce4803e28c4a9113c8b0250ee9a93cd0b1213ced2d8ceae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MTAwMDQ2NWE2YjRkYTQ0ZTU0NmQ1M2RhZmJjZTEzZmJiODA1MjZjMjAzNmZjNjhkY2UyOTM0MzZiZjMxYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZDcwZmNmNzk4NTEzNzAzZWVlM2U0NTkyYjE1ZDNjMGViNmRlMDQ3ZTBmZTE5MmI5NGE2YTYxMDVkM2ZhZjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg0OGU1YzM2NjRmNGEwNTVmNzcwZTEwN2NhM2ZlY2RhYWQ2NTE0NmRhMjU1NzI4MzZhOGNjMjY3MjIwNTBkZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1ZWZkMmJhZjRjZmI5OTUzODRlMDgzZWVmZTNlY2M5MzA1YzUyMmFmNzI5MjJhMGUyNTM1NzMxYzA0OGVlMjIifQ"
         }
       ]
@@ -249,10 +249,64 @@
           "version": "repo-lines-v1:sha256:f9b9bdb357474f1eddadd49aeb42342eda519cc290682bacc6afc9dcea2447d9:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA2ODM5ZTFjMmFjMjcxNjM4MzA0NzBmMTA0Yzg3Mjg0MGUwN2Y4YWEzOTYyYzRiYjRhMDViMDg3MDE0MDQyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODFkYjE5NjRmNTc5ZGQzOTVkZGJmMzJiNjI1NzEwYTliNTRhZDNlYjZlYmY4YmJlODEwNTY2ZTRkZTJiNTliMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_87eccc1222f344d29eff7ff362efaaa0",
+      "statement": "The gateway Express app enforces a 1mb JSON limit, serves GET /healthz as 200 { ok: true }, authenticates POST /mcp before MCP dispatch with 401 on failure, and answers GET /mcp with 405 INVALID_PARAMS directing callers to POST /mcp.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/server.ts#L253-L282",
+          "version": "repo-lines-v1:sha256:1737fbd7353eb9376f6079a97bfdadc0759d38485a76f977ecfe13c995ab1829:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0MGEwYjMxNmFiOTI3MTQzMmZkNTlkNGI2ZGQ0ZGJhNzcwNDM4MmQ4ZTg5NjFjMDRiNTBiMWQ1YmE2MGU4NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3MWU5MWIwZDAyYzcxZjQyNmMyMzc5MTUxZjE1MzMwYjdhNTI4YzU1N2MyZWNiMmQ4Yjc3NDFmOGZlOTYxY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllZjg1M2FjNTZhMjBlZjJjYTVmMDllYWM2MjYwM2FjNTRhN2U5OWQ4ODlmNDcxZjVlZDRkNTAxYTJlZWJkNDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_669f6b6f49f746d488ad3b2778195abd",
+      "statement": "Each authorized POST /mcp builds a fresh McpServer plus StreamableHTTPServerTransport pair with sessionIdGenerator undefined and closes the transport in a finally block, giving stateless per-request semantics because the SDK transport is single-use.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/server.ts#L270-L278",
+          "version": "repo-lines-v1:sha256:694d824c72278ab2b5842bae5723d6f1a824400a41c171025ab55457c4e2fc74:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWUxNjlmZmZlMzYyMjQwMWRlYTRhMzQwYjBmNWEzMWEwYTI3ZjlhZWUxMDBjODVmNWU1NjUwNTFiMTRkOTkxYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTRjNzViMmYwY2Q2NzgyMWEwYzY2OGNiYzY3ODgyZGNlYzEzOWNlZjIxYzE5ODY4MzgwM2Q2ZDY2YWQxNWZhOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGY5NDgwNWNjYmVmZWVkNDI2NTcxYjkyZjE4MGU3NDEyNzI4ZjVlMThkMzYzYTU5NmI0ODIwNzc5OTJhYjBlZCJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/server.ts#L8-L11",
+          "version": "repo-lines-v1:sha256:5231c5b0e4c387123d0d65e7c2dcaadc3edeed3f677b3caa53ca82da4c1dd1fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2JiYTQyMGY4NDBlZjUxYTkwYWFkYTBhOGMzOTVjOGFlODgyMmI2ZWY4MDE2NjI4MzZmNTM3NWRlZTIyMGEyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcxNzRkOGQ4NGQzN2U0NzE1MWNiZmRhNDMzZTEzODI4OThjN2Y1MWQzZWYxOTUyOWZkYWE4ZDFhMWM2YTUxYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmU0OGUxYzcyOTE1NGM5OWViZjNiZWI5YmRhOWRlNTY5NzVjMDJmYWQ5ZTEyYjFhZTc1ZTJhYjIwNjBkNzQ0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWZjNGY4YTg3MmQ3ZjkwMTZjNzM2YjYzMmFkMTcxMWVhM2Q4NjJlYWVjYTdmZjVmMGMzNjM0NjU2NTU4NDhkNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4592bbe5a42d4f71a671ecba4cd8a53d",
+      "statement": "POST /reindex requires a valid Bearer token (401 otherwise) and the admin role (403 SCOPE_DENIED otherwise), then runs the injected reindex hook or indexCorpus with resetSemanticCache and returns index counts, mapping indexer failures to 500 INTERNAL_ERROR.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/server.ts#L284-L327",
+          "version": "repo-lines-v1:sha256:cefc5bcd3c98c7877947862a729f40fc842e7b6ab87544a6c80290dc10036701:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YWI1MjUxMjE4YThlNTA2ZTY5M2NjYTYyMWEzMjU0ZDg2MDY1NTM3ZGQ3YzI0NDFkMzc5ZjZlM2FiYTUyNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0MjE1MzRkNGM4N2NhYmZkMTMzYTM1YzE4ZGUzNzA3NTg4ZThiYzVhOTRkYzk3NzAxMWRkZjMzMWRiYzM1ZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3NmU1ZWM5NTMwZDhjYzE0Nzc2YmM3M2U5OGFhZjcyZWI1NGY2ODE5YjE4YzYwNWQ0YjczYzM5MzdjYThkMWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_48918e5cb659407db61fe2a05c5be0c3",
+      "statement": "The per-request MCP server registers six tools whose handlers return JSON-stringified results or isError payloads and two text/markdown resources (semantic://data-dictionary and semantic://metrics) whose handlers throw the stringified DbToolError on denial.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/server.ts#L162-L248",
+          "version": "repo-lines-v1:sha256:7b7ac480b1622c63fb09aaded770898025996ad0bc7cf8b1327bd7aac42d4c3c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZGYzOGE4NzkxMWE2MDRkY2E2ZDZhODAxZmM3MDI0MWEzNDRkZDMwNGI5ZmVkMzczMmM1MmEzOWZlYWRiNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzZjI1ZWFhNWVmZTg2NjlkY2VhZDBhMDEzMmVlZDg2YTQ3NTA3NmMxMzk4MmQ0N2Y5MWQwN2NmNTE2OTg0ZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3NGIxMzViZjJhNmYwNzJlZGM5MDJlNGZkZDU5NTNlN2IyY2E5ZTZhNzAxNTYyZjQ4NjkwNmE0NGZjYjA1ZTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e33bc5e57740427e81a39e1afa3ec912",
+      "statement": "The catalog marks both order_items and orders as large tables needing a filter before a full scan.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/catalog.ts#L13-L14",
+          "version": "repo-lines-v1:sha256:740f29d08cde598a0a1da82832c95ec49d45b482b19f7459026c3b21aefba58b:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg0NGM2NGQ1ZTFiMjJjZjE5NGI1NmE0ZDBjMTU1ZTEyNDA1NzA4NDY3ZmJkMmZjZTM3NDgwOTYyOGYxYmEwNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTI2ZTdkMGY2MjdhYjU0MWEzNjMyZTVlNTkzZTg2ZTI0N2JlZmJkZTBkOTk5ZGU5OGU2ZDg2ZGFhOTkzY2I1MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmZmNmIwZTk1MjVmODkzNzdlMTA5YWRjZTQwOGY0MmRhZDg5YzNkNDJjYjcyYWY4MDllNzE5MmU3MDUyMWRlNCJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T14:46:19.230Z"
+    "at": "2026-10-31T14:10:28.006Z"
   }
 }
