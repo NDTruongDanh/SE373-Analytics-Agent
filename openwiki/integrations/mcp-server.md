@@ -5,7 +5,7 @@ description: Implemented db-tools MCP gateway with scoped tools, 7-stage pipelin
 tags: [mcp, db-tools, scoped-auth, sql-validation, audit-log, operator-ui, uc-09]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T14:46:19.230Z
+    at: 2026-10-31T14:10:28.006Z
 sources:
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
@@ -41,7 +41,7 @@ sources:
     resource: repo://packages/mcp-server/src/tools.ts
   - id: openwiki-source-239b7c4787e6faba4ea0bd52
     resource: repo://policies/mcp_clients.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-10-28T14:46:19.230Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-31T14:10:28.006Z" }
 ---
 
 # Database MCP server and gateway
@@ -153,7 +153,7 @@ The checked-in registry maps `sales_south` to `schema:read` plus `data:read` wit
 
 Boot fails closed: malformed YAML, wrong version, empty client list, unknown scopes, extra keys, duplicate `clientId` or `tokenEnv`, or any missing or empty token variable throws before the server listens. Catalog boot also fails closed on an empty table list so the server never serves nothing as something.
 
-The catalog merges `information_schema` tables, columns, and primary plus foreign keys with the sensitive flags and marks `order_items` as a large table needing a filter before a full scan.
+The catalog merges `information_schema` tables, columns, and primary plus foreign keys with the sensitive flags and marks `order_items` and `orders` as large tables needing a filter before a full scan.
 
 ## 7. Independent server-side SQL and policy checks
 
@@ -177,9 +177,11 @@ Error hygiene uses one `DbToolError` type and the `sanitizeError` choke-point. D
 
 ## 10. HTTP transport and MCP wiring
 
-`createGatewayApp` returns an Express app. `GET /healthz` reports liveness, `POST /mcp` authenticates first and rejects without a valid Bearer before any MCP dispatch, and `GET /mcp` returns `INVALID_PARAMS` directing callers to `POST /mcp`. Because the SDK transport instance is single-use, each POST builds a fresh `McpServer` plus `StreamableHTTPServerTransport` pair for true stateless semantics and closes it after handling the request.
+`createGatewayApp` returns an Express app with a `1mb` JSON body limit. `GET /healthz` reports liveness as `200 { ok: true }`. `POST /mcp` runs HTTP-layer `authenticateRequest` first and returns HTTP 401 without a valid Bearer before any MCP dispatch; each authorized POST then builds a fresh `McpServer` plus `StreamableHTTPServerTransport` pair with `sessionIdGenerator: undefined`, connects them, delegates to `handleRequest`, and closes the transport in a `finally` block, giving true stateless per-request semantics because the SDK transport instance is single-use. `GET /mcp` returns HTTP 405 with an `INVALID_PARAMS` payload directing callers to `POST /mcp`.
 
-Tool handlers return MCP content with the JSON-stringified result or an `isError` payload carrying the stringified error plus its code. Resource handlers throw the stringified error on denial and otherwise return Markdown contents. The default port is 8081 via `MCP_PORT`, and the server name is `se373-mcp-gateway` version `1.0.0`. `docs/mcp_interface.md` is generated from the contract schemas and must not be hand-edited.
+`POST /reindex` is the admin-only semantic refresh path on the same host. It authenticates the same way (HTTP 401 on bad token), then requires the `admin` role and returns HTTP 403 `SCOPE_DENIED` otherwise. On success it runs the injected `options.reindex` hook or the built-in `indexCorpus` over `INDEXER_DATABASE_URL` or `DATABASE_URL` with the env-selected embedder and default corpus files, calls `resetSemanticCache`, and returns the `{ added, updated, skipped, deleted }` counts; indexer failures return HTTP 500 `INTERNAL_ERROR`.
+
+Tool handlers return MCP content with the JSON-stringified result, or an `isError` payload carrying the stringified error plus its code. Resource handlers cover `semantic://data-dictionary` and `semantic://metrics` as `text/markdown` and throw the stringified error on denial; otherwise they return the filtered Markdown contents. The default port is 8081 via `MCP_PORT`, and the server name is `se373-mcp-gateway` version `1.0.0`. `docs/mcp_interface.md` is generated from the contract schemas and must not be hand-edited.
 
 ## 11. Operator surfaces
 
