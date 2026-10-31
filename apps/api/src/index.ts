@@ -52,6 +52,13 @@ export const API_SHELL =
 
 export type ApiShellError = DbToolError;
 
+export interface ReindexResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  deleted: number;
+}
+
 /** Options for the full host. The checkpointer is already set up. */
 export interface BuildAppOptions {
   /** Durable saver (PostgresSaver in prod via ports; MemorySaver in tests). */
@@ -68,6 +75,39 @@ export interface BuildAppOptions {
   store?: AppStateStore;
   /** Test seam: merged OVER the registry table (mirrors RootGraphDeps). */
   ucHandlers?: Record<string, UcEntryHandler>;
+  /** Optional semantic re-index handler (defaults to calling the MCP gateway /reindex endpoint). */
+  reindex?: (ctx: { token: string; mcpUrl: string }) => Promise<ReindexResult>;
+}
+
+export async function defaultReindex(ctx: {
+  token: string;
+  mcpUrl: string;
+}): Promise<ReindexResult> {
+  const url = new URL("/reindex", ctx.mcpUrl).toString();
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${ctx.token}`,
+    },
+  });
+  if (!res.ok) {
+    let message = `semantic re-index failed with status ${res.status}`;
+    try {
+      const text = await res.text();
+      if (text) message = text;
+    } catch {
+      // Keep the default status message.
+    }
+    throw new Error(message);
+  }
+  const body = (await res.json()) as Record<string, unknown>;
+  return {
+    added: Number(body["added"] ?? 0),
+    updated: Number(body["updated"] ?? 0),
+    skipped: Number(body["skipped"] ?? 0),
+    deleted: Number(body["deleted"] ?? 0),
+  };
 }
 
 /** Per-run identity retained for resume on the same thread_id. */
@@ -288,6 +328,47 @@ export function buildApp(options: BuildAppOptions): express.Express {
       });
     } finally {
       res.end();
+    }
+  });
+
+  app.post("/api/semantic/reindex", async (req: Request, res: Response) => {
+    const persona = req.body?.["persona"] ?? req.headers["x-persona"];
+    let principal: Principal;
+    let token: string;
+    try {
+      if (typeof persona !== "string") {
+        throw new UnknownPersonaError(String(persona));
+      }
+      ({ principal, token } = resolvePersona(persona, registry, env));
+    } catch (error) {
+      if (error instanceof UnknownPersonaError) {
+        res.status(error.status).json(dbToolError("INVALID_PARAMS", error.message));
+        return;
+      }
+      res
+        .status(500)
+        .json(dbToolError("INTERNAL_ERROR", "persona resolution failed at boot-checked config"));
+      return;
+    }
+    if (persona !== "data_admin" || principal.role !== "admin") {
+      res
+        .status(403)
+        .json(dbToolError("SCOPE_DENIED", "only data_admin may trigger semantic re-indexing"));
+      return;
+    }
+    try {
+      const reindex = options.reindex ?? defaultReindex;
+      const counts = await reindex({ token, mcpUrl: options.mcpUrl });
+      res.status(200).json(counts);
+    } catch (error) {
+      res
+        .status(500)
+        .json(
+          dbToolError(
+            "INTERNAL_ERROR",
+            error instanceof Error ? error.message : "semantic re-index failed",
+          ),
+        );
     }
   });
 

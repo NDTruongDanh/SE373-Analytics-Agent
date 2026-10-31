@@ -66,6 +66,16 @@ describe("buildApp /api/ask", () => {
         res.end();
         return;
       }
+      if (req.url === "/reindex") {
+        if (req.headers.authorization === "Bearer stub-admin") {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ added: 1, updated: 2, skipped: 15, deleted: 0 }));
+        } else {
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "forbidden" }));
+        }
+        return;
+      }
       const body = (await readBody(req!)) as {
         id?: number;
         method?: string;
@@ -230,5 +240,49 @@ describe("buildApp /api/ask", () => {
     expect(out.text).not.toContain("public.orders");
     expect(out.text).not.toContain("GROUP BY");
     expect(out.text).not.toContain("stub-hr");
+  });
+
+  async function reindexCall(
+    body: unknown,
+    headers?: Record<string, string>,
+  ): Promise<{ status: number; json?: unknown }> {
+    const res = await fetch(`${apiBase}/api/semantic/reindex`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(headers ?? {}) },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = undefined;
+    }
+    return { status: res.status, json };
+  }
+
+  it("rejects missing or unknown persona with 400", async () => {
+    const missing = await reindexCall({});
+    expect(missing.status).toBe(400);
+    expect(missing.json).toMatchObject({ code: "INVALID_PARAMS" });
+    for (const persona of ["root", "admin", "default", ""]) {
+      const out = await reindexCall({ persona });
+      expect(out.status).toBe(400);
+      expect(out.json).toMatchObject({ code: "INVALID_PARAMS" });
+    }
+  });
+
+  it("rejects non-data_admin personas with 403", async () => {
+    for (const persona of ["sales_south", "marketing", "hr"]) {
+      const out = await reindexCall({ persona });
+      expect(out.status).toBe(403);
+      expect(out.json).toMatchObject({ code: "SCOPE_DENIED" });
+    }
+  });
+
+  it("succeeds for data_admin with reindex counts", async () => {
+    const out = await reindexCall({ persona: "data_admin" });
+    expect(out.status).toBe(200);
+    expect(out.json).toMatchObject({ added: 1, updated: 2, skipped: 15, deleted: 0 });
   });
 });
