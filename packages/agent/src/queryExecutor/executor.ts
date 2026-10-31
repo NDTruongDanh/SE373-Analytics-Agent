@@ -62,6 +62,11 @@ export interface ChatModelLike {
   };
 }
 
+/** Conservative local fallback when a provider does not expose token usage. */
+function estimateTokens(...texts: string[]): number {
+  return Math.max(1, Math.ceil(texts.join("").length / 4));
+}
+
 /**
  * Narrow MCP seam 01-12 satisfies with the real client: one call method.
  * Returns the tool output, or throws a DbToolError on tool failure.
@@ -383,11 +388,11 @@ export class ValidatedQueryExecutor {
         if (check.tripped) return budgetTrip(check.reason, attempt);
         const proposalStarted = Date.now();
         let proposal: SqlProposal;
+        const prompt =
+          repairFeedback === null
+            ? input.question
+            : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
         try {
-          const prompt =
-            repairFeedback === null
-              ? input.question
-              : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
           proposal = await this.model
             .withStructuredOutput(SqlProposalSchema, { name: "sql_proposal" })
             .invoke(prompt);
@@ -404,7 +409,10 @@ export class ValidatedQueryExecutor {
             attempts: attempt,
           };
         }
-        recordLlmCall(budget);
+        // Structured-output adapters do not consistently expose provider usage.
+        // Charge a conservative local estimate so maxTokens remains a real
+        // circuit breaker instead of an inert counter.
+        recordLlmCall(budget, estimateTokens(prompt, JSON.stringify(proposal)));
         partials.lastSql = proposal.sql;
         sql = proposal.sql;
         lastTablesUsed = proposal.tablesUsed;

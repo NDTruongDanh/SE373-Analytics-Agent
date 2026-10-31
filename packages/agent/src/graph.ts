@@ -22,6 +22,12 @@ import {
   listUcIds,
   type TracerDefaultContext,
 } from "./subgraphs/registry.js";
+import {
+  UC01_ID,
+  createUc01Runtime,
+  guardUc01Budget,
+  type Uc01RuntimeDeps,
+} from "./subgraphs/uc01.js";
 import { writeTraceEvent } from "./traces/writer.js";
 
 // FROZEN root builder (AGENT-01, 01-10). UC owners MUST NOT edit this file:
@@ -46,6 +52,8 @@ export interface RootGraphDeps {
   synthesize?: SynthesizeFn;
   /** Defaults to a no-op sink; runTracerGraph wires the redacted writer. */
   emitSpan?: SpanEmitter;
+  /** UC-01 model/executor seams; production uses defaults, tests inject fakes. */
+  uc01?: Uc01RuntimeDeps;
 }
 
 const noopEmit: SpanEmitter = () => "";
@@ -83,6 +91,7 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   const retrieve: RetrieveFn = deps.retrieve ?? noopUpdate;
   const viz: VizFn = deps.viz ?? noopUpdate;
   const synthesize: SynthesizeFn = deps.synthesize ?? defaultSynthesize;
+  const uc01 = createUc01Runtime(deps.uc01);
 
   const overlay = new Map<string, UcEntryHandler>();
   for (const id of listUcIds()) {
@@ -94,6 +103,9 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   for (const [id, handler] of Object.entries(deps.ucHandlers ?? {})) {
     overlay.set(id, handler);
   }
+  // Always prefer the per-graph runtime over the import-time registry entry:
+  // production transport and trace dependencies are only available at run time.
+  overlay.set(UC01_ID, uc01.entry);
   if (!overlay.has(DEFAULT_ROUTE_ID)) {
     throw new Error(
       `root graph requires a '${DEFAULT_ROUTE_ID}' default route (registry or deps.ucHandlers)`,
@@ -110,10 +122,24 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   };
 
   const graph = new StateGraph(AgentStateSchema)
-    .addNode("understand", async (state: AgentState): Promise<AgentUpdate> => ({
-      intent: { metric: null, dimensions: [], filters: [], timeRange: null },
-      runId: state.runId,
-      threadId: state.threadId,
+    .addNode("budgetGuard", async (state: AgentState): Promise<AgentUpdate> =>
+      state.ucId === UC01_ID ? guardUc01Budget(state) : {},
+    )
+    .addNode("understand", runWithRuntime((state, rt) => {
+      if (state.ucId === UC01_ID) return uc01.understand(state, rt);
+      return Promise.resolve({
+        intent: {
+          metric: null,
+          dimensions: [],
+          filters: [],
+          timeRange: null,
+          requestedMetrics: [],
+          schemaEntities: [],
+          queryMode: "standard_query",
+        },
+        runId: state.runId,
+        threadId: state.threadId,
+      });
     }))
     .addNode("retrieve", runWithRuntime((state, rt) => retrieve(state, rt)))
     .addNode("router", noopUpdate)
@@ -142,7 +168,12 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .addNode("statusCheck", noopUpdate)
     .addNode("vizSeam", runWithRuntime((state, rt) => viz(state, rt)))
     .addNode("answer", runWithRuntime((state, rt) => synthesize(state, rt)))
-    .addEdge(START, "understand")
+    .addEdge(START, "budgetGuard")
+    .addConditionalEdges("budgetGuard", (state: AgentState) =>
+      state.ucId === UC01_ID && state.status === "cannot_answer"
+        ? "answer"
+        : "understand",
+    )
     .addEdge("understand", "retrieve")
     .addEdge("retrieve", "router")
     .addConditionalEdges("router", (state: AgentState) =>

@@ -5,6 +5,7 @@ import {
 } from "@langchain/langgraph";
 import { SQLAnswerStatusSchema } from "@shared/contracts";
 import * as z from "zod";
+import { BUDGET_LIMITS } from "./queryExecutor/budgets.js";
 
 // AGENT-01 shared root state (01-10). Plain JSON only: no Pool, class
 // instance, function, or pg import may ever enter this schema — checkpoint
@@ -17,12 +18,12 @@ export const RESULT_PREVIEW_MAX = 50;
 
 /** Run-level budget limits (D-13). The 01-11 breaker enforces these. */
 export const BUDGET_DEFAULTS = {
-  maxLlmCalls: 20,
-  maxTokens: 60000,
-  runDeadlineMs: 120000,
+  maxLlmCalls: BUDGET_LIMITS.maxLlmCalls,
+  maxTokens: BUDGET_LIMITS.maxTokens,
+  runDeadlineMs: BUDGET_LIMITS.runDeadlineMs,
 } as const;
 
-const IntentSchema = z.object({
+export const IntentSchema = z.object({
   metric: z.string().nullable().default(null),
   dimensions: z.array(z.string()).default([]),
   filters: z
@@ -35,6 +36,9 @@ const IntentSchema = z.object({
     )
     .default([]),
   timeRange: z.string().nullable().default(null),
+  requestedMetrics: z.array(z.string()).default([]),
+  schemaEntities: z.array(z.string()).default([]),
+  queryMode: z.enum(["standard_query", "definition_lookup"]).default("standard_query"),
 });
 
 const SemanticChunkSchema = z.object({
@@ -49,11 +53,12 @@ const BudgetStateSchema = z
     tokensUsed: z.number().int().nonnegative().default(0),
     maxLlmCalls: z.number().int().positive().default(BUDGET_DEFAULTS.maxLlmCalls),
     maxTokens: z.number().int().positive().default(BUDGET_DEFAULTS.maxTokens),
-    runDeadlineMs: z
+    /** Absolute deadline, initialized by the root budget guard. */
+    deadlineMs: z
       .number()
       .int()
-      .positive()
-      .default(BUDGET_DEFAULTS.runDeadlineMs),
+      .nonnegative()
+      .default(0),
   })
   // Object-level default seeds the reducer channel so limits are present on
   // a fresh run and partial writes merge against full defaults (D-13).
@@ -62,7 +67,7 @@ const BudgetStateSchema = z
     tokensUsed: 0,
     maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls,
     maxTokens: BUDGET_DEFAULTS.maxTokens,
-    runDeadlineMs: BUDGET_DEFAULTS.runDeadlineMs,
+    deadlineMs: 0,
   }));
 type BudgetState = z.infer<typeof BudgetStateSchema>;
 const BudgetUpdateSchema = z.object({
@@ -70,7 +75,7 @@ const BudgetUpdateSchema = z.object({
   tokensUsed: z.number().int().nonnegative().optional(),
   maxLlmCalls: z.number().int().positive().optional(),
   maxTokens: z.number().int().positive().optional(),
-  runDeadlineMs: z.number().int().positive().optional(),
+  deadlineMs: z.number().int().nonnegative().optional(),
 });
 type BudgetUpdate = z.infer<typeof BudgetUpdateSchema>;
 
@@ -99,6 +104,9 @@ export const AgentStateSchema = new StateSchema({
     dimensions: [],
     filters: [],
     timeRange: null,
+    requestedMetrics: [],
+    schemaEntities: [],
+    queryMode: "standard_query" as const,
   })),
   semanticChunks: z.array(SemanticChunkSchema).default([]),
   /** Checkpointed preview: zod max rejects anything over 50 rows. */
@@ -121,7 +129,7 @@ export const AgentStateSchema = new StateSchema({
       tokensUsed: current.tokensUsed + (next.tokensUsed ?? 0),
       maxLlmCalls: next.maxLlmCalls ?? current.maxLlmCalls,
       maxTokens: next.maxTokens ?? current.maxTokens,
-      runDeadlineMs: next.runDeadlineMs ?? current.runDeadlineMs,
+      deadlineMs: next.deadlineMs ?? current.deadlineMs,
     }),
   }),
   telemetry: new ReducedValue(TelemetryStateSchema, {
