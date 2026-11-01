@@ -17,7 +17,6 @@
 
 import type { Response } from "express";
 import {
-  SSE_EVENT_NAMES,
   SseCompletedEventSchema,
   SseFailedEventSchema,
   SseIntentParsedEventSchema,
@@ -29,9 +28,9 @@ import {
   SseVizEventSchema,
   type SseEventName,
 } from "@shared/contracts";
+import { SSE_ALLOWLIST } from "./constants.js";
 
-/** Allowlist exactly matching the contracts per-event schemas (D-20). */
-export const SSE_ALLOWLIST: readonly SseEventName[] = SSE_EVENT_NAMES;
+export { SSE_ALLOWLIST };
 
 const SCHEMAS = {
   intent_parsed: SseIntentParsedEventSchema,

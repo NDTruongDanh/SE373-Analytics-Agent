@@ -1,5 +1,6 @@
 import type { DbToolError } from "@shared/contracts";
+import { WEB_SHELL } from "./constants.js";
 
-export const WEB_SHELL = "Web shell: Vite+React chat UI lands in Phase 7";
+export { WEB_SHELL };
 
 export type WebShellError = DbToolError;
