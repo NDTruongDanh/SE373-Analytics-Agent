@@ -128,8 +128,7 @@ export const SseEventNameSchema = z.enum([
 
 export type SseEventName = z.infer<typeof SseEventNameSchema>;
 
-export const SSE_EVENT_NAMES: readonly SseEventName[] =
-  SseEventNameSchema.options;
+export { SSE_EVENT_NAMES } from "./constants.js";
 
 const SseBaseFields = {
   runId: z.string().min(1),

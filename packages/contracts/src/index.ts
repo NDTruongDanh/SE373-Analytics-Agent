@@ -9,4 +9,4 @@ export * from "./catalog.js";
 export * from "./semantic.js";
 export * from "./benchmark.js";
 
-export const CONTRACTS_VERSION = "1.0.0";
+export { CONTRACTS_VERSION } from "./constants.js";

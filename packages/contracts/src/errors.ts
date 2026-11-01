@@ -1,24 +1,15 @@
 import * as z from "zod";
+import {
+  ErrorCodes,
+  REPAIRABLE_CODES,
+  RETRYABLE_CODES,
+} from "./constants.js";
 
-// The 12 frozen error codes: UC-09 A.7 codes E1-E9 plus E11, with E10
-// (truncation) represented by the `truncated` boolean flag rather than an
-// error, plus RATE_LIMITED reserved per UC-09 F17 to reconcile the count,
-// plus SQL_EXECUTION_ERROR for runtime query failures (repairable, never
-// retryable — ARCH-REVIEW C1).
-export const ErrorCodes = [
-  "UNAUTHORIZED",
-  "SCOPE_DENIED",
-  "INVALID_PARAMS",
-  "INVALID_SQL",
-  "FORBIDDEN_STATEMENT",
-  "FORBIDDEN_FUNCTION",
-  "UNKNOWN_TABLE",
-  "SENSITIVE_COLUMN_DENIED",
-  "SQL_EXECUTION_ERROR",
-  "TIMEOUT",
-  "RATE_LIMITED",
-  "INTERNAL_ERROR",
-] as const;
+export {
+  ErrorCodes,
+  REPAIRABLE_CODES,
+  RETRYABLE_CODES,
+} from "./constants.js";
 
 export type ErrorCode = (typeof ErrorCodes)[number];
 
@@ -31,18 +22,6 @@ export const DbToolErrorSchema = z.object({
 });
 
 export type DbToolError = z.infer<typeof DbToolErrorSchema>;
-
-export const RETRYABLE_CODES: ErrorCode[] = [
-  "TIMEOUT",
-  "RATE_LIMITED",
-  "INTERNAL_ERROR",
-];
-
-export const REPAIRABLE_CODES: ErrorCode[] = [
-  "INVALID_SQL",
-  "UNKNOWN_TABLE",
-  "SQL_EXECUTION_ERROR",
-];
 
 export function dbToolError(
   code: ErrorCode,
