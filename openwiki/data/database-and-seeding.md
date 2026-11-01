@@ -5,7 +5,7 @@ description: Olist-VN PostgreSQL database, Vietnamesization transforms, loader a
 tags: [database, seeding, vietnamesization, olist, pii, eval-fixtures]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T14:46:19.230Z
+    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-e119253b3c3737247dc63f2a
     resource: repo://.openwikiignore
@@ -21,6 +21,8 @@ sources:
     resource: repo://docs/prd.md
   - id: openwiki-source-9bab117d651c00b17e013d4a
     resource: repo://docs/UC-plan/UC09.md
+  - id: openwiki-source-b9e9ae256f4d9997cea8bf48
+    resource: repo://packages/data/src/constants.ts
   - id: openwiki-source-23f79f3641c924d30ed8aa37
     resource: repo://packages/data/src/copy.ts
   - id: openwiki-source-1c4e589a8479748d0b820c66
@@ -39,7 +41,7 @@ sources:
     resource: repo://packages/data/test/seedHiding.test.ts
   - id: openwiki-source-b7ac2104581a67282056d573
     resource: repo://policies/sensitive_columns.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-10-28T14:46:19.230Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
 ---
 
 # Business database and seeded scenarios
@@ -63,7 +65,7 @@ Related behavior lives in [Semantic Layer](../agent/semantic-layer.md), [Eval an
 
 ## 2. Source datasets and pinned download
 
-The build starts from eight Olist publisher CSVs plus the category-translation CSV, fetched at load time over HTTPS from `olist/work-at-olist-data` into the git-ignored `data/.cache/`. No Kaggle token or browser step is required, and no CSV is ever committed.
+The build starts from eight Olist publisher CSVs — seven business datasets plus the category-translation CSV — fetched at load time over HTTPS from `olist/work-at-olist-data` into the git-ignored `data/.cache/`. No Kaggle token or browser step is required, and no CSV is ever committed.
 
 `packages/data/src/download.ts` is the trust boundary:
 
@@ -126,7 +128,7 @@ Entry points are `pnpm data:load` (`tsx packages/data/src/load.ts`) for the load
 ```mermaid
 flowchart TD
   A["download eight Olist CSVs to data cache"] --> B["Vietnamesize rows in memory"]
-  B --> C["COPY load twelve tables as owner"]
+  B --> C["COPY twelve tables as owner"]
   C --> D["expand to one million order items"]
   D --> E["inject seeded scenarios as data mutations"]
   E --> F["hash canonical rows and gate manifest"]

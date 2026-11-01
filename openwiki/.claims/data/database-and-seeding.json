@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:419896b74abe6a32d194e3abaf42d187b16db1c92ba8ef902b26dbae6daefa29",
+  "pageVersion": "sha256:88e311a0c1299310b679577bf657b892dacbd460c9d3e30247c57f2be56be4ab",
   "claims": [
     {
       "id": "claim_7900d07fa59e42b2827a0c0d856025b0",
@@ -170,11 +170,15 @@
     },
     {
       "id": "claim_0f72310c7f844a008f2e2e8ea3029907",
-      "statement": "The business database is built from eight pinned Olist publisher CSVs plus the category-translation CSV, downloaded at load time into git-ignored data/.cache with byte-size, blob-SHA, and SHA-256 verification before parsing",
+      "statement": "The business database is built from eight pinned Olist publisher CSVs (seven business datasets plus the category-translation CSV), downloaded at load time into git-ignored data/.cache with byte-size, blob-SHA, and SHA-256 verification before parsing",
       "evidence": [
         {
+          "resource": "repo://packages/data/src/constants.ts",
+          "version": "repo-file-v1:sha256:0c71056827cc3b49f1b3e2d441c4d2c902acfe4e35fdccb415c4b023c729a86a"
+        },
+        {
           "resource": "repo://packages/data/src/download.ts",
-          "version": "repo-file-v1:sha256:bc180878e3c8acdbf402375fce2a71174f61793beccd8f6d64fef7e08d8570ac"
+          "version": "repo-file-v1:sha256:d62a5a057bf5ae6fd83f7729cbfdbabceec617fed76e5774a48d4beafeb1285e"
         }
       ]
     },
@@ -184,7 +188,7 @@
       "evidence": [
         {
           "resource": "repo://packages/data/src/transform.ts",
-          "version": "repo-file-v1:sha256:5d8e993cf80529ae73c4060d78e423ba3ec4b6231e0f91b0e4db7fb747ae099c"
+          "version": "repo-file-v1:sha256:5a587ae8e0519946c454f2c76bba892d95dcb7b5d6459ec1a956d132660409c8"
         }
       ]
     },
@@ -236,7 +240,7 @@
         },
         {
           "resource": "repo://packages/data/src/load.ts",
-          "version": "repo-file-v1:sha256:d653babc1a7fa66aeec2b961838c056f1ce1f4c387e5fb4406eae35fa9d19de2"
+          "version": "repo-file-v1:sha256:d008346b06e0c1147dfa60c8e115b8a83121f5b8cede23d4c50953489ac40046"
         }
       ]
     },
@@ -246,7 +250,7 @@
       "evidence": [
         {
           "resource": "repo://packages/data/src/load.ts",
-          "version": "repo-file-v1:sha256:d653babc1a7fa66aeec2b961838c056f1ce1f4c387e5fb4406eae35fa9d19de2"
+          "version": "repo-file-v1:sha256:d008346b06e0c1147dfa60c8e115b8a83121f5b8cede23d4c50953489ac40046"
         }
       ]
     },
@@ -256,11 +260,11 @@
       "evidence": [
         {
           "resource": "repo://packages/data/src/load.ts",
-          "version": "repo-file-v1:sha256:d653babc1a7fa66aeec2b961838c056f1ce1f4c387e5fb4406eae35fa9d19de2"
+          "version": "repo-file-v1:sha256:d008346b06e0c1147dfa60c8e115b8a83121f5b8cede23d4c50953489ac40046"
         },
         {
           "resource": "repo://packages/data/src/manifest.ts",
-          "version": "repo-file-v1:sha256:7be551b5a1df4b0eec67110c86751cbe619f0106985a865d25c20438aa141fb5"
+          "version": "repo-file-v1:sha256:67296586ecaebfb46fae1d535ca90df84018ea7f5c4f9692b52537f28e1184fb"
         }
       ]
     },
@@ -270,7 +274,7 @@
       "evidence": [
         {
           "resource": "repo://packages/data/src/seeds.ts",
-          "version": "repo-file-v1:sha256:3e11a24b29903b4e53bacd3a3ecf16f7be269096cd0eccfc8004b8a23ec15605"
+          "version": "repo-file-v1:sha256:9c5f86b0ce79ebeb14b51d918acbb6a75f1b9b8786f55613f2e320a3509a6897"
         }
       ]
     },
@@ -304,7 +308,7 @@
       "evidence": [
         {
           "resource": "repo://packages/data/src/transform.ts",
-          "version": "repo-file-v1:sha256:5d8e993cf80529ae73c4060d78e423ba3ec4b6231e0f91b0e4db7fb747ae099c"
+          "version": "repo-file-v1:sha256:5a587ae8e0519946c454f2c76bba892d95dcb7b5d6459ec1a956d132660409c8"
         },
         {
           "resource": "repo://policies/sensitive_columns.yaml",
@@ -315,6 +319,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T14:46:19.230Z"
+    "at": "2026-11-01T07:02:11.362Z"
   }
 }

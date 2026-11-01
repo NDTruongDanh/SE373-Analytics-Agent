@@ -5,7 +5,7 @@ description: Entry points, one-command setup, wiki commands, and routing links t
 tags: [quickstart, setup, analytics-agent, routing, openwiki]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T04:50:00.189Z
+    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -13,6 +13,14 @@ sources:
     resource: repo://.github/workflows/openwiki-update.yml
   - id: openwiki-source-e119253b3c3737247dc63f2a
     resource: repo://.openwikiignore
+  - id: openwiki-source-4cc9c6a076b816ea09303ac9
+    resource: repo://apps/api/src/constants.ts
+  - id: openwiki-source-d04d22ac02c0c45a07baad16
+    resource: repo://apps/api/src/index.ts
+  - id: openwiki-source-29e6795232e203660915fd20
+    resource: repo://apps/web/src/constants.ts
+  - id: openwiki-source-1dfd9d0040aec8cc63e58d27
+    resource: repo://apps/web/src/index.ts
   - id: openwiki-source-115b2dad781e2a2c5b5a980d
     resource: repo://docs/architecture.md
   - id: openwiki-source-959b64ff54cd1f30f8828ba2
@@ -21,8 +29,12 @@ sources:
     resource: repo://docs/prd.md
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
-  - id: openwiki-source-98368e815b09337901519116
-    resource: repo://packages/contracts/src/errors.ts
+  - id: openwiki-source-6e14a80344fc52e883de4e14
+    resource: repo://packages/agent/src/subgraphs/registry.ts
+  - id: openwiki-source-0da85c5a9f665a701eb30287
+    resource: repo://packages/agent/src/subgraphs/textToSql.ts
+  - id: openwiki-source-3e1ec54e40c3b23967c408a1
+    resource: repo://packages/contracts/src/constants.ts
   - id: openwiki-source-72efaf773522f7b91f911aa6
     resource: repo://packages/contracts/src/index.ts
   - id: openwiki-source-4c4499ad1e842a81b6f27cfc
@@ -33,12 +45,12 @@ sources:
     resource: repo://scripts/generate-interface.mjs
   - id: openwiki-source-a11884925ded039ec27120f5
     resource: repo://scripts/openwiki-fetch-patch.mjs
-generated: { by: "openwiki/0.7.2", at: "2026-10-28T04:50:00.189Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
 ---
 
 # Quickstart task map
 
-This repository is the **SE373 Analytics Agent** course project: a natural-language analytics agent over a fictional Vietnamese business database (`README.md:1-3`, `package.json:6`). The monorepo foundation is built — harness architecture, package boundaries, shared contracts, and lint boundaries — while per-use-case agent behavior remains planned in `docs/UC-plan/` and `openwiki/` (`docs/architecture.md:1-5`). Use this page to set up the environment, verify the toolchain, and route to the domain that owns your task.
+This repository is the **SE373 Analytics Agent** course project: a natural-language analytics agent over a fictional Vietnamese business database (`README.md:1-3`, `package.json:6`). The monorepo harness foundation — architecture, package boundaries, shared contracts, and lint boundaries — is built and the reference agent loop with its UC-01 registry extension is implemented; remaining per-UC designs are detailed in `docs/UC-plan/` and the openwiki domain pages (`docs/architecture.md:1-5`). Use this page to set up the environment, verify the toolchain, and route to the domain that owns your task.
 
 ## 1. Prerequisites
 
@@ -75,6 +87,8 @@ pnpm skills:check      # declarative-skills invariant (no scripts/credentials)
 
 This is the documented operator sequence (`README.md:13-26`). External MCP clients (MCP Inspector, `scripts/externalClient.ts`) connect to the gateway over Streamable HTTP with a per-role bearer token from `policies/mcp_clients.yaml`, whose values stay in `.env` and never enter the repo (`README.md:29-31`).
 
+The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — the full Express SSE host that mints run context, maps UI persona to MCP principal, invokes the root graph, and supports resume on the same thread — and [`apps/web/src/index.ts`](../apps/web/src/index.ts) — currently a web shell placeholder for the Vite + React chat UI.
+
 ## 3. Commands (entrypoints)
 
 | Command | What it does | Source |
@@ -100,7 +114,7 @@ The full current script set is `package.json:13-33`: wiki entrypoints plus DB/da
 
 Every `wiki:*` script preloads [`scripts/openwiki-fetch-patch.mjs`](../scripts/openwiki-fetch-patch.mjs), which injects the mandatory `x-opencode-session` header (`ses_<32 hex>`) on `opencode.ai` requests (`README.md:78-85`, `scripts/openwiki-fetch-patch.mjs:22-24`). The session id is stable per process: an explicit `OPENWIKI_OPENCODE_SESSION_ID` override wins, otherwise a deterministic `repo|run_id|sha|job` hash in GitHub Actions or a random value locally, never overwriting an existing header (`scripts/openwiki-fetch-patch.mjs:44-70`, `.env.example:23-28`). The provider must stay on the Responses API (`OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API=true`) because the pinned model is Responses-only; `false` routes to `/chat/completions` and fails as `ModelProtocolUnsupported` (`README.md:71-77`, `.env.example:18-21`).
 
-The interface generator [`scripts/generate-interface.mjs`](../scripts/generate-interface.mjs) (`scripts/generate-interface.mjs:1-4`) reads the frozen Zod schemas in [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) (`packages/contracts/src/index.ts:1-12`) — tool I/O from `tools.ts` (`packages/contracts/src/tools.ts:8-20`, `packages/contracts/src/tools.ts:71-85`) and the frozen code list from `errors.ts` (`packages/contracts/src/errors.ts:8-21`) — and writes [`docs/mcp_interface.md`](../docs/mcp_interface.md) (`scripts/generate-interface.mjs:141-144`). It covers `list_tables`, `describe_table`, `explain_query`, `run_query`, and `sample_rows` plus the shared error-code table (`scripts/generate-interface.mjs:20-51`, `scripts/generate-interface.mjs:53-67`). It also emits the retryable/repairable routing mirror consumed by the executor (`scripts/generate-interface.mjs:106-110`, `packages/contracts/src/errors.ts:35-45`). Run `pnpm docs:interface` after changing contracts; do not hand-edit the generated file (`docs/mcp_interface.md:1-3`).
+The interface generator [`scripts/generate-interface.mjs`](../scripts/generate-interface.mjs) (`scripts/generate-interface.mjs:1-4`) reads the frozen Zod schemas in [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) (`packages/contracts/src/index.ts:1-12`) — tool I/O from `tools.ts` (`packages/contracts/src/tools.ts:8-20`, `packages/contracts/src/tools.ts:71-85`) and the frozen code list from `constants.ts` (`packages/contracts/src/constants.ts:8-21`) — and writes [`docs/mcp_interface.md`](../docs/mcp_interface.md) (`scripts/generate-interface.mjs:141-144`). It covers `list_tables`, `describe_table`, `explain_query`, `run_query`, and `sample_rows` plus the shared error-code table (`scripts/generate-interface.mjs:20-51`, `scripts/generate-interface.mjs:53-67`). It also emits the retryable/repairable routing mirror consumed by the executor (`scripts/generate-interface.mjs:106-110`, `packages/contracts/src/constants.ts:23-33`). Run `pnpm docs:interface` after changing contracts; do not hand-edit the generated file (`docs/mcp_interface.md:1-3`).
 
 Scheduled CI ([`openwiki-update.yml`](../.github/workflows/openwiki-update.yml), `.github/workflows/openwiki-update.yml:3-7`) runs daily at `08:00 UTC` plus on demand on Node 24, installs via `pnpm/action-setup` + `actions/setup-node`, runs OpenWiki with `code --update --print`, and opens a docs-only auto-merge PR limited to `openwiki`, `AGENTS.md`, `CLAUDE.md` (`.github/workflows/openwiki-update.yml:30-53`, `.github/workflows/openwiki-update.yml:90-92`).
 
@@ -114,6 +128,8 @@ Scheduled CI ([`openwiki-update.yml`](../.github/workflows/openwiki-update.yml),
 | [`docs/prd.md`](../docs/prd.md) | Full product requirements (11 use cases, harness, evals) |
 | [`docs/mcp_interface.md`](../docs/mcp_interface.md) | Generated MCP tool interface; regenerate with `pnpm docs:interface` |
 | [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) | Frozen shared Zod schemas consumed by the interface generator |
+| [`apps/api/src/index.ts`](../apps/api/src/index.ts) | Full Express SSE host: `/api/ask`, `/api/runs/:runId/resume`, persona-to-principal mapping |
+| [`apps/web/src/index.ts`](../apps/web/src/index.ts) | Web shell placeholder for the Vite + React operator UI |
 | [`openwiki/INSTRUCTIONS.md`](INSTRUCTIONS.md) | Brief every OpenWiki run reads; defines scope, taxonomy, and grounding rules |
 | [`.openwikiignore`](../.openwikiignore) | Read boundary: secrets, generated state, `node_modules/`, data dumps, evals/seeds/traces |
 | [`.github/workflows/openwiki-update.yml`](../.github/workflows/openwiki-update.yml) | Scheduled wiki refresh workflow |

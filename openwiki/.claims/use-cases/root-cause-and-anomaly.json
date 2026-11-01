@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9d269d01996701b18cc7f6de147f66143097a592c19ad6c44557e729f5e68cfe",
+  "pageVersion": "sha256:78c97f0d3aa41378ecc455f91dde3d85092969c1052d25ed6582a7af8d2676d5",
   "claims": [
     {
       "id": "claim_c092349b60ee43fdab0b26417119585d",
@@ -273,7 +273,7 @@
       "statement": "Durable checkpoint and host resume path has landed: createCheckpointer builds PostgresSaver on langgraph schema from HARNESS_STATE_DATABASE_URL with fail-fast setup and agent_ro rejection, createHostPorts injects it with AppStateStore, and POST /api/runs/:runId/resume resumes via Command on the same thread.",
       "evidence": [
         {
-          "resource": "repo://apps/api/src/index.ts#L294-L317",
+          "resource": "repo://apps/api/src/index.ts#L375-L398",
           "version": "repo-lines-v1:sha256:f436aad8b1b71dbc312cbc3225f8b781bae782b29f993e9f9dcc1415917e1590:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxY2EwYjQ0MzhlZWU5ZGExOWNjNmEyM2JiNTE5OGViYTc3NmNmYmJjM2M4OTE0ZmNhNzliZmM2ZWMwNGQyOWQifQ"
         },
         {
@@ -310,19 +310,19 @@
     },
     {
       "id": "claim_c5ccc9ff6e6548e7aaee2350fe36c3b2",
-      "statement": "UC-05 orchestrator subgraph (RCAState/PlanStep, validate/create/execute/evaluate/synthesize nodes), UC-10 runner/detector/sender (alerts/*, subscriptions.yaml, node-cron/manual CLI, sendAlert with timeout/retries/queue), and both domain skills are still planned with no implementation files; only the frozen registry seam and two unrelated skills exist.",
+      "statement": "UC-05 orchestrator subgraph (RCAState/PlanStep, validate/create/execute/evaluate/synthesize nodes), UC-10 runner/detector/sender (alerts/*, subscriptions.yaml, node-cron/manual CLI, sendAlert with timeout/retries/queue), and both domain skills (root-cause-analysis, anomaly-alert) are still planned with no implementation files; only the frozen registry seam exists and no domain skill files exist in the repository.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC10.md",
-          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+          "resource": "repo://docs/architecture.md#L258-L259",
+          "version": "repo-lines-v1:sha256:043cedd8db9cb966934ea7f6f1392c94fdb574243d99989b8533b3dfe9cc2394:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWQwMmY2N2Q5YmY4ZjFiMjdhNWU3M2U2NWNhNmRjMDIyM2RkOTc4M2RhOWI4MmE3MjIyMjA5ZWJjMmVlNzFlYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmM3OTFjNWJhZGE2ZjQ3OTU5NWZhMmFmMzAwYmQ0ZDAxMDk5NTQ4NzAwNzFlODMyZWNmN2JiODcxNzkxZWRjYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTMzOTMxYmY1ZGJjNjVjYjU3ZTE3NjA3NzE1OTk2N2RiOGZjNTZlZDk4MDFhY2Q4YTJlYzRlYTExMmU3MzY4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDA1NWE5OGQ0ZDRiZTM5MDk3M2IyNTE1NmY5ZjdkMGE1ZTU5MjY3YmUzOWYwYWZjNjc0ODBhZWJiNmI2M2YyYyJ9"
         },
         {
-          "resource": "repo://docs/architecture.md",
-          "version": "repo-file-v1:sha256:2842dd8822c863734c7a2ea788f319891a481668296fd8aef2eb1fc5dc046f78"
+          "resource": "repo://packages/agent/src/graph.ts#L107-L197",
+          "version": "repo-lines-v1:sha256:5b1fd67ba3fc1e88096ae44af71f2b9c00b61f7bf6ef34b102f414cf57f642f6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMDAxOTQ3MDJhZDFkYmMxNmRkNmY2YWM2MDVjOWEzYWFhMWY5NDNmMWZlMWQ3NzY0MTBkNjY0Y2M0OTRmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNThkZjA2YTQ3YzRjNGJiOTYxNDdmZmFkYTdkNjk5ZWYxOWNmYTI2NDA3NjA0YjhlZDAzMmMyNDM3MzhkNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ZTc5YWY1YmYyMzAyYzUwNDE2MzdjNjFmODFjNTUzODdjYWFhNjhhZjczZDY0MWI4ZDlkNmU4NGIwZmZiMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYzE4ZDU1NDAzZjdlMmRmYTBmMTdjMGQ0NWE1N2U3NGQzNjhhM2I1OTFlNDdlMmEzZGFjYjFhMDViZjg1YjgifQ"
         },
         {
-          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L16-L45",
-          "version": "repo-lines-v1:sha256:40470414c85923365d56017142459ca679c91747cf3d518be670132f195df2ca:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZTk2NzBkNDBlMmNmNTFhNDNiMzRmYjcyZjQxYTU3NjY1NjBjYjhlNmNjNzFkZDViMmQ2ZWMyMDgwODFiY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxYjMyYmRhYzk3ZTQ1ZTMyZmNhMTY1N2Y2NzY4YjVjOTIwZmRlYjY2ZGI4ZjJlMzMzNjA0NTEwYmMzZmRhMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjNjliYzg0YzUwOGMxY2QyNDY3ZGFkZWQ2ZTg2MGRhZjkwNjU3MDk0MWY3ZDVlOGE5NzI3MjU4ODU2ZmFmOGEifQ"
+          "resource": "repo://packages/agent/src/graph.ts#L72-L96",
+          "version": "repo-lines-v1:sha256:67deae385db1cfcec16a6eafdaf87c198e46dd256e86c893deb39ae513c33b11:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyZjk0ZDNiMTdlOGE0ZDExMWYzMWM1ZTQ1MzAyNzhjZTE5MGY1MzU5MGNlMTE3MTQzMmIyNjFkYWI2NmEzOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhYzcxMjFlOTQ1NDc5NWU2MWZkOTEwM2ZkM2I1ZjhiMmZhZWQzMjQyN2I2ZDVmNWZlMDhlNDMxN2Y2ZmQ5MDEifQ"
         }
       ]
     },
@@ -349,10 +349,106 @@
           "version": "repo-file-v1:sha256:defd5a8bd93f7855a52c6e986b3d860b4498fe482033314870f850201df23951"
         }
       ]
+    },
+    {
+      "id": "claim_381254cd92b94d859bc92a38842889f5",
+      "statement": "The frozen root builder compiles a fixed START to END chain with budgetGuard, understand, retrieve, router, ucEntry/defaultEntry, statusCheck, vizSeam, and answer nodes; the router dispatches only by overlay allowlist and a tripped budgetGuard short-circuits directly to answer without model or MCP I/O.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/graph.ts#L107-L197",
+          "version": "repo-lines-v1:sha256:5b1fd67ba3fc1e88096ae44af71f2b9c00b61f7bf6ef34b102f414cf57f642f6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMDAxOTQ3MDJhZDFkYmMxNmRkNmY2YWM2MDVjOWEzYWFhMWY5NDNmMWZlMWQ3NzY0MTBkNjY0Y2M0OTRmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNThkZjA2YTQ3YzRjNGJiOTYxNDdmZmFkYTdkNjk5ZWYxOWNmYTI2NDA3NjA0YjhlZDAzMmMyNDM3MzhkNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ZTc5YWY1YmYyMzAyYzUwNDE2MzdjNjFmODFjNTUzODdjYWFhNjhhZjczZDY0MWI4ZDlkNmU4NGIwZmZiMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYzE4ZDU1NDAzZjdlMmRmYTBmMTdjMGQ0NWE1N2U3NGQzNjhhM2I1OTFlNDdlMmEzZGFjYjFhMDViZjg1YjgifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/graph.ts#L113-L131",
+          "version": "repo-lines-v1:sha256:7e009d2f1fcda2cfef054831873fed94aed1117bd00cfe957812294da40bf7d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMmE1YmY4YjU5ZGMwMmQzM2JiMGZlZmM0MjQ0YzE5ZDk2MWQ5ZDk5NmUwOTVjZDJkMzE2MTJkNDBlYzczNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyMjJiMTA2NjA4NWFhODFhYzhmZmE3YjkzNTk0MjVmMzg2NmZlODgyNDE2YmE3NWFmYTUxZjc2MGIwOTAxMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0MzU4ODFjNTk5YjBiMTU0Mjk1ZDU4NzhjZDkzNTUzYzFmMTRlNmI1YzZmMjVlNTRkMDhiYWFkNTJiMTZkMzMifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/graph.ts#L187-L189",
+          "version": "repo-lines-v1:sha256:1a57a68e232949ebb1a6199acb5b71e8ab6b6bee954fcf0cef537b6339d0fb7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTc2YWMyOGRkNDhhNjcxNmMzOWQ5NGIwNWI2NGFhY2M5ZDFlOWY5OTA4YzhkMjZiNmRmMTA5ZWU0YmI1YmFkMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTBhZTc1ZDhkODM4NjQ3ZjIyNzQ3NGVlMzE4ZWI0YTY5MGFmNjYwZThhMzJkMmMzYzBmODZkNmVmOTUzNzNjNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ5NjA2NDUyZGE2NzFkMzFmZGUzNjNiMjViOGU5NDI5YTdmZjhmNDMwNWY2ZjI2ODIzZjU1ZmFkMjVlZGQwNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e4a5c2b4d1b1475481c5ef2161a6b923",
+      "statement": "UC-05 and UC-10 extend the agent without editing graph.ts by registering UcEntryHandler implementations through registerUC or RootGraphDeps.ucHandlers overlay merge, sharing the single (state, runtime) handler signature.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/graph.ts#L34-L49",
+          "version": "repo-lines-v1:sha256:f57af3572ad30d33b52dc0b3d7292cbbd60fa7a2cd3caab1c1f6af9327215143:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNTJmNjBlNDdkMmVkN2E0MDI1NDFjZDQwYjk5NDQ0Y2I5OTE1ZDgyNjc3YTg2YjRlOTRlYTNjZWYxZDUwMTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmMjcwNjQyOWI3ODliOTRiMWU2NzUyYjBlMDEyMzZjNDA3YTRiNjgwZDVmMmI4N2YyMjZkYjUxYmMwNWNhZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNTY1ZWRiNDlmMGVlZjBmODUwNDlhOTFiN2YyYTc4NDNjNzI4ODFhOTM1YWUwYzIxNGIxOTUyNmY4MjMyMzQifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/graph.ts#L79-L91",
+          "version": "repo-lines-v1:sha256:c87783d92d6ec360d3c976259019a599440654adacf3c788174272333d379d78:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMjFlOTIxNzE3N2Y2NWZhN2JmOWQ3ZTAxMDdkNzE5MzhmM2VlZjllODQ2NTBkY2Y4NWM0Mzg4YTZjODU1MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1NWVjZGI1NjBhOWZkYjYyZmNiNTdkNjVjODAzMzg5N2VlYjc1YTlkNWViYjVhOTk5NjY0NDI1NTkwOGI2YmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyN2EwMTE1YzRiODAxMGQ0MDM2NmZmOGU3YjFhNTQ1MDI0MmI2MzUwNDVlOTFjOTk5Y2QxNWQ5YTU2NzEwN2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzZTJkYTU1ZTc1ZGQ2MzcwY2ViYWQ4ZmQ2OWIwM2Y3OGYwOGViNmVlMzdkMGMyMDZjNDUzYTYzMjliNzFkMTMifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L29-L46",
+          "version": "repo-lines-v1:sha256:85d586dd12d5bf02682b3d731a80799bbc657af398a116be01be5d21ae013eba:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyZTRmMWJiOTNmN2UxNDQ0OTFiOTk4Y2I3MWQyMmY4MTM3ODExMGE4NDU1OTk5ODMwMGI5YTM4MmVjYzBmYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzNjZhZGM3ODZhNzAzNDZjNDQ5NGEwZjEyMTk2Mzc4N2EwY2NlYzZlOTMzMDMyNTljZGRmYjJjMWU0ZWU0YTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjNjliYzg0YzUwOGMxY2QyNDY3ZGFkZWQ2ZTg2MGRhZjkwNjU3MDk0MWY3ZDVlOGE5NzI3MjU4ODU2ZmFmOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1eb78e74f2bf4f60945797796c55ab42",
+      "statement": "Registry transport identity comes from RunnableConfig.configurable populated by the host and readTracerContext fails closed when any of mcpUrl, token, runId, userId, roleScope, threadId, or tracesDir is missing.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/graph.ts#L220-L267",
+          "version": "repo-lines-v1:sha256:b0aebb9088fcd273669d434b0ebe7ebe84c2b40d12a7ecbf273b44c2c01c7c53:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmM0YzYzMWJlNTNjOTg5ZDVkMDhmNWNjNjFmZjMwNGNlMGMzMzA5OWNhMTllYzA3YmI5Yjk5Njk4OWY5YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkNjYyMzIzOTc0NDAwOGFiZjJhMjY3ODNiNWMyZTM0ZWI2NDAyZjZhZDdlNWI5ZTUyOWZmYmU1YmJlMWNjMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L65-L89",
+          "version": "repo-lines-v1:sha256:3991716eb69aff961fd464d69ecded916475a1603762b5e933db95d7a941910a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OWFmMjg4NGUyOTY2YjIyZTI0NDhhYTBhZjM1MmJiMDU2MWJiNGI0NDcwZjAyYzJlNDVjMWExMWJhMDUyYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExNTYyMDA3YzUzMjQ4NGUxYTBhMDQ0ZTcyYjRmN2UwZDg5OTJiOGMyNzE3NTVlMDU5NTQ2ZDZhYjQzM2UzYzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2YmY4NTljYzk5MWVmMTYyYjFkMWUwOTBmY2U3Y2MyMGFjNGNhNzM1MWIxZGE0MDgwNWUzMTk1Njk1MjNjZDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aec5107fa11a44f0be2d9782df299a71",
+      "statement": "The trace writer mints spanId via randomUUID, runs row-level redactRow plus a redactPII stringify backstop before serialization, validates against the shared trace contract, and appends one redacted JSON line per event to traces/<runId>.jsonl.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/traces/writer.ts#L36-L66",
+          "version": "repo-lines-v1:sha256:59870c137d86d0b9705984be07aa61d31b9792aec06abf537e8703e082d0752a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3MGZiMzk5Y2ZjMjdjMGJhNmYzZGVkMjFmNDRhMjQzNjgzZWNmNzhkOGZkZjFiMDNkMGQ4ODYwOGUyZTA2ZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyZDAwMTNmZjA0OTIyYzlkOTUwOTlmNDU0NmE1YmJlMDhlYjNkNmEyZTg0ZGYzMDdmNjEzNDEyZDU3ZjlmMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5Y2ExZWY2YWE4NDUzYWRkYjIwY2RjOGIwNWVhZTUwOTZjMTNhYmEyNTYzNGU4NzBmNzhhMzk3M2UxMmVlNTQifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/traces/writer.ts#L73-L87",
+          "version": "repo-lines-v1:sha256:b17e5d43a0b118cf289d1460290dc74e418a9623af6160855bb4998b0aa9eae5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZWRlMDJmYzVhOWI2MWY0ZWE3NWYyOGRmNDI1ZDQ0ZTdiMmI4NGRmYTY3M2EzZGE2MDMxNjMyNGY1ZmZkZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwY2U3ZmE1OWYyYTZiN2FkMjJjMTQ5YTBlZTAxZTFhZGQyZTAyNzBkYmNhZWMxZjdkN2RiN2IwOGFhNmZhMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkYzBkYTMyMDM0ZjRmZDlmNDU4ZmE5MGI5MGFkY2ViMDFmMzAzNzY2NTZmMmU1ZWY1Y2EwM2MwNGNjNmUwYTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0f431ce8c4e540c6938ba915e80bd618",
+      "statement": "The hierarchical span emitter wraps work between start and end events with parentSpanId linkage and ok flag on both success and failure, and standardizes skill_call, llm_call, and tool_call helpers whose tool payloads carry only counts and column names, never cell values.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/telemetry/spans.ts#L128-L175",
+          "version": "repo-lines-v1:sha256:b54c9f5c119f10e3c2b4820997d2052a99f17181e829e3f5112cba8db8b06526:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1YmU2ODBjOTIwYzk1OGY2Y2JmM2UyZWNiZTVkY2Y0NjA2ZjZjM2I0NjMxMzhjZmIxMDA3NWJkYmQzZWU1ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZTM3MjVkYTAwMmI0NmVkOGI0ZGU4ODAwM2FkOTcxMGRjYWYxOGQ1N2M0NzAxZGMzYmVmZjBiMmM1Y2IxM2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlYzBmOWI5YTY2ZDc0Y2VlYWJmNjFiNDAyMDExNDYzZjBkM2NmZmIyMDVjYzgyMWZkZmExYjE4ZjFlOGExZDcifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/telemetry/spans.ts#L80-L126",
+          "version": "repo-lines-v1:sha256:1bf9f9fc523196f9a06536575b2741985f05588dba0a74ca09ea87fefa1087af:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMjAzZTUzY2JlYWQ5MWQ3MzE5OTQ2YmQzNTM5ZDRlYzE0ZDllYjE2N2ZlMjA1ZmMxZmIxNWJkZTdkYjEwOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMWQ0ZTVkMDZkNzM0NzYzMDk1YzViNTBiNjM5ZDQzYWYzNDQyMzAwNzA2ZTg4NDM4MjJkZWNkYzAwZDExZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwYWRmOTE1ZjMwY2U5MzZlMDEyMGY4ODZiNjRiYTY3OTViMDcxZDYyMGUzYTc2N2ZkNWI3NDMyMWE0YzNkZTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9e3ae07f757c4bb5b76e40fdb9b2ff40",
+      "statement": "UC-05 drill-down and UC-10 series queries share the ValidatedQueryExecutor path of selective describe, sqlGuard plus LocalQuerySafetyGate pre-check, explain plus run_query, and bounded repair, with hard caps on attempts, detail limits, preview rows, and run budgets.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/constants.ts#L9-L28",
+          "version": "repo-lines-v1:sha256:7009517b019f9a7dadf9ebc3f22e95f2e43dacbeed57f91a70b94251cb3f50cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0YjAyZDdhMjk0ODBhNWZiN2JkNjUxZmJmNjU1NGU5Mzg0MmI2YjM5OTNmNTVjYzU1NDU0ZTlhZTY2MmFjZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNzUxODk2MzU2NmU4NzA5YTdjYjA3ZTEwZDc0MTcyMTliNTAxZGQ2NTRiMGU1MzQ5N2RjYzM0YmFkZWRiMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlYTQ5YjgxZDM2OGM3ZTNkNzdkYTIwNjk3MTM1ZDcyNmU4N2QxMDU4ZjlmZmEyYmQ5YzA1NmEyYzUyZGE2MzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyZGNlZWVhMWM5MjFjMDYyN2E2NzRhYmFkYjMyYjg5MmNiMjMwZmFjNDE5OTBhNWY3MjU0Nzg0ZWQ2MTQ5OTMifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L1-L10",
+          "version": "repo-lines-v1:sha256:224b8e9b020cbd56dc382a6072e093df474f6a6dd0bb83631d4c08eb85168e33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZWZhYWYyNDU1NDJkZTEzMjViNGExZjg3MTQyZGY3MGM1YmQxYWEyNzIzNTgzZTUyOTAyMTIxZTMxNjIyMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZTdjMDRmNzMxZjRhMzJlYWJkOTdlNDNlZGMxYTA1MzdmMTk2ZGMyMTgxMTk5Y2QwY2Y4MTAyODczOTBkZDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlMzE0ZDgyNGM1NzlmNTg0M2YyODdhZjQ0NDZmOGI1ZTBmMmU3NTVkN2MxZGIzMDU0NTY1Y2EyZjU1YTMyOTIifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/safetyGate.ts#L1-L7",
+          "version": "repo-lines-v1:sha256:ef0cbb76b4f801946869fddaabe57a99d44b18070a3210f1bfb378281def4976:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmIxNjllYWQ2MzcwYzU0MzBmY2ZjNWNiZWFhMzUwYjIzMjk0YzdlYjNlNDJlOGUxNzdmZjE5MmMxMGVlOTQwZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGQ1NzkwZTAxNWM2YmJmZDhkNTNmODg0ZjgyOWQ5YjI4MmRmY2NiY2RhMjQ5OWUzZGYyYWU1NzUwYjgyZmU1MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2M1ZDZhNTNiNmQwZWRkY2FhMzk0ZjI0NTY4YzZlMDU4OTFhNGQ0ODE0NmNiZGZlM2E5ZjgyNGRkNGMwZTYxOCJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T14:46:19.230Z"
+    "at": "2026-11-01T07:02:11.362Z"
   }
 }

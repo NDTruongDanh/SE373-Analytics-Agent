@@ -1,13 +1,13 @@
 ---
 type: operations-guide
-title: Repository operations and wiki automation
+title: Repository operations
 description: Toolchain, build and test entrypoints, provider and session-header
   configuration, scheduled wiki CI, and submission layout for the Analytics
   Agent monorepo.
 tags: [operations, repository, openwiki-automation, configuration, ci]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-29T14:52:58.907Z
+    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -33,6 +33,8 @@ sources:
     resource: repo://package.json
   - id: openwiki-source-a62851a006529d8fbf774ab5
     resource: repo://packages/contracts/package.json
+  - id: openwiki-source-3e1ec54e40c3b23967c408a1
+    resource: repo://packages/contracts/src/constants.ts
   - id: openwiki-source-3c3de4bf966593db2e75c054
     resource: repo://packages/data/src/load.ts
   - id: openwiki-source-7ae5af35817186c47c4b6e4d
@@ -65,10 +67,10 @@ sources:
     resource: repo://tsconfig.json
   - id: openwiki-source-b6f224d26b4ec604e90101e3
     resource: repo://vitest.workspace.ts
-generated: { by: "openwiki/0.7.2", at: "2026-10-29T14:52:58.907Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
 ---
 
-# Repository operations and wiki automation
+# Repository operations
 
 This page owns the operational layer coding agents must not break: toolchain,
 `pnpm` entrypoints for the harness and the wiki, inference-provider and fetch-patch
@@ -205,10 +207,13 @@ workspace, skills, and secrets checks behind one `gate` status check
   intra-`@shared` dependency must be `workspace:*`, every `packages/*` library
   with `src/index.ts` must expose `exports["."].default` as `./dist/index.js`,
   and every direct workspace dependency must be covered by a `tsconfig`
-  project reference. It also pins `CONTRACTS_VERSION` to
+  project reference. It also pins `CONTRACTS_VERSION` (defined in
+  `packages/contracts/src/constants.ts` and re-exported from
+  `packages/contracts/src/index.ts`) to
   `packages/contracts/package.json` and verifies per-consumer
   `node_modules/@shared/*` symlinks resolve
-  (`scripts/check-workspace.mjs:74-110`).
+  (`scripts/check-workspace.mjs:74-99`,
+  `scripts/check-workspace.mjs:101-123`).
 - `scripts/skills-check.ts:77-94` enforces the declarative-skills invariant:
   any executable file under `skills/` fails the gate, and while no `SKILL.md`
   exists it exits zero with a no-skills-yet message. When skills exist it

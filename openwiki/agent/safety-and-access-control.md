@@ -1,11 +1,11 @@
 ---
 type: safety-guide
-title: Read-only guards, RBAC and PII masking
-description: Cross-cutting safety for the Analytics Agent covering read-only connections, SQL validation, agent pre-checks, RBAC with masking, and PII redaction.
+title: Safety and access control
+description: Cross-cutting safety for the Analytics Agent covering read-only connections, SQL validation, agent pre-checks, RBAC with masking, PII redaction, budgets, and HITL approval.
 tags: [safety, access-control, rbac, pii-masking, read-only, security]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T14:46:19.230Z
+    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-a53a8de5929686354550dafa
     resource: repo://docs/prd.md
@@ -13,8 +13,8 @@ sources:
     resource: repo://docs/UC-plan/UC01.md
   - id: openwiki-source-2fda883e9b76745f69f487f7
     resource: repo://eslint.config.mjs
-  - id: openwiki-source-9dd7e6ce658b37ae62f056fe
-    resource: repo://packages/access-policy/src/denylist.ts
+  - id: openwiki-source-a55e0aedff6bc7c1b180ad4e
+    resource: repo://packages/access-policy/src/constants.ts
   - id: openwiki-source-8a4a02a97b3e26db6e2b78f1
     resource: repo://packages/access-policy/src/guard.ts
   - id: openwiki-source-c16e3c66d0f5ea30d7c07479
@@ -23,6 +23,12 @@ sources:
     resource: repo://packages/access-policy/src/redactor.ts
   - id: openwiki-source-bb7cebdc5c6ade7e59d6a8b9
     resource: repo://packages/access-policy/src/sensitive-columns.ts
+  - id: openwiki-source-bfb9871db1c11a0b91b0e3c3
+    resource: repo://packages/agent/src/constants.ts
+  - id: openwiki-source-2b41979f39c43eeafef4e2e9
+    resource: repo://packages/agent/src/hitl.ts
+  - id: openwiki-source-838b92d36d280a2d1f63bcc2
+    resource: repo://packages/agent/src/queryExecutor/budgets.ts
   - id: openwiki-source-634e4e64a4c4f79f29496091
     resource: repo://packages/agent/src/queryExecutor/executor.ts
   - id: openwiki-source-7405bf10324bacfc1a6b7abd
@@ -37,31 +43,32 @@ sources:
     resource: repo://packages/mcp-server/src/catalog.ts
   - id: openwiki-source-edb0df25ab85a5dd65a32711
     resource: repo://packages/mcp-server/src/config.ts
+  - id: openwiki-source-80d7c64af501ca63c5b59584
+    resource: repo://packages/mcp-server/src/constants.ts
   - id: openwiki-source-6059339105a2039b4704c0b6
     resource: repo://packages/mcp-server/src/errors.ts
   - id: openwiki-source-556e762ce8bac7b936e1dff4
     resource: repo://packages/mcp-server/src/executor.ts
   - id: openwiki-source-c6764c62ef243702a1e271ac
     resource: repo://packages/mcp-server/src/pipeline.ts
-  - id: openwiki-source-9ca63c47cf2805e788ed5fdb
-    resource: repo://packages/mcp-server/src/tools.ts
-generated: { by: "openwiki/0.7.2", at: "2026-10-28T14:46:19.230Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
 ---
 
-# Read-only guards, RBAC and PII masking
+# Safety and access control
 
-This page owns the cross-cutting safety rules every query path must satisfy: read-only connections, SQL validation, role-based access with masking, and PII redaction. Enforcement lives in the shared `access-policy` package, the agent `ValidatedQueryExecutor` pre-checks described in [Workflow Architecture](./workflow-architecture.md), the gateway pipeline described in [MCP Server](../integrations/mcp-server.md), and the generation path in [Text to SQL](../use-cases/text-to-sql.md).
+This page owns the cross-cutting safety rules every query path must satisfy: read-only connections, SQL validation, role-based access with masking, PII redaction, run budgets, and human-in-the-loop approval. Enforcement lives in the shared `access-policy` package, the agent `ValidatedQueryExecutor` pre-checks described in [Workflow Architecture](./workflow-architecture.md), the gateway pipeline described in [MCP Server](../integrations/mcp-server.md), and the generation path in [Text to SQL](../use-cases/text-to-sql.md).
 
-> Core invariant: prompting alone is never a safety layer. Every guarantee below is enforced in code — in the validator, in the agent gate, in the policy rewrite, at the connection, or in the redaction choke-point — so disabling or tricking the prompt does not lift the restriction.
+> Core invariant: prompting alone is never a safety layer. Every guarantee below is enforced in code — in the validator, in the agent gate, in the policy rewrite, at the connection, in the budget check, in the approval interrupt, or in the redaction choke-point — so disabling or tricking the prompt does not lift the restriction.
 
 ## 1. Defense-in-depth layers
 
-Safety is four independent checks that must all agree before data returns:
+Safety is independent checks that must all agree before data returns:
 
 1. **Validator layer (before any MCP call).** The shared `sqlGuard` parses the candidate with `pgsql-parser` (real PostgreSQL grammar compiled to WASM, warmed once at startup), allows exactly one `SelectStmt`, rejects DDL/DML and dangerous functions, denies system schemas, and checks tables and columns against the catalog whitelist.
 2. **Agent gate layer (still before any MCP call).** `localQuerySafetyGate` runs after `sqlGuard` and owns the agent-side extras: sensitive-column denial in any clause, unconditioned-join denial, large-table clarification, and a detail-query `LIMIT` clamp. The server remains authoritative.
 3. **Policy layer (on the server, before execution).** Bearer authentication resolves a server-built principal, a scope gate checks the tool's required scope, zod validates inputs, then `ColumnScopePolicy` rewrites or denies the SQL (masking, row predicates, fail-closed resolution).
 4. **Connection and output layers (during and after execution).** The only database identity runs `BEGIN READ ONLY` with a 30-second timeout and bounded cursor reads; every result row, semantic chunk, resource read, audit line, and error message passes a shared PII/error redaction choke-point.
+5. **Budget and approval layer (around the run).** `checkBudget` is consulted before every LLM and MCP call and a trip stops further calls; `pauseForApproval` / `resumeDecision` suspend the graph for human review on the same thread id instead of re-running generation.
 
 Turning off any one layer still leaves the others blocking: a validator bypass still faces the policy rewrite and the database's own read-only rejection.
 
@@ -90,7 +97,7 @@ Allowed shape:
 
 Denylist (absolute bans):
 
-- All DDL/DML statement tags: `InsertStmt`, `UpdateStmt`, `DeleteStmt`, `MergeStmt`, `CopyStmt`, `TruncateStmt`, plus transaction/session tags (`TransactionStmt`, `VariableSetStmt`, `VariableShowStmt`, `DiscardStmt`), DDL tags (`CreateStmt`, `DropStmt`, `AlterStmt`, `AlterTableStmt`, `RenameStmt`, `GrantStmt`, `CommentStmt`), and execution/introspection tags (`ExplainStmt`, `PrepareStmt`, `ExecuteStmt`, `CallStmt`, `DoStmt`, `ListenStmt`, `NotifyStmt`, `LockStmt`, `VacuumStmt`, `CheckPointStmt`, `ReindexStmt`, `ClusterStmt`). DML nested inside CTEs such as `WITH x AS (DELETE ... RETURNING *) SELECT ...` is caught because the tags are denied anywhere in the walked tree.
+- All DDL/DML statement tags: `InsertStmt`, `UpdateStmt`, `DeleteStmt`, `MergeStmt`, `CopyStmt`, `TruncateStmt`, plus transaction/session tags (`TransactionStmt`, `VariableSetStmt`, `VariableShowStmt`, `DiscardStmt`), DDL tags (`CreateStmt`, `DropStmt`, `AlterStmt`, `AlterTableStmt`, `RenameStmt`, `GrantStmt`, `CommentStmt`), and execution/introspection tags (`ExplainStmt`, `PrepareStmt`, `ExecuteStmt`, `DeallocateStmt`, `CallStmt`, `DoStmt`, `ListenStmt`, `NotifyStmt`, `LockStmt`, `VacuumStmt`, `CheckPointStmt`, `ReindexStmt`, `ClusterStmt`). DML nested inside CTEs such as `WITH x AS (DELETE ... RETURNING *) SELECT ...` is caught because the tags are denied anywhere in the walked tree.
 - `SELECT INTO` (via `intoClause`) and `FOR UPDATE`-style locking clauses.
 - Dangerous functions matched on the lowercased last segment of `FuncCall.funcname`, so schema-qualified and any-case spellings are caught: `pg_sleep`, `pg_read_file`, `pg_ls_dir`, `pg_logdir_ls`, `dblink`, `dblink_exec`, `lo_import`, `lo_export`, `lo_unlink`, `set_config`, `pg_terminate_backend`, `pg_cancel_backend`, `pg_reload_conf`, `pg_execute_server_program`, `nextval`, `setval`, `currval`. Everything not listed passes — the function check is deny-by-exception.
 - System schemas `pg_catalog`, `information_schema`, `pg_toast` are denied explicitly even if a future catalog listed them.
@@ -104,7 +111,7 @@ Error behavior is part of the guard: parse failures return `INVALID_SQL` with a 
 
 - **Sensitive columns:** denies with `SENSITIVE_COLUMN_DENIED` when any catalog-marked sensitive column of a scanned table appears in `guard.columns`, which already collects named refs from every clause (projection, `WHERE`, `JOIN ON`, `GROUP BY`, `HAVING`, `ORDER BY`, function and aggregate args). This is intentionally stricter than the server: the agent gate blocks even projection reads that the server would mask.
 - **Joins:** denies any `JoinExpr` with no `ON`/`USING` condition (both `CROSS JOIN` and condition-less inner joins parse this way) and any comma-separated `FROM` list, which is an implicit cross join. `NATURAL JOIN` is left to the server-side guard.
-- **Large tables:** when a scanned table has any `large`-flagged column (currently `order_items`), and the query has neither a `WHERE` filter nor an aggregate (`FuncCall`, `GROUP BY`, `HAVING`), the gate returns `needs_clarification` asking for a filter, an aggregate, or a smaller table.
+- **Large tables:** when a scanned table has any `large`-flagged column (the gateway catalog marks `order_items` and `orders` large; agent tests inject the flag via catalog override), and the query has neither a `WHERE` filter nor an aggregate (`FuncCall`, `GROUP BY`, `HAVING`), the gate returns `needs_clarification` asking for a filter, an aggregate, or a smaller table.
 - **Detail-query clamp:** non-aggregate queries pass with `clampLimit(sql, 200)` — an existing `LIMIT` at or under the cap is untouched, a larger or `ALL` limit is tightened, an offset-only query gains a `LIMIT 200`, otherwise `LIMIT 200` is appended. Non-numeric limits are left for the server rather than producing invalid SQL.
 - **Timeout simplification:** a `TIMEOUT` gets exactly one forced retry that drops the `ORDER BY` tail and tightens the limit to 50, then re-passes guard plus gate before any MCP call.
 
@@ -143,7 +150,7 @@ Each caller acts under a server-built principal. Example roles: a southern regio
 Access is declared in YAML and validated at boot with strict `zod` schemas; any violation (malformed YAML, wrong version, empty names, unknown scopes, extra keys, duplicate client or token names, missing token env values) throws so the server never boots half-secured. Tokens live only in the environment variables named by `tokenEnv`, are compared with `timingSafeEqual`, and are never logged. `X-Run-Id`, `X-User-Id`, and `X-Role-Scope` headers are transport telemetry only, never proof.
 
 - `policies/mcp_clients.yaml` maps each client to `role`, `scopes`, and an optional `rowScope` (`column` plus `value`; today `sales_south` is scoped to `region_group = Nam`). Valid scopes are exactly `schema:read`, `data:read`, `data:sensitive`.
-- `policies/sensitive_columns.yaml` declares the sensitive registry (today `customers.phone`, `customers.email`, `customers.address`, `employees.salary`; version literal `1`). The catalog builder merges these flags with the `information_schema` columns and marks `large` tables (today `order_items`); an empty catalog throws instead of serving nothing as something.
+- `policies/sensitive_columns.yaml` declares the sensitive registry (today `customers.phone`, `customers.email`, `customers.address`, `employees.salary`; version literal `1`). The catalog builder merges these flags with the `information_schema` columns and marks `large` tables (gateway `order_items` and `orders`); an empty catalog throws instead of serving nothing as something.
 - Tool-to-scope mapping requires `schema:read` for `list_tables` and `describe_table`, and `data:read` for `explain_query`, `run_query`, `sample_rows`, and `search_semantic_layer`. Callers without `data:sensitive` get masked — not raw — sensitive output.
 
 ### 6.2 Rewrite, fail-closed resolution, and indirect-leak blocking
@@ -182,19 +189,29 @@ Leak prevention is centralized:
 - `redactPII` masks Vietnamese phone shapes (mobile `03/05/07/08/09`, landline `02X`, international `+84`, with separators between any digits) and standard email shapes with `[MASKED_PHONE]` / `[MASKED_EMAIL]`, returning a hit flag; `redactRow` applies it to every string cell of each result row.
 - `auditCall` appends exactly one synchronous JSONL line per call: SQL string literals are collapsed to `'?'` (shapes, never values), then the whole line is PII-scrubbed. Traces and logs must never contain unmasked PII values, literal PII inside logged SQL parameters, or connection secrets.
 
-## 9. Configuration and operations
+## 9. Budgets and human-in-the-loop approval
+
+Safety also bounds how long a run may try and when a human must decide.
+
+- **Run budgets:** `createBudgetState` builds per-run counters (`llmCalls`, `tokensUsed`) plus an absolute `deadlineMs` from `BUDGET_LIMITS` (`maxLlmCalls: 20`, `maxTokens: 60000`, `runDeadlineMs: 120000`). `checkBudget` is pure and never mutates state — it returns `{ tripped: false }` or `{ tripped: true, reason, state }` with reason `llm-calls`, `tokens`, or `deadline`. The executor calls it before every LLM and MCP call (selective describe, propose, guard, `explain_query`, `run_query`, zero-row probe); a trip stops further calls and degrades to synthesis with partial findings, surfacing `cannot_answer` with `budgetExceeded: true`, the `tripReason`, and `partials` (`tablesDescribed`, `lastSql`, `rowsFetched`). `recordLlmCall` records count plus token usage after each proposal, with `estimateTokens` (length divided by 4) as the conservative fallback when the provider omits usage.
+- **Clarification vs approval:** the large-table gate returns `needs_clarification` (ask for a filter, an aggregate, or a smaller table) via `requestClarification`, which requires a non-empty reason and at least one option and carries `pendingClarification` with `sql: null`. True human approval uses a different primitive: `pauseForApproval` wraps LangGraph `interrupt` and must be called inside a node — the graph suspends there and resumes only when the host invokes the `resumeDecision` command (`new Command({ resume: value })`) on the same thread id. Resuming with a fresh input object is forbidden because it would re-run generation and risk double-executing side effects.
+- **Thread identity:** `makeThreadId(userId, sessionId)` builds the stable `chat:{userId}:{sessionId}` key, throwing on empty parts or ids at or over the 255-character limit so resume never lands in a truncated thread; `isSameThread` is strict equality. The interrupt plus same-thread resume pattern is proven DB-free on `MemorySaver`: completed nodes are not re-run, while a fresh thread starts clean.
+
+## 10. Configuration and operations
 
 - Declare clients, tokens, scopes, row predicates, and sensitive columns in YAML under `policies/` and validate at boot; fail startup on invalid config or missing token env values.
 - Authenticate every MCP request with a Bearer token mapped to `{clientId, scopes, role}` plus optional `rowScope`; share input/output shapes from a single contracts package so scope and error-code drift is a type error.
 - Keep the parser warm: run one `SELECT 1` parse at server boot (and in test setup) so per-call overhead stays at tens of milliseconds; never use the synchronous parse on a request path.
 - Enforce the MCP boundary in lint plus code review: the agent reaches the database only through the MCP client, never a direct import.
 - Cap outputs by contract: `run_query` defaults to 200 rows and rejects `maxRows` outside `1..1000`; `sample_rows` caps at 5; over-limit reads set `truncated` rather than streaming.
+- Keep budgets at their locked defaults unless an explicit override is passed to `createBudgetState`; inject `nowMs` only in tests for deterministic deadline checks.
 
-## 10. Focused tests that matter
+## 11. Focused tests that matter
 
 - **Validator matrix:** valid selects, DDL/DML in every clause position (including inside CTEs), multi-statements, `SELECT INTO`, locking clauses, banned functions (including qualified and mixed-case spellings), unknown tables and columns, system-schema access, alias and subquery resolution edges.
 - **Connection proof:** attempt a write as the agent identity directly and assert the database rejects it with its native read-only error.
 - **Scope matrix:** `schema:read` calling `run_query`, missing or bad tokens, masked versus raw salary access by role, `ANALYZE` in `explain_query`, and wildcard selects over sensitive tables.
 - **Indirect-leak cases:** filtered, aggregated, concatenated, and alias-renamed sensitive columns, plus unresolvable shapes over sensitive tables asserting fail-closed denial.
 - **Agent-gate cases:** large-table scans with and without filters/aggregates, unconditioned and comma joins, `LIMIT` clamping (including `ALL`, oversized, offset-only, and parameter forms), and the single TIMEOUT simplification.
+- **Budget and HITL cases:** tripped `llm-calls`, `tokens`, and `deadline` budgets degrading to `cannot_answer` with partials preserved; stable thread-id validation and same-thread resume without re-running completed nodes versus a fresh thread starting clean.
 - **Leak scan:** pattern plus policy cross-check over every result, chunk, trace, and audit line asserting zero raw leaks while in-scope accuracy stays above target.
