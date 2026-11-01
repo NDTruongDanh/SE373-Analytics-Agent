@@ -8,9 +8,9 @@
 // are not part of the frozen catalog zod shape.
 import type { SchemaCatalog } from "@shared/contracts";
 import type { SensitiveColumns } from "@shared/access-policy";
+import { LARGE_TABLES } from "./constants.js";
 
-// Row counts from data/seed_manifest.json: order_items 1,138,526; orders 997,665.
-export const LARGE_TABLES: readonly string[] = ["order_items", "orders"];
+export { LARGE_TABLES } from "./constants.js";
 
 export interface ForeignKeyRef {
   column: string;

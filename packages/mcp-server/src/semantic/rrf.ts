@@ -1,16 +1,13 @@
 // Reciprocal Rank Fusion (D-18): merges pgvector cosine hits with Postgres
 // FTS hits at k=60. Pure function — no DB, no network.
+import { RRF_K } from "../constants.js";
+
+export { DEFAULT_RRF_WEIGHTS, RRF_K, W_ALIAS, W_BM25, W_DENSE } from "../constants.js";
+
 export interface FusedHit<T> {
   item: T;
   score: number;
 }
-
-export const RRF_K = 60;
-
-export const W_DENSE = 1.0;
-export const W_BM25 = 1.0;
-export const W_ALIAS = 1.5;
-export const DEFAULT_RRF_WEIGHTS = [W_DENSE, W_BM25, W_ALIAS] as const;
 
 // Score of one fused id from its 1-based per-side ranks (undefined when a
 // side missed). Exported so callers that fuse ids can report the same

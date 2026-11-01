@@ -5,12 +5,20 @@
 // shapes at the boundary.
 import type { SearchSemanticLayerChunk } from "@shared/contracts";
 import {
+  BM25_B,
+  BM25_K1,
   DEFAULT_RRF_WEIGHTS,
-  fuseRRF,
-  rrfScore,
   RRF_K,
-} from "./rrf.js";
+} from "../constants.js";
+import { fuseRRF, rrfScore } from "./rrf.js";
 import type { Embedder } from "./embedder.js";
+
+export {
+  BM25_B,
+  BM25_K1,
+  DEFAULT_RRF_WEIGHTS,
+  RRF_K,
+} from "../constants.js";
 
 export interface RetrieverQuery {
   (text: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -73,9 +81,6 @@ function vectorLiteral(vector: number[]): string {
 // ---------------------------------------------------------------------------
 // BM25 text normalization
 // ---------------------------------------------------------------------------
-
-export const BM25_K1 = 1.2;
-export const BM25_B = 0.75;
 
 export function foldAscii(text: string): string {
   return text
