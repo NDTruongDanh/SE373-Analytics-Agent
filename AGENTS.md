@@ -27,6 +27,7 @@ and audit live in code. Start with `docs/architecture.md` before touching UC cod
 - Requirements: `docs/prd.md` — UC acceptance criteria, harness rules, eval metrics.
 - Tool schemas: `docs/mcp_interface.md` — generated, never hand-edit.
 - Contracts guide: `packages/contracts/README.md` — versioning, camelCase, error codes.
+- TypeScript: `docs/coding-practices.md` — imports, zod, errors, naming, layout.
 - UC scope: `docs/UC-plan/UC<NN>.md` + `openwiki/` pages for the UC you touch.
 - Reach for OpenWiki only when architecture or dependency behavior is unclear;
   source code and tests stay authoritative.
