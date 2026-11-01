@@ -1,0 +1,289 @@
+# Metric chunks — 12 business metrics (docType: metric) with additive flags and SQL formulas.
+chunks:
+  - chunkId: "metric:net_revenue"
+    docType: "metric"
+    table: "order_items"
+    tables: ["orders", "order_items"]
+    metricName: "net_revenue"
+    aliases: ["net revenue", "net sales", "doanh thu thuần", "doanh số ròng", "doanh thu thực", "doanh thu", "revenue", "revenue_vnd"]
+    sensitivity: "public"
+    additive: true
+    formula: "SUM(order_items.price_vnd) over orders with status = 'delivered'"
+    sql: "SELECT SUM(oi.price_vnd) AS net_revenue_vnd FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE o.status = 'delivered'"
+    content: >-
+      Metric net_revenue (Doanh thu thuần) is total merchandise revenue in VND for
+      the filtered order set: SUM(oi.price_vnd) over order_items joined to orders
+      with o.status = 'delivered'. Canceled and returned orders are excluded.
+      Freight is excluded (see metric:gross_merchandise_value for price + freight).
+      Additive (additive: true): safe to sum across time periods, channels, and
+      regions. SQL template: SELECT SUM(oi.price_vnd) AS net_revenue_vnd FROM
+      public.order_items oi JOIN public.orders o USING (order_id) WHERE
+      o.status = 'delivered'. Always add the caller's date/channel/region filters
+      on o.purchase_date and dimensions. Caveat: never compute revenue as
+      products.price_vnd * COUNT(orders).
+    caveats:
+      - "Only status = 'delivered' counts; canceled and returned orders are excluded."
+      - "Freight is excluded; see metric:gross_merchandise_value for price + freight."
+
+  - chunkId: "metric:gross_merchandise_value"
+    docType: "metric"
+    table: "order_items"
+    tables: ["orders", "order_items"]
+    metricName: "gross_merchandise_value"
+    aliases: ["GMV", "gross merchandise value", "tổng giá trị hàng hoá", "tổng giá trị giao dịch", "doanh thu gộp", "doanh số gộp"]
+    sensitivity: "public"
+    additive: true
+    formula: "SUM(order_items.price_vnd + order_items.freight_vnd) over orders with status IN ('delivered', 'shipped', 'returned')"
+    sql: "SELECT SUM(oi.price_vnd + oi.freight_vnd) AS gmv_vnd FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'shipped', 'returned')"
+    content: >-
+      Metric gross_merchandise_value (GMV / Tổng giá trị hàng hoá) is total
+      merchandise plus freight value in VND: SUM(oi.price_vnd + oi.freight_vnd)
+      over order_items joined to orders with o.status IN ('delivered', 'shipped',
+      'returned'). Canceled orders are excluded; returned orders are included
+      (unlike metric:net_revenue). Additive (additive: true): safe to sum across
+      segments. SQL template: SELECT SUM(oi.price_vnd + oi.freight_vnd) AS gmv_vnd
+      FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE
+      o.status IN ('delivered', 'shipped', 'returned'). Add caller date/channel/
+      region filters on the orders leg.
+    caveats:
+      - "Canceled orders are excluded; returned orders are included (unlike net_revenue)."
+
+  - chunkId: "metric:active_customers"
+    docType: "metric"
+    table: "orders"
+    tables: ["orders", "customers"]
+    metricName: "active_customers"
+    aliases: ["active customers", "khách hàng hoạt động", "khách hàng đang hoạt động", "số khách hàng hoạt động", "active buyers"]
+    sensitivity: "public"
+    additive: false
+    formula: "COUNT(DISTINCT customer_id) with >= 1 delivered order in the 90-day window"
+    sql: "SELECT COUNT(DISTINCT o.customer_id) AS active_customers FROM public.orders o WHERE o.status = 'delivered' AND o.purchase_date >= CURRENT_DATE - INTERVAL '90 days'"
+    content: >-
+      Metric active_customers (Khách hàng hoạt động) counts distinct customers with
+      >= 1 delivered order in the trailing 90-day window:
+      COUNT(DISTINCT o.customer_id) with o.status = 'delivered' AND o.purchase_date
+      >= CURRENT_DATE - INTERVAL '90 days'. Non-additive (additive: false): do not
+      sum across periods or segments — the same customer is active in several
+      windows, so union distinct customers instead. SQL template: SELECT
+      COUNT(DISTINCT o.customer_id) AS active_customers FROM public.orders o WHERE
+      o.status = 'delivered' AND o.purchase_date >= CURRENT_DATE - INTERVAL
+      '90 days'. Replace the window bound with the caller's as-of date when given.
+    caveats:
+      - "Non-additive: never sum across periods or segments; union distinct customers instead."
+      - "Only status = 'delivered' orders confer active status."
+
+  - chunkId: "metric:aov"
+    docType: "metric"
+    table: "order_items"
+    tables: ["orders", "order_items"]
+    metricName: "aov"
+    aliases: ["AOV", "average order value", "average_order_value", "giá trị đơn hàng trung bình", "giá trị đơn trung bình", "average basket", "giỏ hàng trung bình"]
+    sensitivity: "public"
+    additive: false
+    formula: "SUM(order_items.price_vnd) / COUNT(DISTINCT orders.order_id) over delivered orders"
+    sql: "SELECT SUM(oi.price_vnd)::numeric / NULLIF(COUNT(DISTINCT o.order_id), 0) AS aov_vnd FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE o.status = 'delivered'"
+    content: >-
+      Metric aov (Average Order Value / Giá trị đơn hàng trung bình) is merchandise
+      revenue per delivered order: SUM(oi.price_vnd)::numeric /
+      NULLIF(COUNT(DISTINCT o.order_id), 0) over order_items joined to orders with
+      o.status = 'delivered'. Both numerator and denominator must share the same
+      filters. Non-additive (additive: false): never average AOVs across segments
+      — recompute the ratio over the combined set. SQL template: SELECT
+      SUM(oi.price_vnd)::numeric / NULLIF(COUNT(DISTINCT o.order_id), 0) AS aov_vnd
+      FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE
+      o.status = 'delivered'. Freight is excluded from the numerator.
+    caveats:
+      - "Non-additive: never average AOVs across segments; recompute the ratio over the combined set."
+      - "Freight is excluded from the numerator."
+
+  - chunkId: "metric:return_rate"
+    docType: "metric"
+    table: "orders"
+    tables: ["orders"]
+    metricName: "return_rate"
+    aliases: ["return rate", "tỉ lệ hoàn đơn", "tỷ lệ hoàn đơn", "tỉ lệ trả hàng", "order return rate"]
+    sensitivity: "public"
+    additive: false
+    formula: "COUNT(*) FILTER (WHERE status = 'returned') / COUNT(*) over the filtered order set"
+    sql: "SELECT COUNT(*) FILTER (WHERE o.status = 'returned')::numeric / NULLIF(COUNT(*), 0) AS return_rate FROM public.orders o"
+    content: >-
+      Metric return_rate (Tỉ lệ hoàn đơn) is the share of orders returned:
+      COUNT(*) FILTER (WHERE o.status = 'returned')::numeric / NULLIF(COUNT(*), 0)
+      over the filtered orders set. Denominator is all orders in the filter
+      (delivered, shipped, canceled, returned) unless the caller narrows it.
+      Non-additive (additive: false): recompute the ratio per segment, never
+      average rates. SQL template: SELECT COUNT(*) FILTER (WHERE o.status =
+      'returned')::numeric / NULLIF(COUNT(*), 0) AS return_rate FROM public.orders
+      o. Add caller date/channel/region filters to both numerator and denominator.
+    caveats:
+      - "Non-additive: recompute the ratio per segment, never average rates."
+
+  - chunkId: "metric:cancellation_rate"
+    docType: "metric"
+    table: "orders"
+    tables: ["orders"]
+    metricName: "cancellation_rate"
+    aliases: ["cancellation rate", "cancel rate", "tỉ lệ huỷ đơn", "tỷ lệ hủy đơn", "tỉ lệ đơn huỷ"]
+    sensitivity: "public"
+    additive: false
+    formula: "COUNT(*) FILTER (WHERE status = 'canceled') / COUNT(*) over the filtered order set"
+    sql: "SELECT COUNT(*) FILTER (WHERE o.status = 'canceled')::numeric / NULLIF(COUNT(*), 0) AS cancellation_rate FROM public.orders o"
+    content: >-
+      Metric cancellation_rate (Tỉ lệ huỷ đơn) is the share of orders canceled:
+      COUNT(*) FILTER (WHERE o.status = 'canceled')::numeric / NULLIF(COUNT(*), 0)
+      over the filtered orders set. Denominator is all orders in the filter unless
+      the caller narrows it. Non-additive (additive: false): recompute the ratio
+      per segment, never average rates. SQL template: SELECT COUNT(*) FILTER
+      (WHERE o.status = 'canceled')::numeric / NULLIF(COUNT(*), 0) AS
+      cancellation_rate FROM public.orders o. Note the status spelling is
+      'canceled' (single l).
+    caveats:
+      - "Non-additive: recompute the ratio per segment, never average rates."
+      - "Status spelling is 'canceled' (single l)."
+
+  - chunkId: "metric:repeat_customer_rate"
+    docType: "metric"
+    table: "orders"
+    tables: ["orders", "customers"]
+    metricName: "repeat_customer_rate"
+    aliases: ["repeat customer rate", "retention rate", "tỉ lệ khách quay lại", "tỷ lệ khách hàng mua lại", "khách hàng lặp lại"]
+    sensitivity: "public"
+    additive: false
+    formula: "customers with >= 2 delivered orders / customers with >= 1 delivered order"
+    sql: "WITH customer_orders AS (SELECT o.customer_id, COUNT(*) AS delivered_orders FROM public.orders o WHERE o.status = 'delivered' GROUP BY o.customer_id) SELECT COUNT(*) FILTER (WHERE co.delivered_orders >= 2)::numeric / NULLIF(COUNT(*), 0) AS repeat_customer_rate FROM customer_orders co"
+    content: >-
+      Metric repeat_customer_rate (Tỉ lệ khách quay lại) is the share of delivered
+      customers who bought at least twice: customers with >= 2 delivered orders
+      divided by customers with >= 1 delivered order, over the same filter set.
+      Non-additive (additive: false): recompute per segment, never average rates.
+      SQL template uses a CTE of per-customer delivered order counts: WITH
+      customer_orders AS (SELECT o.customer_id, COUNT(*) AS delivered_orders FROM
+      public.orders o WHERE o.status = 'delivered' GROUP BY o.customer_id) SELECT
+      COUNT(*) FILTER (WHERE co.delivered_orders >= 2)::numeric /
+      NULLIF(COUNT(*), 0) AS repeat_customer_rate FROM customer_orders co. Add
+      caller date/channel filters inside the CTE so numerator and denominator
+      share them.
+    caveats:
+      - "Non-additive: recompute per segment, never average rates."
+      - "Caller filters must go inside the CTE so numerator and denominator share them."
+
+  - chunkId: "metric:new_customers"
+    docType: "metric"
+    table: "orders"
+    tables: ["orders", "customers"]
+    metricName: "new_customers"
+    aliases: ["new customers", "khách hàng mới", "số khách hàng mới", "first-time buyers"]
+    sensitivity: "public"
+    additive: true
+    formula: "COUNT(DISTINCT customer_id) whose MIN(delivered purchase_date) falls in the target period"
+    sql: "WITH first_orders AS (SELECT o.customer_id, MIN(o.purchase_date) AS first_purchase FROM public.orders o WHERE o.status = 'delivered' GROUP BY o.customer_id) SELECT COUNT(*) AS new_customers FROM first_orders fo WHERE fo.first_purchase >= :period_start AND fo.first_purchase < :period_end"
+    content: >-
+      Metric new_customers (Khách hàng mới) counts distinct customers whose first
+      delivered order falls in the target period: a CTE of MIN(o.purchase_date)
+      per customer_id over status = 'delivered' orders, then COUNT(*) where
+      first_purchase lies in [:period_start, :period_end). Additive
+      (additive: true) across disjoint periods: summing monthly new-customer
+      counts equals the period total, since each customer has exactly one first
+      purchase. SQL template: WITH first_orders AS (SELECT o.customer_id,
+      MIN(o.purchase_date) AS first_purchase FROM public.orders o WHERE o.status =
+      'delivered' GROUP BY o.customer_id) SELECT COUNT(*) AS new_customers FROM
+      first_orders fo WHERE fo.first_purchase >= :period_start AND
+      fo.first_purchase < :period_end. Bind the caller's period to the
+      placeholders.
+    caveats:
+      - "Each customer has exactly one first purchase, so disjoint-period counts sum correctly."
+      - "Only status = 'delivered' orders confer new-customer status."
+
+  - chunkId: "metric:on_time_delivery_rate"
+    docType: "metric"
+    table: "orders"
+    tables: ["orders"]
+    metricName: "on_time_delivery_rate"
+    aliases: ["on time delivery rate", "delivery rate", "fulfillment rate", "tỉ lệ giao hàng đúng hạn", "tỷ lệ giao hàng thành công", "tỉ lệ giao thành công"]
+    sensitivity: "public"
+    additive: false
+    formula: "COUNT(*) FILTER (WHERE status = 'delivered') / COUNT(*) FILTER (WHERE status IN ('delivered', 'shipped', 'returned'))"
+    sql: "SELECT COUNT(*) FILTER (WHERE o.status = 'delivered')::numeric / NULLIF(COUNT(*) FILTER (WHERE o.status IN ('delivered', 'shipped', 'returned')), 0) AS on_time_delivery_rate FROM public.orders o"
+    content: >-
+      Metric on_time_delivery_rate (Tỉ lệ giao hàng đúng hạn) is the fulfillment
+      success share: delivered orders divided by fulfillable orders (delivered,
+      shipped, returned). Canceled orders are excluded from both numerator and
+      denominator. Non-additive (additive: false): recompute the ratio per
+      segment, never average rates. SQL template: SELECT COUNT(*) FILTER (WHERE
+      o.status = 'delivered')::numeric / NULLIF(COUNT(*) FILTER (WHERE o.status
+      IN ('delivered', 'shipped', 'returned')), 0) AS on_time_delivery_rate FROM
+      public.orders o. Add caller date/channel/region filters to both FILTER
+      clauses.
+    caveats:
+      - "Non-additive: recompute the ratio per segment, never average rates."
+      - "Canceled orders are excluded from both numerator and denominator."
+
+  - chunkId: "metric:revenue_per_seller"
+    docType: "metric"
+    table: "order_items"
+    tables: ["orders", "order_items", "sellers"]
+    metricName: "revenue_per_seller"
+    aliases: ["revenue per seller", "average seller revenue", "doanh thu trung bình mỗi nhà bán", "doanh thu mỗi người bán", "doanh thu trung bình người bán"]
+    sensitivity: "public"
+    additive: false
+    formula: "SUM(order_items.price_vnd) / COUNT(DISTINCT order_items.seller_id) over delivered orders"
+    sql: "SELECT SUM(oi.price_vnd)::numeric / NULLIF(COUNT(DISTINCT oi.seller_id), 0) AS revenue_per_seller_vnd FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE o.status = 'delivered'"
+    content: >-
+      Metric revenue_per_seller (Doanh thu trung bình mỗi nhà bán) is delivered
+      merchandise revenue per active seller: SUM(oi.price_vnd)::numeric /
+      NULLIF(COUNT(DISTINCT oi.seller_id), 0) over order_items joined to orders
+      with o.status = 'delivered'. Join sellers only for seller attributes
+      (region, province); the aggregate needs only order_items.seller_id.
+      Non-additive (additive: false): never average per-seller values across
+      segments — recompute the ratio over the combined set. SQL template: SELECT
+      SUM(oi.price_vnd)::numeric / NULLIF(COUNT(DISTINCT oi.seller_id), 0) AS
+      revenue_per_seller_vnd FROM public.order_items oi JOIN public.orders o USING
+      (order_id) WHERE o.status = 'delivered'.
+    caveats:
+      - "Non-additive: recompute the ratio over the combined set, never average per-segment values."
+      - "Only status = 'delivered' orders count."
+
+  - chunkId: "metric:order_count"
+    docType: "metric"
+    table: "orders"
+    tables: ["orders"]
+    metricName: "order_count"
+    aliases: ["order count", "number of orders", "số đơn hàng", "tổng số đơn hàng", "số lượng đơn"]
+    sensitivity: "public"
+    additive: true
+    formula: "COUNT(DISTINCT orders.order_id) over the filtered order set"
+    sql: "SELECT COUNT(DISTINCT o.order_id) AS order_count FROM public.orders o"
+    content: >-
+      Metric order_count (Số đơn hàng) counts distinct orders in the filtered set:
+      COUNT(DISTINCT o.order_id) over orders. Status splits use the
+      orders.status dimension (column:orders.status); shares divide by the same
+      filtered total. Additive (additive: true) across disjoint segments: segment
+      counts sum to the total. SQL template: SELECT COUNT(DISTINCT o.order_id) AS
+      order_count FROM public.orders o. Add caller status/date/channel/region
+      filters. Caveat: count from orders alone — joining order_items or payments
+      fans out, so always use COUNT(DISTINCT o.order_id), never COUNT(*), after
+      such joins.
+    caveats:
+      - "Count from orders alone; after joining order_items or payments always use COUNT(DISTINCT o.order_id)."
+
+  - chunkId: "metric:compensation_cost"
+    docType: "metric"
+    table: "employees"
+    tables: ["employees"]
+    metricName: "compensation_cost"
+    aliases: ["compensation cost", "chi phí nhân sự", "payroll", "quỹ lương", "tổng lương nhân viên"]
+    sensitivity: "restricted_pii"
+    additive: true
+    formula: "SUM(employees.salary) over the filtered employee set"
+    sql: "SELECT SUM(e.salary) AS compensation_cost_vnd FROM public.employees e"
+    content: >-
+      Metric compensation_cost (Chi phí nhân sự / payroll) is aggregate staff
+      compensation in VND: SUM(e.salary) over employees. Sensitivity
+      restricted_pii: employees.salary requires the data:sensitive scope, so this
+      metric is withheld from principals lacking that scope and individual salary
+      rows must never be exposed. Additive (additive: true): sums across
+      departments, provinces, and periods. SQL template: SELECT SUM(e.salary) AS
+      compensation_cost_vnd FROM public.employees e. Add caller province filters
+      as needed.
+    caveats:
+      - "restricted_pii: requires the data:sensitive scope; never expose individual salary rows."

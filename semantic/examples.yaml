@@ -1,0 +1,668 @@
+# Few-shot gold examples — {question, sql, citedMetrics, tables} pairs (docType: example).
+# Validated against packages/contracts/src/semantic.ts metadata contract.
+# Every query uses only columns from the public schema: orders(order_id,
+# customer_id, channel_id, status, purchase_date), order_items(order_item_id,
+# order_id, product_id, seller_id, price_vnd, freight_vnd), payments(payment_id,
+# order_id, payment_type, installments, value_vnd), customers(customer_id, name,
+# province, region_group), sellers(seller_id, province, region_group),
+# products(product_id, category_id, name, price_vnd, weight_g, length_cm,
+# height_cm, width_cm), categories(category_id, name_vi), channels(channel_id,
+# channel_name), reviews(review_id, order_id, score, title, message,
+# created_at), promotions(promotion_id, name, starts_on, ends_on,
+# discount_pct), regions(province, region_group). Contact and compensation
+# columns never appear in filters, groupings, or projections here.
+chunks:
+  - chunkId: "example:net_revenue_by_region_q2_2026"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "order_items", "customers"]
+    metricName: "net_revenue"
+    citedMetrics: ["metric:net_revenue"]
+    aliases: ["doanh thu thuần theo vùng", "net revenue by region", "Q2 2026", "quý 2 2026", "miền Bắc Trung Nam"]
+    sensitivity: "public"
+    question: >-
+      Doanh thu thuần (net revenue) theo vùng miền trong quý 2 năm 2026 là bao nhiêu?
+    sql: |-
+      SELECT c.region_group,
+             SUM(oi.price_vnd) AS net_revenue_vnd
+      FROM orders o
+      JOIN order_items oi USING (order_id)
+      JOIN customers c USING (customer_id)
+      WHERE o.status = 'delivered'
+        AND o.purchase_date >= '2026-04-01'
+        AND o.purchase_date < '2026-07-01'
+      GROUP BY c.region_group
+      ORDER BY net_revenue_vnd DESC;
+    content: >-
+      Question: Doanh thu thuần (net revenue) theo vùng miền trong quý 2 năm
+      2026 là bao nhiêu? Cited metrics: metric:net_revenue. Tables: orders,
+      order_items, customers. Net revenue sums order_items.price_vnd over
+      delivered orders only, grouped by customers.region_group ('Bắc' |
+      'Trung' | 'Nam'). SQL: SELECT c.region_group, SUM(oi.price_vnd) AS
+      net_revenue_vnd FROM orders o JOIN order_items oi USING (order_id) JOIN
+      customers c USING (customer_id) WHERE o.status = 'delivered' AND
+      o.purchase_date >= '2026-04-01' AND o.purchase_date < '2026-07-01' GROUP
+      BY c.region_group ORDER BY net_revenue_vnd DESC.
+
+  - chunkId: "example:gmv_by_channel_q1_2026"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "order_items", "channels"]
+    metricName: "gmv"
+    citedMetrics: ["metric:gmv"]
+    aliases: ["GMV theo kênh", "gmv by channel", "Q1 2026", "quý 1 2026", "tổng giá trị giao dịch", "kênh bán hàng"]
+    sensitivity: "public"
+    question: >-
+      Tổng giá trị giao dịch (GMV) theo từng kênh bán hàng trong quý 1 năm 2026?
+    sql: |-
+      SELECT ch.channel_name,
+             SUM(oi.price_vnd) AS gmv_vnd
+      FROM orders o
+      JOIN order_items oi USING (order_id)
+      JOIN channels ch USING (channel_id)
+      WHERE o.purchase_date >= '2026-01-01'
+        AND o.purchase_date < '2026-04-01'
+      GROUP BY ch.channel_name
+      ORDER BY gmv_vnd DESC;
+    content: >-
+      Question: Tổng giá trị giao dịch (GMV) theo từng kênh bán hàng trong quý
+      1 năm 2026? Cited metrics: metric:gmv. Tables: orders, order_items,
+      channels. GMV sums order_items.price_vnd over all order statuses (unlike
+      net revenue, no delivered filter), grouped by channels.channel_name.
+      SQL: SELECT ch.channel_name, SUM(oi.price_vnd) AS gmv_vnd FROM orders o
+      JOIN order_items oi USING (order_id) JOIN channels ch USING (channel_id)
+      WHERE o.purchase_date >= '2026-01-01' AND o.purchase_date <
+      '2026-04-01' GROUP BY ch.channel_name ORDER BY gmv_vnd DESC.
+
+  - chunkId: "example:aov_by_channel_2025"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "order_items", "channels"]
+    metricName: "average_order_value"
+    citedMetrics: ["metric:average_order_value"]
+    aliases: ["giá trị đơn trung bình", "AOV", "average order value", "H2 2025", "nửa cuối 2025", "theo kênh"]
+    sensitivity: "public"
+    question: >-
+      Giá trị đơn hàng trung bình (AOV) theo kênh bán hàng trong nửa cuối năm 2025?
+    sql: |-
+      SELECT ch.channel_name,
+             SUM(oi.price_vnd)::NUMERIC / NULLIF(COUNT(DISTINCT o.order_id), 0) AS aov_vnd
+      FROM orders o
+      JOIN order_items oi USING (order_id)
+      JOIN channels ch USING (channel_id)
+      WHERE o.status = 'delivered'
+        AND o.purchase_date >= '2025-07-01'
+        AND o.purchase_date < '2026-01-01'
+      GROUP BY ch.channel_name
+      ORDER BY aov_vnd DESC;
+    content: >-
+      Question: Giá trị đơn hàng trung bình (AOV) theo kênh bán hàng trong
+      nửa cuối năm 2025? Cited metrics: metric:average_order_value. Tables:
+      orders, order_items, channels. AOV divides delivered merchandise revenue
+      by distinct delivered order count over the same filtered set, per
+      channel. SQL: SELECT ch.channel_name, SUM(oi.price_vnd)::NUMERIC /
+      NULLIF(COUNT(DISTINCT o.order_id), 0) AS aov_vnd FROM orders o JOIN
+      order_items oi USING (order_id) JOIN channels ch USING (channel_id)
+      WHERE o.status = 'delivered' AND o.purchase_date >= '2025-07-01' AND
+      o.purchase_date < '2026-01-01' GROUP BY ch.channel_name ORDER BY
+      aov_vnd DESC.
+
+  - chunkId: "example:orders_items_payments_reconciliation_cte"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "order_items", "payments", "channels"]
+    metricName: "net_revenue"
+    citedMetrics: ["metric:net_revenue", "metric:payment_total"]
+    aliases: ["đối soát", "reconciliation", "anti-fanout CTE", "tháng 7 2026", "merchandise vs payments", "tiền hàng và thanh toán"]
+    sensitivity: "public"
+    question: >-
+      Đối soát tổng tiền hàng (order_items) và tổng tiền thanh toán (payments) theo kênh trong tháng 7/2026?
+    sql: |-
+      WITH items_by_order AS (
+        SELECT order_id, SUM(price_vnd) AS items_total_vnd
+        FROM order_items
+        GROUP BY order_id
+      ),
+      payments_by_order AS (
+        SELECT order_id, SUM(value_vnd) AS payments_total_vnd
+        FROM payments
+        GROUP BY order_id
+      )
+      SELECT ch.channel_name,
+             SUM(i.items_total_vnd) AS items_total_vnd,
+             SUM(p.payments_total_vnd) AS payments_total_vnd
+      FROM orders o
+      JOIN items_by_order i USING (order_id)
+      JOIN payments_by_order p USING (order_id)
+      JOIN channels ch USING (channel_id)
+      WHERE o.purchase_date >= '2026-07-01'
+        AND o.purchase_date < '2026-08-01'
+      GROUP BY ch.channel_name
+      ORDER BY ch.channel_name;
+    content: >-
+      Question: Đối soát tổng tiền hàng (order_items) và tổng tiền thanh toán
+      (payments) theo kênh trong tháng 7/2026? Cited metrics:
+      metric:net_revenue, metric:payment_total. Tables: orders, order_items,
+      payments, channels. Anti-fanout CTE pattern: pre-aggregate
+      items_by_order and payments_by_order per order_id before joining to
+      orders, because both sides are 1-to-many per order and a direct join
+      would multiply both sums. SQL: WITH items_by_order AS (SELECT order_id,
+      SUM(price_vnd) AS items_total_vnd FROM order_items GROUP BY order_id),
+      payments_by_order AS (SELECT order_id, SUM(value_vnd) AS
+      payments_total_vnd FROM payments GROUP BY order_id) SELECT
+      ch.channel_name, SUM(i.items_total_vnd), SUM(p.payments_total_vnd) FROM
+      orders o JOIN items_by_order i USING (order_id) JOIN payments_by_order p
+      USING (order_id) JOIN channels ch USING (channel_id) WHERE
+      o.purchase_date >= '2026-07-01' AND o.purchase_date < '2026-08-01'
+      GROUP BY ch.channel_name.
+
+  - chunkId: "example:active_customers_by_region_90d"
+    docType: "example"
+    table: "customers"
+    tables: ["orders", "customers"]
+    metricName: "active_customers"
+    citedMetrics: ["metric:active_customers"]
+    aliases: ["khách hàng active", "active customers", "90 ngày", "90-day window", "theo vùng", "by region"]
+    sensitivity: "public"
+    question: >-
+      Số khách hàng active (có ít nhất 1 đơn delivered) theo vùng trong 90 ngày gần nhất tính đến 30/09/2026?
+    sql: |-
+      SELECT c.region_group,
+             COUNT(DISTINCT c.customer_id) AS active_customers
+      FROM orders o
+      JOIN customers c USING (customer_id)
+      WHERE o.status = 'delivered'
+        AND o.purchase_date >= DATE '2026-09-30' - INTERVAL '90 days'
+        AND o.purchase_date < DATE '2026-09-30' + INTERVAL '1 day'
+      GROUP BY c.region_group
+      ORDER BY active_customers DESC;
+    content: >-
+      Question: Số khách hàng active (có ít nhất 1 đơn delivered) theo vùng
+      trong 90 ngày gần nhất tính đến 30/09/2026? Cited metrics:
+      metric:active_customers. Tables: orders, customers. Active means at
+      least one delivered order in the window; COUNT(DISTINCT customer_id)
+      after the join, grouped by customers.region_group. SQL: SELECT
+      c.region_group, COUNT(DISTINCT c.customer_id) AS active_customers FROM
+      orders o JOIN customers c USING (customer_id) WHERE o.status =
+      'delivered' AND o.purchase_date >= DATE '2026-09-30' - INTERVAL '90
+      days' AND o.purchase_date < DATE '2026-09-30' + INTERVAL '1 day' GROUP
+      BY c.region_group.
+
+  - chunkId: "example:return_rate_by_category_h1_2026"
+    docType: "example"
+    table: "order_items"
+    tables: ["orders", "order_items", "products", "categories"]
+    metricName: "return_rate"
+    citedMetrics: ["metric:return_rate"]
+    aliases: ["tỉ lệ hoàn trả", "return rate", "theo ngành hàng", "by category", "H1 2026", "nửa đầu 2026", "top 10"]
+    sensitivity: "public"
+    question: >-
+      Tỉ lệ hoàn trả (return rate) của top 10 ngành hàng trong nửa đầu năm 2026?
+    sql: |-
+      SELECT cat.name_vi,
+             COUNT(DISTINCT o.order_id) AS total_orders,
+             COUNT(DISTINCT CASE WHEN o.status = 'returned' THEN o.order_id END) AS returned_orders,
+             COUNT(DISTINCT CASE WHEN o.status = 'returned' THEN o.order_id END)::NUMERIC
+               / NULLIF(COUNT(DISTINCT o.order_id), 0) AS return_rate
+      FROM orders o
+      JOIN order_items oi USING (order_id)
+      JOIN products p USING (product_id)
+      JOIN categories cat USING (category_id)
+      WHERE o.purchase_date >= '2026-01-01'
+        AND o.purchase_date < '2026-07-01'
+      GROUP BY cat.name_vi
+      ORDER BY return_rate DESC
+      LIMIT 10;
+    content: >-
+      Question: Tỉ lệ hoàn trả (return rate) của top 10 ngành hàng trong nửa
+      đầu năm 2026? Cited metrics: metric:return_rate. Tables: orders,
+      order_items, products, categories. Return rate is distinct returned
+      orders over distinct total orders per category (categories.name_vi),
+      using COUNT(DISTINCT order_id) to survive the line-item fan-out. SQL:
+      SELECT cat.name_vi, COUNT(DISTINCT o.order_id),
+      COUNT(DISTINCT CASE WHEN o.status = 'returned' THEN o.order_id END),
+      ratio AS return_rate FROM orders o JOIN order_items oi USING (order_id)
+      JOIN products p USING (product_id) JOIN categories cat USING
+      (category_id) WHERE o.purchase_date >= '2026-01-01' AND o.purchase_date
+      < '2026-07-01' GROUP BY cat.name_vi ORDER BY return_rate DESC LIMIT 10.
+
+  - chunkId: "example:cancellation_rate_by_channel_monthly"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "channels"]
+    metricName: "cancellation_rate"
+    citedMetrics: ["metric:cancellation_rate"]
+    aliases: ["tỉ lệ hủy đơn", "cancellation rate", "hủy đơn theo tháng", "monthly", "theo kênh", "2026"]
+    sensitivity: "public"
+    question: >-
+      Tỉ lệ hủy đơn hàng tháng theo từng kênh trong năm 2026?
+    sql: |-
+      SELECT DATE_TRUNC('month', o.purchase_date)::DATE AS month,
+             ch.channel_name,
+             COUNT(*) AS total_orders,
+             SUM(CASE WHEN o.status = 'canceled' THEN 1 ELSE 0 END)::NUMERIC
+               / NULLIF(COUNT(*), 0) AS cancellation_rate
+      FROM orders o
+      JOIN channels ch USING (channel_id)
+      WHERE o.purchase_date >= '2026-01-01'
+        AND o.purchase_date < '2027-01-01'
+      GROUP BY 1, ch.channel_name
+      ORDER BY month, ch.channel_name;
+    content: >-
+      Question: Tỉ lệ hủy đơn hàng tháng theo từng kênh trong năm 2026? Cited
+      metrics: metric:cancellation_rate. Tables: orders, channels. Monthly
+      buckets via DATE_TRUNC('month', purchase_date); canceled share is
+      canceled orders over all orders in the same month and channel — no
+      line-item join, so plain COUNT(*) is safe. SQL: SELECT
+      DATE_TRUNC('month', o.purchase_date)::DATE AS month, ch.channel_name,
+      COUNT(*), canceled-share AS cancellation_rate FROM orders o JOIN
+      channels ch USING (channel_id) WHERE o.purchase_date >= '2026-01-01'
+      AND o.purchase_date < '2027-01-01' GROUP BY 1, ch.channel_name ORDER BY
+      month, ch.channel_name.
+
+  - chunkId: "example:repeat_customer_rate_2025"
+    docType: "example"
+    table: "customers"
+    tables: ["orders", "customers"]
+    metricName: "repeat_customer_rate"
+    citedMetrics: ["metric:repeat_customer_rate"]
+    aliases: ["tỉ lệ mua lại", "repeat customer rate", "khách hàng quay lại", "2025", "customer order count CTE"]
+    sensitivity: "public"
+    question: >-
+      Tỉ lệ khách hàng mua lại (repeat customer rate) trong năm 2025 là bao nhiêu?
+    sql: |-
+      WITH customer_orders AS (
+        SELECT customer_id, COUNT(DISTINCT order_id) AS order_count
+        FROM orders
+        WHERE purchase_date >= '2025-01-01'
+          AND purchase_date < '2026-01-01'
+        GROUP BY customer_id
+      )
+      SELECT COUNT(*) AS total_customers,
+             SUM(CASE WHEN order_count >= 2 THEN 1 ELSE 0 END) AS repeat_customers,
+             SUM(CASE WHEN order_count >= 2 THEN 1 ELSE 0 END)::NUMERIC
+               / NULLIF(COUNT(*), 0) AS repeat_customer_rate
+      FROM customer_orders;
+    content: >-
+      Question: Tỉ lệ khách hàng mua lại (repeat customer rate) trong năm 2025
+      là bao nhiêu? Cited metrics: metric:repeat_customer_rate. Tables:
+      orders, customers. Customer order-count CTE: count distinct orders per
+      customer in 2025, then share with order_count >= 2. SQL: WITH
+      customer_orders AS (SELECT customer_id, COUNT(DISTINCT order_id) AS
+      order_count FROM orders WHERE purchase_date >= '2025-01-01' AND
+      purchase_date < '2026-01-01' GROUP BY customer_id) SELECT COUNT(*),
+      repeat share AS repeat_customer_rate FROM customer_orders.
+
+  - chunkId: "example:new_customers_monthly_cohort_2026"
+    docType: "example"
+    table: "customers"
+    tables: ["orders", "customers"]
+    metricName: "new_customers"
+    citedMetrics: ["metric:new_customers"]
+    aliases: ["khách hàng mới", "new customers", "cohort", "đơn đầu tiên", "first order", "H1 2026", "hàng tháng"]
+    sensitivity: "public"
+    question: >-
+      Số lượng khách hàng mới hàng tháng trong nửa đầu năm 2026 (theo đơn delivered đầu tiên)?
+    sql: |-
+      WITH first_orders AS (
+        SELECT customer_id, MIN(purchase_date) AS first_purchase_date
+        FROM orders
+        WHERE status = 'delivered'
+        GROUP BY customer_id
+      )
+      SELECT DATE_TRUNC('month', first_purchase_date)::DATE AS cohort_month,
+             COUNT(*) AS new_customers
+      FROM first_orders
+      WHERE first_purchase_date >= '2026-01-01'
+        AND first_purchase_date < '2026-07-01'
+      GROUP BY 1
+      ORDER BY cohort_month;
+    content: >-
+      Question: Số lượng khách hàng mới hàng tháng trong nửa đầu năm 2026
+      (theo đơn delivered đầu tiên)? Cited metrics: metric:new_customers.
+      Tables: orders, customers. First-delivered-order CTE per customer via
+      MIN(purchase_date), then monthly cohort counts for H1 2026. SQL: WITH
+      first_orders AS (SELECT customer_id, MIN(purchase_date) AS
+      first_purchase_date FROM orders WHERE status = 'delivered' GROUP BY
+      customer_id) SELECT DATE_TRUNC('month', first_purchase_date)::DATE AS
+      cohort_month, COUNT(*) AS new_customers FROM first_orders WHERE
+      first_purchase_date >= '2026-01-01' AND first_purchase_date <
+      '2026-07-01' GROUP BY 1 ORDER BY cohort_month.
+
+  - chunkId: "example:on_time_delivery_rate_by_region"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "customers"]
+    metricName: "delivery_completion_rate"
+    citedMetrics: ["metric:delivery_completion_rate"]
+    aliases: ["tỉ lệ giao thành công", "delivery completion", "giao hàng thành công", "theo vùng", "Q1 2026"]
+    sensitivity: "public"
+    question: >-
+      Tỉ lệ đơn giao thành công (delivered) theo vùng trong quý 1 năm 2026?
+    sql: |-
+      SELECT c.region_group,
+             COUNT(*) AS total_orders,
+             SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) AS delivered_orders,
+             SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END)::NUMERIC
+               / NULLIF(COUNT(*), 0) AS delivery_completion_rate
+      FROM orders o
+      JOIN customers c USING (customer_id)
+      WHERE o.purchase_date >= '2026-01-01'
+        AND o.purchase_date < '2026-04-01'
+      GROUP BY c.region_group
+      ORDER BY delivery_completion_rate DESC;
+    content: >-
+      Question: Tỉ lệ đơn giao thành công (delivered) theo vùng trong quý 1
+      năm 2026? Cited metrics: metric:delivery_completion_rate. Tables:
+      orders, customers. Delivered share over all orders per
+      customers.region_group in Q1 2026; header-grain join so COUNT(*) is
+      safe. SQL: SELECT c.region_group, COUNT(*), delivered count, ratio AS
+      delivery_completion_rate FROM orders o JOIN customers c USING
+      (customer_id) WHERE o.purchase_date >= '2026-01-01' AND o.purchase_date
+      < '2026-04-01' GROUP BY c.region_group.
+
+  - chunkId: "example:revenue_per_seller_by_region"
+    docType: "example"
+    table: "order_items"
+    tables: ["orders", "order_items", "sellers"]
+    metricName: "revenue_per_seller"
+    citedMetrics: ["metric:revenue_per_seller"]
+    aliases: ["doanh thu trên người bán", "revenue per seller", "người bán active", "active sellers", "theo vùng người bán", "H1 2026"]
+    sensitivity: "public"
+    question: >-
+      Doanh thu thuần bình quân trên mỗi người bán active theo vùng người bán trong nửa đầu 2026?
+    sql: |-
+      SELECT s.region_group,
+             SUM(oi.price_vnd)::NUMERIC / NULLIF(COUNT(DISTINCT s.seller_id), 0) AS revenue_per_seller_vnd,
+             COUNT(DISTINCT s.seller_id) AS active_sellers
+      FROM orders o
+      JOIN order_items oi USING (order_id)
+      JOIN sellers s USING (seller_id)
+      WHERE o.status = 'delivered'
+        AND o.purchase_date >= '2026-01-01'
+        AND o.purchase_date < '2026-07-01'
+      GROUP BY s.region_group
+      ORDER BY revenue_per_seller_vnd DESC;
+    content: >-
+      Question: Doanh thu thuần bình quân trên mỗi người bán active theo vùng
+      người bán trong nửa đầu 2026? Cited metrics:
+      metric:revenue_per_seller. Tables: orders, order_items, sellers. Net
+      revenue over delivered lines divided by distinct active sellers per
+      sellers.region_group (seller location, not buyer location). SQL: SELECT
+      s.region_group, SUM(oi.price_vnd) / COUNT(DISTINCT s.seller_id) AS
+      revenue_per_seller_vnd, COUNT(DISTINCT s.seller_id) AS active_sellers
+      FROM orders o JOIN order_items oi USING (order_id) JOIN sellers s USING
+      (seller_id) WHERE o.status = 'delivered' AND o.purchase_date >=
+      '2026-01-01' AND o.purchase_date < '2026-07-01' GROUP BY s.region_group.
+
+  - chunkId: "example:top_categories_by_net_revenue_window_rank"
+    docType: "example"
+    table: "order_items"
+    tables: ["orders", "order_items", "products", "categories", "customers"]
+    metricName: "net_revenue"
+    citedMetrics: ["metric:net_revenue"]
+    aliases: ["top ngành hàng", "top categories", "xếp hạng theo vùng", "ROW_NUMBER", "PARTITION BY", "window function", "2026"]
+    sensitivity: "public"
+    question: >-
+      Top 5 ngành hàng có doanh thu thuần cao nhất ở mỗi vùng trong năm 2026?
+    sql: |-
+      WITH category_revenue AS (
+        SELECT c.region_group,
+               cat.name_vi AS category_name,
+               SUM(oi.price_vnd) AS net_revenue_vnd
+        FROM orders o
+        JOIN order_items oi USING (order_id)
+        JOIN customers c USING (customer_id)
+        JOIN products p USING (product_id)
+        JOIN categories cat USING (category_id)
+        WHERE o.status = 'delivered'
+          AND o.purchase_date >= '2026-01-01'
+          AND o.purchase_date < '2027-01-01'
+        GROUP BY c.region_group, cat.name_vi
+      ),
+      ranked AS (
+        SELECT region_group,
+               category_name,
+               net_revenue_vnd,
+               ROW_NUMBER() OVER (PARTITION BY region_group ORDER BY net_revenue_vnd DESC) AS rn
+        FROM category_revenue
+      )
+      SELECT region_group, category_name, net_revenue_vnd
+      FROM ranked
+      WHERE rn <= 5
+      ORDER BY region_group, rn;
+    content: >-
+      Question: Top 5 ngành hàng có doanh thu thuần cao nhất ở mỗi vùng trong
+      năm 2026? Cited metrics: metric:net_revenue. Tables: orders,
+      order_items, products, categories, customers. Window-function pattern:
+      aggregate net revenue per (region, category), then ROW_NUMBER() OVER
+      (PARTITION BY region_group ORDER BY net_revenue_vnd DESC) and keep
+      rn <= 5. SQL uses category_revenue and ranked CTEs over 2026 delivered
+      orders grouped by customers.region_group and categories.name_vi.
+
+  - chunkId: "example:mom_net_revenue_growth_cte"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "order_items"]
+    metricName: "net_revenue_growth"
+    citedMetrics: ["metric:net_revenue_growth"]
+    aliases: ["tăng trưởng theo tháng", "month-over-month", "MoM growth", "LAG", "H1 2026", "doanh thu thuần hàng tháng"]
+    sensitivity: "public"
+    question: >-
+      Tốc độ tăng trưởng doanh thu thuần hàng tháng (MoM) trong nửa đầu năm 2026?
+    sql: |-
+      WITH monthly_revenue AS (
+        SELECT DATE_TRUNC('month', o.purchase_date)::DATE AS month,
+               SUM(oi.price_vnd) AS net_revenue_vnd
+        FROM orders o
+        JOIN order_items oi USING (order_id)
+        WHERE o.status = 'delivered'
+          AND o.purchase_date >= '2026-01-01'
+          AND o.purchase_date < '2026-07-01'
+        GROUP BY 1
+      )
+      SELECT month,
+             net_revenue_vnd,
+             LAG(net_revenue_vnd) OVER (ORDER BY month) AS prev_month_revenue_vnd,
+             (net_revenue_vnd - LAG(net_revenue_vnd) OVER (ORDER BY month))::NUMERIC
+               / NULLIF(LAG(net_revenue_vnd) OVER (ORDER BY month), 0) AS mom_growth
+      FROM monthly_revenue
+      ORDER BY month;
+    content: >-
+      Question: Tốc độ tăng trưởng doanh thu thuần hàng tháng (MoM) trong nửa
+      đầu năm 2026? Cited metrics: metric:net_revenue_growth. Tables: orders,
+      order_items. Monthly CTE over H1 2026 delivered lines, then LAG() over
+      ordered months for the previous month and the growth ratio. SQL: WITH
+      monthly_revenue AS (SELECT DATE_TRUNC month, SUM(oi.price_vnd) FROM
+      orders o JOIN order_items oi USING (order_id) WHERE o.status =
+      'delivered' AND o.purchase_date in H1 2026 GROUP BY 1) SELECT month,
+      net_revenue_vnd, LAG(...) AS prev_month_revenue_vnd, MoM ratio AS
+      mom_growth FROM monthly_revenue ORDER BY month.
+
+  - chunkId: "example:payment_type_installment_breakdown"
+    docType: "example"
+    table: "payments"
+    tables: ["orders", "payments"]
+    metricName: "payment_mix"
+    citedMetrics: ["metric:payment_mix"]
+    aliases: ["phương thức thanh toán", "payment method", "trả góp", "installments", "tỉ trọng thanh toán", "Q2 2026"]
+    sensitivity: "public"
+    question: >-
+      Tỉ trọng các phương thức thanh toán và số kỳ trả góp trung bình trong quý 2/2026?
+    sql: |-
+      SELECT p.payment_type,
+             COUNT(*) AS payment_rows,
+             SUM(p.value_vnd) AS payment_total_vnd,
+             SUM(p.value_vnd)::NUMERIC / NULLIF(SUM(SUM(p.value_vnd)) OVER (), 0) AS payment_share,
+             AVG(p.installments)::NUMERIC AS avg_installments
+      FROM orders o
+      JOIN payments p USING (order_id)
+      WHERE o.purchase_date >= '2026-04-01'
+        AND o.purchase_date < '2026-07-01'
+      GROUP BY p.payment_type
+      ORDER BY payment_total_vnd DESC;
+    content: >-
+      Question: Tỉ trọng các phương thức thanh toán và số kỳ trả góp trung
+      bình trong quý 2/2026? Cited metrics: metric:payment_mix. Tables:
+      orders, payments. Payment-grain aggregation per payment_type with a
+      window SUM() OVER () for the share denominator and AVG(installments);
+      no order_items join, so no fan-out. SQL: SELECT p.payment_type,
+      COUNT(*), SUM(p.value_vnd), share via SUM(SUM(...)) OVER (),
+      AVG(p.installments) FROM orders o JOIN payments p USING (order_id)
+      WHERE o.purchase_date >= '2026-04-01' AND o.purchase_date <
+      '2026-07-01' GROUP BY p.payment_type.
+
+  - chunkId: "example:review_score_by_category"
+    docType: "example"
+    table: "reviews"
+    tables: ["orders", "order_items", "products", "categories", "reviews"]
+    metricName: "review_score_avg"
+    citedMetrics: ["metric:review_score_avg"]
+    aliases: ["điểm đánh giá trung bình", "average rating", "theo ngành hàng", "by category", "H1 2026", "số đơn được đánh giá"]
+    sensitivity: "public"
+    question: >-
+      Điểm đánh giá trung bình và số đơn được đánh giá theo ngành hàng trong nửa đầu 2026?
+    sql: |-
+      WITH reviewed_lines AS (
+        SELECT DISTINCT o.order_id, cat.name_vi AS category_name
+        FROM orders o
+        JOIN order_items oi USING (order_id)
+        JOIN products p USING (product_id)
+        JOIN categories cat USING (category_id)
+        WHERE o.purchase_date >= '2026-01-01'
+          AND o.purchase_date < '2026-07-01'
+      ),
+      review_per_order AS (
+        SELECT order_id, AVG(score)::NUMERIC AS avg_score
+        FROM reviews
+        GROUP BY order_id
+      )
+      SELECT l.category_name,
+             AVG(r.avg_score) AS review_score_avg,
+             COUNT(*) AS reviewed_orders
+      FROM reviewed_lines l
+      JOIN review_per_order r USING (order_id)
+      GROUP BY l.category_name
+      ORDER BY review_score_avg DESC;
+    content: >-
+      Question: Điểm đánh giá trung bình và số đơn được đánh giá theo ngành
+      hàng trong nửa đầu 2026? Cited metrics: metric:review_score_avg.
+      Tables: orders, order_items, products, categories, reviews. Anti-fanout
+      pattern: DISTINCT (order, category) lines plus a per-order pre-averaged
+      review CTE, so multi-line orders do not multiply review weight; review
+      denominators cover reviewed orders only. SQL uses reviewed_lines and
+      review_per_order CTEs grouped by categories.name_vi. Review title and
+      message text are never selected.
+
+  - chunkId: "example:freight_share_by_seller_province"
+    docType: "example"
+    table: "order_items"
+    tables: ["orders", "order_items", "sellers"]
+    metricName: "freight_share"
+    citedMetrics: ["metric:freight_share"]
+    aliases: ["tỉ trọng phí vận chuyển", "freight share", "phí ship", "theo tỉnh người bán", "seller province", "Q2 2026"]
+    sensitivity: "public"
+    question: >-
+      Tỉ trọng phí vận chuyển trên giá trị hàng hóa theo tỉnh của người bán trong quý 2/2026?
+    sql: |-
+      SELECT s.province AS seller_province,
+             SUM(oi.price_vnd) AS merchandise_vnd,
+             SUM(oi.freight_vnd) AS freight_vnd,
+             SUM(oi.freight_vnd)::NUMERIC / NULLIF(SUM(oi.price_vnd), 0) AS freight_share
+      FROM orders o
+      JOIN order_items oi USING (order_id)
+      JOIN sellers s USING (seller_id)
+      WHERE o.status = 'delivered'
+        AND o.purchase_date >= '2026-04-01'
+        AND o.purchase_date < '2026-07-01'
+      GROUP BY s.province
+      ORDER BY freight_share DESC;
+    content: >-
+      Question: Tỉ trọng phí vận chuyển trên giá trị hàng hóa theo tỉnh của
+      người bán trong quý 2/2026? Cited metrics: metric:freight_share. Tables:
+      orders, order_items, sellers. Freight share is SUM(freight_vnd) over
+      SUM(price_vnd) on the same delivered line set, grouped by
+      sellers.province. SQL: SELECT s.province, merchandise and freight sums,
+      ratio AS freight_share FROM orders o JOIN order_items oi USING
+      (order_id) JOIN sellers s USING (seller_id) WHERE o.status =
+      'delivered' AND o.purchase_date in Q2 2026 GROUP BY s.province.
+
+  - chunkId: "example:promotion_campaign_calendar_overlap"
+    docType: "example"
+    table: "promotions"
+    tables: ["promotions"]
+    metricName: "promotion_count"
+    citedMetrics: ["metric:promotion_count"]
+    aliases: ["lịch khuyến mãi", "promotion calendar", "chiến dịch", "campaign", "giảm giá", "discount", "Q1 2026"]
+    sensitivity: "public"
+    question: >-
+      Các chương trình khuyến mãi nào đang diễn ra trong quý 1/2026 và mức giảm giá của chúng?
+    sql: |-
+      SELECT promotion_id,
+             name,
+             starts_on,
+             ends_on,
+             discount_pct
+      FROM promotions
+      WHERE starts_on <= DATE '2026-03-31'
+        AND ends_on >= DATE '2026-01-01'
+      ORDER BY starts_on;
+    content: >-
+      Question: Các chương trình khuyến mãi nào đang diễn ra trong quý 1/2026
+      và mức giảm giá của chúng? Cited metrics: metric:promotion_count.
+      Tables: promotions. Date-overlap pattern: a campaign is active in Q1
+      2026 when starts_on <= '2026-03-31' AND ends_on >= '2026-01-01'. There
+      is no FK from orders to promotions, so attribution is by date overlap
+      with orders.purchase_date, never by join key. SQL: SELECT promotion_id,
+      name, starts_on, ends_on, discount_pct FROM promotions WHERE starts_on
+      <= DATE '2026-03-31' AND ends_on >= DATE '2026-01-01' ORDER BY
+      starts_on.
+
+  - chunkId: "example:seller_order_item_payment_summary_cte"
+    docType: "example"
+    table: "orders"
+    tables: ["orders", "order_items", "payments"]
+    metricName: "net_revenue"
+    citedMetrics: ["metric:net_revenue", "metric:payment_total"]
+    aliases: ["tổng hợp đa CTE", "multi-CTE summary", "anti-fanout", "theo phương thức thanh toán", "by payment type", "tháng 5 2026"]
+    sensitivity: "public"
+    question: >-
+      Tổng hợp số đơn delivered, doanh thu hàng hóa và giá trị thanh toán theo phương thức thanh toán trong tháng 5/2026?
+    sql: |-
+      WITH delivered AS (
+        SELECT order_id
+        FROM orders
+        WHERE status = 'delivered'
+          AND purchase_date >= '2026-05-01'
+          AND purchase_date < '2026-06-01'
+      ),
+      items_by_order AS (
+        SELECT oi.order_id, SUM(oi.price_vnd) AS items_total_vnd
+        FROM order_items oi
+        JOIN delivered d USING (order_id)
+        GROUP BY oi.order_id
+      ),
+      payments_by_type AS (
+        SELECT p.payment_type,
+               COUNT(DISTINCT p.order_id) AS paid_orders,
+               SUM(p.value_vnd) AS payments_total_vnd
+        FROM payments p
+        JOIN delivered d USING (order_id)
+        GROUP BY p.payment_type
+      )
+      SELECT t.payment_type,
+             t.paid_orders,
+             (SELECT SUM(i.items_total_vnd) FROM items_by_order i) AS items_total_vnd,
+             t.payments_total_vnd
+      FROM payments_by_type t
+      ORDER BY t.payments_total_vnd DESC;
+    content: >-
+      Question: Tổng hợp số đơn delivered, doanh thu hàng hóa và giá trị
+      thanh toán theo phương thức thanh toán trong tháng 5/2026? Cited
+      metrics: metric:net_revenue, metric:payment_total. Tables: orders,
+      order_items, payments. Multi-CTE anti-fanout summary: the delivered
+      CTE fixes the May 2026 delivered order set once; items_by_order and
+      payments_by_type aggregate each 1-to-many side separately against it, so
+      item rows and payment rows never multiply each other. SQL uses
+      delivered, items_by_order, and payments_by_type CTEs grouped by
+      payments.payment_type with COUNT(DISTINCT order_id) for paid orders.

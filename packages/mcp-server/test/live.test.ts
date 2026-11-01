@@ -9,7 +9,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { createFakeEmbedder } from "../src/semantic/embedder.js";
 import { hybridSearch } from "../src/semantic/retriever.js";
-import { indexCorpus } from "../src/semantic/index.js";
+import { discoverDefaultFiles, indexCorpus } from "../src/semantic/index.js";
 import { executeResourceRead } from "../src/pipeline.js";
 import type { GatewayDeps } from "../src/pipeline.js";
 import { ColumnScopePolicy } from "@shared/access-policy";
@@ -54,6 +54,36 @@ describeLive("semantic live", () => {
     expect(second.added).toBe(0);
     expect(second.updated).toBe(0);
     expect(second.skipped).toBe(first.added + first.updated + first.skipped);
+  });
+
+  it("indexes the 6-type YAML corpus incrementally (UC-02 #28)", async () => {
+    const files = discoverDefaultFiles(path.join(ROOT, "semantic"));
+    expect(files.map((file) => path.basename(file.path))).toEqual([
+      "tables.yaml",
+      "columns.yaml",
+      "metrics.yaml",
+      "joins.yaml",
+      "examples.yaml",
+      "events.yaml",
+    ]);
+    const first = await indexCorpus({
+      dbUrl: process.env["INDEXER_DATABASE_URL"] as string,
+      embedder: FAKE,
+      files,
+    });
+    const total = first.added + first.updated + first.skipped;
+    expect(total).toBeGreaterThan(0);
+    const second = await indexCorpus({
+      dbUrl: process.env["INDEXER_DATABASE_URL"] as string,
+      embedder: FAKE,
+      files,
+    });
+    // Re-run is fully incremental and leaves the full corpus indexed for
+    // the hybridSearch tests below.
+    expect(second.added).toBe(0);
+    expect(second.updated).toBe(0);
+    expect(second.deleted).toBe(0);
+    expect(second.skipped).toBe(total);
   });
 
   it("returns fused chunks with scores for a revenue query", async () => {
