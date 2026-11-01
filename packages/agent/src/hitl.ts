@@ -5,9 +5,9 @@
 // DB-free: semantics only, proven on MemorySaver.
 
 import { Command, interrupt } from "@langchain/langgraph";
+import { THREAD_ID_MAX_LENGTH } from "./constants.js";
 
-/** Thread ids must stay well under the Postgres text limit. */
-export const THREAD_ID_MAX_LENGTH = 255;
+export { THREAD_ID_MAX_LENGTH } from "./constants.js";
 
 /**
  * Build chat:{userId}:{sessionId}. Throws on empty parts or over-length ids

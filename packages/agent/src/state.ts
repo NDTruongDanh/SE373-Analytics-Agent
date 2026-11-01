@@ -5,23 +5,16 @@ import {
 } from "@langchain/langgraph";
 import { SQLAnswerStatusSchema } from "@shared/contracts";
 import * as z from "zod";
-import { BUDGET_LIMITS } from "./queryExecutor/budgets.js";
+import { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
+
+export { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
 
 // AGENT-01 shared root state (01-10). Plain JSON only: no Pool, class
 // instance, function, or pg import may ever enter this schema — checkpoint
 // payloads serialize verbatim into PostgresSaver rows owned by 01-13/01-14.
 // The full <=1000-row buffer lives in transient RAM outside state per
 // architecture section 4.3; only resultPreview (<=50 rows) is checkpointed.
-
-/** Hard cap on checkpointed preview rows (T-01-10-02 mitigation). */
-export const RESULT_PREVIEW_MAX = 50;
-
-/** Run-level budget limits (D-13). The 01-11 breaker enforces these. */
-export const BUDGET_DEFAULTS = {
-  maxLlmCalls: BUDGET_LIMITS.maxLlmCalls,
-  maxTokens: BUDGET_LIMITS.maxTokens,
-  runDeadlineMs: BUDGET_LIMITS.runDeadlineMs,
-} as const;
+// BUDGET_DEFAULTS.runDeadlineMs is the creation window; BudgetState.deadlineMs is the absolute epoch initialized by the guard.
 
 export const IntentSchema = z.object({
   metric: z.string().nullable().default(null),

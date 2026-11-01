@@ -5,10 +5,8 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TraceEventSchema } from "@shared/contracts";
 import { runTracerGraph } from "../src/graph.js";
-import {
-  TRACER_SQL_PROPOSAL,
-  createChatModel,
-} from "../src/models/factory.js";
+import { createChatModel } from "../src/models/factory.js";
+import { TRACER_SQL_PROPOSAL } from "../src/constants.js";
 import { writeTraceEvent } from "../src/traces/writer.js";
 
 // Tracer slice: fake model + stub MCP transport assert at least 2 tool calls

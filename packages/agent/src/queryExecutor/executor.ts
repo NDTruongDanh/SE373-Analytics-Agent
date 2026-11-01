@@ -25,6 +25,7 @@ import * as z from "zod";
 import {
   checkBudget,
   createBudgetState,
+  estimateTokens,
   recordLlmCall,
   type BudgetState,
   type BudgetTripReason,
@@ -34,12 +35,9 @@ import {
   hasWhereFilter,
   localQuerySafetyGate,
 } from "./safetyGate.js";
+import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
-/** Hard cap on total attempts including the first try (D-02). */
-export const MAX_ATTEMPTS = 3;
-
-/** Tighter cap the TIMEOUT simplification enforces on the retry. */
-export const TIMEOUT_RETRY_LIMIT = 50;
+export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
 /** Structured SQL proposal the model must produce (untrusted until gated). */
 export const SqlProposalSchema = z.object({
@@ -60,11 +58,6 @@ export interface ChatModelLike {
   ): {
     invoke(input: string): Promise<SqlProposal>;
   };
-}
-
-/** Conservative local fallback when a provider does not expose token usage. */
-function estimateTokens(...texts: string[]): number {
-  return Math.max(1, Math.ceil(texts.join("").length / 4));
 }
 
 /**

@@ -123,8 +123,9 @@ export function resolveCallHeaders(identity: RunIdentity): Record<string, string
   };
 }
 
-/** Server key under which the single gateway connection is registered. */
-export const MCP_SERVER_NAME = "mcp";
+import { MCP_SERVER_NAME } from "./constants.js";
+
+export { MCP_SERVER_NAME } from "./constants.js";
 
 /**
  * beforeToolCall hook reading identity only from RunnableConfig.configurable.

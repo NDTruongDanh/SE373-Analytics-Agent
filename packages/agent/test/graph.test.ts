@@ -9,11 +9,10 @@ import {
   type AgentUpdate,
 } from "../src/state.js";
 import {
-  DEFAULT_ROUTE_ID,
   isKnownUc,
   registerUC,
 } from "../src/subgraphs/registry.js";
-import { UC01_ID } from "../src/subgraphs/uc01.js";
+import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "../src/constants.js";
 import type { ExecutorRunInput } from "../src/queryExecutor/executor.js";
 
 // AGENT-01 seam tests (01-10): FakeListChatModel doubles plus stubbed
@@ -268,10 +267,10 @@ describe("root graph seam", () => {
         ).toBe(false);
       }
     }
-    expect(source).toContain("FROZEN");
+    expect(source).toContain("FROZEN root builder");
   });
 
-  it("runs UC-01 intent extraction, skill tracing, and the injected executor", async () => {
+  it("runs text-to-SQL intent extraction, skill tracing, and the injected executor", async () => {
     const spans: { node: string; type: string }[] = [];
     const runs: ExecutorRunInput[] = [];
     const graph = buildRootGraph({
@@ -279,7 +278,7 @@ describe("root graph seam", () => {
         spans.push({ node, type });
         return "span-1";
       },
-      uc01: {
+      textToSql: {
         intentModel: {
           withStructuredOutput: () => ({
             invoke: async () => ({
@@ -311,12 +310,12 @@ describe("root graph seam", () => {
     });
 
     const out = await graph.invoke(
-      { question: "How many orders per status?", ucId: UC01_ID },
+      { question: "How many orders per status?", ucId: TEXT_TO_SQL_UC_ID },
       {
         configurable: {
-          thread_id: "thread-uc01",
-          runId: "run-uc01",
-          userId: "user-uc01",
+          thread_id: "thread-text-to-sql",
+          runId: "run-text-to-sql",
+          userId: "user-text-to-sql",
           roleScope: "sales_south",
         },
       },
@@ -332,18 +331,18 @@ describe("root graph seam", () => {
     expect(runs).toEqual([
       expect.objectContaining({
         candidateTables: ["orders"],
-        principal: { runId: "run-uc01", userId: "user-uc01", roleScope: "sales_south" },
+        principal: { runId: "run-text-to-sql", userId: "user-text-to-sql", roleScope: "sales_south" },
         budget: expect.objectContaining({ llmCalls: 1 }),
       }),
     ]);
     expect(spans).toContainEqual({ node: "skills", type: "skill_call" });
   });
 
-  it("stops an exhausted UC-01 budget before the model or executor", async () => {
+  it("stops an exhausted text-to-SQL budget before the model or executor", async () => {
     let modelCalled = false;
     let executorCalled = false;
     const graph = buildRootGraph({
-      uc01: {
+      textToSql: {
         intentModel: {
           withStructuredOutput: () => ({
             invoke: async () => {
@@ -378,7 +377,7 @@ describe("root graph seam", () => {
     });
 
     const out = await graph.invoke(
-      { question: "q", ucId: UC01_ID, budget: { llmCalls: 20 } },
+      { question: "q", ucId: TEXT_TO_SQL_UC_ID, budget: { llmCalls: 20 } },
       invokeOptions("t-exhausted"),
     );
 
@@ -386,6 +385,33 @@ describe("root graph seam", () => {
     expect(out.answerText).toContain("Run budget exceeded");
     expect(modelCalled).toBe(false);
     expect(executorCalled).toBe(false);
+  });
+
+  it("stops an exhausted generic budget before retrieve or the UC handler", async () => {
+    let retrieveCalled = false;
+    let handlerCalled = false;
+    const graph = buildRootGraph({
+      retrieve: async () => {
+        retrieveCalled = true;
+        return {};
+      },
+      ucHandlers: {
+        "uc-generic": async () => {
+          handlerCalled = true;
+          return { status: "ok", answerText: "should not run" };
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "q", ucId: "uc-generic", budget: { llmCalls: 20 } },
+      invokeOptions("t-generic-exhausted"),
+    );
+
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toContain("Run budget exceeded");
+    expect(retrieveCalled).toBe(false);
+    expect(handlerCalled).toBe(false);
   });
 
   it("exposes only the root surface from the barrel", async () => {

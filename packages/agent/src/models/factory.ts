@@ -20,14 +20,20 @@ import {
 export { SqlProposalSchema };
 export type { SqlProposal };
 
-// Legacy tracer-compatible surface, consumed by the 01-10 default route
-// (subgraphs/registry.ts) and tracer.test.ts until 01-14 replaces the demo.
-export const TRACER_DEMO_QUESTION = "How many orders do we have per status?";
+import {
+  DEFAULT_MODEL_ID,
+  TRACER_SQL_PROPOSAL,
+  UNTRUSTED_DATA_CLOSE,
+  UNTRUSTED_DATA_OPEN,
+} from "../constants.js";
 
-export const TRACER_SQL_PROPOSAL = {
-  sql: "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status",
-  tablesUsed: ["orders"],
-};
+export {
+  DEFAULT_MODEL_ID,
+  TRACER_DEMO_QUESTION,
+  TRACER_SQL_PROPOSAL,
+  UNTRUSTED_DATA_CLOSE,
+  UNTRUSTED_DATA_OPEN,
+} from "../constants.js";
 
 export interface TracerChatModel {
   proposeSql(question: string): Promise<SqlProposal>;
@@ -47,12 +53,6 @@ export interface CreateChatModelOptions {
   /** Model id override; otherwise resolved from the environment. */
   model?: string;
 }
-
-/**
- * Documented default model id when neither AGENT_MODEL_ID nor the
- * per-profile AGENT_MODEL_ID_<PROFILE> override is set.
- */
-export const DEFAULT_MODEL_ID = "agent-default";
 
 /** Either production ChatOpenAI or the explicit test fake. */
 export type AnyChatModel = ChatOpenAI | FakeListChatModel;
@@ -139,10 +139,6 @@ export function withStructured<S extends z.ZodType>(
     },
   };
 }
-
-/** Delimiter tags marking query rows as untrusted data (never instructions). */
-export const UNTRUSTED_DATA_OPEN = "<untrusted_data>";
-export const UNTRUSTED_DATA_CLOSE = "</untrusted_data>";
 
 /** Enclose result rows so row text can never become an instruction. */
 export function wrapUntrusted(rows: Record<string, unknown>[]): string {

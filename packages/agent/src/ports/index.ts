@@ -5,8 +5,8 @@
 // mandatory setup() fail-fast and the agent_ro rejection stay in one place.
 
 export {
-  CHECKPOINT_SCHEMA,
   createCheckpointer,
   type Checkpointer,
   type CreateCheckpointerOptions,
 } from "./checkpoints.js";
+export { CHECKPOINT_SCHEMA } from "../constants.js";

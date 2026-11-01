@@ -3,13 +3,9 @@
 // so the run degrades to synthesis with partial findings. Limits duplicate
 // the locked D-13 values (also exported as BUDGET_DEFAULTS from the 01-10
 // state module, which this file must NOT import per the plan boundary).
+import { BUDGET_LIMITS } from "../constants.js";
 
-/** Locked D-13 run-level budget limits. */
-export const BUDGET_LIMITS = {
-  maxLlmCalls: 20,
-  maxTokens: 60000,
-  runDeadlineMs: 120000,
-} as const;
+export { BUDGET_LIMITS } from "../constants.js";
 
 /** Mutable per-run counters plus the absolute deadline epoch. */
 export interface BudgetState {
@@ -77,4 +73,9 @@ export function checkBudget(
 export function recordLlmCall(state: BudgetState, tokensUsed = 0): void {
   state.llmCalls += 1;
   state.tokensUsed += tokensUsed;
+}
+
+/** Conservative fallback when provider omits usage. */
+export function estimateTokens(...texts: string[]): number {
+  return Math.max(1, Math.ceil(texts.join("").length / 4));
 }

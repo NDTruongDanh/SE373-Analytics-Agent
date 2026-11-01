@@ -6,8 +6,6 @@ export {
   ValidatedQueryExecutor,
   simplifyForTimeout,
   SqlProposalSchema,
-  MAX_ATTEMPTS,
-  TIMEOUT_RETRY_LIMIT,
   type ChatModelLike,
   type McpToolCaller,
   type ExecutorDeps,
@@ -18,9 +16,13 @@ export {
   type SqlProposal,
 } from "./executor.js";
 export {
+  MAX_ATTEMPTS,
+  TIMEOUT_RETRY_LIMIT,
+} from "../constants.js";
+export {
   localQuerySafetyGate,
   clampLimit,
   hasWhereFilter,
-  DETAIL_QUERY_LIMIT,
   type SafetyGateResult,
 } from "./safetyGate.js";
+export { DETAIL_QUERY_LIMIT } from "../constants.js";

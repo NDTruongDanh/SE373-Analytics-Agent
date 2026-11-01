@@ -22,9 +22,9 @@
 // mcp-server internals: checkpoint rows carry plain JSON state only.
 
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { CHECKPOINT_SCHEMA } from "../constants.js";
 
-/** Postgres schema that PostgresSaver.setup() owns (harness_state). */
-export const CHECKPOINT_SCHEMA = "langgraph" as const;
+export { CHECKPOINT_SCHEMA } from "../constants.js";
 
 /** Concrete saver type returned by {@link createCheckpointer}. */
 export type Checkpointer = PostgresSaver;

@@ -13,13 +13,12 @@ import {
 import {
   buildSynthesisPrompt,
   createChatModel,
-  DEFAULT_MODEL_ID,
   SqlProposalSchema as FactorySchema,
   synthesize,
-  TRACER_SQL_PROPOSAL,
   wrapUntrusted,
   type AnyChatModel,
 } from "../src/models/factory.js";
+import { DEFAULT_MODEL_ID, TRACER_SQL_PROPOSAL } from "../src/constants.js";
 
 const ENV_KEYS = [
   "AGENT_MODEL_API_KEY",
