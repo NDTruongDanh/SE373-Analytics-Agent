@@ -12,9 +12,9 @@ import {
   type SchemaCatalog,
 } from "@shared/contracts";
 import type { GuardAst, GuardSuccess } from "@shared/access-policy";
+import { DETAIL_QUERY_LIMIT } from "../constants.js";
 
-/** Cap applied to non-aggregate detail queries (GUARD-03). */
-export const DETAIL_QUERY_LIMIT = 200;
+export { DETAIL_QUERY_LIMIT } from "../constants.js";
 
 export type SafetyGateResult =
   | { verdict: "pass"; sql: string }

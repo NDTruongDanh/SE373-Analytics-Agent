@@ -2,11 +2,11 @@
 // via nowMs, no API key, no MCP, no pg.
 import { describe, expect, it } from "vitest";
 import {
-  BUDGET_LIMITS,
   checkBudget,
   createBudgetState,
   recordLlmCall,
 } from "../src/queryExecutor/budgets.js";
+import { BUDGET_LIMITS } from "../src/constants.js";
 
 describe("budget breaker", () => {
   it("seeds the locked D-13 defaults", () => {

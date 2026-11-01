@@ -33,13 +33,18 @@ import { parse } from "csv-parse";
 import { types as pgTypes, type Pool, type PoolClient } from "pg";
 import { copyTable, createOwnerPool, withOwnerTx } from "./copy.js";
 import {
-  downloadAll,
+  CATEGORY_VI_BY_EN,
+  DATASET_VERSION,
+  EXPANSION_ITEM_TARGET,
+  EXPANSION_PASSES,
   OLIST_FILES,
-  resolveCacheDir,
-} from "./download.js";
+  REGION_ROWS,
+  TABLE_LOADERS,
+  UNMAPPED_CATEGORY_FALLBACKS,
+} from "./constants.js";
+import { downloadAll, resolveCacheDir } from "./download.js";
 import {
   compareManifests,
-  DATASET_VERSION,
   manifestPathFor,
   hashCanonicalCsv,
   readManifest,
@@ -49,15 +54,20 @@ import {
 import { loadSeedsFile } from "./seeds.js";
 import {
   brlToVnd,
-  CATEGORY_VI_BY_EN,
   createSeededFaker,
   foldOrderStatus,
   regionOfProvince,
   shiftOrderDate,
   stateToProvince,
   translateCategory,
-  UNMAPPED_CATEGORY_FALLBACKS,
 } from "./transform.js";
+
+export {
+  EXPANSION_ITEM_TARGET,
+  EXPANSION_PASSES,
+  REGION_ROWS,
+  TABLE_LOADERS,
+};
 
 const SEED = Number(process.env["SEED_DATA"] ?? 42);
 
@@ -72,75 +82,6 @@ export interface TableDef {
   columns: readonly string[];
   pk: string;
 }
-
-// Registry of every loadable table: physical name, COPY column order, and
-// the pk used for the canonical ORDER BY in the manifest hash. Table and
-// column names come from here — never from user input (copy.ts contract).
-export const TABLE_LOADERS: Record<string, TableDef> = {
-  regions: {
-    table: "public.regions",
-    columns: ["province", "region_group"] as const,
-    pk: "province",
-  },
-  categories: {
-    table: "public.categories",
-    columns: ["category_id", "name_vi"] as const,
-    pk: "category_id",
-  },
-  channels: {
-    table: "public.channels",
-    columns: ["channel_id", "channel_name"] as const,
-    pk: "channel_id",
-  },
-  promotions: {
-    table: "public.promotions",
-    columns: ["promotion_id", "name", "starts_on", "ends_on", "discount_pct"] as const,
-    pk: "promotion_id",
-  },
-  employees: {
-    table: "public.employees",
-    columns: ["employee_id", "name", "salary", "province"] as const,
-    pk: "employee_id",
-  },
-  customers: {
-    table: "public.customers",
-    columns: ["customer_id", "name", "phone", "email", "address", "province", "region_group"] as const,
-    pk: "customer_id",
-  },
-  sellers: {
-    table: "public.sellers",
-    columns: ["seller_id", "province", "region_group"] as const,
-    pk: "seller_id",
-  },
-  products: {
-    table: "public.products",
-    columns: ["product_id", "category_id", "name", "price_vnd", "weight_g", "length_cm", "height_cm", "width_cm"] as const,
-    pk: "product_id",
-  },
-  orders: {
-    table: "public.orders",
-    columns: ["order_id", "customer_id", "channel_id", "status", "purchase_date"] as const,
-    pk: "order_id",
-  },
-  order_items: {
-    table: "public.order_items",
-    // Identity pk (order_item_id) is DB-assigned; COPY excludes it. The
-    // manifest still orders by it, which is insertion order — deterministic
-    // because the build order is fixed.
-    columns: ["order_id", "product_id", "seller_id", "price_vnd", "freight_vnd"] as const,
-    pk: "order_item_id",
-  },
-  payments: {
-    table: "public.payments",
-    columns: ["order_id", "payment_type", "installments", "value_vnd"] as const,
-    pk: "payment_id",
-  },
-  reviews: {
-    table: "public.reviews",
-    columns: ["review_id", "order_id", "score", "title", "message", "created_at"] as const,
-    pk: "review_id",
-  },
-};
 
 // FK-safe load order: parents before children. Reset runs this in reverse.
 const LOAD_ORDER = [
@@ -157,46 +98,6 @@ const LOAD_ORDER = [
   "payments",
   "reviews",
 ] as const;
-
-// 34 post-merger provinces (Res. 202/2025/QH15, effective 2025-07-01) grouped
-// into the three Bắc/Trung/Nam regions per D-01. Mirrors PROVINCES in
-// transform.ts (same source of truth, asserted in sync by construction).
-export const REGION_ROWS: (readonly [string, string])[] = [
-  ["Hà Nội", "Bắc"],
-  ["Hải Phòng", "Bắc"],
-  ["Lai Châu", "Bắc"],
-  ["Điện Biên", "Bắc"],
-  ["Sơn La", "Bắc"],
-  ["Lạng Sơn", "Bắc"],
-  ["Cao Bằng", "Bắc"],
-  ["Tuyên Quang", "Bắc"],
-  ["Lào Cai", "Bắc"],
-  ["Thái Nguyên", "Bắc"],
-  ["Phú Thọ", "Bắc"],
-  ["Bắc Ninh", "Bắc"],
-  ["Hưng Yên", "Bắc"],
-  ["Ninh Bình", "Bắc"],
-  ["Quảng Ninh", "Bắc"],
-  ["Thanh Hóa", "Trung"],
-  ["Nghệ An", "Trung"],
-  ["Hà Tĩnh", "Trung"],
-  ["Quảng Trị", "Trung"],
-  ["Huế", "Trung"],
-  ["Đà Nẵng", "Trung"],
-  ["Quảng Ngãi", "Trung"],
-  ["Gia Lai", "Trung"],
-  ["Khánh Hòa", "Trung"],
-  ["Lâm Đồng", "Trung"],
-  ["Đắk Lắk", "Trung"],
-  ["Đồng Nai", "Nam"],
-  ["Tây Ninh", "Nam"],
-  ["TP.HCM", "Nam"],
-  ["Đồng Tháp", "Nam"],
-  ["An Giang", "Nam"],
-  ["Vĩnh Long", "Nam"],
-  ["Cần Thơ", "Nam"],
-  ["Cà Mau", "Nam"],
-];
 
 const CHANNEL_ROWS: (readonly [string, string])[] = [
   ["shopee", "Shopee"],
@@ -237,20 +138,6 @@ export function parseLoadScale(argv: readonly string[]): LoadScale {
   }
   return scale;
 }
-
-// Small scale (CI per D-10): one expansion pass and a 60k-item top-up target
-// instead of nine passes plus the 1M target, so `data:load && data:verify`
-// finishes in under 2 minutes. The full FK graph, every seed scenario, and
-// the manifest reload gate are unchanged — only absolute volumes shrink, and
-// every seed magnitude is a ratio engineered against its own baseline.
-export const EXPANSION_PASSES: Record<LoadScale, number> = {
-  full: 9,
-  small: 1,
-};
-export const EXPANSION_ITEM_TARGET: Record<LoadScale, number> = {
-  full: 1_000_000,
-  small: 60_000,
-};
 
 export function datasetVersionFor(scale: LoadScale): string {
   return scale === "small" ? `${DATASET_VERSION}-small` : DATASET_VERSION;

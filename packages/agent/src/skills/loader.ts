@@ -16,52 +16,9 @@ export interface SkillSectionRule {
   test: (heading: string) => boolean;
 }
 
-/**
- * Canonical D-14 section list. Each rule must match at least one ATX
- * heading (case-insensitive); labels match the skills-check gate.
- */
-export const SKILL_SECTIONS: SkillSectionRule[] = [
-  {
-    id: "name",
-    label: "name/metadata",
-    test: (h) => /skill\s*name|^name\b|metadata/.test(h),
-  },
-  {
-    id: "description",
-    label: "description",
-    test: (h) => /description/.test(h),
-  },
-  {
-    id: "triggers",
-    label: "when-to-use/triggers",
-    test: (h) => /when to use|trigger/.test(h),
-  },
-  {
-    id: "io",
-    label: "inputs/outputs",
-    test: (h) => /input/.test(h) && /output/.test(h),
-  },
-  {
-    id: "steps",
-    label: "steps",
-    test: (h) => /\bsteps?\b/.test(h),
-  },
-  {
-    id: "guardrails",
-    label: "constraints/guardrails",
-    test: (h) => /constraint|guardrail/.test(h),
-  },
-  {
-    id: "examples",
-    label: "examples",
-    test: (h) => /example/.test(h),
-  },
-  {
-    id: "final-check",
-    label: "final-check",
-    test: (h) => /final check/.test(h),
-  },
-];
+import { SKILL_SECTIONS } from "../constants.js";
+
+export { SKILL_SECTIONS } from "../constants.js";
 
 const SkillFrontMatterSchema = z.object({
   name: z.string().min(1),

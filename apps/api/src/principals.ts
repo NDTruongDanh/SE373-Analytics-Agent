@@ -24,6 +24,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import {
+  PERSONA_TO_CLIENT,
+  THREAD_ID_MAX_LENGTH,
+} from "./constants.js";
+
+export { PERSONA_TO_CLIENT, THREAD_ID_MAX_LENGTH };
 
 /** Row-scope predicate: a single column equality enforced server-side. */
 export interface RowScope {
@@ -45,17 +51,6 @@ export interface ClientRegistry {
   version: number;
   clients: McpClientEntry[];
 }
-
-/** Static UI-persona → registry-client table (architecture section 3.2).
- * sales_south is the demo/compat alias for the Regional Manager South seat.
- */
-export const PERSONA_TO_CLIENT: Record<string, string> = {
-  sales_south: "sales_south",
-  regional_manager_south: "sales_south",
-  marketing: "marketing",
-  hr: "hr",
-  data_admin: "admin",
-};
 
 /** Principal resolved server-side for one ask. Scopes never come from input. */
 export interface Principal {
@@ -88,9 +83,6 @@ export class InvalidThreadError extends Error {
     this.name = "InvalidThreadError";
   }
 }
-
-/** Upper bound for thread ids (matches the 01-12 HITL limit). */
-export const THREAD_ID_MAX_LENGTH = 255;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

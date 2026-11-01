@@ -6,12 +6,14 @@ import {
 } from "../mcpClient.js";
 import { writeTraceEvent } from "../traces/writer.js";
 import {
-  RESULT_PREVIEW_MAX,
   type AgentState,
   type AgentUpdate,
   type RootRuntime,
   type UcEntryHandler,
 } from "../state.js";
+import { DEFAULT_ROUTE_ID, RESULT_PREVIEW_MAX } from "../constants.js";
+
+export { DEFAULT_ROUTE_ID } from "../constants.js";
 
 // UC seam (01-10): the SOLE file the frozen root builder (graph.ts) reads
 // for UC wiring. UC owners register handlers here — or in sibling files
@@ -20,8 +22,7 @@ import {
 // (understand -> describe -> run -> answer, 7 trace events) so the 27/10
 // course-checkpoint demo keeps passing while real UC subgraphs land.
 
-// Default route id. Unknown ucIds fall through to this entry.
-export const DEFAULT_ROUTE_ID = "tracer";
+// Default route id. Unknown ucIds fall through to this entry (see constants.ts).
 
 const entries = new Map<string, UcEntryHandler>();
 

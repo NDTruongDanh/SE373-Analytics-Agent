@@ -25,6 +25,7 @@ import * as z from "zod";
 import {
   checkBudget,
   createBudgetState,
+  estimateTokens,
   recordLlmCall,
   type BudgetState,
   type BudgetTripReason,
@@ -34,12 +35,9 @@ import {
   hasWhereFilter,
   localQuerySafetyGate,
 } from "./safetyGate.js";
+import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
-/** Hard cap on total attempts including the first try (D-02). */
-export const MAX_ATTEMPTS = 3;
-
-/** Tighter cap the TIMEOUT simplification enforces on the retry. */
-export const TIMEOUT_RETRY_LIMIT = 50;
+export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
 /** Structured SQL proposal the model must produce (untrusted until gated). */
 export const SqlProposalSchema = z.object({
@@ -383,11 +381,11 @@ export class ValidatedQueryExecutor {
         if (check.tripped) return budgetTrip(check.reason, attempt);
         const proposalStarted = Date.now();
         let proposal: SqlProposal;
+        const prompt =
+          repairFeedback === null
+            ? input.question
+            : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
         try {
-          const prompt =
-            repairFeedback === null
-              ? input.question
-              : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
           proposal = await this.model
             .withStructuredOutput(SqlProposalSchema, { name: "sql_proposal" })
             .invoke(prompt);
@@ -404,7 +402,10 @@ export class ValidatedQueryExecutor {
             attempts: attempt,
           };
         }
-        recordLlmCall(budget);
+        // Structured-output adapters do not consistently expose provider usage.
+        // Charge a conservative local estimate so maxTokens remains a real
+        // circuit breaker instead of an inert counter.
+        recordLlmCall(budget, estimateTokens(prompt, JSON.stringify(proposal)));
         partials.lastSql = proposal.sql;
         sql = proposal.sql;
         lastTablesUsed = proposal.tablesUsed;

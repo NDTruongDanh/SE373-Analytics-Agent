@@ -1,3 +1,4 @@
+// FROZEN root builder (AGENT-01). UC owners MUST NOT edit topology; extend via registry.ts (registerUC) and RootGraphDeps seams (retrieve/ucHandlers/viz/synthesize/emitSpan/textToSql). Budget guard here is generic run governance, not UC logic. Keep topology generic.
 import {
   END,
   MemorySaver,
@@ -17,21 +18,18 @@ import {
   type VizFn,
 } from "./state.js";
 import {
-  DEFAULT_ROUTE_ID,
   getUcEntry,
   listUcIds,
   type TracerDefaultContext,
 } from "./subgraphs/registry.js";
+import {
+  createTextToSqlRuntime,
+  guardTextToSqlBudget,
+  type TextToSqlRuntimeDeps,
+} from "./subgraphs/textToSql.js";
+import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
 import { writeTraceEvent } from "./traces/writer.js";
 
-// FROZEN root builder (AGENT-01, 01-10). UC owners MUST NOT edit this file:
-// register handlers through subgraphs/registry.ts (registerUC) and land
-// executor/model/span/HITL/persistence behavior through RootGraphDeps.
-// Sibling injection points: 01-11 ValidatedQueryExecutor drives the retrieve
-// and UC-entry hooks; 01-12 model factory plus skills plus spans plus HITL
-// satisfy RetrieveFn/SynthesizeFn/SpanEmitter; 01-13/01-14 inject the
-// PostgresSaver checkpointer and host the resume endpoint. The default
-// tracer route keeps the 01-01 demo chain working until 01-14 replaces it.
 
 export interface RootGraphDeps {
   /** Defaults to MemorySaver; 01-13/01-14 inject PostgresSaver. Never falls back silently. */
@@ -46,6 +44,8 @@ export interface RootGraphDeps {
   synthesize?: SynthesizeFn;
   /** Defaults to a no-op sink; runTracerGraph wires the redacted writer. */
   emitSpan?: SpanEmitter;
+  /** Text-to-SQL model/executor seams; production uses defaults, tests inject fakes. */
+  textToSql?: TextToSqlRuntimeDeps;
 }
 
 const noopEmit: SpanEmitter = () => "";
@@ -69,20 +69,12 @@ async function defaultSynthesize(state: AgentState): Promise<AgentUpdate> {
   };
 }
 
-/**
- * Compile the frozen AGENT-01 root graph:
- * understand -> retrieve -> router -> (ucEntry | defaultEntry) ->
- * statusCheck -> (vizSeam | answer) -> END.
- * Router dispatches ONLY to registry entries (allowlist); unknown ucIds
- * fall through to the tracer default route. Status ok/no_data continues to
- * the VIZ seam; clarification-gate (needs_clarification), policy-restricted
- * (restricted), and error outcomes synthesize with partial findings.
- */
 export function buildRootGraph(deps: RootGraphDeps = {}) {
   const emit: SpanEmitter = deps.emitSpan ?? noopEmit;
   const retrieve: RetrieveFn = deps.retrieve ?? noopUpdate;
   const viz: VizFn = deps.viz ?? noopUpdate;
   const synthesize: SynthesizeFn = deps.synthesize ?? defaultSynthesize;
+  const textToSql = createTextToSqlRuntime(deps.textToSql);
 
   const overlay = new Map<string, UcEntryHandler>();
   for (const id of listUcIds()) {
@@ -94,6 +86,9 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   for (const [id, handler] of Object.entries(deps.ucHandlers ?? {})) {
     overlay.set(id, handler);
   }
+  // Always prefer the per-graph runtime over the import-time registry entry:
+  // production transport and trace dependencies are only available at run time.
+  overlay.set(TEXT_TO_SQL_UC_ID, textToSql.entry);
   if (!overlay.has(DEFAULT_ROUTE_ID)) {
     throw new Error(
       `root graph requires a '${DEFAULT_ROUTE_ID}' default route (registry or deps.ucHandlers)`,
@@ -110,10 +105,49 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   };
 
   const graph = new StateGraph(AgentStateSchema)
-    .addNode("understand", async (state: AgentState): Promise<AgentUpdate> => ({
-      intent: { metric: null, dimensions: [], filters: [], timeRange: null },
-      runId: state.runId,
-      threadId: state.threadId,
+    // Generic run governance (not UC logic): guardTextToSqlBudget only reads
+    // budget counters/deadline and seeds the absolute deadline (no model or
+    // I/O), so it is safe to reuse for the text-to-SQL path. Other UCs get an
+    // inline budget-only trip check (no executor import: the frozen root stays
+    // off the queryExecutor seam) returning cannot_answer on trip, {} otherwise.
+    .addNode("budgetGuard", async (state: AgentState): Promise<AgentUpdate> => {
+      if (state.ucId === TEXT_TO_SQL_UC_ID) return guardTextToSqlBudget(state);
+      const reason =
+        state.budget.llmCalls >= state.budget.maxLlmCalls
+          ? "llm-calls"
+          : state.budget.tokensUsed >= state.budget.maxTokens
+            ? "tokens"
+            : state.budget.deadlineMs > 0 &&
+                Date.now() >= state.budget.deadlineMs
+              ? "deadline"
+              : null;
+      if (reason) {
+        return {
+          status: "cannot_answer",
+          answerText: `Run budget exceeded (${reason}); no model or query was called.`,
+        };
+      }
+      return {};
+    })
+    // BGT runs before UND and a tripped status short-circuits straight to
+    // answer below, so the skill-contract load inside textToSql.understand
+    // never runs after a trip (arch START->BGT->SKL->UND collapsed into
+    // BGT->UND with SKL inside UND: no I/O after the trip).
+    .addNode("understand", runWithRuntime((state, rt) => {
+      if (state.ucId === TEXT_TO_SQL_UC_ID) return textToSql.understand(state, rt);
+      return Promise.resolve({
+        intent: {
+          metric: null,
+          dimensions: [],
+          filters: [],
+          timeRange: null,
+          requestedMetrics: [],
+          schemaEntities: [],
+          queryMode: "standard_query",
+        },
+        runId: state.runId,
+        threadId: state.threadId,
+      });
     }))
     .addNode("retrieve", runWithRuntime((state, rt) => retrieve(state, rt)))
     .addNode("router", noopUpdate)
@@ -142,7 +176,12 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .addNode("statusCheck", noopUpdate)
     .addNode("vizSeam", runWithRuntime((state, rt) => viz(state, rt)))
     .addNode("answer", runWithRuntime((state, rt) => synthesize(state, rt)))
-    .addEdge(START, "understand")
+    .addEdge(START, "budgetGuard")
+    // Generic trip bypass: any budgetGuard cannot_answer skips understand
+    // (and its skill/model I/O) straight to answer.
+    .addConditionalEdges("budgetGuard", (state: AgentState) =>
+      state.status === "cannot_answer" ? "answer" : "understand",
+    )
     .addEdge("understand", "retrieve")
     .addEdge("retrieve", "router")
     .addConditionalEdges("router", (state: AgentState) =>

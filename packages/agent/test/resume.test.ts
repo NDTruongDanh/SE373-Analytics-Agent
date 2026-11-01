@@ -12,8 +12,8 @@ import {
   pauseForApproval,
   requestClarification,
   resumeDecision,
-  THREAD_ID_MAX_LENGTH,
 } from "../src/hitl.js";
+import { THREAD_ID_MAX_LENGTH } from "../src/constants.js";
 
 const ResumeState = new StateSchema({
   hits: z.number().default(0),

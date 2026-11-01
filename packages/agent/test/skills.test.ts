@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { loadSkill, SKILL_SECTIONS } from "../src/skills/loader.js";
+import { loadSkill } from "../src/skills/loader.js";
+import { SKILL_SECTIONS } from "../src/constants.js";
 import type { SpanEvent } from "../src/state.js";
 
 const SKILLS_DIR = fileURLToPath(new URL("../../../skills", import.meta.url));

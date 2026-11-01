@@ -6,9 +6,15 @@
 // the strict zod schema below stays the single validation authority: wrong
 // version literals, missing columns, empty names and extra keys all throw.
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import * as z from "zod";
+import {
+  DEFAULT_SENSITIVE_COLUMNS,
+  DEFAULT_SENSITIVE_COLUMNS_PATH,
+} from "./constants.js";
+
+// Compat re-exports: the canonical definitions live in ./constants.js.
+export { DEFAULT_SENSITIVE_COLUMNS, DEFAULT_SENSITIVE_COLUMNS_PATH };
 
 export const SensitiveColumnsSchema = z.strictObject({
   version: z.literal(1),
@@ -22,27 +28,8 @@ export const SensitiveColumnsSchema = z.strictObject({
 
 export type SensitiveColumns = z.infer<typeof SensitiveColumnsSchema>;
 
-// Default sensitive set: the v1 reference set (customers contact fields plus
-// the employees compensation field), with exact table/column names matching
-// the 01-04 catalog once merged. Used by ColumnScopePolicy when no explicit
-// list is passed; the yaml FILE itself lands in 01-08
-// (policies/sensitive_columns.yaml) — never created here.
-export const DEFAULT_SENSITIVE_COLUMNS: SensitiveColumns = {
-  version: 1,
-  columns: [
-    { table: "customers", column: "phone" },
-    { table: "customers", column: "email" },
-    { table: "customers", column: "address" },
-    { table: "employees", column: "salary" },
-  ],
-};
-
-// Repo-root policies file, resolved from this module's location so the
-// default works regardless of the caller's cwd (src and dist layouts both
-// sit two levels below the repo root).
-export const DEFAULT_SENSITIVE_COLUMNS_PATH = fileURLToPath(
-  new URL("../../../policies/sensitive_columns.yaml", import.meta.url),
-);
+// Default sensitive set and repo-root policies path live in ./constants.js
+// (re-exported above for compat).
 
 // Pure function: YAML text in, validated config out. Throws on malformed
 // YAML or any schema violation (missing version, wrong literal, empty

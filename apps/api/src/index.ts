@@ -46,9 +46,9 @@ import {
   sqlPayload,
 } from "./sse.js";
 import type { AppStateStore } from "./store/alertStore.js";
+import { API_SHELL } from "./constants.js";
 
-export const API_SHELL =
-  "API host: Express SSE streaming with persona principals, injected persistence ports, and resume";
+export { API_SHELL };
 
 export type ApiShellError = DbToolError;
 

@@ -8,10 +8,10 @@ import {
 } from "@shared/access-policy";
 import type { SchemaCatalog } from "@shared/contracts";
 import {
-  DETAIL_QUERY_LIMIT,
   clampLimit,
   localQuerySafetyGate,
 } from "../src/queryExecutor/safetyGate.js";
+import { DETAIL_QUERY_LIMIT } from "../src/constants.js";
 
 function col(
   name: string,

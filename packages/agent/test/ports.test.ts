@@ -6,10 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import {
-  CHECKPOINT_SCHEMA,
-  createCheckpointer,
-} from "../src/ports/index.js";
+import { createCheckpointer } from "../src/ports/index.js";
+import { CHECKPOINT_SCHEMA } from "../src/constants.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 

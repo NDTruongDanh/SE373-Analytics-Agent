@@ -3,8 +3,10 @@
 // choke-point. Patterns are locked to the gateway-research §4 set, derived
 // from the Faker `vi` phone formats: mobile, landline, international +84,
 // plus email. No DB or network I/O.
-export const MASKED_PHONE = "[MASKED_PHONE]";
-export const MASKED_EMAIL = "[MASKED_EMAIL]";
+import { MASKED_EMAIL, MASKED_PHONE } from "./constants.js";
+
+// Compat re-exports: the canonical definitions live in ./constants.js.
+export { MASKED_EMAIL, MASKED_PHONE };
 
 // Mobile: 03/05/07/08/09 prefixes, 10 digits total, spaced and compact
 // forms (e.g. `0901 234 567`, `0901234567`, `032 123 4567`). Separators may

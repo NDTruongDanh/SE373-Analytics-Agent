@@ -17,7 +17,8 @@ import {
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
 import * as z from "zod";
-import { CHECKPOINT_SCHEMA, createCheckpointer } from "../src/ports/index.js";
+import { createCheckpointer } from "../src/ports/index.js";
+import { CHECKPOINT_SCHEMA } from "../src/constants.js";
 import { makeThreadId } from "../src/hitl.js";
 
 const LIVE_URL = process.env["HARNESS_STATE_DATABASE_URL"];

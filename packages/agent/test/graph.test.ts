@@ -9,10 +9,11 @@ import {
   type AgentUpdate,
 } from "../src/state.js";
 import {
-  DEFAULT_ROUTE_ID,
   isKnownUc,
   registerUC,
 } from "../src/subgraphs/registry.js";
+import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "../src/constants.js";
+import type { ExecutorRunInput } from "../src/queryExecutor/executor.js";
 
 // AGENT-01 seam tests (01-10): FakeListChatModel doubles plus stubbed
 // retrieve and UC handlers injected through RootGraphDeps — no API key and
@@ -85,6 +86,9 @@ describe("root graph seam", () => {
       dimensions: [],
       filters: [],
       timeRange: null,
+      requestedMetrics: [],
+      schemaEntities: [],
+      queryMode: "standard_query",
     });
     expect(out.semanticChunks).toEqual([{ chunkId: "chunk-1" }]);
     expect(out.toolsCalled).toEqual(["uc-alpha"]);
@@ -176,7 +180,7 @@ describe("root graph seam", () => {
       tokensUsed: 0,
       maxLlmCalls: 20,
       maxTokens: 60000,
-      runDeadlineMs: 120000,
+      deadlineMs: 0,
     });
   });
 
@@ -225,7 +229,7 @@ describe("root graph seam", () => {
     expect(out.budget.tokensUsed).toBe(150);
     expect(out.budget.maxLlmCalls).toBe(20);
     expect(out.budget.maxTokens).toBe(60000);
-    expect(out.budget.runDeadlineMs).toBe(120000);
+    expect(out.budget.deadlineMs).toBe(0);
     expect(out.telemetry).toEqual({
       promptTokens: 11,
       completionTokens: 22,
@@ -263,7 +267,151 @@ describe("root graph seam", () => {
         ).toBe(false);
       }
     }
-    expect(source).toContain("FROZEN");
+    expect(source).toContain("FROZEN root builder");
+  });
+
+  it("runs text-to-SQL intent extraction, skill tracing, and the injected executor", async () => {
+    const spans: { node: string; type: string }[] = [];
+    const runs: ExecutorRunInput[] = [];
+    const graph = buildRootGraph({
+      emitSpan: ({ node, type }) => {
+        spans.push({ node, type });
+        return "span-1";
+      },
+      textToSql: {
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => ({
+              metric: "order_count",
+              dimensions: ["status"],
+              filters: [],
+              timeRange: null,
+              requestedMetrics: ["order_count"],
+              schemaEntities: ["orders"],
+              queryMode: "standard_query" as const,
+            }),
+          }),
+        },
+        executor: {
+          run: async (input) => {
+            runs.push(input);
+            return {
+              status: "ok" as const,
+              sql: "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status",
+              tablesUsed: ["orders"],
+              columns: ["status", "n"],
+              rows: [{ status: "delivered", n: 1 }],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "How many orders per status?", ucId: TEXT_TO_SQL_UC_ID },
+      {
+        configurable: {
+          thread_id: "thread-text-to-sql",
+          runId: "run-text-to-sql",
+          userId: "user-text-to-sql",
+          roleScope: "sales_south",
+        },
+      },
+    );
+
+    expect(out.intent).toMatchObject({
+      requestedMetrics: ["order_count"],
+      schemaEntities: ["orders"],
+      queryMode: "standard_query",
+    });
+    expect(out.budget.llmCalls).toBe(1);
+    expect(out.budget.deadlineMs).toBeGreaterThan(Date.now() - 120000);
+    expect(runs).toEqual([
+      expect.objectContaining({
+        candidateTables: ["orders"],
+        principal: { runId: "run-text-to-sql", userId: "user-text-to-sql", roleScope: "sales_south" },
+        budget: expect.objectContaining({ llmCalls: 1 }),
+      }),
+    ]);
+    expect(spans).toContainEqual({ node: "skills", type: "skill_call" });
+  });
+
+  it("stops an exhausted text-to-SQL budget before the model or executor", async () => {
+    let modelCalled = false;
+    let executorCalled = false;
+    const graph = buildRootGraph({
+      textToSql: {
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => {
+              modelCalled = true;
+              return {
+                metric: null,
+                dimensions: [],
+                filters: [],
+                timeRange: null,
+                requestedMetrics: [],
+                schemaEntities: [],
+                queryMode: "standard_query" as const,
+              };
+            },
+          }),
+        },
+        executor: {
+          run: async () => {
+            executorCalled = true;
+            return {
+              status: "no_data" as const,
+              sql: "SELECT 1 WHERE false",
+              tablesUsed: [],
+              columns: [],
+              rows: [],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "q", ucId: TEXT_TO_SQL_UC_ID, budget: { llmCalls: 20 } },
+      invokeOptions("t-exhausted"),
+    );
+
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toContain("Run budget exceeded");
+    expect(modelCalled).toBe(false);
+    expect(executorCalled).toBe(false);
+  });
+
+  it("stops an exhausted generic budget before retrieve or the UC handler", async () => {
+    let retrieveCalled = false;
+    let handlerCalled = false;
+    const graph = buildRootGraph({
+      retrieve: async () => {
+        retrieveCalled = true;
+        return {};
+      },
+      ucHandlers: {
+        "uc-generic": async () => {
+          handlerCalled = true;
+          return { status: "ok", answerText: "should not run" };
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "q", ucId: "uc-generic", budget: { llmCalls: 20 } },
+      invokeOptions("t-generic-exhausted"),
+    );
+
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toContain("Run budget exceeded");
+    expect(retrieveCalled).toBe(false);
+    expect(handlerCalled).toBe(false);
   });
 
   it("exposes only the root surface from the barrel", async () => {

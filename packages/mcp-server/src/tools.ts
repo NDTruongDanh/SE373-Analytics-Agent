@@ -10,15 +10,9 @@ import {
   SampleRowsInputSchema,
   SearchSemanticLayerInputSchema,
 } from "@shared/contracts";
+import { TOOL_SCOPES } from "./constants.js";
 
-export const TOOL_SCOPES = {
-  list_tables: "schema:read",
-  describe_table: "schema:read",
-  explain_query: "data:read",
-  run_query: "data:read",
-  sample_rows: "data:read",
-  search_semantic_layer: "data:read",
-} as const;
+export { TOOL_SCOPES, TOOL_SPECS } from "./constants.js";
 
 export type ToolName = keyof typeof TOOL_SCOPES;
 
@@ -34,45 +28,3 @@ export interface ToolSpec {
     | typeof SearchSemanticLayerInputSchema;
   needsSql: boolean;
 }
-
-export const TOOL_SPECS: readonly ToolSpec[] = [
-  {
-    name: "list_tables",
-    description: "List public tables with column names and sensitivity flags",
-    inputSchema: ListTablesInputSchema,
-    needsSql: false,
-  },
-  {
-    name: "describe_table",
-    description:
-      "Describe one public table: columns with types, sensitivity and large flags, primary key, foreign keys",
-    inputSchema: DescribeTableInputSchema,
-    needsSql: false,
-  },
-  {
-    name: "explain_query",
-    description:
-      "Return the planner cost and row estimate for a SELECT without running it (never ANALYZE)",
-    inputSchema: ExplainQueryInputSchema,
-    needsSql: true,
-  },
-  {
-    name: "run_query",
-    description: "Run a read-only SELECT with bounded rows and masked PII",
-    inputSchema: RunQueryInputSchema,
-    needsSql: true,
-  },
-  {
-    name: "sample_rows",
-    description: "Return up to 5 sample rows from one public table",
-    inputSchema: SampleRowsInputSchema,
-    needsSql: true,
-  },
-  {
-    name: "search_semantic_layer",
-    description:
-      "Hybrid vector plus full-text search over the versioned semantic corpus",
-    inputSchema: SearchSemanticLayerInputSchema,
-    needsSql: false,
-  },
-];

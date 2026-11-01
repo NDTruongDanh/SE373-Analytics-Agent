@@ -8,38 +8,20 @@
 // Explicit ALLOW posture: everything NOT in the denylist passes the function
 // check — current_setting, current_user, version, aggregates, window, math,
 // string and date functions are all allowed by default. The denylist is
-// deny-by-exception, never an allowlist.
+// deny-by-exception, never an allowlist. (Canonical definitions live in
+// ./constants.js; re-exported here for compat.)
+import {
+  FORBIDDEN_FUNCTIONS,
+  FORBIDDEN_FUNCTION_SET,
+  SYSTEM_SCHEMA_SET,
+  SYSTEM_SCHEMAS,
+} from "./constants.js";
 
-export const FORBIDDEN_FUNCTIONS = [
-  "pg_sleep",
-  "pg_read_file",
-  "pg_ls_dir",
-  "pg_logdir_ls",
-  "dblink",
-  "dblink_exec",
-  "lo_import",
-  "lo_export",
-  "lo_unlink",
-  "set_config",
-  "pg_terminate_backend",
-  "pg_cancel_backend",
-  "pg_reload_conf",
-  "pg_execute_server_program",
-  "nextval",
-  "setval",
-  "currval",
-] as const;
+export {
+  FORBIDDEN_FUNCTIONS,
+  FORBIDDEN_FUNCTION_SET,
+  SYSTEM_SCHEMA_SET,
+  SYSTEM_SCHEMAS,
+};
 
 export type ForbiddenFunction = (typeof FORBIDDEN_FUNCTIONS)[number];
-
-export const FORBIDDEN_FUNCTION_SET: ReadonlySet<string> = new Set(
-  FORBIDDEN_FUNCTIONS,
-);
-
-// System schemas are denied defense-in-depth (UC-09 F7): the catalog
-// whitelist would miss them anyway when the fixture only lists business
-// tables, but the explicit deny gives a clearer error and stays fail-closed
-// if a future catalog ever lists them by mistake.
-export const SYSTEM_SCHEMAS = ["pg_catalog", "information_schema", "pg_toast"] as const;
-
-export const SYSTEM_SCHEMA_SET: ReadonlySet<string> = new Set(SYSTEM_SCHEMAS);
