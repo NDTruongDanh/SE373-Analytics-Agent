@@ -5,10 +5,12 @@ description: Implemented db-tools MCP gateway with scoped tools, 7-stage pipelin
 tags: [mcp, db-tools, scoped-auth, sql-validation, audit-log, operator-ui, uc-09]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T14:10:28.006Z
+    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
+  - id: openwiki-source-29e6795232e203660915fd20
+    resource: repo://apps/web/src/constants.ts
   - id: openwiki-source-1dfd9d0040aec8cc63e58d27
     resource: repo://apps/web/src/index.ts
   - id: openwiki-source-959b64ff54cd1f30f8828ba2
@@ -19,6 +21,8 @@ sources:
     resource: repo://packages/access-policy/src/guard.ts
   - id: openwiki-source-c16e3c66d0f5ea30d7c07479
     resource: repo://packages/access-policy/src/policy.ts
+  - id: openwiki-source-4c4499ad1e842a81b6f27cfc
+    resource: repo://packages/contracts/src/tools.ts
   - id: openwiki-source-a21c007774a13621a14b7859
     resource: repo://packages/mcp-server/src/audit.ts
   - id: openwiki-source-af866a7ab8db1e37b5da722b
@@ -27,6 +31,8 @@ sources:
     resource: repo://packages/mcp-server/src/catalog.ts
   - id: openwiki-source-edb0df25ab85a5dd65a32711
     resource: repo://packages/mcp-server/src/config.ts
+  - id: openwiki-source-80d7c64af501ca63c5b59584
+    resource: repo://packages/mcp-server/src/constants.ts
   - id: openwiki-source-6059339105a2039b4704c0b6
     resource: repo://packages/mcp-server/src/errors.ts
   - id: openwiki-source-556e762ce8bac7b936e1dff4
@@ -37,11 +43,9 @@ sources:
     resource: repo://packages/mcp-server/src/semantic/embedder.ts
   - id: openwiki-source-133b0c7d08e8e3c7f7e4fda2
     resource: repo://packages/mcp-server/src/server.ts
-  - id: openwiki-source-9ca63c47cf2805e788ed5fdb
-    resource: repo://packages/mcp-server/src/tools.ts
   - id: openwiki-source-239b7c4787e6faba4ea0bd52
     resource: repo://policies/mcp_clients.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-10-31T14:10:28.006Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
 ---
 
 # Database MCP server and gateway
@@ -58,10 +62,10 @@ All database access goes through one gateway. The agent, policy, and app package
 |---|---|---|
 | Gateway entry | `packages/mcp-server/src/pipeline.ts` | `executeToolCall` and `executeResourceRead` with `GatewayDeps` |
 | HTTP host | `packages/mcp-server/src/server.ts` | `McpServer` plus `StreamableHTTPServerTransport` over Express, `registerTool` and `registerResource` |
-| Tool specs | `packages/mcp-server/src/tools.ts` | Per-tool scope, zod input schema, `needsSql` flag |
+| Tool specs | `packages/mcp-server/src/constants.ts` (re-exported via `tools.ts`) | Per-tool scope in `TOOL_SCOPES`, zod input schema in `TOOL_SPECS`, `needsSql` flag |
 | Auth | `packages/mcp-server/src/auth.ts` | Token verifier mapping Bearer tokens to client identity, role, and scopes |
 | Config | `packages/mcp-server/src/config.ts` | Strict zod loaders for `policies/mcp_clients.yaml` and sensitive columns, token resolution from env |
-| Catalog | `packages/mcp-server/src/catalog.ts` | Boot-time `information_schema` snapshot merged with sensitive flags |
+| Catalog | `packages/mcp-server/src/catalog.ts` plus `LARGE_TABLES` in `constants.ts` | Boot-time `information_schema` snapshot merged with sensitive flags |
 | Executor | `packages/mcp-server/src/executor.ts` | `pg` pool for the read-only role with timeout and bounded cursor |
 | Errors | `packages/mcp-server/src/errors.ts` | Single `sanitizeError` choke-point and PG-code map |
 | Audit | `packages/mcp-server/src/audit.ts` | JSONL audit with literal masking and PII redaction |
@@ -72,7 +76,7 @@ All database access goes through one gateway. The agent, policy, and app package
 
 ## 2. Tool surface
 
-The gateway serves six tools declared in `TOOL_SPECS`. Each spec names the server-side scope the pipeline enforces, the strict zod input schema applied at stage 3, and whether the call carries client SQL through stages 4–6.
+The gateway serves six tools declared in `TOOL_SPECS` in `packages/mcp-server/src/constants.ts` (re-exported through `packages/mcp-server/src/tools.ts`). Each spec names the server-side scope the pipeline enforces via `TOOL_SCOPES`, the strict zod input schema applied at stage 3, and whether the call carries client SQL through stages 4–6.
 
 | Tool | Scope needed | Behavior |
 |---|---|---|
@@ -153,7 +157,7 @@ The checked-in registry maps `sales_south` to `schema:read` plus `data:read` wit
 
 Boot fails closed: malformed YAML, wrong version, empty client list, unknown scopes, extra keys, duplicate `clientId` or `tokenEnv`, or any missing or empty token variable throws before the server listens. Catalog boot also fails closed on an empty table list so the server never serves nothing as something.
 
-The catalog merges `information_schema` tables, columns, and primary plus foreign keys with the sensitive flags and marks `order_items` and `orders` as large tables needing a filter before a full scan.
+The catalog merges `information_schema` tables, columns, and primary plus foreign keys with the sensitive flags and sets the `large` flag from `LARGE_TABLES`. `LARGE_TABLES` in `constants.ts` (re-exported from `catalog.ts`) lists `order_items` and `orders`, marking tables that need a filter before a full scan.
 
 ## 7. Independent server-side SQL and policy checks
 
@@ -188,7 +192,7 @@ Tool handlers return MCP content with the JSON-stringified result, or an `isErro
 Operator software is split across two hosts with different maturity:
 
 - **API host (implemented).** `apps/api` wires the agent root graph, span emitter, and persistence ports behind sanitized SSE: `POST /api/ask` mints run context, maps the UI persona to an MCP principal through the server-side registry, streams allowlisted schema-validated events, and `POST /api/runs/:runId/resume` resumes on the same thread. Boot fails fast when `HARNESS_STATE_DATABASE_URL` is absent and never falls back to memory.
-- **Web UI (shell).** `apps/web` still exports only a shell marker for the planned Vite plus React chat UI. It may import only shared contract types and is lint-forbidden from importing the DB driver, agent, access-policy, or MCP server packages.
+- **Web UI (shell).** `apps/web` still exports only the `WEB_SHELL` marker from `constants.ts` (via `index.ts`) for the planned Vite plus React chat UI. It may import only shared contract types and is lint-forbidden from importing the DB driver, agent, access-policy, or MCP server packages.
 
 Because enforcement lives on the server, any MCP client with a valid token gets identical controls. Use MCP Inspector against `POST /mcp` to list and call all six tools and read both resources; a `DELETE` attempt still fails with `FORBIDDEN_STATEMENT` with no table change, proving the guard does not depend on agent cooperation.
 

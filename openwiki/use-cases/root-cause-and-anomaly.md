@@ -5,7 +5,7 @@ description: Branching root-cause analysis with plan checkpoints and human revie
 tags: [root-cause-analysis, anomaly-detection, langgraph, checkpoint, human-in-the-loop, alerting, K4, K5, K2]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T14:46:19.230Z
+    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
@@ -25,24 +25,36 @@ sources:
     resource: repo://docs/UC-plan/UC05.md
   - id: openwiki-source-9105f66d602057324682b6be
     resource: repo://docs/UC-plan/UC10.md
+  - id: openwiki-source-bfb9871db1c11a0b91b0e3c3
+    resource: repo://packages/agent/src/constants.ts
+  - id: openwiki-source-7a382cb67515f2241c13f47e
+    resource: repo://packages/agent/src/graph.ts
   - id: openwiki-source-2b41979f39c43eeafef4e2e9
     resource: repo://packages/agent/src/hitl.ts
   - id: openwiki-source-d45ee892fc2196786928ff7e
     resource: repo://packages/agent/src/ports/checkpoints.ts
+  - id: openwiki-source-634e4e64a4c4f79f29496091
+    resource: repo://packages/agent/src/queryExecutor/executor.ts
+  - id: openwiki-source-7405bf10324bacfc1a6b7abd
+    resource: repo://packages/agent/src/queryExecutor/safetyGate.ts
   - id: openwiki-source-6e14a80344fc52e883de4e14
     resource: repo://packages/agent/src/subgraphs/registry.ts
+  - id: openwiki-source-93a03973ec4e89dfae3f10d6
+    resource: repo://packages/agent/src/telemetry/spans.ts
+  - id: openwiki-source-408f45a62f1908cd7c20780f
+    resource: repo://packages/agent/src/traces/writer.ts
   - id: openwiki-source-b33cafc7f408ad2b3b67b5b4
     resource: repo://packages/agent/test/resume.test.ts
-generated: { by: "openwiki/0.7.2", at: "2026-10-28T14:46:19.230Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
 ---
 
 # Multi-step root-cause and scheduled anomaly alerts (UC-05, UC-10)
 
 This page owns the submitted UC-05 / UC-10 pair: on-demand hierarchical diagnosis of a business fluctuation and scheduled statistical detection with channel delivery. UC-05 covers knowledge areas K4 and K5, UC-10 covers K2 and K5 (`repo://docs/prd.md#L321-L323`, `repo://docs/UC-plan/UC05.md#L5-L6`, `repo://docs/UC-plan/UC10.md#L3-L4`).
 
-The shared runtime and safety contract lives in [Agent workflow and harness architecture](../agent/workflow-architecture.md). Seeded fixtures and load rules live in [Business database and seeded scenarios](../data/database-and-seeding.md). Grading, regression, and safety cases live in [Eval runner, metrics, and regression](../evals/eval-and-safety-harness.md).
+The shared runtime and safety contract lives in [Agent workflow and harness architecture](../agent/workflow-architecture.md). The shared validated SQL loop lives in [Natural-language query with self-repair](./text-to-sql.md). Seeded fixtures and load rules live in [Business database and seeded scenarios](../data/database-and-seeding.md). Grading, regression, and safety cases live in [Eval runner, metrics, and regression](../evals/eval-and-safety-harness.md).
 
-> Implementation status: partially landed. The durable HITL, checkpoint, host-resume, and alert-dedup persistence seams exist in code (`repo://packages/agent/src/hitl.ts#L81-L92`, `repo://packages/agent/src/ports/checkpoints.ts#L54-L72`, `repo://apps/api/src/ports.ts#L29-L42`, `repo://apps/api/src/store/alertStore.ts#L42-L55`, `repo://docker/initdb/04_semantic_state.sql#L74-L82`). The UC-05 drill-down orchestrator, UC-10 statistical runner and sender (`packages/agent/src/alerts/*`, `config/subscriptions.yaml`, `pnpm alert:run`), and both domain skills are still the planned contract in `repo://docs/architecture.md#L258-L259` and have no implementation files yet.
+> Implementation status: the frozen root graph, registry seam, redacted trace writer, hierarchical span emitter, validated SQL path, durable HITL, checkpoint, host-resume, and alert-dedup persistence seams exist in code (`repo://packages/agent/src/graph.ts#L72-L96`, `repo://packages/agent/src/subgraphs/registry.ts#L16-L45`, `repo://packages/agent/src/traces/writer.ts#L73-L99`, `repo://packages/agent/src/telemetry/spans.ts#L58-L175`, `repo://packages/agent/src/queryExecutor/executor.ts#L1-L10`). The UC-05 drill-down orchestrator, UC-10 statistical runner and sender (`packages/agent/src/alerts/*`, `config/subscriptions.yaml`, `pnpm alert:run`), and both domain skills are still the planned contract in `repo://docs/architecture.md#L258-L259` and have no implementation files yet.
 
 ## 1. Responsibilities
 
@@ -173,26 +185,54 @@ flowchart TD
 
 The UC-05 branch of the diagram is interactive and budget-capped; the UC-10 branch is scheduled and per-slice fault-isolated. Both persist checkpoints so resume skips completed work (`repo://docs/prd.md#L341-L341`, `repo://docs/prd.md#L470-L470`). Only the generic checkpoint and dedup boxes have implementations today; the branching, detection, drill-down, and routing nodes are still UC-plan contracts.
 
-## 5. Hidden seeded fixtures
+## 5. Registry extension: how UC-05 and UC-10 plug in without editing the root
 
-Seeded fixtures are recorded in `data/seeded_scenarios.md` and hidden from the agent: at least 3 fluctuation scenarios with known causes, at least 5 anomaly points, and at least 3 rows containing injection strings (`repo://docs/prd.md#L86-L89`). The agent, semantic retrieval, and few-shot examples must never see that file, gold SQL, or expected results.
+UC-05 and UC-10 must not edit the frozen root builder. `buildRootGraph` compiles a fixed chain `START -> budgetGuard -> understand -> retrieve -> router -> (ucEntry | defaultEntry) -> statusCheck -> (vizSeam -> answer | answer) -> END` (`repo://packages/agent/src/graph.ts#L107-L197`). The router dispatches only by allowlist: when the merged overlay has `state.ucId` it takes `ucEntry`, otherwise it takes `defaultEntry` (`repo://packages/agent/src/graph.ts#L187-L189`). A tripped `budgetGuard` short-circuits directly to `answer` so no model or MCP I/O runs after the trip (`repo://packages/agent/src/graph.ts#L113-L131`, `repo://packages/agent/src/graph.ts#L179-L184`).
+
+The extension contract is `RootGraphDeps` (`repo://packages/agent/src/graph.ts#L34-L49`): `checkpointer`, `retrieve`, `ucHandlers`, `viz`, `synthesize`, `emitSpan`, and `textToSql` seams. At build time the graph copies every registry entry into an overlay map and then merges `deps.ucHandlers` over it, so UC owners register handlers beside the registry and never touch `graph.ts` (`repo://packages/agent/src/graph.ts#L79-L91`). The overlay also pins the per-graph text-to-SQL entry over the import-time registry entry so production transport and trace dependencies come from run time (`repo://packages/agent/src/graph.ts#L89-L91`). The build fails when no `DEFAULT_ROUTE_ID` default route is present (`repo://packages/agent/src/graph.ts#L92-L96`).
+
+The registry file is the sole file the frozen builder reads for UC wiring (`repo://packages/agent/src/subgraphs/registry.ts#L18-L23`). It exposes `registerUC`, `getUcEntry`, `isKnownUc`, and `listUcIds` over a module-level map (`repo://packages/agent/src/subgraphs/registry.ts#L29-L46`), with `DEFAULT_ROUTE_ID` re-exported from constants (`repo://packages/agent/src/subgraphs/registry.ts#L16-L16`, `repo://packages/agent/src/constants.ts#L34-L34`). The default route is always registered at import time (`repo://packages/agent/src/subgraphs/registry.ts#L199-L201`). Transport identity comes from `RunnableConfig.configurable` populated by the host, never from prompt text; `readTracerContext` fails closed when any of `mcpUrl`, `token`, `runId`, `userId`, `roleScope`, `threadId`, or `tracesDir` is missing (`repo://packages/agent/src/subgraphs/registry.ts#L65-L89`). The tracer default entry preserves the demo chain — propose SQL, `list_tables`, `run_query`, deterministic answer — while real UC subgraphs land (`repo://packages/agent/src/subgraphs/registry.ts#L99-L197`), and `runTracerGraph` invokes that entry on the demo question with per-call identity headers (`repo://packages/agent/src/graph.ts#L220-L267`).
+
+For UC-05 this means the future orchestrator registers one `UcEntryHandler` (for example `rca`) that owns `validate_baseline`, `create_plan`, `human_review`, `execute_step`, `evaluate_branch`, and `synthesize_report` internally, reusing the shared state, budget, and checkpointer channels. For UC-10 this means the future scheduler registers or invokes a runner entry that owns load, fetch, detect, drill-down, route, and history internally. Both reuse the same `(state, runtime)` signature with `RootRuntime` carrying the span sink plus run config (`repo://packages/agent/src/state.ts#L164-L179`). The root seam test pins this without a live database: injected `ucHandlers` run end to end, and a `registerUC` entry routes without touching the root builder (`repo://packages/agent/test/graph.test.ts#L32-L100`).
+
+## 6. Trace evidence: redacted writer plus hierarchical spans
+
+Every UC-05 branch decision and every UC-10 slice verdict must leave evidence that survives resume, audit, and eval grading. The single write path is `appendTraceEvent`, which mints `spanId` with `randomUUID`, runs a row-level `redactRow` first pass plus a stringify-and-scan `redactPII` backstop, validates the line against the shared trace contract, and appends one JSON line per event to `traces/<runId>.jsonl` (`repo://packages/agent/src/traces/writer.ts#L36-L87`). No inline mask remains; redaction-before-write is inherited by all callers (`repo://packages/agent/src/telemetry/spans.ts#L1-L6`). `writeTraceEvent` is the thin retained wrapper for the tracer call sites (`repo://packages/agent/src/traces/writer.ts#L94-L99`).
+
+The hierarchical emitter binds that writer to run identity. `createSpanEmitter` takes `runId`, `threadId`, `userId`, `role`, and `tracesDir` and returns a base callable satisfying both the `SpanEmitter` and `SpanSink` sibling-plan shapes (`repo://packages/agent/src/telemetry/spans.ts#L58-L78`). `span(node, type, fn)` writes a `start` event, hands `fn` a child emitter bound to that start id, then writes an `end` event with an `ok` flag on both success and failure before rethrowing (`repo://packages/agent/src/telemetry/spans.ts#L80-L126`). Typed helpers standardize the three evidence kinds UC-05 and UC-10 need: `emitSkillCall` for skill loads, `emitLlmCall` for model calls, and `emitToolCall` carrying only `tool`, `rowCount`, and `columns` — never cell values (`repo://packages/agent/src/telemetry/spans.ts#L128-L175`). Payloads therefore prove which skill, model, table, and row count produced a branch or alert without retaining PII.
+
+Span linkage and redaction are pinned by focused tests with no network or database: nested spans share parent ids and propagate `attempt`, both sibling-plan shapes are satisfied by one emitter, executor spans flow through the same sink, and every listed phone and email shape returns marker-only text with source literals absent (`repo://packages/agent/test/spans.test.ts#L34-L100`, `repo://packages/agent/test/traces.test.ts#L41-L99`).
+
+## 7. Guardrailed read-only queries shared by both use cases
+
+UC-05 drill-down SQL and UC-10 series plus drill-down SQL must all flow through the same validated path documented in [Natural-language query with self-repair](./text-to-sql.md). `ValidatedQueryExecutor` is the only agent-side SQL path: selective `describe_table` for candidate tables, structured SQL proposal, local pre-check with `sqlGuard` then `LocalQuerySafetyGate`, `explain_query`, `run_query`, bounded repair, one `TIMEOUT` simplification, and a single-pass zero-row diagnostic (`repo://packages/agent/src/queryExecutor/executor.ts#L1-L10`, `repo://packages/agent/src/queryExecutor/executor.ts#L230-L267`, `repo://packages/agent/src/queryExecutor/executor.ts#L269-L300`). The narrow model and MCP seams keep tests offline (`repo://packages/agent/src/queryExecutor/executor.ts#L54-L71`).
+
+The agent-side gate runs after `sqlGuard` and before any MCP call: `sqlGuard` owns syntax, table, and column validity while the gate owns sensitive-column denial in any clause, cross and conditionless-join denial, large-table clarification, and detail-query `LIMIT` clamping (`repo://packages/agent/src/queryExecutor/safetyGate.ts#L1-L7`). Fail-closed denials are built through the contracts helper; the server-side access policy remains authoritative (`repo://packages/agent/src/queryExecutor/safetyGate.ts#L1-L7`). Hard caps travel with the run: at most 3 total attempts including the first try, a tighter `TIMEOUT_RETRY_LIMIT` of 50 on the simplification path, `DETAIL_QUERY_LIMIT` of 200 on detail queries, at most 50 checkpointed preview rows, and run budgets of 20 LLM calls, 60000 tokens, and a 120000 ms creation window (`repo://packages/agent/src/constants.ts#L9-L28`, `repo://packages/agent/src/queryExecutor/executor.ts#L165-L171`).
+
+State and budget plumbing keeps that path checkpoint-safe. Shared root state is plain JSON only with no pool or `pg` import, because checkpoint payloads serialize verbatim into `PostgresSaver` rows; the full up-to-1000-row buffer lives in transient RAM while only the capped preview is checkpointed (`repo://packages/agent/src/state.ts#L12-L17`). `budgetGuard` seeds one persistent absolute deadline and stops before I/O when tripped, while generic UCs get an inline trip check (`repo://packages/agent/src/subgraphs/textToSql.ts#L50-L71`, `repo://packages/agent/src/graph.ts#L113-L131`).
+
+## 8. Hidden seeded fixtures
+
+Seeded fixtures are recorded in `data/seeded_scenarios.md` and hidden from the agent: at least 3 fluctuation scenarios, at least 5 anomaly points, and at least 3 rows containing injection strings (`repo://docs/prd.md#L86-L89`). The agent, semantic retrieval, and few-shot examples must never see that file, gold SQL, or expected results.
 
 The illustrative patterns published in the spec are a September 2026 revenue drop of about 18% caused by one channel times one region times one category stopping sales from 05/09, and a single day with return orders spiking to about four times normal in Da Nang (`repo://docs/prd.md#L87-L88`, `repo://docs/UC-plan/UC05.md#L155-L157`, `repo://docs/UC-plan/UC10.md#L149-L149`). This page states only those published patterns, never secret rows.
 
-## 6. Skill seams
+## 9. Skill seams
 
-Both use cases expose a reusable skill directory with name, description, when-to-use, inputs and outputs, steps, constraints, examples, and final check; skills must not contain scripts that run arbitrary commands or connect with a different database account (`repo://docs/prd.md#L523-L525`). The skill loader enforces the canonical section list and emits a `skill_call` span when a node loads a skill (`repo://packages/agent/src/skills/loader.ts#L23-L60`).
+Both use cases expose a reusable skill directory with name, description, when-to-use, inputs and outputs, steps, constraints, examples, and final check; skills must not contain scripts that run arbitrary commands or connect with a different database account (`repo://docs/prd.md#L523-L525`). The skill loader enforces the canonical eight-section list and emits a `skill_call` span when a node loads a skill (`repo://packages/agent/src/skills/loader.ts#L23-L60`, `repo://packages/agent/src/skills/loader.ts#L80-L119`, `repo://packages/agent/src/constants.ts#L65-L100`). The loader rejects missing skills, invalid front matter, absent sections, and unsafe names with path separators (`repo://packages/agent/src/skills/loader.ts#L85-L112`, `repo://packages/agent/test/skills.test.ts#L36-L82`).
 
 - `root-cause-analysis` (UC-05): triggers on why-questions, inputs metric plus target and comparison periods, runs validated baseline, plan generation, human review, drill-down loop with contribution math, and verification plus synthesis under 20-query, 4-depth, bounded-retry, and no-fabrication constraints, returning causes plus shares plus evidence SQL (`repo://docs/UC-plan/UC05.md#L111-L147`). No `skills/root-cause-analysis/SKILL.md` file exists yet.
-- `anomaly-alert` (UC-10, mandatory): used for cron and manual runs, never for ad-hoc questions; inputs are `zod` `Subscription` and `Alert` shapes; steps are load, fetch via MCP, code detection, drill-down, route, and history; constraints are read-only access, allowlist, `min_support`, no invented numbers, and ignoring injected instructions in data; final check verifies six fields, recipient-scoped fingerprint, post-send history write, and token and cost trace (`repo://docs/prd.md#L465-L465`, `repo://docs/UC-plan/UC10.md#L167-L169`). No `skills/anomaly-alert/SKILL.md` file exists yet; only `skills/answer-synthesis/SKILL.md` and `skills/text-to-sql/SKILL.md` are present.
+- `anomaly-alert` (UC-10, mandatory): used for cron and manual runs, never for ad-hoc questions; inputs are `zod` `Subscription` and `Alert` shapes; steps are load, fetch via MCP, code detection, drill-down, route, and history; constraints are read-only access, allowlist, `min_support`, no invented numbers, and ignoring injected instructions in data; final check verifies six fields, recipient-scoped fingerprint, post-send history write, and token and cost trace (`repo://docs/prd.md#L465-L465`, `repo://docs/UC-plan/UC10.md#L167-L169`). No `skills/anomaly-alert/SKILL.md` file exists yet.
 
-## 7. Focused evals and acceptance
+No domain skill files exist in the repository today; the skill contract is currently exercised only by loader tests and the planned UC-05 and UC-10 skill specs.
+
+## 10. Focused evals and acceptance
 
 UC-05 needs at least 5 cases: 3 seeded scenarios, a false-premise question, an interrupted-then-resumed analysis, a user-edited plan before execution, and a mid-run query failure (`repo://docs/prd.md#L345-L345`). Acceptance is correct root dimension combination in at least 2 of 3 seeded scenarios, summed attribution within 5% of the total delta, resume without rerunning finished queries, correct stop at depth or query caps with uncovered work reported, and false-premise refusal without invented causes (`repo://docs/prd.md#L339-L343`).
 
 UC-10 needs at least 5 cases: spike up, drop down, normal day with no alert, same-day rerun, and channel failure (`repo://docs/prd.md#L481-L481`, `repo://docs/UC-plan/UC10.md#L159-L164`). Acceptance is detection of at least 4 of 5 seeded points, at most 3 false alarms over a normal week, six-field alerts, no duplicate resend on same-day rerun, bounded retry then queue with trace on channel errors, and recipient-scoped data with zero PII leak (`repo://docs/prd.md#L475-L479`). Detection rate and false-alarm counts plus token, cost, and latency averages are reported per run (`repo://docs/prd.md#L580-L581`, `repo://docs/UC-plan/UC10.md#L165-L165`).
 
-## 8. Configuration and operations
+## 11. Configuration and operations
 
 - Scheduler: `node-cron` schedule plus manual CLI flags for date override and digest flush (`repo://docs/UC-plan/UC10.md#L69-L69`). Not implemented yet.
 - Subscriptions: `config/subscriptions.yaml` validated by `zod`, including metric identifiers from the semantic layer, candidate drill dimensions, recipient and role, channel, and thresholds (`repo://docs/UC-plan/UC10.md#L68-L68`). Not implemented yet.

@@ -3,9 +3,6 @@ type: semantic-layer
 title: Semantic layer and retrieval
 description: Versioned semantic corpus, incremental indexing, and 3-way hybrid retrieval with weighted RRF and join-rule expansion grounding the Analytics Agent.
 tags: [semantic-layer, retrieval, rag, citations, knowledge-base, text-to-sql]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-31T14:10:28.006Z
 sources:
   - id: openwiki-source-4912fb87763cb10856716453
     resource: repo://docker/initdb/02_schemas.sql
@@ -21,6 +18,8 @@ sources:
     resource: repo://packages/agent/src/state.ts
   - id: openwiki-source-4ab6f6b20d8ae6cdc708e0b0
     resource: repo://packages/contracts/src/search.ts
+  - id: openwiki-source-80d7c64af501ca63c5b59584
+    resource: repo://packages/mcp-server/src/constants.ts
   - id: openwiki-source-c6764c62ef243702a1e271ac
     resource: repo://packages/mcp-server/src/pipeline.ts
   - id: openwiki-source-cd6680271f1499ebe3fa5bf1
@@ -33,13 +32,14 @@ sources:
     resource: repo://packages/mcp-server/src/semantic/rrf.ts
   - id: openwiki-source-133b0c7d08e8e3c7f7e4fda2
     resource: repo://packages/mcp-server/src/server.ts
-  - id: openwiki-source-9ca63c47cf2805e788ed5fdb
-    resource: repo://packages/mcp-server/src/tools.ts
   - id: openwiki-source-4fd3e19fe0c023887ba08260
     resource: repo://semantic/data_dictionary.md
   - id: openwiki-source-8eee263b27f3a1a6554edaea
     resource: repo://semantic/metrics.md
-generated: { by: "openwiki/0.7.2", at: "2026-10-31T14:10:28.006Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-01T07:02:11.362Z
 ---
 
 # Semantic layer and retrieval
@@ -153,7 +153,7 @@ The BM25 catalog is cross-process hot-reloaded. Before each search, `hybridSearc
 
 ## 8. Gateway exposure
 
-The `search_semantic_layer` tool is registered with description `Hybrid vector plus full-text search over the versioned semantic corpus`, requires the `data:read` scope, and takes `{ query, topK }` with `topK` defaulting to 5 and capped at 20. In the fixed pipeline it runs after bearer authentication, scope check, and zod validation; because it carries no client SQL it skips the guard and policy stages vacuously. The handler derives `allowRestricted` from the `data:sensitive` scope, calls the injected search function (production: `hybridSearch` over the `agent_ro` pool with the environment-selected embedder), runs `redactPII` over every returned chunk body while counting hits, and always writes exactly one audit line including on denials.
+The `search_semantic_layer` tool is registered in `TOOL_SPECS`/`TOOL_SCOPES` (defined in `constants.ts` and re-exported through `tools.ts`) with description `Hybrid vector plus full-text search over the versioned semantic corpus`, requires the `data:read` scope, and takes `{ query, topK }` with `topK` defaulting to 5 and capped at 20. In the fixed pipeline it runs after bearer authentication, scope check, and zod validation; because it carries no client SQL it skips the guard and policy stages vacuously. The handler derives `allowRestricted` from the `data:sensitive` scope, calls the injected search function (production: `hybridSearch` over the `agent_ro` pool with the environment-selected embedder), runs `redactPII` over every returned chunk body while counting hits, and always writes exactly one audit line including on denials.
 
 The two resources `semantic://data-dictionary` and `semantic://metrics` are served from the checked-in Markdown files. Resource reads require the `schema:read` scope, withhold every `## ` section whose header ends in `[restricted_pii]` unless the principal holds `data:sensitive`, then apply the same PII redaction and audit as tool calls.
 

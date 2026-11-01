@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5ab2a56282d329ad554dc645643fb0d287737c158e14a21fc0e0c153a713a399",
+  "pageVersion": "sha256:9a1941c37344bb5e408c2d5fa8d105a1e7e63cb8f70dbd3e416b33945364dea0",
   "claims": [
     {
       "id": "claim_fb880a6112554a6c93dd71e222eca5d7",
@@ -195,7 +195,7 @@
       "statement": "Root quality gate is pnpm typecheck (tsc -b over seven tsconfig.json project references with strict ESM nodenext base), pnpm lint (eslint . with no-restricted-imports guards on agent, access-policy, api, and web), and pnpm test (tsc -b plus vitest run over contracts, agent, mcp-server, access-policy, data, api, and web projects).",
       "evidence": [
         {
-          "resource": "repo://AGENTS.md#L34-L44",
+          "resource": "repo://AGENTS.md#L35-L45",
           "version": "repo-lines-v1:sha256:5867b4c9cdadf8ae8b484805b22b5e349de15175166fd875ffc948d6c9c19f0e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwYzRhMzZkM2M2MDU0Mzk5NTU0YzQyOTkwN2JhNTI4ZDk2MjUwMDJkYWU4MTkxMmM3ZDBlY2JiM2U3ZDJjNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZTY0NTQ0MWJjOTg2NGNjZTY5ZjVhODZhYTk5ZDFhYzIxNzg3NzE2ZThjZWQ4Y2FjOWFhNDhjZDU4ZWQzZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkOTA5ZWEyODdlZDE4NTIxMjZhMjk3Yjk5YzYzNWFlYzE2M2Q0OTk0YjU1NTkyYmNjMjlhMTEwYTRhMzI5NDcifQ"
         },
         {
@@ -225,7 +225,7 @@
       "statement": "pnpm docs:interface regenerates docs/mcp_interface.md from frozen @shared/contracts Zod schemas via tsx scripts/generate-interface.mjs and the output must never be hand-edited.",
       "evidence": [
         {
-          "resource": "repo://AGENTS.md#L75-L77",
+          "resource": "repo://AGENTS.md#L76-L78",
           "version": "repo-lines-v1:sha256:ca285cda3314036276935596f3388a6118c9f9729b27a4e6dc00c64cdb4e8f0c:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWQ4NjMzYWYxZTRmODkwOTAwYzlhMWEzZDllZGIwYzc1ZDc3ZGMxYzc3MTgzMmI3YTQwYTA0MmY2MmRmM2E5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDZiMzY5NmQ1NTE2ODU4MTZiZjA2ZDM0MzAyMjA4ZmZiYmQzOTFkNTZjNWY2YTY4YTljOTkzNjBlZTM4NjM0MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGI2NzNjMGRjNWEwNGRiNmQ4YzUzYmMyYzYxYzdiYmE4MjJiZTM4YzQ2MjI2Y2Y5ODkwM2YzMzQ3MjU5OGYzZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDA5Mzg3NzM1NWRiZTFkMjcwZGRlMjdmMjNiNmI0MDI3MGZhMjQ3OWQyNTdhNWY2MjllOWI3YTljYzIyODYzNCJ9"
         },
         {
@@ -305,7 +305,7 @@
       "statement": "Gateway authorization uses per-role bearer tokens resolved through tokenEnv names in policies/mcp_clients.yaml with scope and row-scope predicates, while sensitive columns customers phone, email, address and employees salary are rewritten or blocked before execution and PII is redacted in outputs and traces.",
       "evidence": [
         {
-          "resource": "repo://AGENTS.md#L89-L92",
+          "resource": "repo://AGENTS.md#L90-L93",
           "version": "repo-lines-v1:sha256:09ef74980d5cf8e901a985657b054f2e9153daaf8b5ca67c71065bb77f05f416:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTQzZTJiNjJmMmI0OWViZDI5ZjA4ZGJmOTNjOGNkZTYzMjVjZjU1M2FjMTlhMjhlYzJmN2YzYTZmNWI5MWRmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDNhM2E1Y2Q2NmJkNmY2MGY4YWY0NWExMjMyZWYwNzkxOTA4MjhlYTlmOTkxOWMzNjkxNjBjM2Q1MzM2OWRhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTU4OWIxMmUwYjJjMjE4N2QzODc4NDJkNTk0MTFkYjhmMGIzNTRmMzA1YjhlMDU3OGQ4NWMxODgyOGUwMTIyOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2FiMTllMjA2YjNkMTczNzQ2MjlkOTU4NzBkOGI5ZjJhZThjMDBhMzlkMDdkOGNiZTJmNmIyNzE5ZDlhMDdjOSJ9"
         },
         {
@@ -363,12 +363,20 @@
       "statement": "Workspace invariants pin CONTRACTS_VERSION to the packages/contracts package version so additive contract changes need one code-owner review and breaking changes need a major bump plus agreement from affected owners.",
       "evidence": [
         {
+          "resource": "repo://AGENTS.md#L80-L86",
+          "version": "repo-lines-v1:sha256:8383f4278191398d63017ae3c4529493e5b1c632034cc098535ec7509dcf7787:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODY3ZTIwY2IwZTliNzgwZGQzNjYwOTBiMzJhY2Y5M2M2ZjM0ZTk5OWI3MDQ5YmVmNjE2ODdkODZkMjM1YTBmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk3ZjgxNDgyNjNiYWM2N2U3ODY5NGFkNjY4ZDhlYTAzYTUzNzU4N2Y0NTJjZjkwYTYwNDJjNjM2NjIzODZmNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2QzMGY1N2Y0NjRiY2E1MzA0NDI3ODAwM2YwYTAyOTc3MDlkMjk5MmE4NzE1YzIxNDFlN2JlZWY2MDk1MGI1NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTU4OWIxMmUwYjJjMjE4N2QzODc4NDJkNTk0MTFkYjhmMGIzNTRmMzA1YjhlMDU3OGQ4NWMxODgyOGUwMTIyOSJ9"
+        },
+        {
           "resource": "repo://packages/contracts/package.json#L2-L4",
           "version": "repo-lines-v1:sha256:c3917bd70dbed401b329a67ad3742645486987e295c76de7a1835e237c2ef4ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTJjYWIwZjY1ZDVhOTFmMGI3NGFiMGRlOWFiYTZiOWEyYzgwMjQ0YjJmM2RiOTY4OGY5MDFhZjJmYjk2MTkyZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU2ZDgzMDkwYzZmYjkzNDYzYWQ0ZjJmODVmOGNhNTU3NmY3ZTg1ZTEyMWQ5NThhNTM3MThlMjFkOWY3NmU2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjEsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTZmYjA4ZmRhMWFjYjk1N2I2MTE2YmQzNzgxMWExZmU0MWEwMTYxMWMwNjMxZWRiZjc4NmQ2ODg5YTI3YTU1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGZiNmYxZDg3Yzc2YWM5NWQ4MDUxMzhjYzNkYjgxYjU1MDY4MWJjMzY4ZWNlNmM2ZDU4NmI0YTRhMDdkZGU2YiJ9"
         },
         {
-          "resource": "repo://scripts/check-workspace.mjs#L74-L86",
-          "version": "repo-lines-v1:sha256:90bb4befa766dc2fe19085ec6566a07be0e5ce3e4664664a046f4f08d3b8a802:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3NzkxOWYzZjc1ODUzOGExMzA3NTgxMGE2ZGQ0NGNhYTE5ZDI5ODRmY2MyNjE2YzVmNDg5YzVlZDI0N2EwMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwYzk3M2E2MDhiZGQxZjViNjhjNjQwMWU2OGMzMWY3NDc3ZTQwMWU3YWEzYTQ2YWU3MjI3YzVmYTFhM2U2MWYifQ"
+          "resource": "repo://packages/contracts/src/constants.ts#L1-L1",
+          "version": "repo-lines-v1:sha256:497a6097db2fb8d9e16c7eccd4285b17da836023302bcce9c9d96b718c70303c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk3YTYwOTdkYjJmYjhkOWUxNmM3ZWNjZDQyODViMTdkYTgzNjAyMzMwMmJjY2U5YzlkOTZiNzE4YzcwMzAzYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk3YTYwOTdkYjJmYjhkOWUxNmM3ZWNjZDQyODViMTdkYTgzNjAyMzMwMmJjY2U5YzlkOTZiNzE4YzcwMzAzYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGZmYTA1ZTIwZDllMjhhOTIzY2RiZGNhYWE0NWZkZWQxZDFhMmM0ZWM2OGY5ZmNmMDY3ZTgyMzVmMDk4YTNkMiJ9"
+        },
+        {
+          "resource": "repo://scripts/check-workspace.mjs#L74-L99",
+          "version": "repo-lines-v1:sha256:bf6f689fddf6b5f4445f1ab775c9957887440626161610ded4e4508d3f24d35a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3NzkxOWYzZjc1ODUzOGExMzA3NTgxMGE2ZGQ0NGNhYTE5ZDI5ODRmY2MyNjE2YzVmNDg5YzVlZDI0N2EwMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwYzk3M2E2MDhiZGQxZjViNjhjNjQwMWU2OGMzMWY3NDc3ZTQwMWU3YWEzYTQ2YWU3MjI3YzVmYTFhM2U2MWYifQ"
         }
       ]
     },
@@ -413,6 +421,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-29T14:52:58.907Z"
+    "at": "2026-11-01T07:02:11.362Z"
   }
 }
