@@ -30,14 +30,6 @@ import {
 } from "./subgraphs/uc01.js";
 import { writeTraceEvent } from "./traces/writer.js";
 
-// FROZEN root builder (AGENT-01, 01-10). UC owners MUST NOT edit this file:
-// register handlers through subgraphs/registry.ts (registerUC) and land
-// executor/model/span/HITL/persistence behavior through RootGraphDeps.
-// Sibling injection points: 01-11 ValidatedQueryExecutor drives the retrieve
-// and UC-entry hooks; 01-12 model factory plus skills plus spans plus HITL
-// satisfy RetrieveFn/SynthesizeFn/SpanEmitter; 01-13/01-14 inject the
-// PostgresSaver checkpointer and host the resume endpoint. The default
-// tracer route keeps the 01-01 demo chain working until 01-14 replaces it.
 
 export interface RootGraphDeps {
   /** Defaults to MemorySaver; 01-13/01-14 inject PostgresSaver. Never falls back silently. */
@@ -77,15 +69,6 @@ async function defaultSynthesize(state: AgentState): Promise<AgentUpdate> {
   };
 }
 
-/**
- * Compile the frozen AGENT-01 root graph:
- * understand -> retrieve -> router -> (ucEntry | defaultEntry) ->
- * statusCheck -> (vizSeam | answer) -> END.
- * Router dispatches ONLY to registry entries (allowlist); unknown ucIds
- * fall through to the tracer default route. Status ok/no_data continues to
- * the VIZ seam; clarification-gate (needs_clarification), policy-restricted
- * (restricted), and error outcomes synthesize with partial findings.
- */
 export function buildRootGraph(deps: RootGraphDeps = {}) {
   const emit: SpanEmitter = deps.emitSpan ?? noopEmit;
   const retrieve: RetrieveFn = deps.retrieve ?? noopUpdate;
