@@ -17,7 +17,9 @@ import { createHash } from "node:crypto";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { fileURLToPath } from "node:url";
+import { DEFAULT_CACHE_DIR, OLIST_FILES } from "./constants.js";
+
+export { DEFAULT_CACHE_DIR, OLIST_FILES };
 
 export interface OlistFileEntry {
   /** Publisher filename under datasets/. */
@@ -38,98 +40,6 @@ export interface OlistFileEntry {
 
 const BASE_URL =
   "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets";
-
-// Eight Olist CSVs feeding seven business tables plus the categories map.
-// geolocation (61MB) is intentionally excluded — sellers carry city/state.
-export const OLIST_FILES: readonly OlistFileEntry[] = [
-  {
-    name: "olist_customers_dataset.csv",
-    businessTable: "customers",
-    bytes: 8562270,
-    blobSha: "247b44f6c4836b354fb90b89f0fb8927a670fa38",
-    sha256:
-      "c26c17f59f3027a6a0dbeb8f1fa373c38f3323ecc84f225a8f4820e5bb288df8",
-    mode: "blob-sha",
-    bom: false,
-  },
-  {
-    name: "olist_orders_dataset.csv",
-    businessTable: "orders",
-    bytes: 17654914,
-    blobSha: "8133513ba3bcf576837c47aedd7fd81c5bb110fc",
-    sha256:
-      "8df58ef3d2d7e9944010f7beecd9b75367f5588ec6e3c91cec19ae3345ef9ecf",
-    mode: "blob-sha",
-    bom: false,
-  },
-  {
-    name: "olist_order_items_dataset.csv",
-    businessTable: "order_items",
-    bytes: 15007623,
-    blobSha: "469094c4785f82d594796efe376fd18fdd1596b4",
-    sha256:
-      "4f6abdbbc94036d0df4a76fa0520c072e31a40119d70f7f370fba1e2285d2bcb",
-    mode: "blob-sha",
-    bom: false,
-  },
-  {
-    name: "olist_products_dataset.csv",
-    businessTable: "products",
-    bytes: 2379446,
-    blobSha: "e5bd67eb7de63126b6b92aded29221303b124ed0",
-    sha256:
-      "3e6569628a17fbc75fd206ee357b59e20364b9afa90f5b6cd5b4d624c58aa9cc",
-    mode: "blob-sha",
-    bom: false,
-  },
-  {
-    name: "olist_sellers_dataset.csv",
-    businessTable: "sellers",
-    bytes: 163589,
-    blobSha: "173500dec733fff76e2d4ca9eaee8995c481ea34",
-    sha256:
-      "31eb9bd50d684526a78f2389413ce61841e97692de7b828fe7d956b534586312",
-    mode: "blob-sha",
-    bom: false,
-  },
-  {
-    name: "olist_order_payments_dataset.csv",
-    businessTable: "payments",
-    bytes: 5647783,
-    blobSha: "663679bc7a2911b806ef30ef1852f25b502005b2",
-    sha256:
-      "61674868ed7b872aac3dcd95bf774448a88f6426b183f21be55f75af021ffdec",
-    mode: "blob-sha",
-    bom: false,
-  },
-  {
-    name: "olist_order_reviews_dataset.csv",
-    businessTable: "reviews",
-    bytes: 14451670,
-    blobSha: "2c32975b59dfa8335963fd4e94e3bebd60bd16f6",
-    sha256:
-      "012b61c7593e34f51fa614efdf802b9c7056ce6aae5307ddb93236e7cfc797d7",
-    mode: "blob-sha",
-    bom: false,
-  },
-  {
-    name: "product_category_name_translation.csv",
-    businessTable: "categories",
-    bytes: 2613,
-    blobSha: "316c88942fc31f7a22a6233a125e5dafea2af5d7",
-    sha256:
-      "a81f0d1f27b27e7293f761bc79e3ce8f348ee39c4b3ed3e49bde38f478586278",
-    mode: "blob-sha",
-    bom: true,
-  },
-];
-
-// Cache dir resolved from this module's location so it works regardless of
-// the caller's cwd (src and dist layouts both sit two levels below the repo
-// root). No CSV is ever written outside this directory.
-export const DEFAULT_CACHE_DIR = fileURLToPath(
-  new URL("../../../data/.cache", import.meta.url),
-);
 
 // Explicit argument beats env beats default (sensitive-columns idiom).
 export function resolveCacheDir(override?: string): string {

@@ -6,8 +6,10 @@
 // on any violation (T-2-06 accepts bounded magnitudes because reference_sql
 // is only ever read by verify, never executed by the loader).
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { DEFAULT_SEEDS_PATH } from "./constants.js";
 import * as z from "zod";
+
+export { DEFAULT_SEEDS_PATH };
 
 // One seeded data mutation. Uniform shape across UC-05 scenarios, UC-10
 // anomalies, and prompt-injection rows: dimension_filter names the slice
@@ -42,13 +44,6 @@ export const SeedsFileSchema = z.strictObject({
 });
 
 export type SeedsFile = z.infer<typeof SeedsFileSchema>;
-
-// Seeds file resolved from this module's location so the default works
-// regardless of the caller's cwd (src and dist layouts both sit two levels
-// below the repo root).
-export const DEFAULT_SEEDS_PATH = fileURLToPath(
-  new URL("./seeds.json", import.meta.url),
-);
 
 // Pure function: JSON text in, validated seeds out. Throws fail-fast on
 // malformed JSON or any schema violation (missing version, wrong literal,

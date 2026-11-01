@@ -6,8 +6,14 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  DATASET_VERSION,
+  DEFAULT_MANIFEST_PATH,
+  SMALL_MANIFEST_PATH,
+} from "./constants.js";
 import * as z from "zod";
+
+export { DATASET_VERSION, DEFAULT_MANIFEST_PATH, SMALL_MANIFEST_PATH };
 
 export const SeedManifestSchema = z.strictObject({
   version: z.literal(1),
@@ -24,23 +30,9 @@ export const SeedManifestSchema = z.strictObject({
 
 export type SeedManifest = z.infer<typeof SeedManifestSchema>;
 
-// Manifest written by `pnpm data:load`, resolved from this module's location
-// so it works regardless of the caller's cwd.
-export const DEFAULT_MANIFEST_PATH = fileURLToPath(
-  new URL("../../../data/seed_manifest.json", import.meta.url),
-);
-
-// One committed manifest per scale, so a CI small load and a local full load
-// each reproduce their own pinned checksums instead of tripping the gate.
-export const SMALL_MANIFEST_PATH = fileURLToPath(
-  new URL("../../../data/seed_manifest.small.json", import.meta.url),
-);
-
 export function manifestPathFor(scale: "full" | "small"): string {
   return scale === "small" ? SMALL_MANIFEST_PATH : DEFAULT_MANIFEST_PATH;
 }
-
-export const DATASET_VERSION = "olist-vi-2025-2026-v1";
 
 // Canonical form: one `col1,col2,…` line per row, rows in ORDER BY pk order,
 // `\n`-joined with no trailing newline. Values in this phase never contain
