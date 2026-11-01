@@ -73,11 +73,24 @@ for (const dir of pkgDirs) {
 
 // 3. contracts version consistency
 const contractsPkg = readJson("packages/contracts/package.json");
-const contractsSrc = readFileSync(
-  join(ROOT, "packages/contracts/src/index.ts"),
-  "utf8",
-);
-const m = contractsSrc.match(/CONTRACTS_VERSION\s*=\s*"([^"]+)"/);
+// CONTRACTS_VERSION lives in constants.ts since the magic-values refactor
+// (index.ts only re-exports it); accept a direct definition in either file.
+let m = null;
+for (const rel of [
+  "packages/contracts/src/constants.ts",
+  "packages/contracts/src/index.ts",
+]) {
+  try {
+    const src = readFileSync(join(ROOT, rel), "utf8");
+    const found = src.match(/CONTRACTS_VERSION\s*=\s*"([^"]+)"/);
+    if (found) {
+      m = found;
+      break;
+    }
+  } catch {
+    // Missing file — fall through to the failure below.
+  }
+}
 if (!m) fail("packages/contracts/src/index.ts: CONTRACTS_VERSION not found");
 else if (m[1] !== contractsPkg.version) {
   fail(

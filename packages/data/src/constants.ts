@@ -27,7 +27,7 @@ export const OLIST_FILES: readonly OlistFileEntry[] = [
     bytes: 17654914,
     blobSha: "8133513ba3bcf576837c47aedd7fd81c5bb110fc",
     sha256:
-      "8df58ef3d2d7e9944013f7beecd9b75367f5588ec6e3c91cec19ae3345ef9ecf",
+      "8df58ef3d2d7e9944010f7beecd9b75367f5588ec6e3c91cec19ae3345ef9ecf",
     mode: "blob-sha",
     bom: false,
   },
@@ -37,7 +37,7 @@ export const OLIST_FILES: readonly OlistFileEntry[] = [
     bytes: 15007623,
     blobSha: "469094c4785f82d594796efe376fd18fdd1596b4",
     sha256:
-      "4f6abdbbc94036d0df4a76fa0520c072e31a40119d70f7f370fba1e2285d5bcb",
+      "4f6abdbbc94036d0df4a76fa0520c072e31a40119d70f7f370fba1e2285d2bcb",
     mode: "blob-sha",
     bom: false,
   },
@@ -67,7 +67,7 @@ export const OLIST_FILES: readonly OlistFileEntry[] = [
     bytes: 5647783,
     blobSha: "663679bc7a2911b806ef30ef1852f25b502005b2",
     sha256:
-      "61674868ed7b872aac3dcd95bf774448a88f642b183f21be55f75af021ffdec",
+      "61674868ed7b872aac3dcd95bf774448a88f6426b183f21be55f75af021ffdec",
     mode: "blob-sha",
     bom: false,
   },
@@ -77,7 +77,7 @@ export const OLIST_FILES: readonly OlistFileEntry[] = [
     bytes: 14451670,
     blobSha: "2c32975b59dfa8335963fd4e94e3bebd60bd16f6",
     sha256:
-      "012b61c7593e34f51fa614efdf802b9c7056ce6aae5307ddb93236e7cf7d7f7",
+      "012b61c7593e34f51fa614efdf802b9c7056ce6aae5307ddb93236e7cfc797d7",
     mode: "blob-sha",
     bom: false,
   },
