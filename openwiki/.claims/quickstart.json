@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1032f74bb4b184f2c992c6c559489e9d1dd7c06dcb3c9d66d204f8aa68cabbbd",
+  "pageVersion": "sha256:f4d368dd7c8b80e05a69e6347f8758dd08b52b6d27d06b7bf6fd5315e0616e7c",
   "claims": [
     {
       "id": "claim_638e6578d6aa4bcabc42b45540786f26",
@@ -326,15 +326,19 @@
     },
     {
       "id": "claim_b75b5056bf9548d797e7ced039cc0802",
-      "statement": "package.json scripts span wiki entrypoints (wiki:init, wiki:update, wiki:update:print, wiki:dry-run, wiki:visualize), DB/data/eval entrypoints (db:up, db:reset, data:load, data:verify, demo:tracer, eval, external-client, skills:check), and checks (typecheck as tsc -b, build, clean, check:workspace, lint as eslint ., test as tsc -b plus vitest run, docs:interface via tsx scripts/generate-interface.mjs).",
+      "statement": "package.json scripts span wiki entrypoints (wiki:init, wiki:update, wiki:update:print, wiki:dry-run, wiki:visualize), DB/data/eval entrypoints (db:up, db:reset, data:load, data:verify, demo:tracer, eval, external-client, skills:check), and checks plus generators (typecheck as tsc -b, build, clean, check:workspace, lint as eslint ., test as tsc -b plus vitest run, docs:interface via tsx scripts/generate-interface.mjs, semantic:index via tsx packages/mcp-server/src/semantic/index.ts).",
       "evidence": [
         {
           "resource": "repo://README.md#L13-L26",
           "version": "repo-lines-v1:sha256:d4fdc746da39abe9c4b2999ea9a1469a6b1563131ca5fc6ae9ccf9c1edd1cdf0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjNDNmYjg5ZGQ3MTM5MTcwNmJiNjU1MzM3MTM5YWU2NmFjMTBmYWNjNDI2MmJjZDI0OGMyMjljZjBlMjVkMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3NWFkYTJkN2E4ZmZjNTUwZmE1YjU3ZTQyNjQxZDRkNTE3NzFhYTNhNDE2OWI5NzgxNTU5MGRkNDg3Nzg0MTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MzVhYWIwY2U5MGI3NWZmOTRiYjA5MTI5MjgyNWZlZGEzZGUzNDdjNTM4ODRmYjVkZjQyNmFhZmZhOGEyZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlODcyNGU0YzFmOGYzNGE0NTI5NzBhOTc5ZmIwMTcxMjc0NzRkZGI3OTQ2M2NhNjUwZTUxZjdmNjI5NTVkMDkifQ"
         },
         {
-          "resource": "repo://package.json#L13-L33",
-          "version": "repo-lines-v1:sha256:2da6c737c111a4200b3fc681f0a1e8c910e682ff5002806ce726e60b2c5f7579:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ODMzZDU5NDljMDNhNDBjYTk1MjQ5MTYxMGE2NjU5NjQ0YjNhYTQ2NjM2MmY3OTkwMjBkYmYxOTgxNTQ3ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MmMzN2U1M2VlMDhmNjIyZDllM2Y0Y2JlMGIwZjlkM2JlNWFjYzViMWY3Zjk3YzMxY2Y4OTE0Yzg5Y2U4MzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MGM3Mjc5YTJiZTM2ZDJhZjU5ZGZkZThiMzM4M2Q5OWRkMWU4NDJhNGVjNThiMjQ3MjZlMGVkY2ZhNzkxMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzNjlhZmEwYzliZDQxMDZkYTA0YjAwYWE1NTRmZGI4NGE2ZDlhZWEyYTg4YmYwNGMzYmE2OTBhNjg2OTk1MTAifQ"
+          "resource": "repo://package.json#L13-L34",
+          "version": "repo-lines-v1:sha256:574eaffddd9a754127eadce8469a54ce6cb9b2da9707b776ed8e8657e1fe894f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ODMzZDU5NDljMDNhNDBjYTk1MjQ5MTYxMGE2NjU5NjQ0YjNhYTQ2NjM2MmY3OTkwMjBkYmYxOTgxNTQ3ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1MmI1ZjFmZTg4YTYxYzliNmFhMzM4OWUzZTlmNzI5MThkNWI3ZDgyNGUwMGZiZmVlMGY5MmI3ZjU1N2Q4NWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MGM3Mjc5YTJiZTM2ZDJhZjU5ZGZkZThiMzM4M2Q5OWRkMWU4NDJhNGVjNThiMjQ3MjZlMGVkY2ZhNzkxMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzNjlhZmEwYzliZDQxMDZkYTA0YjAwYWE1NTRmZGI4NGE2ZDlhZWEyYTg4YmYwNGMzYmE2OTBhNjg2OTk1MTAifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/semantic/index.ts#L1-L7",
+          "version": "repo-lines-v1:sha256:b5e94210ec8896682cdc73b62ca8a5008e44e15e0e5fcf8d3fe4179a613aa056:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjY5MzE5YWQ1YWVjNzE1NGI4NzAwZGE1ODJlYzVlODEzOTM5NTY3MmFlMGQ4NDQ0YjFiMGZhMzM2NmJjZjJjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWVjYTYxOTI4Njc0MzY3NjExZTBjMGM2ZmE3ODNlYzM4YzQyYWRiOTVjNjY3OTNkOGRlNmY4ODZkODczMDE3ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzA0MjA5Yjk3NDEzYTYwOWJkZGQ2NTBlOGM0YTRiYzRkZGUzMGY4MjRkMzU4N2RkMjgxYTA0MTA5OTQ2ZjYwMSJ9"
         }
       ]
     },
@@ -501,6 +505,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-01T07:02:11.362Z"
+    "at": "2026-11-03T15:42:11.322Z"
   }
 }

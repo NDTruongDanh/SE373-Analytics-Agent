@@ -3,6 +3,9 @@ type: semantic-layer
 title: Semantic layer and retrieval
 description: Versioned semantic corpus, incremental indexing, and 3-way hybrid retrieval with weighted RRF and join-rule expansion grounding the Analytics Agent.
 tags: [semantic-layer, retrieval, rag, citations, knowledge-base, text-to-sql]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-03T15:42:11.322Z
 sources:
   - id: openwiki-source-4912fb87763cb10856716453
     resource: repo://docker/initdb/02_schemas.sql
@@ -32,19 +35,24 @@ sources:
     resource: repo://packages/mcp-server/src/semantic/rrf.ts
   - id: openwiki-source-133b0c7d08e8e3c7f7e4fda2
     resource: repo://packages/mcp-server/src/server.ts
-  - id: openwiki-source-4fd3e19fe0c023887ba08260
-    resource: repo://semantic/data_dictionary.md
-  - id: openwiki-source-8eee263b27f3a1a6554edaea
-    resource: repo://semantic/metrics.md
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
+  - id: openwiki-source-636e1b69bb9d1561a7a9fb1a
+    resource: repo://semantic/columns.yaml
+  - id: openwiki-source-8a8458f455fe12d2af9284ff
+    resource: repo://semantic/events.yaml
+  - id: openwiki-source-ad2a41cb9c7cc1a6b8b76e06
+    resource: repo://semantic/examples.yaml
+  - id: openwiki-source-1adbee09012d48cd854687e5
+    resource: repo://semantic/joins.yaml
+  - id: openwiki-source-bb37ad8169794142b99b9c07
+    resource: repo://semantic/metrics.yaml
+  - id: openwiki-source-d2c7e7764edc89333a818b3e
+    resource: repo://semantic/tables.yaml
+generated: { by: "openwiki/0.7.2", at: "2026-11-03T15:42:11.322Z" }
 ---
 
 # Semantic layer and retrieval
 
-This page owns the versioned semantic corpus, the chunking and incremental-indexing pipeline, and the hybrid retrieval path that grounds business language in tables, metrics, and join warnings before SQL generation. The normative UC-02 design (six YAML document types, three-way retrieval with join expansion, LangGraph guardrail, dual citations) lives in the UC-02 plan; what has landed is the MCP indexer, embedder, 3-way retriever, RRF helper, chunk table, gateway tool, and gateway resources described here. Runtime, data, and verification details live in [Workflow Architecture](./workflow-architecture.md), [Database and Seeding](../data/database-and-seeding.md), and [Text to SQL](../use-cases/text-to-sql.md).
+This page owns the versioned semantic corpus, the chunking and incremental-indexing pipeline, and the hybrid retrieval path that grounds business language in tables, metrics, and join warnings before SQL generation. The normative UC-02 design (six YAML document types, three-way retrieval with join expansion, LangGraph guardrail, dual citations) lives in the UC-02 plan; what has landed is the YAML plus Markdown indexer, embedder, 3-way retriever, RRF helper, chunk table, gateway tool, and gateway resources described here. Runtime, data, and verification details live in [Workflow Architecture](./workflow-architecture.md), [Database and Seeding](../data/database-and-seeding.md), and [Text to SQL](../use-cases/text-to-sql.md).
 
 > Implementation status: the indexer, embedder, 3-way retriever (dense plus BM25 plus alias), weighted RRF helper, join-rule expansion, hot-reload catalog, chunk table, gateway tool, and gateway resources are built. The LangGraph `retrieveSemantic` node with two-tier grounding, deterministic citation validator, and UC-02 eval gates are still plan, not code.
 
@@ -62,12 +70,14 @@ The layer is read-only at query time. It never writes the business database, nev
 
 ## 2. Knowledge corpus
 
-The corpus is two versioned Markdown files at the repository root, not the six YAML files from the UC-02 plan:
+The canonical indexed corpus is the six versioned YAML files in `semantic/` (parsed by `chunkYaml`): `tables.yaml` (12 table chunks), `columns.yaml` (22 column chunks), `metrics.yaml` (12 metric chunks with additive flags and SQL formulas), `joins.yaml` (7 join-rule chunks), `examples.yaml` (18 few-shot question plus SQL chunks), and `events.yaml` (10 campaign and holiday event chunks). Entry counts are asserted by the corpus chunker tests; YAML entries carry explicit `chunkId`, `docType`, `table` and `tables`, `metricName`, `aliases`, `sensitivity`, optional `additive`, and `content` plus structured fields (`formula`, `sql`, `caveats`, `question`, `citedMetrics`, dates, affected regions and channels, grain, primary key, and related column metadata) that the indexer folds into both content and stored metadata.
+
+The two versioned Markdown files at the repository root are retained as fallback defaults and as the gateway resource source:
 
 - `semantic/data_dictionary.md` — twelve seeded business tables (`regions`, `channels`, `categories`, `sellers`, `products`, `customers`, `employees`, `promotions`, `orders`, `order_items`, `payments`, `reviews`) with grain, primary keys, aliases, and join rules. It carries no row counts, no example values, and no query fragments.
 - `semantic/metrics.md` — six canonical metric definitions (`revenue_vnd`, `order_count`, `average_order_value`, `freight_share`, `review_score_avg`, `compensation_cost`) with the tables each derives from and Vietnamese plus English aliases. It carries no formulas, no thresholds, and no query fragments.
 
-Chunking is by Markdown section: every `## ` heading starts one self-contained chunk, and preamble text before the first heading is skipped. The leading `Table:` / `Tables:` / `Metric:` / `Aliases:` lines populate metadata columns and stay in the stored content so lexical search still matches them. A header ending in `[restricted_pii]` marks the whole section restricted — currently `employees` in the dictionary and `compensation_cost` in metrics. The dictionary additionally flags `order_items` as the `large` table that must be filtered before a full scan, and marks review text as untrusted user input wrapped in untrusted-data delimiters.
+Markdown chunking is by section: every `## ` heading starts one self-contained chunk, and preamble text before the first heading is skipped. The leading `Table:` / `Tables:` / `Metric:` / `Aliases:` lines populate metadata columns and stay in the stored content so lexical search still matches them. A header ending in `[restricted_pii]` marks the whole section restricted — currently `employees` in the dictionary and `compensation_cost` in metrics — while the YAML corpus marks restriction per entry (`table:employees`, `metric:compensation_cost`, and the four restricted columns `customers.phone`, `customers.email`, `customers.address`, `employees.salary`). The dictionary additionally flags `order_items` as the `large` table that must be filtered before a full scan, and marks review text as untrusted user input wrapped in untrusted-data delimiters.
 
 ```mermaid
 flowchart TD
@@ -83,28 +93,28 @@ flowchart TD
 
 ## 3. Chunk metadata contract
 
-The `ParsedChunk` shape carries `chunkId`, `docType`, `table`, `tables`, `metricName`, `aliases`, `sensitivity`, and `content`. The Markdown chunk id is `source:slug`, where source is the file basename (`data_dictionary`, `metrics`) and slug is the lowercased, dash-joined heading. A heading with a single `Tables:` entry derives `table` from it; a `Table:` entry derives `tables` from it, so both columns are always populated together. The YAML chunker accepts `chunkId`/`chunk_id`/`id`, `docType`/`doc_type`, `table`, `tables`, `metricName`/`metric_name`/`metric`, `aliases`, `sensitivity`, and `content`/`body`/`description`/`text`, with the same table-to-tables derivation and slug fallback.
+The `ParsedChunk` shape carries `chunkId`, `docType`, `table`, `tables`, `metricName`, `aliases`, `sensitivity`, optional `additive`, optional `metadata`, and `content`. The Markdown chunk id is `source:slug`, where source is the file basename (`data_dictionary`, `metrics`) and slug is the lowercased, dash-joined heading (the slugger preserves Vietnamese `à–ỹ` characters). A heading with a single `Tables:` entry derives `table` from it; a `Table:` entry derives `tables` from it, so both columns are always populated together. The YAML chunker accepts `chunkId`/`chunk_id`/`id`, `docType`/`doc_type`, `table`, `tables` (array or comma string), `metricName`/`metric_name`/`metric`, `aliases` (array or comma string), `sensitivity`, and `content`/`body`/`description`/`text`, with the same table-to-tables derivation and slug fallback (`title` or `name` or metric or table or `chunk-index`). Every chunk leaving either chunker passes `validateChunkMetadata` against `SemanticChunkMetadataSchema` and throws on mismatch, so only contract-compliant chunks reach the indexer.
 
-Storage is snake_case in `semantic.semantic_chunks`: `chunk_id`, `doc_type`, `table_name`, `tables`, `metric_name`, `aliases`, `sensitivity`, plus `additive`, `metadata`, `content`, `content_hash`, `updated_at`, `embedding`, and a generated `fts` column. Multi-value columns are stored as comma-joined text (`orders,order_items`) and split back into arrays at the contract boundary. The `additive` column exists in DDL for future attribution math but the current indexer leaves it unset, and `metadata` is always written as an empty JSON object.
+Storage is snake_case in `semantic.semantic_chunks`: `chunk_id`, `doc_type`, `table_name`, `tables`, `metric_name`, `aliases`, `sensitivity`, plus `additive`, `metadata`, `content`, `content_hash`, `updated_at`, `embedding`, and a generated `fts` column. Multi-value columns are stored as comma-joined text (`orders,order_items`) and split back into arrays at the contract boundary. The `additive` boolean from YAML metrics (for example `true` for `net_revenue`, `false` for `active_customers`) is persisted on both `INSERT` and `UPDATE`, and `metadata` stores the validated contract fields merged with the structured YAML extras (other keys are re-rendered as `Label: value` lines appended to content when absent, so formulas and SQL templates remain lexically searchable).
 
-The frozen `SearchSemanticLayer` wire contract takes `{ query, topK }` with `query` required from 1 to 2000 characters and `topK` defaulting to 5 and capped at 20. It returns `chunks` where each chunk carries `chunkId`, `docType` enumerating all six UC-02 values (`table`, `column`, `metric`, `join_rule`, `example`, `event`), `table`, `tables`, `metricName`, `content`, `score`, plus optional `aliasMatched` and `denseScore` set by the 3-way fusion path. Only `table` and `metric` chunks are indexed from the two Markdown files today, but the contract already covers the planned types so YAML-discovered `column`, `join_rule`, `example`, and `event` chunks pass validation without a contract change.
+The frozen `SearchSemanticLayer` wire contract takes `{ query, topK }` with `query` required from 1 to 2000 characters and `topK` defaulting to 5 and capped at 20. It returns `chunks` where each chunk carries `chunkId`, `docType` enumerating all six UC-02 values (`table`, `column`, `metric`, `join_rule`, `example`, `event`), `table`, `tables`, `metricName`, `content`, `score`, plus optional `aliasMatched` and `denseScore` set by the 3-way fusion path. The YAML corpus exercises all six types today, so `column`, `join_rule`, `example`, and `event` chunks validate without a contract change.
 
 ## 4. Chunking, hashing, and incremental indexing
 
-The pure Markdown chunker exports `chunkMarkdown(source, text, docType)` for unit tests: split on `## ` headings, parse the leading metadata lines, derive `table` and `tables` from each other when only one is present, slug the heading for the id, and drop empty sections. The pure YAML chunker exports `chunkYaml(source, text, docType)` with the same derivation plus sensitivity normalization to `public`/`internal`/`restricted_pii`. The pure hasher exports `contentHash(chunk)` as `sha256` over the canonical JSON of id, type, table fields, metric name, aliases, sensitivity, and content.
+The pure Markdown chunker exports `chunkMarkdown(source, text, docType)` for unit tests: split on `## ` headings, parse the leading metadata lines, derive `table` and `tables` from each other when only one is present, slug the heading for the id, and drop empty sections. The pure YAML chunker exports `chunkYaml(source, text, docType)` with array-or-string `tables`/`aliases` handling, sensitivity normalization to `public`/`internal`/`restricted_pii`, explicit-id or slug-fallback ids, structured-field rendering (`Formula`, `SQL`, `Caveats`, `Question`, `Grain`, and related labels) into content, and the same derivation plus empty-content filtering. The pure hasher exports `contentHash(chunk)` as `sha256` over the canonical JSON of id, type, table fields, metric name, aliases, sensitivity, optional `additive`, and content, so formula, alias, and additivity edits all change the hash.
 
-`indexCorpus({ dbUrl, embedder, files })` implements the incremental path:
+`indexCorpus({ dbUrl, query, embedder, files })` implements the incremental path:
 
 1. Read each file, splitting Markdown with the file basename as source and parsing YAML when the path ends in `.yaml`/`.yml`.
 2. Select stored `(chunk_id, content_hash)` pairs.
-3. Delete stored ids absent from the current corpus and count them as `deleted`.
+3. Delete stored ids absent from the current corpus via `chunk_id = ANY($1)` and count them as `deleted`.
 4. Keep chunks whose stored hash differs or is missing; count all others as `skipped`.
 5. Embed only the dirty chunks in one batch call.
-6. `INSERT` new ids and `UPDATE` changed ids (type, table fields, metric, aliases, sensitivity, content, hash, embedding, `updated_at`), returning `{ added, updated, skipped, deleted }`.
+6. `INSERT` new ids and `UPDATE` changed ids (type, table fields, metric, aliases, sensitivity, `additive`, `metadata` JSONB, content, hash, embedding, `updated_at`), returning `{ added, updated, skipped, deleted, embeddingTokens, estimatedCostUsd, durationMs }`.
 
-There is no embedding-token, cost, or duration telemetry in the returned summary, and no `semantic:lint` Zod step — the metadata lines are parsed leniently.
+Token and cost telemetry is heuristic (`ceil(content.length / 4)` per dirty chunk at 0.02 USD per million tokens) plus wall-clock `durationMs`; a clean re-run reports zero embedding tokens. Every parsed chunk is Zod-validated before hashing, so malformed `docType` or sensitivity values fail the index run rather than landing silently.
 
-The operator entry point is the indexer module itself run with `tsx` against `INDEXER_DATABASE_URL`, using `discoverDefaultFiles()` — the two `DEFAULT_FILES` (`semantic/data_dictionary.md` as `table`, `semantic/metrics.md` as `metric`) plus auto-discovered `semantic/*.yaml`/`*.yml` with doc-type inference from the filename (`join` to `join_rule`, `table`, `column`, `metric`, `example`, `event`) — and the environment-selected embedder. The indexer connects as the `indexer` role over a two-connection pool and logs `added`, `updated`, `skipped`, and `deleted`.
+The operator entry point is the indexer module itself run with `tsx` (`pnpm semantic:index`) against `INDEXER_DATABASE_URL`, using `discoverDefaultFiles()` and the environment-selected embedder. Discovery returns the six YAML files in canonical order (`tables`, `columns`, `metrics`, `joins`, `examples`, `events`) whenever any `semantic/*.yaml`/`*.yml` exists, and falls back to the two `DEFAULT_FILES` (`semantic/data_dictionary.md` as `table`, `semantic/metrics.md` as `metric`) only when no YAML file is present. The indexer connects as the `indexer` role over a two-connection pool and logs `added`, `updated`, `skipped`, `deleted`, plus the token, cost, and duration telemetry.
 
 ## 5. Embedders
 
@@ -170,7 +180,7 @@ Coding agents must not assume any of these exist in code paths today; implement 
 
 ## 10. Configuration, invariants, and focused tests
 
-Key configuration is the two Markdown corpus files plus auto-discovered `semantic/*.yaml`/`*.yml`, the `INDEXER_DATABASE_URL` write URL, the embedder environment (`EMBEDDING_MODEL_ID`, `OPENAI_COMPATIBLE_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_DIM`), the contract `topK` default and cap, the fixed `RRF_K = 60` with weights `[1.0, 1.0, 1.5]`, the BM25 parameters `k1 = 1.2` and `b = 0.75`, and the HNSW build parameters.
+Key configuration is the six YAML corpus files plus two Markdown fallback and resource files, the `INDEXER_DATABASE_URL` write URL, the embedder environment (`EMBEDDING_MODEL_ID`, `OPENAI_COMPATIBLE_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_DIM`), the contract `topK` default and cap, the fixed `RRF_K = 60` with weights `[1.0, 1.0, 1.5]`, the BM25 parameters `k1 = 1.2` and `b = 0.75`, and the HNSW build parameters.
 
 Invariants to preserve when changing this area:
 
@@ -184,4 +194,4 @@ Invariants to preserve when changing this area:
 
 Common failures are an unset indexer URL, an OpenAI embedder missing model or key, dimension mismatch after an endpoint change, and assuming join-rule expansion or alias matching can be skipped for short queries.
 
-Focused tests live in the DB-free semantic unit suite: fake-embedder shape, determinism, and normalization; weighted RRF ordering at `k = 60` with stable tie-breaking and `topK` truncation plus alias-weight boost; BM25 diacritic folding, sub-token expansion, Okapi scoring, and `allowRestricted` filtering; alias exact-versus-substring ranking and `aliasMatched` propagation through `hybridSearch`; join-rule injection and tail replacement at `topK`; cross-process hot-reload of the BM25 index and citation catalog on watermark change; resource section filtering with and without `data:sensitive`; storage-to-contract mapping; and corpus chunking with metadata parsing and restricted-header tagging.
+Focused tests live in the DB-free semantic unit suite: fake-embedder shape, determinism, and normalization; weighted RRF ordering at `k = 60` with stable tie-breaking and `topK` truncation plus alias-weight boost; BM25 diacritic folding, sub-token expansion, Okapi scoring, and `allowRestricted` filtering; alias exact-versus-substring ranking and `aliasMatched` propagation through `hybridSearch`; join-rule injection and tail replacement at `topK`; cross-process hot-reload of the BM25 index and citation catalog on watermark change; resource section filtering with and without `data:sensitive`; storage-to-contract mapping; corpus chunking with metadata parsing and restricted-header tagging; and the 6-type YAML corpus suite proving canonical discovery order, per-type chunk counts and sensitivities, deterministic `canonicalJson` and `contentHash` behavior, first-run bulk insert plus second-run full skip, single-chunk re-embed on metric edit, and stale-delete reporting via `chunk_id = ANY($1)`. The live suite replays the same incremental index and fused retrieval plus the `data:sensitive` split against real role grants when database URLs are present.

@@ -5,9 +5,6 @@ description: Toolchain, build and test entrypoints, provider and session-header
   configuration, scheduled wiki CI, and submission layout for the Analytics
   Agent monorepo.
 tags: [operations, repository, openwiki-automation, configuration, ci]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -23,6 +20,8 @@ sources:
     resource: repo://AGENTS.md
   - id: openwiki-source-5be27729131e30130689f927
     resource: repo://docker/docker-compose.yml
+  - id: openwiki-source-a684e234421714e27e69998b
+    resource: repo://docker/initdb/01_roles.sql
   - id: openwiki-source-959b64ff54cd1f30f8828ba2
     resource: repo://docs/mcp_interface.md
   - id: openwiki-source-a53a8de5929686354550dafa
@@ -67,7 +66,10 @@ sources:
     resource: repo://tsconfig.json
   - id: openwiki-source-b6f224d26b4ec604e90101e3
     resource: repo://vitest.workspace.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-03T15:42:11.322Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-03T15:42:11.322Z
 ---
 
 # Repository operations
@@ -167,6 +169,7 @@ OpenWiki run reads is `openwiki/INSTRUCTIONS.md`; the read boundary is
 | `pnpm test` | `tsc -b && vitest run` | Typecheck then run the Vitest workspace (`package.json:32`, `vitest.workspace.ts:2-10`) |
 | `pnpm check:workspace` | `node scripts/check-workspace.mjs` | Verify `workspace:*` links, `exports` entrypoints, `CONTRACTS_VERSION`, symlinks, and project references (`package.json:30`, `scripts/check-workspace.mjs:1-9`) |
 | `pnpm docs:interface` | `tsx scripts/generate-interface.mjs` | Regenerate [`docs/mcp_interface.md`](../../docs/mcp_interface.md) from the frozen Zod schemas in `packages/contracts`; never hand-edit the output (`package.json:33`, `docs/mcp_interface.md:1-3`, `scripts/generate-interface.mjs:73-78`) |
+| `pnpm semantic:index` | `tsx packages/mcp-server/src/semantic/index.ts` | Build or refresh the semantic retrieval index used by the MCP gateway (`package.json:34`) |
 
 The root gate is `pnpm typecheck && pnpm lint && pnpm test`; scoped iteration
 uses `pnpm --filter @shared/<pkg> test`, and contracts changes must include a
@@ -265,15 +268,17 @@ opt-out (`.github/workflows/openwiki-update.yml:55-57`).
 Harness runtime configuration lives in the same template but is separate from
 wiki inference (`.env.example:38-88`):
 
-- Postgres loopback URLs: `DATABASE_URL` for owner work and
-  `AGENT_RO_DATABASE_URL` for the read-only gateway role on
-  `127.0.0.1:5433` (`.env.example:44-47`). Compose provides dev-default
+- Postgres loopback URLs: `DATABASE_URL` and `OWNER_DATABASE_URL` for owner work,
+  plus `AGENT_RO_DATABASE_URL` for the read-only gateway role,
+  `INDEXER_DATABASE_URL` for the semantic indexer role, and
+  `HARNESS_STATE_DATABASE_URL` for API checkpoint and alert-history state, all on
+  `127.0.0.1:5433` (`.env.example:44-53`). Compose provides dev-default
   passwords for `postgres`, `owner`, `agent_ro`, `indexer`, and
   `harness_state`; those literals must match `docker/initdb/01_roles.sql` and
   must never be reused outside loopback development
   (`docker/docker-compose.yml:10-19`).
 - Ports are loopback-only: `MCP_PORT=8081`, `API_PORT=3001`
-  (`.env.example:49-51`).
+  (`.env.example:56-58`).
 - Bearer-token principals: static gateway tokens live only in the environment
   under names resolved by `policies/mcp_clients.yaml` (for example
   `MCP_TOKEN_SALES_SOUTH`, `MCP_TOKEN_MARKETING`, `MCP_TOKEN_HR`,
