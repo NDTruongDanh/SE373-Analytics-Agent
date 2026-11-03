@@ -30,7 +30,8 @@
     "check:workspace": "node scripts/check-workspace.mjs",
     "lint": "eslint .",
     "test": "tsc -b && vitest run",
-    "docs:interface": "tsx scripts/generate-interface.mjs"
+    "docs:interface": "tsx scripts/generate-interface.mjs",
+    "semantic:index": "tsx packages/mcp-server/src/semantic/index.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "catalog:",

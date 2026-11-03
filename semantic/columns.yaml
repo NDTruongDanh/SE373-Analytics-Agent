@@ -1,0 +1,405 @@
+# Column chunks — 22 key analytical columns (docType: column).
+# Sensitivity aligns with policies/sensitive_columns.yaml.
+chunks:
+  - chunkId: "column:customers.phone"
+    docType: "column"
+    table: "customers"
+    tables: ["customers"]
+    metricName: null
+    aliases: ["số điện thoại", "phone number", "phone"]
+    sensitivity: "restricted_pii"
+    column: "customers.phone"
+    dataType: "TEXT"
+    content: >-
+      Column customers.phone (TEXT) is the customer contact phone number.
+      Sensitivity restricted_pii per policies/sensitive_columns.yaml: masked in
+      projections and denied in filter and grouping positions without the
+      data:sensitive scope. Never include raw phone values in prompts, traces, or
+      answers for principals lacking the scope.
+    caveats:
+      - "restricted_pii: requires the data:sensitive scope; never expose raw values."
+
+  - chunkId: "column:customers.email"
+    docType: "column"
+    table: "customers"
+    tables: ["customers"]
+    metricName: null
+    aliases: ["thư điện tử", "email address", "email"]
+    sensitivity: "restricted_pii"
+    column: "customers.email"
+    dataType: "TEXT"
+    content: >-
+      Column customers.email (TEXT) is the customer contact email address.
+      Sensitivity restricted_pii per policies/sensitive_columns.yaml: masked in
+      projections and denied in filter and grouping positions without the
+      data:sensitive scope. Never include raw email values in prompts, traces, or
+      answers for principals lacking the scope.
+    caveats:
+      - "restricted_pii: requires the data:sensitive scope; never expose raw values."
+
+  - chunkId: "column:customers.address"
+    docType: "column"
+    table: "customers"
+    tables: ["customers"]
+    metricName: null
+    aliases: ["địa chỉ", "address"]
+    sensitivity: "restricted_pii"
+    column: "customers.address"
+    dataType: "TEXT"
+    content: >-
+      Column customers.address (TEXT) is the customer street address.
+      Sensitivity restricted_pii per policies/sensitive_columns.yaml: masked in
+      projections and denied in filter and grouping positions without the
+      data:sensitive scope. Prefer province / region_group dimensions for
+      geographic analysis instead of raw addresses.
+    caveats:
+      - "restricted_pii: requires the data:sensitive scope; prefer province/region_group for geography."
+
+  - chunkId: "column:employees.salary"
+    docType: "column"
+    table: "employees"
+    tables: ["employees"]
+    metricName: null
+    aliases: ["lương", "salary", "compensation"]
+    sensitivity: "restricted_pii"
+    column: "employees.salary"
+    dataType: "INTEGER"
+    content: >-
+      Column employees.salary (INTEGER, individual compensation in VND, >= 0).
+      Sensitivity restricted_pii per policies/sensitive_columns.yaml: aggregate
+      payroll via SUM(salary) only with the data:sensitive scope; never expose
+      individual salary rows to unauthorized principals. Used by
+      metric:compensation_cost.
+    caveats:
+      - "restricted_pii: requires the data:sensitive scope; never expose individual salary rows."
+
+  - chunkId: "column:orders.status"
+    docType: "column"
+    table: "orders"
+    tables: ["orders"]
+    metricName: null
+    aliases: ["trạng thái đơn hàng", "order status", "status"]
+    sensitivity: "public"
+    column: "orders.status"
+    dataType: "TEXT"
+    enumValues: ["delivered", "shipped", "canceled", "returned"]
+    content: >-
+      Column orders.status (TEXT) is the order lifecycle state, one of
+      'delivered', 'shipped', 'canceled', 'returned'. Revenue metrics
+      (metric:net_revenue, metric:aov, metric:revenue_per_seller) only count
+      status = 'delivered'; 'canceled' orders are excluded from revenue and
+      'returned' orders are excluded from net revenue but included in
+      metric:gross_merchandise_value. Rate metrics use FILTER aggregates over
+      this column. There is an index on orders(status).
+    caveats:
+      - "'canceled' orders are excluded from revenue; 'returned' orders are excluded from net revenue."
+
+  - chunkId: "column:orders.purchase_date"
+    docType: "column"
+    table: "orders"
+    tables: ["orders"]
+    metricName: null
+    aliases: ["ngày mua hàng", "ngày đặt hàng", "purchase date", "order date"]
+    sensitivity: "public"
+    column: "orders.purchase_date"
+    dataType: "TIMESTAMPTZ"
+    content: >-
+      Column orders.purchase_date (TIMESTAMPTZ) is the order creation timestamp,
+      ranging 2025-01-01 to 2026-09-30. This is the required time filter for
+      large-table scans over orders and order_items (both flagged large): every
+      analytical query should bound purchase_date (e.g. WHERE o.purchase_date >=
+      DATE '2026-01-01'). There is an index on orders(purchase_date). Truncate to
+      month with DATE_TRUNC('month', o.purchase_date) for monthly series.
+    caveats:
+      - "Always bound purchase_date on large-table scans; data covers 2025-01-01 to 2026-09-30."
+
+  - chunkId: "column:orders.channel_id"
+    docType: "column"
+    table: "orders"
+    tables: ["orders", "channels"]
+    metricName: null
+    aliases: ["kênh đơn hàng", "order channel", "channel_id"]
+    sensitivity: "public"
+    column: "orders.channel_id"
+    dataType: "TEXT"
+    enumValues: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Column orders.channel_id (TEXT, FK to channels.channel_id) is the sales
+      channel of the order: 'shopee', 'lazada', 'tiktok', 'website', 'cuahang'.
+      Join channels on channels.channel_id for display names ('Shopee',
+      'Lazada', 'TikTok Shop', 'Website', 'Cửa hàng'). There is an index on
+      orders(channel_id). Filter on these codes, never on display labels.
+    caveats:
+      - "Filter on channel_id codes, never on channel_name display labels."
+
+  - chunkId: "column:order_items.price_vnd"
+    docType: "column"
+    table: "order_items"
+    tables: ["orders", "order_items"]
+    metricName: null
+    aliases: ["giá bán", "item price", "price_vnd"]
+    sensitivity: "public"
+    column: "order_items.price_vnd"
+    dataType: "INTEGER"
+    content: >-
+      Column order_items.price_vnd (INTEGER, >= 0) is the merchandise price in VND
+      per order line item. This is the source of truth for product revenue:
+      metric:net_revenue sums this column over orders with status = 'delivered'.
+      Always aggregate after joining orders (USING (order_id)) with the status
+      filter; never multiply products.price_vnd by order counts.
+    caveats:
+      - "Source of truth for revenue; always filter orders.status = 'delivered' for net revenue."
+
+  - chunkId: "column:order_items.freight_vnd"
+    docType: "column"
+    table: "order_items"
+    tables: ["orders", "order_items"]
+    metricName: null
+    aliases: ["phí vận chuyển", "shipping fee", "freight_vnd", "freight"]
+    sensitivity: "public"
+    column: "order_items.freight_vnd"
+    dataType: "INTEGER"
+    content: >-
+      Column order_items.freight_vnd (INTEGER, >= 0) is the shipping fee in VND
+      per order line item. Combined with price_vnd it forms
+      metric:gross_merchandise_value (SUM(price_vnd + freight_vnd) over
+      delivered, shipped, and returned orders). Freight is excluded from
+      metric:net_revenue.
+    caveats:
+      - "Freight is included in GMV but excluded from net revenue."
+
+  - chunkId: "column:payments.value_vnd"
+    docType: "column"
+    table: "payments"
+    tables: ["orders", "payments"]
+    metricName: null
+    aliases: ["giá trị thanh toán", "payment amount", "value_vnd"]
+    sensitivity: "public"
+    column: "payments.value_vnd"
+    dataType: "INTEGER"
+    content: >-
+      Column payments.value_vnd (INTEGER, >= 0) is the payment amount in VND per
+      payment row. Because payments has multiple rows per order (installments,
+      vouchers), this column fans out when joined with order_items: never
+      SUM(order_items.price_vnd) in a query that also joins payments without
+      pre-aggregating payments per order_id in a CTE first.
+    caveats:
+      - "Fan-out trap: pre-aggregate payments per order_id in a CTE before joining to order_items."
+
+  - chunkId: "column:payments.payment_type"
+    docType: "column"
+    table: "payments"
+    tables: ["payments"]
+    metricName: null
+    aliases: ["phương thức thanh toán", "payment method", "payment_type"]
+    sensitivity: "public"
+    column: "payments.payment_type"
+    dataType: "TEXT"
+    enumValues: ["credit_card", "boleto", "voucher", "debit_card"]
+    content: >-
+      Column payments.payment_type (TEXT) is the payment method, e.g.
+      'credit_card', 'boleto', 'voucher', 'debit_card'. Use it as a breakdown
+      dimension for payment-mix analysis (COUNT(*) / SUM(value_vnd) GROUP BY
+      payment_type). Values beyond the common four may exist; group
+      case-sensitively and never assume a closed set.
+    caveats:
+      - "Group case-sensitively; do not assume a closed set of payment types."
+
+  - chunkId: "column:payments.installments"
+    docType: "column"
+    table: "payments"
+    tables: ["payments"]
+    metricName: null
+    aliases: ["số kỳ trả góp", "installment count", "installments"]
+    sensitivity: "public"
+    column: "payments.installments"
+    dataType: "INTEGER"
+    content: >-
+      Column payments.installments (INTEGER >= 1) is the number of installment
+      payments for the payment row; 1 means a single (non-installment) payment.
+      Multiple rows per order with installments > 1 are normal and explain why
+      payments fans out per order_id.
+    caveats:
+      - "installments >= 1; 1 means a single payment, not an installment plan."
+
+  - chunkId: "column:regions.region_group"
+    docType: "column"
+    table: "regions"
+    tables: ["regions"]
+    metricName: null
+    aliases: ["vùng miền", "miền", "region group"]
+    sensitivity: "public"
+    column: "regions.region_group"
+    dataType: "TEXT"
+    enumValues: ["Bắc", "Trung", "Nam"]
+    content: >-
+      Column regions.region_group (TEXT) is the North/Central/South grouping:
+      exactly one of 'Bắc', 'Trung', 'Nam'. It is the canonical row-scope column,
+      mirrored on customers.region_group and sellers.region_group. Warning: never
+      filter with 'Miền Bắc', 'Miền Trung', or 'Miền Nam' — those long forms do
+      not exist in the data and silently return zero rows.
+    caveats:
+      - "Only 'Bắc', 'Trung', 'Nam' exist; 'Miền Bắc' / 'Miền Trung' / 'Miền Nam' return zero rows."
+
+  - chunkId: "column:regions.province"
+    docType: "column"
+    table: "regions"
+    tables: ["regions"]
+    metricName: null
+    aliases: ["tỉnh thành", "tỉnh", "province"]
+    sensitivity: "public"
+    column: "regions.province"
+    dataType: "TEXT"
+    content: >-
+      Column regions.province (TEXT, primary key) is the Vietnamese province or
+      centrally-governed city, e.g. 'Hà Nội', 'TP.HCM', 'Đà Nẵng', 'Cần Thơ',
+      'Hải Phòng' (34 post-merger provinces). It is the FK target of
+      customers.province, sellers.province, and employees.province. Filter with
+      exact diacritic-preserving literals (e.g. WHERE province = 'Đà Nẵng').
+    caveats:
+      - "Use exact diacritic-preserving literals; ASCII-folded spellings may miss rows."
+
+  - chunkId: "column:customers.region_group"
+    docType: "column"
+    table: "customers"
+    tables: ["customers"]
+    metricName: null
+    aliases: ["vùng miền khách hàng", "customer region"]
+    sensitivity: "public"
+    column: "customers.region_group"
+    dataType: "TEXT"
+    enumValues: ["Bắc", "Trung", "Nam"]
+    content: >-
+      Column customers.region_group (TEXT, 'Bắc' | 'Trung' | 'Nam') is the
+      row-scope grouping for customer accounts, mirroring regions.region_group.
+      Use it to scope customer analytics by North/Central/South without joining
+      regions. Same spelling warning as regions.region_group: only the short
+      forms exist.
+    caveats:
+      - "Only 'Bắc', 'Trung', 'Nam' exist; never use the 'Miền ...' long forms."
+
+  - chunkId: "column:customers.province"
+    docType: "column"
+    table: "customers"
+    tables: ["customers", "regions"]
+    metricName: null
+    aliases: ["tỉnh khách hàng", "customer province"]
+    sensitivity: "public"
+    column: "customers.province"
+    dataType: "TEXT"
+    content: >-
+      Column customers.province (TEXT, FK to regions.province) is the customer
+      location province. There is an index on customers(province). Join regions
+      for the region_group rollup, or use customers.region_group directly when
+      only the North/Central/South split is needed.
+    caveats:
+      - "Prefer customers.region_group when only the North/Central/South split is needed."
+
+  - chunkId: "column:sellers.region_group"
+    docType: "column"
+    table: "sellers"
+    tables: ["sellers"]
+    metricName: null
+    aliases: ["vùng miền người bán", "seller region"]
+    sensitivity: "public"
+    column: "sellers.region_group"
+    dataType: "TEXT"
+    enumValues: ["Bắc", "Trung", "Nam"]
+    content: >-
+      Column sellers.region_group (TEXT, 'Bắc' | 'Trung' | 'Nam') is the row-scope
+      grouping for seller storefronts, mirroring regions.region_group. Use it to
+      scope seller analytics (e.g. metric:revenue_per_seller by region) without
+      joining regions. Same spelling warning: only the short forms exist.
+    caveats:
+      - "Only 'Bắc', 'Trung', 'Nam' exist; never use the 'Miền ...' long forms."
+
+  - chunkId: "column:channels.channel_name"
+    docType: "column"
+    table: "channels"
+    tables: ["channels"]
+    metricName: null
+    aliases: ["tên kênh", "channel name"]
+    sensitivity: "public"
+    column: "channels.channel_name"
+    dataType: "TEXT"
+    enumValues: ["Shopee", "Lazada", "TikTok Shop", "Website", "Cửa hàng"]
+    content: >-
+      Column channels.channel_name (TEXT, UNIQUE) is the display label of the
+      sales channel: 'Shopee', 'Lazada', 'TikTok Shop', 'Website', 'Cửa hàng'.
+      It is for display and grouping labels only — always filter in SQL on the
+      orders.channel_id codes ('shopee', 'lazada', 'tiktok', 'website',
+      'cuahang'), never on these labels.
+    caveats:
+      - "Display only; always filter on channel_id codes, never on these labels."
+
+  - chunkId: "column:categories.name_vi"
+    docType: "column"
+    table: "categories"
+    tables: ["categories"]
+    metricName: null
+    aliases: ["tên danh mục", "tên ngành hàng", "category name"]
+    sensitivity: "public"
+    column: "categories.name_vi"
+    dataType: "TEXT"
+    content: >-
+      Column categories.name_vi (TEXT, UNIQUE) is the Vietnamese category name,
+      e.g. 'Đồ gia dụng', 'Điện gia dụng', 'Thiết bị nhà bếp', 'Thời trang nam',
+      'Sức khỏe & Làm đẹp'. Use exact diacritic-preserving literals when
+      filtering (e.g. WHERE c.name_vi = 'Đồ gia dụng'); join products via
+      products.category_id for product and revenue breakdowns by category.
+    caveats:
+      - "Use exact diacritic-preserving literals when filtering by category name."
+
+  - chunkId: "column:products.price_vnd"
+    docType: "column"
+    table: "products"
+    tables: ["products"]
+    metricName: null
+    aliases: ["giá niêm yết", "catalog price", "list price"]
+    sensitivity: "public"
+    column: "products.price_vnd"
+    dataType: "INTEGER"
+    content: >-
+      Column products.price_vnd (INTEGER, >= 0) is the catalog unit price in VND
+      for the SKU. It is reference data, not transaction money: do NOT sum it
+      for order revenue. Order revenue always aggregates order_items.price_vnd
+      over status = 'delivered' orders, which reflects actual line prices and
+      order status.
+    caveats:
+      - "Reference data only; never SUM(products.price_vnd) for order revenue — use order_items.price_vnd."
+
+  - chunkId: "column:reviews.score"
+    docType: "column"
+    table: "reviews"
+    tables: ["reviews"]
+    metricName: null
+    aliases: ["điểm đánh giá", "rating", "review score", "score"]
+    sensitivity: "public"
+    column: "reviews.score"
+    dataType: "INTEGER"
+    enumValues: ["1", "2", "3", "4", "5"]
+    content: >-
+      Column reviews.score (INTEGER, 1..5) is the customer review rating, where 5
+      is the best. Reviews are optional per order, so averages (AVG(score)) cover
+      reviewed orders only. Common splits: score >= 4 for positive share,
+      score <= 2 for negative share.
+    caveats:
+      - "Reviews are optional per order; averages cover reviewed orders only."
+
+  - chunkId: "column:promotions.discount_pct"
+    docType: "column"
+    table: "promotions"
+    tables: ["promotions"]
+    metricName: null
+    aliases: ["phần trăm giảm giá", "discount percent", "discount_pct"]
+    sensitivity: "public"
+    column: "promotions.discount_pct"
+    dataType: "INTEGER"
+    content: >-
+      Column promotions.discount_pct (INTEGER, 0..100) is the promotion discount
+      percentage. Constrained 0..100 by CHECK (discount_pct >= 0 AND
+      discount_pct <= 100). Use with starts_on / ends_on to attribute orders via
+      date overlap with orders.purchase_date; there is no direct FK from orders
+      to promotions.
+    caveats:
+      - "Constrained 0..100; attribute orders via date overlap, not a join key."

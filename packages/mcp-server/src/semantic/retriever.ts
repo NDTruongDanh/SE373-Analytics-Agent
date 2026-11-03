@@ -545,11 +545,14 @@ export function expandJoinRules(
     // Also parse tables stored as comma string directly.
     const overlap = tables.filter((table) => candidateTables.has(table)).length;
     if (overlap >= 2) {
+      const baseScore = scoreById.get(chunkId);
+      const fallbackScore = 1 / (RRF_K + topK + 1);
       joinCandidates.push({
         row,
         id: chunkId,
         overlap,
-        score: scoreById.get(chunkId) ?? 0,
+        score:
+          baseScore !== undefined && baseScore > 0 ? baseScore : fallbackScore,
       });
     }
   }

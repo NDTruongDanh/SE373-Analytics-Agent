@@ -1,15 +1,17 @@
-// Semantic indexer (MCP-02): chunks the versioned corpus markdown files,
+// Semantic indexer (MCP-02): chunks the versioned 6-type YAML corpus,
 // embeds through the configured embedder, and upserts into
 // semantic_chunks with SHA-256 content_hash dedup so re-runs are
 // incremental (new chunks inserted, changed chunks re-embedded, unchanged
-// chunks skipped). Operator-run via tsx against this module directly — no
-// new package script. Writes as the indexer role over INDEXER_DATABASE_URL.
+// chunks skipped, stale chunks deleted). Operator-run via tsx against this
+// module directly (`pnpm semantic:index`). Writes as the indexer role over
+// INDEXER_DATABASE_URL.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Pool } from "pg";
 import { parse as parseYaml } from "yaml";
+import { SemanticChunkMetadataSchema, type SemanticChunkMetadata } from "@shared/contracts";
 import { selectEmbedderFromEnv, type Embedder } from "./embedder.js";
 
 export interface CorpusFile {
@@ -19,13 +21,34 @@ export interface CorpusFile {
 
 export interface ParsedChunk {
   chunkId: string;
-  docType: string;
+  docType: SemanticChunkMetadata["docType"];
   table: string | null;
   tables: string[];
   metricName: string | null;
   aliases: string[];
   sensitivity: "public" | "internal" | "restricted_pii";
+  additive?: boolean;
+  metadata?: Record<string, unknown>;
   content: string;
+}
+
+// Validate a parsed chunk against the shared contract. Throws on mismatch
+// so every chunk leaving chunkYaml/chunkMarkdown is guaranteed compliant.
+export function validateChunkMetadata(
+  chunk: ParsedChunk,
+  updatedAt = "1970-01-01T00:00:00.000Z",
+): SemanticChunkMetadata {
+  return SemanticChunkMetadataSchema.parse({
+    chunkId: chunk.chunkId,
+    docType: chunk.docType,
+    table: chunk.table,
+    tables: chunk.tables,
+    metricName: chunk.metricName,
+    aliases: chunk.aliases,
+    sensitivity: chunk.sensitivity,
+    ...(chunk.additive !== undefined ? { additive: chunk.additive } : {}),
+    updatedAt,
+  });
 }
 
 function slug(title: string): string {
@@ -76,16 +99,19 @@ export function chunkMarkdown(
     }
     if (table === null && tables.length === 1) table = tables[0] as string;
     if (tables.length === 0 && table !== null) tables = [table];
-    chunks.push({
+    const chunk: ParsedChunk = {
       chunkId: `${source}:${slug(cleanTitle)}`,
-      docType,
+      docType: docType as ParsedChunk["docType"],
       table,
       tables,
       metricName,
       aliases,
       sensitivity: restricted ? "restricted_pii" : "public",
       content: current.join("\n").trim(),
-    });
+    };
+    const validated = validateChunkMetadata(chunk);
+    chunk.metadata = { ...validated };
+    chunks.push(chunk);
     current = null;
   };
   for (const line of lines) {
@@ -100,6 +126,42 @@ export function chunkMarkdown(
   }
   flush();
   return chunks.filter((entry) => entry.content.length > 0);
+}
+
+interface StructuredField {
+  keys: string[];
+  label: string;
+}
+
+const STRUCTURED_FIELDS: StructuredField[] = [
+  { keys: ["formula"], label: "Formula" },
+  { keys: ["sql"], label: "SQL" },
+  { keys: ["sqlTemplate", "sql_template"], label: "SQL Template" },
+  { keys: ["caveats"], label: "Caveats" },
+  { keys: ["question"], label: "Question" },
+  { keys: ["citedMetrics", "cited_metrics"], label: "Cited Metrics" },
+  { keys: ["startDate", "start_date"], label: "Start Date" },
+  { keys: ["endDate", "end_date"], label: "End Date" },
+  { keys: ["affectedRegions", "affected_regions"], label: "Affected Regions" },
+  { keys: ["affectedChannels", "affected_channels"], label: "Affected Channels" },
+  { keys: ["grain"], label: "Grain" },
+  { keys: ["primaryKey", "primary_key"], label: "Primary Key" },
+  { keys: ["rowCountScale", "row_count_scale"], label: "Row Count Scale" },
+  { keys: ["dataType", "data_type"], label: "Data Type" },
+  { keys: ["enumValues", "enum_values"], label: "Enum Values" },
+];
+
+function structuredFieldToString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return (value as unknown[])
+      .map((entry) => String(entry).trim())
+      .filter((entry) => entry.length > 0)
+      .join(", ");
+  }
+  if (typeof value === "object" && value !== null) {
+    return JSON.stringify(value);
+  }
+  return String(value).trim();
 }
 
 // YAML chunker: parses YAML array/object entries into ParsedChunk[].
@@ -199,17 +261,40 @@ export function chunkYaml(
       typeof record["sensitivity"] === "string"
         ? (record["sensitivity"] as string)
         : "public";
+    let additive: boolean | undefined;
+    if (typeof record["additive"] === "boolean") {
+      additive = record["additive"] as boolean;
+    }
     const contentRaw =
       record["content"] ??
       record["body"] ??
       record["description"] ??
       record["text"] ??
       "";
-    const content = String(contentRaw).trim();
+    let content = String(contentRaw).trim();
+    const structuredExtras: Record<string, unknown> = {};
+    for (const field of STRUCTURED_FIELDS) {
+      let found = false;
+      let rawValue: unknown;
+      for (const key of field.keys) {
+        if (record[key] !== undefined && record[key] !== null && String(record[key]).trim().length > 0) {
+          rawValue = record[key];
+          structuredExtras[key] = record[key];
+          found = true;
+          break;
+        }
+      }
+      if (!found || rawValue === undefined) continue;
+      const rendered = structuredFieldToString(rawValue);
+      if (rendered.length === 0) continue;
+      if (!content.includes(rendered)) {
+        content = content.length > 0 ? `${content}\n${field.label}: ${rendered}` : `${field.label}: ${rendered}`;
+      }
+    }
     if (!content) return;
-    chunks.push({
+    const chunk: ParsedChunk = {
       chunkId,
-      docType: String(docTypeRaw),
+      docType: String(docTypeRaw) as ParsedChunk["docType"],
       table,
       tables,
       metricName,
@@ -220,14 +305,18 @@ export function chunkYaml(
           : sensitivityRaw === "internal"
             ? "internal"
             : "public",
+      ...(additive !== undefined ? { additive } : {}),
       content,
-    });
+    };
+    const validated = validateChunkMetadata(chunk);
+    chunk.metadata = { ...validated, ...structuredExtras };
+    chunks.push(chunk);
   });
   return chunks;
 }
 
-export function contentHash(chunk: ParsedChunk): string {
-  const canonical = JSON.stringify({
+export function canonicalJson(chunk: ParsedChunk): string {
+  const payload: Record<string, unknown> = {
     chunkId: chunk.chunkId,
     docType: chunk.docType,
     table: chunk.table,
@@ -235,9 +324,14 @@ export function contentHash(chunk: ParsedChunk): string {
     metricName: chunk.metricName,
     aliases: chunk.aliases,
     sensitivity: chunk.sensitivity,
+    ...(chunk.additive !== undefined ? { additive: chunk.additive } : {}),
     content: chunk.content,
-  });
-  return createHash("sha256").update(canonical).digest("hex");
+  };
+  return JSON.stringify(payload);
+}
+
+export function contentHash(chunk: ParsedChunk): string {
+  return createHash("sha256").update(canonicalJson(chunk)).digest("hex");
 }
 
 export interface IndexCounts {
@@ -245,15 +339,39 @@ export interface IndexCounts {
   updated: number;
   skipped: number;
   deleted: number;
+  embeddingTokens?: number;
+  estimatedCostUsd?: number;
+  durationMs?: number;
 }
 
+export type IndexQueryFn = (
+  text: string,
+  params?: unknown[],
+) => Promise<{ rows: Record<string, unknown>[] }>;
+
 export async function indexCorpus(options: {
-  dbUrl: string;
+  dbUrl?: string;
+  query?: IndexQueryFn;
   embedder: Embedder;
   files: CorpusFile[];
 }): Promise<IndexCounts> {
-  const pool = new Pool({ connectionString: options.dbUrl, max: 2 });
+  const startedAt = Date.now();
+  let pool: Pool | null = null;
   try {
+    let queryFn: IndexQueryFn;
+    if (options.query !== undefined) {
+      queryFn = options.query;
+    } else {
+      if (options.dbUrl === undefined || options.dbUrl.length === 0) {
+        throw new Error("indexCorpus needs dbUrl or query");
+      }
+      pool = new Pool({ connectionString: options.dbUrl, max: 2 });
+      const activePool: Pool = pool;
+      queryFn = async (text: string, params?: unknown[]) => {
+        const result = await activePool.query(text, params as unknown[]);
+        return { rows: result.rows as Record<string, unknown>[] };
+      };
+    }
     const chunks: ParsedChunk[] = [];
     for (const file of options.files) {
       const text = readFileSync(file.path, "utf8");
@@ -264,53 +382,72 @@ export async function indexCorpus(options: {
         chunks.push(...chunkMarkdown(source, text, file.docType));
       }
     }
-    const existing = await pool.query(
+    const existing = await queryFn(
       "SELECT chunk_id, content_hash FROM semantic.semantic_chunks",
     );
     const known = new Map<string, string>();
     for (const row of existing.rows) {
       known.set(String(row["chunk_id"]), String(row["content_hash"]));
     }
-    const counts: IndexCounts = { added: 0, updated: 0, skipped: 0, deleted: 0 };
+    const counts: IndexCounts = {
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      deleted: 0,
+      embeddingTokens: 0,
+      estimatedCostUsd: 0,
+      durationMs: 0,
+    };
     const currentIds = new Set(chunks.map((chunk) => chunk.chunkId));
     const toDelete = [...known.keys()].filter((id) => !currentIds.has(id));
     if (toDelete.length > 0) {
-      await pool.query(`DELETE FROM semantic.semantic_chunks WHERE chunk_id = ANY($1)`, [
+      await queryFn(`DELETE FROM semantic.semantic_chunks WHERE chunk_id = ANY($1)`, [
         toDelete,
       ]);
       counts.deleted = toDelete.length;
     }
     const dirty = chunks.filter((chunk) => known.get(chunk.chunkId) !== contentHash(chunk));
-    const vectors = await options.embedder.embed(dirty.map((chunk) => chunk.content));
+    const vectors = dirty.length > 0 ? await options.embedder.embed(dirty.map((chunk) => chunk.content)) : [];
+    const embeddingTokens =
+      dirty.length === 0
+        ? 0
+        : dirty.reduce((sum, chunk) => sum + Math.max(1, Math.ceil(chunk.content.length / 4)), 0);
+    const estimatedCostUsd = Number(((embeddingTokens / 1_000_000) * 0.02).toFixed(8));
     for (let index = 0; index < dirty.length; index++) {
       const chunk = dirty[index] as ParsedChunk;
       const vector = vectors[index] as number[];
       const hash = contentHash(chunk);
+      const chunkMeta = chunk.metadata ?? validateChunkMetadata(chunk);
+      const metadataJson = JSON.stringify(chunkMeta);
+      const additiveValue = chunk.additive ?? null;
       if (known.has(chunk.chunkId)) {
-        await pool.query(
+        await queryFn(
           `UPDATE semantic.semantic_chunks
            SET doc_type = $2, table_name = $3, tables = $4, metric_name = $5,
-               aliases = $6, sensitivity = $7, content = $8, content_hash = $9,
-               embedding = $10::vector, updated_at = now()
+               aliases = $6, sensitivity = $7, additive = $8, metadata = $9::jsonb,
+               content = $10, content_hash = $11,
+               embedding = $12::vector, updated_at = now()
            WHERE chunk_id = $1`,
           [
             chunk.chunkId, chunk.docType, chunk.table,
             chunk.tables.join(","), chunk.metricName,
-            chunk.aliases.join(","), chunk.sensitivity, chunk.content,
+            chunk.aliases.join(","), chunk.sensitivity, additiveValue,
+            metadataJson, chunk.content,
             hash, `[${vector.join(",")}]`,
           ],
         );
         counts.updated += 1;
       } else {
-        await pool.query(
+        await queryFn(
           `INSERT INTO semantic.semantic_chunks
              (chunk_id, doc_type, table_name, tables, metric_name, aliases,
-              sensitivity, metadata, content, content_hash, embedding, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, '{}'::jsonb, $8, $9, $10::vector, now())`,
+              sensitivity, additive, metadata, content, content_hash, embedding, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12::vector, now())`,
           [
             chunk.chunkId, chunk.docType, chunk.table,
             chunk.tables.join(","), chunk.metricName,
-            chunk.aliases.join(","), chunk.sensitivity, chunk.content,
+            chunk.aliases.join(","), chunk.sensitivity, additiveValue,
+            metadataJson, chunk.content,
             hash, `[${vector.join(",")}]`,
           ],
         );
@@ -318,9 +455,12 @@ export async function indexCorpus(options: {
       }
     }
     counts.skipped = chunks.length - dirty.length;
+    counts.embeddingTokens = embeddingTokens;
+    counts.estimatedCostUsd = estimatedCostUsd;
+    counts.durationMs = Math.max(0, Date.now() - startedAt);
     return counts;
   } finally {
-    await pool.end();
+    if (pool !== null) await pool.end();
   }
 }
 
@@ -340,34 +480,48 @@ function inferDocType(fileBase: string, fallback: string): string {
   return fallback;
 }
 
-export function discoverDefaultFiles(): CorpusFile[] {
-  const files: CorpusFile[] = [...DEFAULT_FILES];
+const CANONICAL_YAML_ORDER = ["tables", "columns", "metrics", "joins", "examples", "events"];
+
+export function discoverDefaultFiles(dirPath = path.resolve("semantic")): CorpusFile[] {
   try {
-    const dir = path.resolve("semantic");
-    if (!existsSync(dir)) return files;
-    const entries = readdirSync(dir);
-    for (const entry of entries) {
-      if (!(entry.endsWith(".yaml") || entry.endsWith(".yml"))) continue;
-      const full = path.resolve("semantic", entry);
-      if (files.some((file) => file.path === full)) continue;
+    if (!existsSync(dirPath)) return [...DEFAULT_FILES];
+    const entries = readdirSync(dirPath).filter(
+      (entry) => entry.endsWith(".yaml") || entry.endsWith(".yml"),
+    );
+    if (entries.length === 0) return [...DEFAULT_FILES];
+    entries.sort((a, b) => {
+      const baseA = path.basename(a, path.extname(a)).toLowerCase();
+      const baseB = path.basename(b, path.extname(b)).toLowerCase();
+      const indexA = CANONICAL_YAML_ORDER.indexOf(baseA);
+      const indexB = CANONICAL_YAML_ORDER.indexOf(baseB);
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+    return entries.map((entry) => {
+      const full = path.resolve(dirPath, entry);
       const base = path.basename(entry, path.extname(entry));
-      files.push({ path: full, docType: inferDocType(base, "metric") });
-    }
+      return { path: full, docType: inferDocType(base, "metric") };
+    });
   } catch {
     // Ignore filesystem errors; fall back to DEFAULT_FILES.
+    return [...DEFAULT_FILES];
   }
-  return files;
 }
 
 if (
   process.argv[1] !== undefined &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  const dbUrl = process.env["INDEXER_DATABASE_URL"];
-  if (!dbUrl) {
-    console.error("INDEXER_DATABASE_URL is not set");
-    process.exit(1);
+  try {
+    process.loadEnvFile?.();
+  } catch {
+    // ignore missing .env
   }
+  const dbUrl =
+    process.env["INDEXER_DATABASE_URL"] ??
+    `postgresql://indexer:${process.env["INDEXER_PASSWORD"] ?? "chosen_indexer_dev"}@127.0.0.1:${process.env["POSTGRES_PORT"] ?? "5433"}/${process.env["POSTGRES_DB"] ?? "chosen"}`;
   const selection = selectEmbedderFromEnv();
   console.log(`[semantic-index] embedder: ${selection.source}`);
   const counts = await indexCorpus({
@@ -376,6 +530,6 @@ if (
     files: discoverDefaultFiles(),
   });
   console.log(
-    `[semantic-index] added=${counts.added} updated=${counts.updated} skipped=${counts.skipped} deleted=${counts.deleted}`,
+    `[semantic-index] added=${counts.added} updated=${counts.updated} skipped=${counts.skipped} deleted=${counts.deleted} embeddingTokens=${counts.embeddingTokens} estimatedCostUsd=${counts.estimatedCostUsd} durationMs=${counts.durationMs}`,
   );
 }

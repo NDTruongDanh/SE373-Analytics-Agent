@@ -1,6 +1,10 @@
 // Semantic unit suite (MCP-02): fake embedder shape and determinism,
 // RRF ordering at k=60, resource section filtering, and the storage to
 // contract camelCase mapping. Fully DB-free.
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, beforeEach } from "vitest";
 import { createFakeEmbedder } from "../src/semantic/embedder.js";
 import {
@@ -27,7 +31,18 @@ import {
   BM25_B,
   type RetrieverQuery,
 } from "../src/semantic/retriever.js";
-import { chunkMarkdown } from "../src/semantic/index.js";
+import {
+  canonicalJson,
+  chunkMarkdown,
+  chunkYaml,
+  contentHash,
+  discoverDefaultFiles,
+  indexCorpus,
+  validateChunkMetadata,
+  type CorpusFile,
+  type IndexQueryFn,
+  type ParsedChunk,
+} from "../src/semantic/index.js";
 import { filterResourceSections } from "../src/pipeline.js";
 
 describe("fake embedder", () => {
@@ -587,5 +602,294 @@ describe("cross-process BM25 hot-reload", () => {
     expect(second.map((chunk) => chunk.chunkId)).toContain("metric:new_kpi");
     expect(getCitationCatalog().has("metric:new_kpi")).toBe(true);
     expect(getCitationCatalog().has("metric:net_revenue")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UC-02 #28: 6-type YAML semantic corpus & delete-aware SHA-256 indexer.
+// ---------------------------------------------------------------------------
+
+const UC02_TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+const UC02_ROOT = path.resolve(UC02_TEST_DIR, "..", "..", "..");
+const UC02_SEMANTIC_DIR = path.join(UC02_ROOT, "semantic");
+
+function createMemoryQuery() {
+  const store = new Map<string, string>();
+  const seen: { text: string; params?: unknown[] }[] = [];
+  const query: IndexQueryFn = async (text: string, params?: unknown[]) => {
+    seen.push({ text, params });
+    if (text.startsWith("SELECT chunk_id")) {
+      return {
+        rows: [...store.entries()].map(([chunk_id, content_hash]) => ({
+          chunk_id,
+          content_hash,
+        })),
+      };
+    }
+    if (text.startsWith("DELETE FROM semantic.semantic_chunks")) {
+      const ids = (params?.[0] ?? []) as string[];
+      for (const id of ids) store.delete(id);
+      return { rows: [] };
+    }
+    if (text.startsWith("UPDATE semantic.semantic_chunks")) {
+      store.set(String(params?.[0]), String(params?.[10]));
+      return { rows: [] };
+    }
+    if (text.startsWith("INSERT INTO semantic.semantic_chunks")) {
+      store.set(String(params?.[0]), String(params?.[10]));
+      return { rows: [] };
+    }
+    throw new Error(`unexpected SQL in memory query: ${text.slice(0, 80)}`);
+  };
+  return { store, seen, query };
+}
+
+function createEmbedSpy() {
+  const inner = createFakeEmbedder();
+  const calls: string[][] = [];
+  const embedder = {
+    dimensions: inner.dimensions,
+    embed: async (texts: string[]): Promise<number[][]> => {
+      calls.push(texts);
+      return inner.embed(texts);
+    },
+  };
+  return { embedder, calls };
+}
+
+describe("6-type YAML semantic corpus & delete-aware SHA-256 indexer (UC-02 #28)", () => {
+  const files = discoverDefaultFiles(UC02_SEMANTIC_DIR);
+  const byFile = new Map(files.map((file) => [path.basename(file.path), file]));
+
+  function chunksFor(base: string): ParsedChunk[] {
+    const entry = byFile.get(base) as CorpusFile;
+    const text = readFileSync(entry.path, "utf8");
+    const source = path.basename(entry.path, path.extname(entry.path));
+    return chunkYaml(source, text, entry.docType);
+  }
+
+  function allCorpusChunks(fileList: CorpusFile[]): ParsedChunk[] {
+    return fileList.flatMap((file) => {
+      const text = readFileSync(file.path, "utf8");
+      const source = path.basename(file.path, path.extname(file.path));
+      return chunkYaml(source, text, file.docType);
+    });
+  }
+
+  it("discovers all 6 YAML files in canonical order", () => {
+    expect(files.map((file) => path.basename(file.path))).toEqual([
+      "tables.yaml",
+      "columns.yaml",
+      "metrics.yaml",
+      "joins.yaml",
+      "examples.yaml",
+      "events.yaml",
+    ]);
+    expect(files.map((file) => file.docType)).toEqual([
+      "table",
+      "column",
+      "metric",
+      "join_rule",
+      "example",
+      "event",
+    ]);
+  });
+
+  it("parses 12 table chunks including orders, order_items and restricted employees", () => {
+    const chunks = chunksFor("tables.yaml");
+    expect(chunks).toHaveLength(12);
+    for (const chunk of chunks) {
+      expect(chunk.docType).toBe("table");
+      expect(() => validateChunkMetadata(chunk)).not.toThrow();
+    }
+    const byId = new Map(chunks.map((chunk) => [chunk.chunkId, chunk]));
+    expect(byId.has("table:orders")).toBe(true);
+    expect(byId.has("table:order_items")).toBe(true);
+    expect(byId.get("table:employees")?.sensitivity).toBe("restricted_pii");
+  });
+
+  it("parses column chunks including the 4 restricted_pii columns and orders.status", () => {
+    const chunks = chunksFor("columns.yaml");
+    for (const chunk of chunks) {
+      expect(chunk.docType).toBe("column");
+      expect(() => validateChunkMetadata(chunk)).not.toThrow();
+    }
+    const byId = new Map(chunks.map((chunk) => [chunk.chunkId, chunk]));
+    for (const id of [
+      "column:customers.phone",
+      "column:customers.email",
+      "column:customers.address",
+      "column:employees.salary",
+    ]) {
+      expect(byId.get(id)?.sensitivity).toBe("restricted_pii");
+    }
+    expect(byId.has("column:orders.status")).toBe(true);
+  });
+
+  it("parses 12 metric chunks with boolean additive flags and SQL formulas", () => {
+    const chunks = chunksFor("metrics.yaml");
+    expect(chunks).toHaveLength(12);
+    const ids = new Set(chunks.map((chunk) => chunk.chunkId));
+    for (const id of [
+      "metric:net_revenue",
+      "metric:gross_merchandise_value",
+      "metric:active_customers",
+      "metric:aov",
+      "metric:return_rate",
+      "metric:cancellation_rate",
+      "metric:repeat_customer_rate",
+      "metric:new_customers",
+      "metric:on_time_delivery_rate",
+      "metric:revenue_per_seller",
+      "metric:order_count",
+      "metric:compensation_cost",
+    ]) {
+      expect(ids.has(id)).toBe(true);
+    }
+    for (const chunk of chunks) {
+      expect(chunk.docType).toBe("metric");
+      expect(typeof chunk.additive).toBe("boolean");
+      expect(chunk.metricName).not.toBeNull();
+      expect(chunk.content).toMatch(/SELECT|SUM/i);
+      expect(() => validateChunkMetadata(chunk)).not.toThrow();
+    }
+  });
+
+  it("parses join_rule chunks including the anti-fanout orders_items_payments CTE rule", () => {
+    const chunks = chunksFor("joins.yaml");
+    for (const chunk of chunks) {
+      expect(chunk.docType).toBe("join_rule");
+      expect(() => validateChunkMetadata(chunk)).not.toThrow();
+    }
+    const byId = new Map(chunks.map((chunk) => [chunk.chunkId, chunk]));
+    const rule = byId.get("join_rule:orders_items_payments");
+    expect(rule).toBeDefined();
+    expect(rule?.tables).toEqual(["orders", "order_items", "payments"]);
+    expect(rule?.content).toMatch(/CTE|pre-aggregate/i);
+  });
+
+  it("parses 18 example chunks with questions and SQL", () => {
+    const chunks = chunksFor("examples.yaml");
+    expect(chunks).toHaveLength(18);
+    for (const chunk of chunks) {
+      expect(chunk.docType).toBe("example");
+      expect(chunk.content).toContain("Question");
+      expect(chunk.content).toContain("SELECT");
+      expect(() => validateChunkMetadata(chunk)).not.toThrow();
+    }
+  });
+
+  it("parses campaign/holiday event chunks", () => {
+    const chunks = chunksFor("events.yaml");
+    expect(chunks.length).toBeGreaterThan(0);
+    for (const chunk of chunks) {
+      expect(chunk.docType).toBe("event");
+      expect(chunk.chunkId.startsWith("event:")).toBe(true);
+      expect(() => validateChunkMetadata(chunk)).not.toThrow();
+    }
+  });
+
+  it("canonicalJson/contentHash are deterministic and change when content, formula, aliases, or additive change", () => {
+    const orders = chunksFor("tables.yaml").find(
+      (chunk) => chunk.chunkId === "table:orders",
+    ) as ParsedChunk;
+    const base = contentHash(orders);
+    expect(contentHash({ ...orders })).toBe(base);
+    expect(canonicalJson({ ...orders })).toBe(canonicalJson(orders));
+    expect(
+      contentHash({ ...orders, content: `${orders.content}\nExtra.` }),
+    ).not.toBe(base);
+    expect(
+      contentHash({ ...orders, aliases: [...orders.aliases, "extra alias"] }),
+    ).not.toBe(base);
+    expect(contentHash({ ...orders, additive: true })).not.toBe(base);
+    // A formula edit flows through chunkYaml into the chunk content hash.
+    const metricsText = readFileSync(path.join(UC02_SEMANTIC_DIR, "metrics.yaml"), "utf8");
+    const tweakedText = metricsText.replace(
+      "SUM(order_items.price_vnd) over orders with status = 'delivered'",
+      "SUM(order_items.price_vnd) over orders with status = 'delivered' /* tweaked */",
+    );
+    expect(tweakedText).not.toBe(metricsText);
+    const before = chunkYaml("metrics", metricsText, "metric").find(
+      (chunk) => chunk.chunkId === "metric:net_revenue",
+    ) as ParsedChunk;
+    const after = chunkYaml("metrics", tweakedText, "metric").find(
+      (chunk) => chunk.chunkId === "metric:net_revenue",
+    ) as ParsedChunk;
+    expect(contentHash(after)).not.toBe(contentHash(before));
+  });
+
+  it("AC1: indexing twice embeds all N chunks once, then skips all N", async () => {
+    const { query } = createMemoryQuery();
+    const { embedder, calls } = createEmbedSpy();
+    const total = allCorpusChunks(files).length;
+    expect(total).toBeGreaterThan(0);
+    const first = await indexCorpus({ query, embedder, files });
+    expect(first.added).toBe(total);
+    expect(first.updated).toBe(0);
+    expect(first.skipped).toBe(0);
+    expect(first.deleted).toBe(0);
+    expect(first.embeddingTokens).toBeGreaterThan(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toHaveLength(total);
+    const second = await indexCorpus({ query, embedder, files });
+    expect(second.added).toBe(0);
+    expect(second.updated).toBe(0);
+    expect(second.deleted).toBe(0);
+    expect(second.skipped).toBe(total);
+    expect(second.embeddingTokens).toBe(0);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("AC2: modifying 1 metric re-embeds exactly that chunk", async () => {
+    const { query } = createMemoryQuery();
+    const { embedder, calls } = createEmbedSpy();
+    const total = allCorpusChunks(files).length;
+    await indexCorpus({ query, embedder, files });
+    calls.length = 0;
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "uc02-metrics-"));
+    try {
+      const original = readFileSync(path.join(UC02_SEMANTIC_DIR, "metrics.yaml"), "utf8");
+      const tweaked = original.replace(
+        "SUM(order_items.price_vnd) over orders with status = 'delivered'",
+        "SUM(order_items.price_vnd) over orders with status = 'delivered' AND o.purchase_date >= '2026-01-01'",
+      );
+      expect(tweaked).not.toBe(original);
+      const tmpMetrics = path.join(tmpDir, "metrics.yaml");
+      writeFileSync(tmpMetrics, tweaked);
+      const tweakedFiles = files.map((file) =>
+        path.basename(file.path) === "metrics.yaml"
+          ? { path: tmpMetrics, docType: file.docType }
+          : file,
+      );
+      const third = await indexCorpus({ query, embedder, files: tweakedFiles });
+      expect(third.added).toBe(0);
+      expect(third.updated).toBe(1);
+      expect(third.deleted).toBe(0);
+      expect(third.skipped).toBe(total - 1);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toHaveLength(1);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("deletes stale chunks via chunk_id = ANY($1) and reports the count", async () => {
+    const { query, seen } = createMemoryQuery();
+    const { embedder } = createEmbedSpy();
+    const eventsCount = chunksFor("events.yaml").length;
+    expect(eventsCount).toBeGreaterThan(0);
+    await indexCorpus({ query, embedder, files });
+    const subset = files.filter((file) => path.basename(file.path) !== "events.yaml");
+    const counts = await indexCorpus({ query, embedder, files: subset });
+    expect(counts.added).toBe(0);
+    expect(counts.updated).toBe(0);
+    expect(counts.deleted).toBe(eventsCount);
+    const deletes = seen.filter((entry) =>
+      entry.text.startsWith("DELETE FROM semantic.semantic_chunks"),
+    );
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]?.text).toContain("chunk_id = ANY($1)");
+    expect((deletes[0]?.params?.[0] as string[]).length).toBe(eventsCount);
   });
 });

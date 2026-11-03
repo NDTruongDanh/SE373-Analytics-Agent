@@ -1,0 +1,208 @@
+# Event chunks — campaign, holiday, and operational calendar entries (docType: event).
+# Validated against packages/contracts/src/semantic.ts metadata contract.
+# Dates are ISO calendar dates; regions use 'Bắc' | 'Trung' | 'Nam' or province
+# names; channels use channel_id codes (shopee, lazada, tiktok, website,
+# cuahang). No row counts, no customer data, no reference SQL here — these
+# entries give temporal context for demand and operations questions.
+chunks:
+  - chunkId: "event:2025_tet_nguyen_dan"
+    docType: "event"
+    table: "orders"
+    tables: ["orders", "promotions"]
+    metricName: null
+    aliases: ["Tết Nguyên Đán", "Tet holiday", "Ất Tỵ", "2025", "nghỉ Tết", "shipping pause", "lunar new year"]
+    sensitivity: "public"
+    startDate: "2025-01-25"
+    endDate: "2025-02-04"
+    affectedRegions: ["Bắc", "Trung", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Tết Nguyên Đán Ất Tỵ 2025: holiday shipping pause from 2025-01-25 to
+      2025-02-04 across all regions (Bắc, Trung, Nam) and all sales channels
+      (Shopee, Lazada, TikTok Shop, Website, Cửa hàng). Order placement stays
+      open but fulfillment and carrier pickup stop during the pause, so expect
+      a demand dip followed by a fulfillment backlog in early February 2025.
+      Analysts comparing January against February 2025 must account for this
+      calendar gap before attributing movement to assortment or pricing.
+
+  - chunkId: "event:2025_05_summer_mega_sale"
+    docType: "event"
+    table: "promotions"
+    tables: ["promotions", "orders"]
+    metricName: null
+    aliases: ["Chào Hè 5.5", "summer sale", "mega sale", "tháng 5 2025", "Shopee", "Lazada", "TikTok Shop"]
+    sensitivity: "public"
+    startDate: "2025-05-01"
+    endDate: "2025-05-10"
+    affectedRegions: ["Bắc", "Trung", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok"]
+    content: >-
+      Chiến dịch Chào Hè 5.5 năm 2025 (Summer Mega Sale), active 2025-05-01 to
+      2025-05-10 on Shopee, Lazada, and TikTok Shop nationwide (Bắc, Trung,
+      Nam). Expect an order and GMV spike on participating marketplace
+      channels during the window, concentrated in summer seasonal categories.
+      Website and Cửa hàng do not participate. Year-over-year reads of early
+      May should benchmark against this campaign window, not against
+      non-campaign weeks.
+
+  - chunkId: "event:2025_09_99_mega_sale"
+    docType: "event"
+    table: "promotions"
+    tables: ["promotions", "orders"]
+    metricName: null
+    aliases: ["Siêu Sale 9.9", "9.9 sale", "tháng 9 2025", "mega sale", "toàn quốc", "nationwide sale"]
+    sensitivity: "public"
+    startDate: "2025-09-05"
+    endDate: "2025-09-12"
+    affectedRegions: ["Bắc", "Trung", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Chiến dịch Siêu Sale 9.9 năm 2025, active 2025-09-05 to 2025-09-12
+      across all regions (Bắc, Trung, Nam) and all sales channels (Shopee,
+      Lazada, TikTok Shop, Website, Cửa hàng). One of the three biggest sale
+      peaks of the year alongside 11.11 and 12.12. Expect elevated order
+      volume, higher voucher-funded payment rows, and heavier-than-usual
+      freight load. September trend analysis must isolate this window before
+      concluding organic growth or decline.
+
+  - chunkId: "event:2025_11_11_single_day"
+    docType: "event"
+    table: "promotions"
+    tables: ["promotions", "orders"]
+    metricName: null
+    aliases: ["11.11", "Single Day", "Lễ hội Mua sắm", "tháng 11 2025", "shopping festival", "toàn sàn"]
+    sensitivity: "public"
+    startDate: "2025-11-08"
+    endDate: "2025-11-15"
+    affectedRegions: ["Bắc", "Trung", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Lễ hội Mua sắm 11.11 năm 2025 (Single Day shopping festival), active
+      2025-11-08 to 2025-11-15 on all sales channels nationwide (Bắc, Trung,
+      Nam). The largest single promotion window of 2025: expect the annual
+      order-count peak, deep discount_pct campaigns, and installment-heavy
+      payment mix. Post-campaign weeks typically show a demand trough and an
+      elevated return rate as impulse purchases come back; do not read late
+      November softness as a structural downturn.
+
+  - chunkId: "event:2025_12_12_year_end_sale"
+    docType: "event"
+    table: "promotions"
+    tables: ["promotions", "orders"]
+    metricName: null
+    aliases: ["12.12", "Siêu Sale Cuối Năm", "year-end sale", "tháng 12 2025", "cuối năm"]
+    sensitivity: "public"
+    startDate: "2025-12-10"
+    endDate: "2025-12-15"
+    affectedRegions: ["Bắc", "Trung", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Siêu Sale Cuối Năm 12.12 năm 2025 (year-end sale), active 2025-12-10 to
+      2025-12-15 on all sales channels nationwide (Bắc, Trung, Nam). Final
+      promotional peak of the year; closes the holiday demand season before
+      the late-December lull. Useful as the year-over-year anchor for December
+      campaign reads and for explaining elevated December GMV followed by a
+      quiet final week of the month.
+
+  - chunkId: "event:2026_tet_binh_ngo"
+    docType: "event"
+    table: "orders"
+    tables: ["orders", "promotions"]
+    metricName: null
+    aliases: ["Tết Bính Ngọ", "Sắm Tết", "2026", "nghỉ Tết", "lunar new year", "Tet campaign", "shipping pause"]
+    sensitivity: "public"
+    startDate: "2026-02-10"
+    endDate: "2026-02-22"
+    affectedRegions: ["Bắc", "Trung", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Chiến dịch Sắm Tết và Nghỉ Tết Bính Ngọ 2026, from 2026-02-10 to
+      2026-02-22 across all regions (Bắc, Trung, Nam) and all sales channels.
+      The window has two phases: a pre-holiday Sắm Tết demand surge (gifting
+      and stock-up buying) followed by the Tet shipping pause when carriers
+      stop pickup. February 2026 order and revenue shapes are dominated by
+      this calendar: compare the surge phase against prior Tet surge phases,
+      and do not mistake the pause-phase dip for a demand problem.
+
+  - chunkId: "event:2026_06_mid_year_sale"
+    docType: "event"
+    table: "promotions"
+    tables: ["promotions", "orders"]
+    metricName: null
+    aliases: ["Siêu hội Giữa Năm", "6.6 sale", "mid-year sale", "tháng 6 2026", "giữa năm"]
+    sensitivity: "public"
+    startDate: "2026-06-01"
+    endDate: "2026-06-10"
+    affectedRegions: ["Bắc", "Trung", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Siêu hội Giữa Năm 6.6 năm 2026 (mid-year sale), active 2026-06-01 to
+      2026-06-10 on all sales channels nationwide (Bắc, Trung, Nam). Marks
+      the end of H1 2026 with a broad discount push; expect June order volume
+      to over-index versus the H1 baseline. June versus May comparisons must
+      separate this campaign lift from underlying trend, and H1-2026 totals
+      should be read with this closing peak in mind.
+
+  - chunkId: "event:2026_09_05_shopee_trung_housewares_pause"
+    docType: "event"
+    table: "orders"
+    tables: ["orders", "order_items", "products", "categories"]
+    metricName: null
+    aliases: ["Ngừng bán", "Đồ gia dụng", "housewares pause", "Shopee", "miền Trung", "kiểm định kho", "warehouse audit", "tháng 9 2026"]
+    sensitivity: "public"
+    startDate: "2026-09-05"
+    endDate: "2026-09-30"
+    affectedRegions: ["Trung"]
+    affectedChannels: ["shopee"]
+    content: >-
+      Ngừng bán ngành hàng Đồ gia dụng (housewares category) trên kênh Shopee
+      tại miền Trung (region_group 'Trung') từ 05/09/2026 đến 30/09/2026 để
+      kiểm định kho (warehouse audit). During the pause, Shopee orders from
+      the Trung region show zero housewares line revenue while other
+      categories and other channels are unaffected. September 2026 analyses of
+      the housewares category, of Shopee, or of the Trung region must exclude
+      or annotate this window before concluding a demand drop — the gap is an
+      operational assortment freeze, not customer behavior.
+
+  - chunkId: "event:2026_09_09_flash_sale"
+    docType: "event"
+    table: "promotions"
+    tables: ["promotions", "orders"]
+    metricName: null
+    aliases: ["flash sale", "Siêu sale 9.9", "09/09/2026", "TP.HCM", "miền Nam", "single day"]
+    sensitivity: "public"
+    startDate: "2026-09-09"
+    endDate: "2026-09-09"
+    affectedRegions: ["Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Siêu sale 9.9 ngày 09/09/2026: single-day flash sale on 2026-09-09 with
+      the spotlight program concentrated in TP.HCM and the Nam region across
+      all sales channels (Shopee, Lazada, TikTok Shop, Website, Cửa hàng).
+      Expect a one-day order spike skewed toward the South, then an immediate
+      reversion on 09/09+1. Daily September 2026 series must treat 09/09 as a
+      campaign outlier rather than a new baseline when projecting the rest of
+      the month.
+
+  - chunkId: "event:2026_09_10_danang_carrier_transition"
+    docType: "event"
+    table: "orders"
+    tables: ["orders", "sellers", "promotions"]
+    metricName: null
+    aliases: ["Đà Nẵng", "Da Nang", "chuyển đổi vận chuyển", "carrier transition", "đối tác vận chuyển", "trợ giá", "Điện gia dụng", "Lazada", "tháng 9 2026"]
+    sensitivity: "public"
+    startDate: "2026-09-10"
+    endDate: "2026-09-30"
+    affectedRegions: ["Đà Nẵng", "Nam"]
+    affectedChannels: ["shopee", "lazada", "tiktok", "website", "cuahang"]
+    content: >-
+      Operational transition starting 10/09/2026 through 30/09/2026 with two
+      parts. First, Đà Nẵng switches last-mile carrier partners from
+      10/09/2026, affecting fulfillment speed and freight cost on orders tied
+      to Đà Nẵng across all sales channels — expect delivery-status noise and
+      freight_vnd movement on that lane. Second, the Điện gia dụng
+      (home-appliance) subsidy program on Lazada in the Nam region ends on
+      15/09/2026, removing a price support that had lifted that
+      category-channel-region slice. Late-September 2026 reads for Đà Nẵng
+      logistics metrics and for Nam-region appliance sales on Lazada must
+      cite this transition before any demand-side conclusion.
