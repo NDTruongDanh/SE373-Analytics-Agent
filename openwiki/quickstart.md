@@ -5,7 +5,7 @@ description: Entry points, one-command setup, wiki commands, and routing links t
 tags: [quickstart, setup, analytics-agent, routing, openwiki]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
+    at: 2026-11-03T15:42:11.322Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -39,13 +39,15 @@ sources:
     resource: repo://packages/contracts/src/index.ts
   - id: openwiki-source-4c4499ad1e842a81b6f27cfc
     resource: repo://packages/contracts/src/tools.ts
+  - id: openwiki-source-38ea9620ad4a090cbdc31b69
+    resource: repo://packages/mcp-server/src/semantic/index.ts
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
   - id: openwiki-source-448c9d8aa919e800fae5eedb
     resource: repo://scripts/generate-interface.mjs
   - id: openwiki-source-a11884925ded039ec27120f5
     resource: repo://scripts/openwiki-fetch-patch.mjs
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-03T15:42:11.322Z" }
 ---
 
 # Quickstart task map
@@ -109,8 +111,9 @@ The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — t
 | `pnpm lint` | ESLint over the repo, including package import boundaries | `package.json:31` |
 | `pnpm test` | Type-check plus Vitest run over the workspace | `package.json:32` |
 | `pnpm docs:interface` | Regenerate `docs/mcp_interface.md` from frozen contract schemas | `package.json:33`, `scripts/generate-interface.mjs:1-2` |
+| `pnpm semantic:index` | Build or refresh the semantic retrieval index (`semantic.semantic_chunks`) | `package.json:34`, `packages/mcp-server/src/semantic/index.ts:1-7` |
 
-The full current script set is `package.json:13-33`: wiki entrypoints plus DB/data/eval entrypoints plus `typecheck`/`build`/`clean`/`check:workspace`/`lint`/`test`/`docs:interface`.
+The full current script set is `package.json:13-34`: wiki entrypoints plus DB/data/eval entrypoints plus `typecheck`/`build`/`clean`/`check:workspace`/`lint`/`test`/`docs:interface`/`semantic:index`.
 
 Every `wiki:*` script preloads [`scripts/openwiki-fetch-patch.mjs`](../scripts/openwiki-fetch-patch.mjs), which injects the mandatory `x-opencode-session` header (`ses_<32 hex>`) on `opencode.ai` requests (`README.md:78-85`, `scripts/openwiki-fetch-patch.mjs:22-24`). The session id is stable per process: an explicit `OPENWIKI_OPENCODE_SESSION_ID` override wins, otherwise a deterministic `repo|run_id|sha|job` hash in GitHub Actions or a random value locally, never overwriting an existing header (`scripts/openwiki-fetch-patch.mjs:44-70`, `.env.example:23-28`). The provider must stay on the Responses API (`OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API=true`) because the pinned model is Responses-only; `false` routes to `/chat/completions` and fails as `ModelProtocolUnsupported` (`README.md:71-77`, `.env.example:18-21`).
 
@@ -123,7 +126,7 @@ Scheduled CI ([`openwiki-update.yml`](../.github/workflows/openwiki-update.yml),
 | Path | Role |
 |---|---|
 | [`README.md`](../README.md) | Operator setup, harness eval flow, provider/session-header caveat |
-| [`package.json`](../package.json) | Scripts (`package.json:13-33`) and pinned `openwiki@0.7.2` dependency |
+| [`package.json`](../package.json) | Scripts (`package.json:13-34`) and pinned `openwiki@0.7.2` dependency |
 | [`docs/architecture.md`](../docs/architecture.md) | Harness architecture, package boundaries, shared contracts, per-UC code placement |
 | [`docs/prd.md`](../docs/prd.md) | Full product requirements (11 use cases, harness, evals) |
 | [`docs/mcp_interface.md`](../docs/mcp_interface.md) | Generated MCP tool interface; regenerate with `pnpm docs:interface` |
