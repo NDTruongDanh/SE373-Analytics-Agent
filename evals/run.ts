@@ -63,10 +63,13 @@ import {
   auditTailLines,
   gradeGatewayCase,
   gradeAuditLines,
+  sdkInvalidParamsObserved,
   validateGatewayRecord,
   type GatewayCase,
   type GatewayObserved,
 } from "./gateway.js";
+import { parseCountValue } from "../packages/data/src/guardOffProbe.js";
+import { probeAgentRoWriteRefused } from "../packages/data/src/guardOffProbe.js";
 
 export { gradeExecution } from "./exGrader.js";
 export { compareRuns } from "./regression.js";
@@ -903,21 +906,45 @@ async function driveGatewayCaseMcp(
   runId: string,
   token: string,
   role: string,
-): Promise<GatewayObserved> {
-  const result = await withTimeout(
-    callMcpTool(
-      { mcpUrl, token, runId, userId: role, roleScope: role },
-      c.tool,
-      c.params,
-    ),
-    GATEWAY_CASE_TIMEOUT_MS,
-    `eval: gateway case ${c.id} timed out after ${GATEWAY_CASE_TIMEOUT_MS}ms`,
-  );
-  return observedFromPayload(
-    JSON.parse(result.text) as unknown,
-    result.isError,
-    200,
-  );
+): Promise<{ observed: GatewayObserved; reachedGateway: boolean }> {
+  let result: { text: string; isError?: boolean };
+  try {
+    result = await withTimeout(
+      callMcpTool(
+        { mcpUrl, token, runId, userId: role, roleScope: role },
+        c.tool,
+        c.params,
+      ),
+      GATEWAY_CASE_TIMEOUT_MS,
+      `eval: gateway case ${c.id} timed out after ${GATEWAY_CASE_TIMEOUT_MS}ms`,
+    );
+  } catch (error) {
+    // SDK client-side input validation (-32602) fires before dispatch on
+    // malformed params: still a fail-closed INVALID_PARAMS denial, but no
+    // gateway request exists, so the suite expects zero audit lines.
+    const mapped =
+      error instanceof Error
+        ? sdkInvalidParamsObserved(error.message)
+        : undefined;
+    if (mapped === undefined) throw error;
+    return { observed: mapped, reachedGateway: false };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.text) as unknown;
+  } catch {
+    const mapped = sdkInvalidParamsObserved(result.text);
+    if (mapped === undefined) {
+      throw new Error(
+        `gateway case ${c.id} returned a non-JSON payload: ${result.text.slice(0, 200)}`,
+      );
+    }
+    return { observed: mapped, reachedGateway: false };
+  }
+  return {
+    observed: observedFromPayload(parsed, result.isError, 200),
+    reachedGateway: true,
+  };
 }
 
 /** Raw JSON-RPC probe asserting the HTTP 401 layer (no/bogus token). */
@@ -983,23 +1010,23 @@ async function mcpCountRows(
   );
   const parsed = JSON.parse(result.text) as Record<string, unknown>;
   const rows = parsed["rows"] as Array<Record<string, unknown>> | undefined;
-  const n = rows?.[0]?.["n"];
-  if (typeof n !== "number") {
+  const n = parseCountValue(rows?.[0]?.["n"]);
+  if (n === undefined) {
     throw new Error(`count probe on ${table} returned no numeric n`);
   }
   return n;
 }
 
 /**
- * Guard-off proof (D-03): NO server switch — connect directly as agent_ro
- * and attempt a bounded single-row DELETE. The role preflight plus
- * ROLLBACK-in-finally plus unchanged counts prove defense-in-depth.
+ * Guard-off proof (D-03): NO server switch — the direct agent_ro probe lives
+ * in packages/data (the pg exemption precedent) because bare "pg" does not
+ * resolve from unscoped eval code under pnpm isolation. The role preflight
+ * plus ROLLBACK-in-finally plus unchanged counts prove defense-in-depth.
  * Never run against owner/indexer URLs: role must read back agent_ro.
  */
 async function driveGatewayCaseDirectPg(
   c: GatewayCase,
 ): Promise<GatewayObserved> {
-  const { Client } = await import("pg");
   const url = process.env.AGENT_RO_DATABASE_URL ?? "";
   if (!url) {
     throw new Error(
@@ -1010,53 +1037,19 @@ async function driveGatewayCaseDirectPg(
     typeof c.expect.rowCountUnchanged === "string"
       ? c.expect.rowCountUnchanged
       : "orders";
-  if (!COUNT_TABLE_PATTERN.test(table)) {
-    throw new Error(`refusing to count untrusted table name '${table}'`);
-  }
-  const client = new Client({ connectionString: url });
-  await client.connect();
-  try {
-    const roleRows = (await client.query("SELECT current_user AS role"))
-      .rows as Array<{ role?: unknown }>;
-    if (roleRows[0]?.role !== "agent_ro") {
-      throw new Error(
-        `refusing direct-pg probe: connected as '${String(roleRows[0]?.role)}', expected agent_ro`,
-      );
-    }
-    const before = Number(
-      (await client.query(`SELECT COUNT(*) AS n FROM ${table}`)).rows[0].n,
-    );
-    await client.query("BEGIN");
-    let code: string | undefined;
-    let message = "";
-    try {
-      const sql =
-        typeof c.params["sql"] === "string" && c.params["sql"].length > 0
-          ? (c.params["sql"] as string)
-          : `DELETE FROM ${table} WHERE true`;
-      await client.query(sql);
-      message = "write unexpectedly succeeded";
-    } catch (error) {
-      code = (error as { code?: unknown }).code as string | undefined;
-      message =
-        error instanceof Error ? error.message.slice(0, 500) : String(error);
-    } finally {
-      await client.query("ROLLBACK");
-    }
-    const after = Number(
-      (await client.query(`SELECT COUNT(*) AS n FROM ${table}`)).rows[0].n,
-    );
-    return {
-      ok: code !== undefined && before === after,
-      httpStatus: 0,
-      code,
-      message,
-      rowCountBefore: before,
-      rowCountAfter: after,
-    };
-  } finally {
-    await client.end();
-  }
+  const sql =
+    typeof c.params["sql"] === "string" && c.params["sql"].length > 0
+      ? (c.params["sql"] as string)
+      : `DELETE FROM ${table} WHERE true`;
+  const probe = await probeAgentRoWriteRefused(url, table, sql);
+  return {
+    ok: probe.code !== undefined && probe.rowCountBefore === probe.rowCountAfter,
+    httpStatus: 0,
+    code: probe.code,
+    message: probe.message,
+    rowCountBefore: probe.rowCountBefore,
+    rowCountAfter: probe.rowCountAfter,
+  };
 }
 
 const BAD_DSN_PORT = 18081;
@@ -1184,7 +1177,8 @@ async function driveGatewayCase(
         `eval: gateway case ${c.id} count-before timed out`,
       );
     }
-    const observed = await driveGatewayCaseMcp(mcpUrl, c, runId, token, role);
+    const leg = await driveGatewayCaseMcp(mcpUrl, c, runId, token, role);
+    const observed = leg.observed;
     if (countTable !== undefined) {
       const rowCountAfter = await withTimeout(
         mcpCountRows(mcpUrl, token, role, runId, countTable),
@@ -1197,7 +1191,11 @@ async function driveGatewayCase(
         expectedAuditLines: 3,
       };
     }
-    return { observed, runId, expectedAuditLines: 1 };
+    return {
+      observed,
+      runId,
+      expectedAuditLines: leg.reachedGateway ? 1 : 0,
+    };
   };
   return withTimeout(
     work(),

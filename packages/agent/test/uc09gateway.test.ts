@@ -7,6 +7,7 @@ import {
   auditTailLines,
   gradeAuditLines,
   gradeGatewayCase,
+  sdkInvalidParamsObserved,
   validateGatewayRecord,
   type GatewayCase,
   type GatewayObserved,
@@ -615,5 +616,24 @@ describe("assertNoSecretsInMessage", () => {
     expect(assertNoSecretsInMessage(leaked).pass).toBe(false);
     expect(assertNoSecretsInMessage(leaked).pass).toBe(false);
     expect(assertNoSecretsInMessage("clean").pass).toBe(true);
+  });
+});
+describe("sdkInvalidParamsObserved", () => {
+  it("maps SDK client-side -32602 to a fail-closed INVALID_PARAMS denial", () => {
+    const observed = sdkInvalidParamsObserved(
+      "MCP error -32602: Input validation error: Invalid arguments for tool sample_rows",
+    );
+    expect(observed).toMatchObject({
+      ok: false,
+      code: "INVALID_PARAMS",
+      isError: true,
+    });
+  });
+
+  it("leaves non-validation shapes for the driver-error path", () => {
+    expect(sdkInvalidParamsObserved("MCP error -32600: bad request")).toBeUndefined();
+    expect(sdkInvalidParamsObserved("MCP error -32000: crashed")).toBeUndefined();
+    expect(sdkInvalidParamsObserved("plain failure")).toBeUndefined();
+    expect(sdkInvalidParamsObserved("")).toBeUndefined();
   });
 });

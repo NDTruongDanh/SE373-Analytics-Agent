@@ -46,6 +46,7 @@ import {
   type SessionFactory,
 } from "./executor.js";
 import { initAudit } from "./audit.js";
+import { sanitizeError } from "./errors.js";
 import { TOOL_SPECS } from "./tools.js";
 import { warmupSqlGuard } from "@shared/access-policy";
 import { hybridSearch, resetSemanticCache } from "./semantic/retriever.js";
@@ -346,5 +347,17 @@ if (
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const port = Number(process.env.MCP_PORT ?? 8081);
-  await startGatewayServer(port);
+  try {
+    await startGatewayServer(port);
+  } catch (error) {
+    // Boot failures (wrong-password DSN, unreachable DB) must not echo raw
+    // driver output: sanitize through the same choke point as tool errors so
+    // role names, paths, and stack frames never reach stderr (B.1 error-leak
+    // row asserts sanitized output). Fail-closed: non-zero exit, no healthz.
+    const clean = sanitizeError(error);
+    console.error(
+      `[mcp-gateway] failed to start: ${clean.code}: ${clean.message}`,
+    );
+    process.exit(1);
+  }
 }
