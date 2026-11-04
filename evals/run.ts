@@ -60,6 +60,7 @@ import {
   type SafetyCase,
 } from "./safety.js";
 import {
+  auditTailLines,
   gradeGatewayCase,
   gradeAuditLines,
   validateGatewayRecord,
@@ -1215,9 +1216,9 @@ export async function driveGatewaySuite(
     throw new Error("gateway fixture id 'uc09-audit' is reserved for the suite audit entry");
   }
   const auditPath = path.join(repoRoot, "logs", "mcp_audit.jsonl");
-  const beforeLines = existsSync(auditPath)
-    ? readFileSync(auditPath, "utf8").split("\n").length
-    : 0;
+  const auditBefore = existsSync(auditPath)
+    ? readFileSync(auditPath, "utf8")
+    : "";
   const graded: GradedCase[] = [];
   const auditWanted: Array<{ runId: string; expectedLines: number }> = [];
   for (const c of cases) {
@@ -1250,9 +1251,10 @@ export async function driveGatewaySuite(
   }
   // Suite-wide audit leg (B.1 Audit row): exactly one full redacted line
   // per gateway request, correlated by the per-case runIds.
-  const newLines = existsSync(auditPath)
-    ? readFileSync(auditPath, "utf8").split("\n").slice(beforeLines)
-    : [];
+  const newLines = auditTailLines(
+    auditBefore,
+    existsSync(auditPath) ? readFileSync(auditPath, "utf8") : "",
+  );
   const auditGrade = gradeAuditLines(
     newLines.filter((line) => line.trim() !== ""),
     auditWanted,

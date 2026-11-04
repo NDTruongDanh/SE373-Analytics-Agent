@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertNoSecretsInMessage,
+  auditTailLines,
   gradeAuditLines,
   gradeGatewayCase,
   validateGatewayRecord,
@@ -542,6 +543,30 @@ describe("gradeAuditLines", () => {
     );
     expect(graded.pass).toBe(false);
     expect(graded.reason).toMatch(/errorCode/);
+  });
+});
+describe("auditTailLines", () => {
+  it("keeps every appended line when the snapshot ends with a newline", () => {
+    const before = '{"a":1}\n{"b":2}\n';
+    const after = `${before}{"c":3}\n`;
+    expect(auditTailLines(before, after)).toEqual(['{"c":3}']);
+  });
+
+  it("keeps all appended lines across a multi-line append", () => {
+    const before = '{"a":1}\n';
+    const after = `${before}{"b":2}\n{"c":3}\n`;
+    expect(auditTailLines(before, after)).toEqual(['{"b":2}', '{"c":3}']);
+  });
+
+  it("drops the partial first line when the snapshot has no trailing newline", () => {
+    const before = '{"a":1}\n{"partial":tru';
+    const after = '{"a":1}\n{"partial":true}\n{"c":3}\n';
+    expect(auditTailLines(before, after)).toEqual(['{"c":3}']);
+  });
+
+  it("returns no lines when nothing was appended", () => {
+    const before = '{"a":1}\n';
+    expect(auditTailLines(before, before)).toEqual([]);
   });
 });
 describe("assertNoSecretsInMessage", () => {

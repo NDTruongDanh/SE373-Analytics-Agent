@@ -548,6 +548,26 @@ export interface AuditExpectation {
 }
 
 /**
+ * Slice the audit tail appended between two full-file snapshots. Byte-prefix
+ * slicing (not split/slice-by-count) because a trailing-newline file has
+ * split().length = lines+1, so a count snapshot silently drops the first
+ * appended line. If the before-snapshot cut mid-line (no trailing newline),
+ * the partial first line is dropped; if the file was rotated, the whole
+ * after-content is graded (fail-closed: unattributed lines are ignored,
+ * missing lines fail).
+ */
+export function auditTailLines(beforeRaw: string, afterRaw: string): string[] {
+  let tail = afterRaw.startsWith(beforeRaw)
+    ? afterRaw.slice(beforeRaw.length)
+    : afterRaw;
+  if (beforeRaw !== "" && !beforeRaw.endsWith("\n")) {
+    const newline = tail.indexOf("\n");
+    tail = newline === -1 ? "" : tail.slice(newline + 1);
+  }
+  return tail.split("\n").filter((line) => line.trim() !== "");
+}
+
+/**
  * Grade the audit tail for one gateway suite: every expected runId must
  * own exactly its call count of lines, every attributed line must carry
  * the full AuditRecord fields, and no attributed line may carry secret
