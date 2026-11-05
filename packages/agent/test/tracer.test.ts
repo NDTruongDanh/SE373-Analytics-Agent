@@ -193,15 +193,30 @@ describe("tracer agent", () => {
     expect((answerEvent.payload as { total: number }).total).toBe(50);
   });
 
-  it("writes a 7-event redacted trace validated by the contract", async () => {
+  it("writes an 8-event redacted trace validated by the contract", async () => {
     await runTracerGraph("How many orders do we have per status?", ctx("run-trace-1"));
     const raw = readFileSync(`${tracesDir}/run-trace-1.jsonl`, "utf8").trim().split("\n");
-    expect(raw).toHaveLength(7);
+    expect(raw).toHaveLength(8);
     for (const line of raw) {
       const parsed = TraceEventSchema.parse(JSON.parse(line));
       expect(parsed.runId).toBe("run-trace-1");
       expect(parsed.spanId).toBeDefined();
     }
+    // G1: the demo route reports its single model call; the keyless fake
+    // carries no provider usage, so counts are zero and pricing unknown.
+    const events = raw.map((line) => TraceEventSchema.parse(JSON.parse(line)));
+    const llmCalls = events.filter((event) => event.type === "llm_call");
+    expect(llmCalls).toHaveLength(1);
+    expect(llmCalls[0].node).toBe("understand");
+    expect(llmCalls[0].payload).toEqual({
+      model: "unknown",
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+      pricingKnown: false,
+    });
+    const runDone = events.find((event) => event.type === "run_done");
+    expect((runDone?.payload as { llmCalls?: number } | undefined)?.llmCalls).toBe(1);
   });
 
   it("masks raw seed PII in writer output", () => {

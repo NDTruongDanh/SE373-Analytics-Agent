@@ -16,7 +16,7 @@ import {
   modelFromMessage,
   usageFromMessage,
 } from "../telemetry/usage.js";
-import type { LlmUsage } from "../telemetry/usage.js";
+import type { InvokeUsageResult, LlmUsage } from "../telemetry/usage.js";
 import {
   SqlProposalSchema,
   type SqlProposal,
@@ -44,6 +44,11 @@ export {
 
 export interface TracerChatModel {
   proposeSql(question: string, opts?: { callbacks?: Callbacks }): Promise<SqlProposal>;
+  /** Same call as proposeSql, keeping provider token counts for llm_call (G1). */
+  proposeSqlWithUsage(
+    question: string,
+    opts?: { callbacks?: Callbacks },
+  ): Promise<InvokeUsageResult<SqlProposal>>;
 }
 
 /** The three model profiles (agent research Pattern 4). */
@@ -87,6 +92,13 @@ class ProfileTracerModel implements TracerChatModel {
   constructor(private readonly model: AnyChatModel) {}
 
   async proposeSql(question: string, opts?: { callbacks?: Callbacks }): Promise<SqlProposal> {
+    return (await this.proposeSqlWithUsage(question, opts)).parsed;
+  }
+
+  async proposeSqlWithUsage(
+    question: string,
+    opts?: { callbacks?: Callbacks },
+  ): Promise<InvokeUsageResult<SqlProposal>> {
     // Routed through the shared usage helper so includeRaw-capable models
     // keep working and fakes degrade to zero-usage instead of throwing.
     const out = await invokeWithUsage(this.model, SqlProposalSchema, question, {
@@ -94,7 +106,7 @@ class ProfileTracerModel implements TracerChatModel {
       callbacks: opts?.callbacks,
     });
     // Fail-closed: every proposal path goes through schema validation.
-    return SqlProposalSchema.parse(out.parsed);
+    return { ...out, parsed: SqlProposalSchema.parse(out.parsed) };
   }
 }
 

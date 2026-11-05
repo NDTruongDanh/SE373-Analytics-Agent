@@ -202,7 +202,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     // Trace proof: full redacted event log with tool spans in call order.
     const tracePath = `${tracesDir}/${runId}.jsonl`;
     const lines = readFileSync(tracePath, "utf8").trim().split("\n");
-    expect(lines.length).toBe(7);
+    expect(lines.length).toBe(8);
     const tools: string[] = [];
     for (const line of lines) {
       const event = JSON.parse(line) as {

@@ -322,8 +322,8 @@ async function main(): Promise<void> {
     fail(`trace file missing: ${tracePath}`);
   }
   const lines = readFileSync(tracePath, "utf8").trim().split("\n");
-  if (lines.length !== 7) {
-    fail(`trace has ${lines.length} events, expected 7`);
+  if (lines.length !== 8) {
+    fail(`trace has ${lines.length} events, expected 8`);
   }
   for (const line of lines) {
     const event = JSON.parse(line) as { spanId?: string; runId?: string };
@@ -370,7 +370,7 @@ async function main(): Promise<void> {
   console.log(`[demo:tracer] mcp ready: ${toolNames.length} tools (${toolNames.join(", ")})`);
   console.log(`[demo:tracer] tools called: list_tables -> run_query`);
   console.log(`[demo:tracer] answer: ok (${statusGroups} status groups, ${orderCount} orders)`);
-  console.log(`[demo:tracer] trace: ${tracePath} (7 events, PII clean)`);
+  console.log(`[demo:tracer] trace: ${tracePath} (8 events, PII clean)`);
   console.log(`[demo:tracer] PASS`);
 
   shuttingDown = true;

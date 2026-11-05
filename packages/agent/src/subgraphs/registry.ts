@@ -1,4 +1,5 @@
 import { createChatModel } from "../models/factory.js";
+import { estimateCostUsd } from "../telemetry/usage.js";
 import {
   callMcpTool,
   parseToolJson,
@@ -22,7 +23,7 @@ export { DEFAULT_ROUTE_ID } from "../constants.js";
 // for UC wiring. UC owners register handlers here — or in sibling files
 // beside this one that call registerUC() — and NEVER edit graph.ts.
 // The default route preserves the exact 01-01 tracer chain
-// (understand -> describe -> run -> answer, 7 trace events) so the 27/10
+// (understand -> describe -> run -> answer, 8 trace events incl. llm_call) so the 27/10
 // course-checkpoint demo keeps passing while real UC subgraphs land.
 
 // Default route id. Unknown ucIds fall through to this entry (see constants.ts).
@@ -116,7 +117,7 @@ function readTracerContext(rt: RootRuntime): TracerDefaultContext {
 /**
  * The tracer-compatible default entry, registered under DEFAULT_ROUTE_ID.
  * Runs the unchanged 01-01 chain — propose SQL, list_tables, run_query
- * (capped), deterministic answer — writing the same 7 trace events, so the
+ * (capped), deterministic answer — writing 8 trace events (incl. llm_call), so the
  * 27/10 demo path survives the skeleton expansion. Transport identity comes
  * from RunnableConfig.configurable (populated by the 01-14 host per D-11),
  * never from prompt text. No edits outside this file may change it.
@@ -152,7 +153,28 @@ export function createTracerDefaultEntry(): UcEntryHandler {
 
     const started = Date.now();
     const model = createChatModel();
-    const proposal = await model.proposeSql(state.question);
+    const out = await model.proposeSqlWithUsage(state.question, {
+      callbacks: rt.config.callbacks,
+    });
+    const proposal = out.parsed;
+    const llmDurationMs = Date.now() - started;
+    // G1: the demo route reports the same llm_call shape as the UC-01 path,
+    // so run_done totals carry real provider tokens; fakes record zeros.
+    const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
+      out.model,
+      out.inputTokens,
+      out.outputTokens,
+    );
+    trace("understand", "llm_call", llmDurationMs, {
+      payload: {
+        model: out.model ?? "unknown",
+        inputTokens: out.inputTokens,
+        outputTokens: out.outputTokens,
+        estimatedCostUsd,
+        pricingKnown,
+      },
+      attempt: 0,
+    });
     trace("understand", "node_done", Date.now() - started, {
       payload: { sql: proposal.sql, tablesUsed: proposal.tablesUsed },
       attempt: 0,
