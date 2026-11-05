@@ -38,8 +38,14 @@ const EXPECTED_TOOLS = [
   "search_semantic_layer",
 ];
 
+// Children spawned by this run; fail() stops them so a failed demo never
+// leaves an orphaned gateway/API holding the team ports for the next run.
+const children: ChildProcess[] = [];
+
 function fail(message: string): never {
   console.log(`[demo:tracer] FAIL: ${message}`);
+  shuttingDown = true;
+  for (const child of children) child.kill();
   process.exit(1);
 }
 
@@ -176,6 +182,7 @@ function startChild(name: string, script: string, env: Record<string, string>): 
     }
   });
   void stderr;
+  children.push(child);
   return child;
 }
 
@@ -202,6 +209,14 @@ async function main(): Promise<void> {
   }
 
   await waitFor("db", () => tcpReady("127.0.0.1", 5433, 1000), 90_000);
+
+  // A stale gateway/API on the team ports would answer the health checks
+  // below with old code; refuse instead of silently talking to it.
+  for (const [name, port] of [["mcp", MCP_PORT], ["api", API_PORT]] as const) {
+    if (await tcpReady("127.0.0.1", port, 1000)) {
+      fail(`port ${port} (${name}) is already in use — stop the process holding it, then re-run (do not change the port)`);
+    }
+  }
 
   // Scale-aware readiness without touching seed files: probe the loaded
   // volume through the pipeline (empty volume seeds small, loaded volume
