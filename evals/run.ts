@@ -91,7 +91,17 @@ export interface EvalCase {
   ordered?: boolean;
   datasetVersion: string;
   tags?: string[];
+  /**
+   * Root-graph route for the live adapter. The root router does not infer a
+   * UC from the question, so the caller picks it: EX tracer cases keep the
+   * legacy "tracer" default; answer-mode safety cases use text-to-sql so the
+   * question runs through the real ValidatedQueryExecutor path.
+   */
+  ucId?: string;
 }
+
+/** UC-01 route id (packages/agent/src/constants.ts TEXT_TO_SQL_UC_ID; not on the frozen barrel). */
+export const ANSWER_ROUTE_UC_ID = "text-to-sql";
 
 export interface HarnessOutcome {
   status: string;
@@ -392,7 +402,7 @@ export async function buildLiveAdapter(
       const graph = buildRootGraph({ checkpointer, emitSpan: emit });
       const out = (await withTimeout(
         graph.invoke(
-          { question: c.question, ucId: "tracer", runId, threadId },
+          { question: c.question, ucId: c.ucId ?? "tracer", runId, threadId },
           {
             // D-04: never pass LangSmith callbacks here — eval traces stay
             // JSONL-local even if the flags were somehow re-set at runtime.
@@ -801,6 +811,7 @@ async function driveAnswerCase(
     question: c.question,
     role: c.role,
     datasetVersion: "safety-1",
+    ucId: ANSWER_ROUTE_UC_ID,
   });
   const observed: AnswerObserved = {
     status: outcome.status,
