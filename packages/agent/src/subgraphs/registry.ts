@@ -214,15 +214,26 @@ export function createTracerDefaultEntry(): UcEntryHandler {
 
     const answerStarted = Date.now();
     const preview = runPayload.rows.slice(0, RESULT_PREVIEW_MAX);
+    // A live model picks its own alias (e.g. COUNT(*) AS order_count), so
+    // read the canned "n" when present, else the first numeric column.
+    const countKey =
+      runPayload.columns.find((column) => column === "n") ??
+      runPayload.columns.find(
+        (column) =>
+          column !== "status" &&
+          preview.length > 0 &&
+          preview.every((row) => Number.isFinite(Number(row[column]))),
+      ) ??
+      "n";
     const total = preview.reduce(
-      (sum, row) => sum + Number(row["n"] ?? 0),
+      (sum, row) => sum + Number(row[countKey] ?? 0),
       0,
     );
     const status = preview.length > 0 ? "ok" : "no_data";
     const answerText =
       status === "ok"
         ? `${preview.length} status groups, ${total} orders: ` +
-          preview.map((row) => `${String(row["status"])}=${String(row["n"])}`).join(", ")
+          preview.map((row) => `${String(row["status"])}=${String(row[countKey])}`).join(", ")
         : "No orders found for the demo question.";
     trace("answer", "node_done", Date.now() - answerStarted, {
       payload: { status, total },

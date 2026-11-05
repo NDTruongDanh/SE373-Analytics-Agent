@@ -95,12 +95,15 @@ describe("tracer agent", () => {
           runId: String(req.headers["x-run-id"] ?? ""),
           auth: String(req.headers["authorization"] ?? ""),
         });
+        const aliased = String(req.headers["x-run-id"]).includes("alias");
         const rows =
           tool === "list_tables"
             ? []
             : String(req.headers["x-run-id"]).includes("cap")
               ? sixtyRows()
-              : threeRows();
+              : aliased
+                ? threeRows().map(({ status, n }) => ({ status, order_count: n }))
+                : threeRows();
         const payload =
           tool === "list_tables"
             ? {
@@ -110,7 +113,7 @@ describe("tracer agent", () => {
                 ],
               }
             : {
-                columns: ["status", "n"],
+                columns: aliased ? ["status", "order_count"] : ["status", "n"],
                 rows,
                 rowCount: rows.length,
                 truncated: false,
@@ -191,6 +194,13 @@ describe("tracer agent", () => {
     // The stub returns 60 rows; the deterministic answer counts only the
     // capped preview, proving the 50-row cap without exposing state.
     expect((answerEvent.payload as { total: number }).total).toBe(50);
+  });
+
+  it("totals a live-model count alias instead of only the canned n column", async () => {
+    const out = await runTracerGraph("How many orders do we have per status?", ctx("run-alias-1"));
+    expect(out.status).toBe("ok");
+    expect(out.answerText).toContain("3 status groups, 12 orders");
+    expect(out.answerText).toContain("completed=7");
   });
 
   it("writes an 8-event redacted trace validated by the contract", async () => {
