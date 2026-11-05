@@ -35,6 +35,7 @@
     "@modelcontextprotocol/sdk": "catalog:",
     "@shared/access-policy": "workspace:*",
     "@shared/contracts": "workspace:*",
+    "langsmith": "0.11.1",
     "pino": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"

@@ -10,6 +10,27 @@ import type { SpanEmitter, SpanEvent } from "../state.js";
 import type { ExecutorSpan, SpanSink } from "../queryExecutor/executor.js";
 import type { RowScopeApplied } from "@shared/access-policy";
 
+// Phase 3 LangSmith export surface, re-exported here so hosts keep a
+// single `@shared/agent/telemetry` import (the package exports map points
+// that subpath at this module; the map itself stays untouched).
+export {
+  buildLangSmithRunConfig,
+  createLangSmithTracer,
+  flushLangSmith,
+  isLangSmithEnabled,
+  LANGSMITH_ENV_FLAGS,
+  LANGSMITH_PROJECT_DEFAULT,
+  piiSafeProcessor,
+  PiiSafeLangChainTracer,
+  resetLangSmithForTests,
+  scrubLangSmithEnv,
+  scrubSerialized,
+  type AnonymizerValues,
+  type CreateTracerOptions,
+  type LangSmithRunConfig,
+  type LangSmithRunMeta,
+} from "./langsmith.js";
+
 export interface SpanContext {
   runId: string;
   threadId: string;
