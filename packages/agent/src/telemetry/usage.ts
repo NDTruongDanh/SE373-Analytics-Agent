@@ -5,6 +5,7 @@
 // IS the parsed value with zero usage). Missing or malformed usage never
 // throws — the caller falls back to estimateTokens.
 import * as z from "zod";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { estimateCostUsd } from "./pricing.js";
 
 /** Minimal structured-output surface; satisfied by ChatModelLike and AnyChatModel. */
@@ -12,7 +13,7 @@ export interface StructuredModelLike<S extends z.ZodType> {
   withStructuredOutput(
     schema: S,
     opts?: { name?: string; includeRaw?: boolean },
-  ): { invoke(input: string): Promise<unknown> };
+  ): { invoke(input: string, config?: { callbacks?: Callbacks }): Promise<unknown> };
 }
 
 export interface LlmUsage {
@@ -90,17 +91,21 @@ function asRawParsed(
  * parsed value with zero counts and undefined model. The model position is
  * anchored to z.ZodType so S infers from the schema argument alone.
  * Schema violations still throw (fail-closed, same as the direct call it
- * replaces).
+ * replaces). The optional LangSmith callbacks ride the same tracer the
+ * graph.invoke site passed (suppression by handler name; duplicates fold
+ * to one handler in _configureSync), so model runs stay correlatable.
  */
 export async function invokeWithUsage<S extends z.ZodType>(
   model: StructuredModelLike<z.ZodType>,
   schema: S,
   input: string,
-  opts?: { name?: string },
+  opts?: { name?: string; callbacks?: Callbacks },
 ): Promise<InvokeUsageResult<z.infer<S>>> {
+  const { callbacks, ...structOpts } = opts ?? {};
+  const config = callbacks !== undefined ? { callbacks } : undefined;
   const out = await model
-    .withStructuredOutput(schema, { ...opts, includeRaw: true })
-    .invoke(input);
+    .withStructuredOutput(schema, { ...structOpts, includeRaw: true })
+    .invoke(input, config);
   const rawShape = asRawParsed(out);
   if (rawShape !== null) {
     return {

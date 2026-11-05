@@ -1,5 +1,6 @@
 import { dbToolError, type DbToolError } from "@shared/contracts";
 import * as z from "zod";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createChatModel } from "../models/factory.js";
 import {
   estimateCostUsd,
@@ -36,7 +37,9 @@ export interface IntentModelLike {
   withStructuredOutput(
     schema: typeof IntentProposalSchema,
     opts?: { name?: string; includeRaw?: boolean },
-  ): { invoke(input: string): Promise<IntentProposal> };
+  ): {
+    invoke(input: string, config?: { callbacks?: Callbacks }): Promise<IntentProposal>;
+  };
 }
 
 /** Narrow executor seam; text-to-SQL never opens a database connection directly. */
@@ -292,12 +295,13 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     const out = deps.intentModel
       ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, {
           name: "intent_proposal",
+          callbacks: rt.config.callbacks,
         })
       : await invokeWithUsage(
           createChatModel("intent"),
           IntentProposalSchema,
           prompt,
-          { name: "intent_proposal" },
+          { name: "intent_proposal", callbacks: rt.config.callbacks },
         );
     const intent = out.parsed;
     const intentDurationMs = Date.now() - intentStarted;
@@ -403,6 +407,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       candidateTables,
       principal: identity,
       budget,
+      callbacks: rt.config.callbacks,
     });
     const update = updateFromExecutor(result);
     const isOkLike = result.status === "ok" || result.status === "no_data";

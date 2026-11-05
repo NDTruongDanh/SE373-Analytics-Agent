@@ -9,6 +9,7 @@
 
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ChatOpenAI } from "@langchain/openai";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import * as z from "zod";
 import {
   invokeWithUsage,
@@ -42,7 +43,7 @@ export {
 } from "../constants.js";
 
 export interface TracerChatModel {
-  proposeSql(question: string): Promise<SqlProposal>;
+  proposeSql(question: string, opts?: { callbacks?: Callbacks }): Promise<SqlProposal>;
 }
 
 /** The three model profiles (agent research Pattern 4). */
@@ -85,11 +86,12 @@ function buildRealModel(profile: ModelProfile, override?: string): ChatOpenAI {
 class ProfileTracerModel implements TracerChatModel {
   constructor(private readonly model: AnyChatModel) {}
 
-  async proposeSql(question: string): Promise<SqlProposal> {
+  async proposeSql(question: string, opts?: { callbacks?: Callbacks }): Promise<SqlProposal> {
     // Routed through the shared usage helper so includeRaw-capable models
     // keep working and fakes degrade to zero-usage instead of throwing.
     const out = await invokeWithUsage(this.model, SqlProposalSchema, question, {
       name: "sql_proposal",
+      callbacks: opts?.callbacks,
     });
     // Fail-closed: every proposal path goes through schema validation.
     return SqlProposalSchema.parse(out.parsed);
@@ -136,7 +138,7 @@ export function createChatModel(
 export function withStructured<S extends z.ZodType>(
   model: AnyChatModel,
   schema: S,
-  opts?: { name?: string },
+  opts?: { name?: string; callbacks?: Callbacks },
 ): { invoke(input: string): Promise<z.infer<S>> } {
   return {
     invoke: async (input: string): Promise<z.infer<S>> => {
@@ -187,11 +189,12 @@ export interface SynthesisResult extends LlmUsage {
 export async function synthesize(
   rows: Record<string, unknown>[],
   question: string,
-  opts?: { model?: AnyChatModel },
+  opts?: { model?: AnyChatModel; callbacks?: Callbacks },
 ): Promise<SynthesisResult> {
   const model = opts?.model ?? createChatModel("synthesis");
   const started = Date.now();
-  const result = await model.invoke(buildSynthesisPrompt(rows, question));
+  const config = opts?.callbacks !== undefined ? { callbacks: opts.callbacks } : undefined;
+  const result = await model.invoke(buildSynthesisPrompt(rows, question), config);
   const content = result.content;
   return {
     text: typeof content === "string" ? content : JSON.stringify(content),

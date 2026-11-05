@@ -22,7 +22,12 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync } from "node:fs";
 import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
 import { buildRootGraph, runTracerGraph, type AgentState, type UcEntryHandler } from "@shared/agent";
-import { createSpanEmitter } from "@shared/agent/telemetry";
+import {
+  buildLangSmithRunConfig,
+  createLangSmithTracer,
+  createSpanEmitter,
+  flushLangSmith,
+} from "@shared/agent/telemetry";
 import { dbToolError, type DbToolError } from "@shared/contracts";
 import { createHostPorts, type HostPorts } from "./ports.js";
 import {
@@ -297,9 +302,29 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
     try {
       const { graph, emit } = buildGraph(run, runId);
+      // Optional LangSmith export (Phase 3, D-04): the tracer exists only
+      // when all three vars are set; its handler name suppresses the bare
+      // env auto-tracer. runId equals the JSONL runId for 1:1 correlation.
+      const tracer = createLangSmithTracer(env);
+      const ls = tracer
+        ? buildLangSmithRunConfig(tracer, {
+            runId,
+            threadId,
+            userId: principal.userId,
+            role: principal.role,
+            ucId: "",
+            maskedColumns: [],
+          })
+        : undefined;
       const out = (await graph.invoke(
         { question, ucId: "", runId, threadId },
-        { configurable: configurableFor(run, runId) },
+        {
+          runId,
+          callbacks: ls?.callbacks,
+          tags: ls?.tags,
+          metadata: ls?.metadata,
+          configurable: configurableFor(run, runId),
+        },
       )) as AgentState;
       if (interruptedOf(out)?.length) {
         emitSseEvent(res, "interrupt_waiting", {
@@ -327,6 +352,8 @@ export function buildApp(options: BuildAppOptions): express.Express {
         }),
       });
     } finally {
+      // Drain the LangSmith tail (no-op when tracing is off) before closing.
+      await flushLangSmith();
       res.end();
     }
   });
@@ -393,7 +420,24 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
     try {
       const { graph, emit } = buildGraph(stored, runId);
+      // Same LangSmith shape as ask (same runId + threadId metadata), so
+      // one logical run stays correlatable by threadId across the resume.
+      const tracer = createLangSmithTracer(env);
+      const ls = tracer
+        ? buildLangSmithRunConfig(tracer, {
+            runId,
+            threadId: stored.threadId,
+            userId: stored.userId,
+            role: stored.roleScope,
+            ucId: "",
+            maskedColumns: [],
+          })
+        : undefined;
       const out = (await graph.invoke(new Command({ resume: req.body["value"] }), {
+        runId,
+        callbacks: ls?.callbacks,
+        tags: ls?.tags,
+        metadata: ls?.metadata,
         configurable: configurableFor(stored, runId),
       })) as AgentState;
       if (interruptedOf(out)?.length) {
@@ -422,6 +466,8 @@ export function buildApp(options: BuildAppOptions): express.Express {
         }),
       });
     } finally {
+      // Drain the LangSmith tail (no-op when tracing is off) before closing.
+      await flushLangSmith();
       res.end();
     }
   });
@@ -691,4 +737,10 @@ if (
     console.log(`[api] listening on 127.0.0.1:${apiPort}`);
   });
   await new Promise<void>((resolve) => server.on("listening", resolve));
+  // Drain the LangSmith tail on shutdown (no-op when tracing is off).
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.once(signal, () => {
+      void flushLangSmith().finally(() => process.exit(0));
+    });
+  }
 }

@@ -30,6 +30,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildRootGraph } from "@shared/agent";
 import { createCheckpointer } from "@shared/agent/ports";
+import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
 // Relative source import, not the frozen root barrel: graph.test.ts pins the
 // barrel to the root surface only, so the eval-only HTTP caller resolves from
 // the agent source file (same module graph the agent tests use).
@@ -169,6 +170,20 @@ export function stubAdapter(c: EvalCase): Promise<HarnessOutcome> {
 // running gateway + loaded DB. No mcp-server/src imports here — the agent
 // root builder plus its ./ports checkpointer only (ESLint §5.2 graph).
 
+/**
+ * Eval environment guard (Phase 3, D-04): `pnpm eval` must NEVER export to
+ * LangSmith, even with the env set (gold questions and injection rows stay
+ * private). Deletes every tracing flag in-process before any graph is built
+ * and drops the live model key unless explicitly opted in. Called first in
+ * `buildLiveAdapter`, before any DB/gateway work.
+ */
+export function prepareEvalEnv(env: NodeJS.ProcessEnv = process.env): void {
+  scrubLangSmithEnv(env);
+  if (env["EVAL_USE_LIVE_MODEL"] !== "1") {
+    delete env["AGENT_MODEL_API_KEY"];
+  }
+}
+
 /** Role → bearer-token env var (D-11 registry; tokens stay in env only). */
 const ROLE_TOKEN_ENV: Record<string, string> = {
   sales_south: "MCP_TOKEN_SALES_SOUTH",
@@ -236,10 +251,16 @@ export interface LiveHandle {
  * never hangs.
  */
 export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
-  process.loadEnvFile?.();
-  if (process.env.EVAL_USE_LIVE_MODEL !== "1") {
-    delete process.env.AGENT_MODEL_API_KEY;
+  try {
+    process.loadEnvFile?.();
+  } catch {
+    // No .env in cwd (unit tests, CI runners) — fall through to the
+    // explicit env checks below, which fail with clear messages.
   }
+  // D-04 first: scrub every tracing flag before any graph exists, so eval
+  // can never export even with the env set. Never pass callbacks here —
+  // the adapter below invokes bare on purpose (JSONL traces only).
+  prepareEvalEnv();
 
   const agentRoUrl = process.env.AGENT_RO_DATABASE_URL ?? "";
   if (!agentRoUrl) {
@@ -318,6 +339,8 @@ export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
         graph.invoke(
           { question: c.question, ucId: "tracer", runId, threadId },
           {
+            // D-04: never pass LangSmith callbacks here — eval traces stay
+            // JSONL-local even if the flags were somehow re-set at runtime.
             configurable: {
               thread_id: threadId,
               mcpUrl,

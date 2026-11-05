@@ -21,6 +21,7 @@ import {
   type SchemaCatalog,
 } from "@shared/contracts";
 import { sqlGuard, RowScopeAppliedSchema } from "@shared/access-policy";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import type { RowScopeApplied } from "@shared/access-policy";
 import * as z from "zod";
 import {
@@ -62,7 +63,7 @@ export interface ChatModelLike {
     schema: typeof SqlProposalSchema,
     opts?: { name?: string; includeRaw?: boolean },
   ): {
-    invoke(input: string): Promise<SqlProposal>;
+    invoke(input: string, config?: { callbacks?: Callbacks }): Promise<SqlProposal>;
   };
 }
 
@@ -103,6 +104,12 @@ export interface ExecutorRunInput {
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
   principal: ExecutorPrincipal;
+  /**
+   * LangSmith callbacks from the enclosing graph run (same tracer object
+   * the graph.invoke site passed). Optional: absent in unit/eval drivers,
+   * which stay untraced by construction.
+   */
+  callbacks?: Callbacks;
   /**
    * Authoritative catalog override for the pre-check (e.g. large flags the
    * describe output cannot carry). When absent, the catalog is built from
@@ -396,6 +403,7 @@ export class ValidatedQueryExecutor {
         try {
           const out = await invokeWithUsage(this.model, SqlProposalSchema, prompt, {
             name: "sql_proposal",
+            callbacks: input.callbacks,
           });
           proposal = out.parsed;
           usage = { inputTokens: out.inputTokens, outputTokens: out.outputTokens };
