@@ -31,6 +31,22 @@ export {
   type LangSmithRunMeta,
 } from "./langsmith.js";
 
+// Phase 3 G4 trace viewer model, re-exported here so viewers and future
+// web code share one `@shared/agent/telemetry` import (the package exports
+// map points that subpath at this module; the map itself stays untouched).
+export {
+  buildTraceTree,
+  deriveSummary,
+  joinAudits,
+  nestEvents,
+  type TraceApprovals,
+  type TraceSummary,
+  type TraceTree,
+  type TreeAuditLine,
+  type TreeInputEvent,
+  type TreeNode,
+} from "./traceTree.js";
+
 export interface SpanContext {
   runId: string;
   threadId: string;
