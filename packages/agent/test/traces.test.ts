@@ -124,4 +124,65 @@ describe("TraceWriter", () => {
       expect(parsed.spanId).toBeDefined();
     }
   });
+
+  it("carries the full G1/G5 event set contract-valid in one run file", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "traces-complete-"));
+    const runId = "run-complete-1";
+    appendTraceEvent(
+      {
+        ...baseEvent(runId),
+        node: "propose",
+        type: "llm_call",
+        payload: {
+          model: "openai/gpt-oss-120b",
+          inputTokens: 100,
+          outputTokens: 50,
+          estimatedCostUsd: 0.00045,
+          pricingKnown: true,
+        },
+      },
+      dir,
+    );
+    appendTraceEvent(
+      {
+        ...baseEvent(runId),
+        node: "run",
+        type: "tool_call",
+        payload: {
+          tool: "run_query",
+          rowCount: 2,
+          maskedColumns: ["customers.phone"],
+          rowScopeApplied: [{ table: "sellers", column: "region_group" }],
+        },
+      },
+      dir,
+    );
+    appendTraceEvent(
+      { ...baseEvent(runId), node: "propose", type: "node_done" },
+      dir,
+    );
+    const lines = readFileSync(path.join(dir, `${runId}.jsonl`), "utf8")
+      .trim()
+      .split("\n");
+    expect(lines).toHaveLength(3);
+    const events = lines.map((line) =>
+      TraceEventSchema.parse(JSON.parse(line)),
+    );
+    const llmCall = events.find((event) => event.type === "llm_call");
+    expect(llmCall?.payload).toMatchObject({
+      model: "openai/gpt-oss-120b",
+      inputTokens: 100,
+      outputTokens: 50,
+      pricingKnown: true,
+    });
+    const toolCall = events.find(
+      (event) =>
+        event.type === "tool_call" &&
+        (event.payload as { tool?: string })?.tool === "run_query",
+    );
+    expect(toolCall?.payload).toMatchObject({
+      maskedColumns: ["customers.phone"],
+      rowScopeApplied: [{ table: "sellers", column: "region_group" }],
+    });
+  });
 });
