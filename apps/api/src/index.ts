@@ -300,8 +300,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
     res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
 
+    let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
-      const { graph, emit } = buildGraph(run, runId);
+      const built = buildGraph(run, runId);
+      emit = built.emit;
+      const graph = built.graph;
       // Optional LangSmith export (Phase 3, D-04): the tracer exists only
       // when all three vars are set; its handler name suppresses the bare
       // env auto-tracer. runId equals the JSONL runId for 1:1 correlation.
@@ -338,8 +341,9 @@ export function buildApp(options: BuildAppOptions): express.Express {
         return;
       }
       streamCompletion(res, runId, threadId, out);
-      emit({ node: "answer", type: "run_done", durationMs: 0, attempt: 0 });
+      emit.emitRunDone(out.status);
     } catch (error) {
+      emit?.emitRunDone("error");
       emitSseEvent(res, "failed", {
         runId,
         threadId,
@@ -418,8 +422,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
     res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
 
+    let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
-      const { graph, emit } = buildGraph(stored, runId);
+      const built = buildGraph(stored, runId);
+      emit = built.emit;
+      const graph = built.graph;
       // Same LangSmith shape as ask (same runId + threadId metadata), so
       // one logical run stays correlatable by threadId across the resume.
       const tracer = createLangSmithTracer(env);
@@ -452,8 +459,9 @@ export function buildApp(options: BuildAppOptions): express.Express {
         return;
       }
       streamCompletion(res, runId, stored.threadId, out);
-      emit({ node: "answer", type: "run_done", durationMs: 0, attempt: 0 });
+      emit.emitRunDone(out.status);
     } catch (error) {
+      emit?.emitRunDone("error");
       emitSseEvent(res, "failed", {
         runId,
         threadId: stored.threadId,

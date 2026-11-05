@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import { TraceEventSchema } from "@shared/contracts";
 import { MASKED_EMAIL, MASKED_PHONE } from "@shared/access-policy";
 import { appendTraceEvent } from "../src/traces/writer.js";
+import { buildRootGraph } from "../src/graph.js";
+import { TEXT_TO_SQL_UC_ID } from "../src/constants.js";
+import { ValidatedQueryExecutor } from "../src/queryExecutor/executor.js";
+import { createSpanEmitter } from "../src/telemetry/spans.js";
 
 // TraceWriter suite: span linkage survives the round trip, every
 // research-listed phone/email shape comes back marker-only with source
@@ -184,5 +188,297 @@ describe("TraceWriter", () => {
       maskedColumns: ["customers.phone"],
       rowScopeApplied: [{ table: "sellers", column: "region_group" }],
     });
+  });
+});
+
+const E2E_COLUMNS = [
+  { name: "id", type: "integer", nullable: false, sensitive: false },
+  { name: "status", type: "text", nullable: true, sensitive: false },
+  { name: "total", type: "numeric", nullable: true, sensitive: false },
+];
+
+const E2E_SQL =
+  "SELECT status, COUNT(*) AS n FROM orders GROUP BY status ORDER BY status";
+
+function countedPayload(
+  events: { type?: unknown; node?: unknown; payload?: unknown }[],
+): {
+  llmCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+  toolCalls: number;
+  sqlAttempts: number;
+  sqlFailures: number;
+} {
+  const sums = {
+    llmCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsd: 0,
+    toolCalls: 0,
+    sqlAttempts: 0,
+    sqlFailures: 0,
+  };
+  for (const event of bodyOf(events)) {
+    const payload =
+      typeof event.payload === "object" && event.payload !== null
+        ? (event.payload as Record<string, unknown>)
+        : {};
+    if (event.type === "llm_call") {
+      sums.llmCalls += 1;
+      if (typeof payload["inputTokens"] === "number") {
+        sums.inputTokens += payload["inputTokens"] as number;
+      }
+      if (typeof payload["outputTokens"] === "number") {
+        sums.outputTokens += payload["outputTokens"] as number;
+      }
+      if (typeof payload["estimatedCostUsd"] === "number") {
+        sums.estimatedCostUsd += payload["estimatedCostUsd"] as number;
+      }
+    } else if (event.type === "tool_call") {
+      sums.toolCalls += 1;
+      if (payload["tool"] === "run_query") sums.sqlAttempts += 1;
+    } else if (event.type === "node_done" && event.node === "repair") {
+      sums.sqlFailures += 1;
+    }
+  }
+  return sums;
+}
+
+function bodyOf<T>(events: T[]): T[] {
+  return events.filter(
+    (event) => (event as { type?: unknown }).type !== "run_done",
+  );
+}
+
+// Phase-3 G3 run lifecycle: one finished run writes exactly one run_done
+// whose totals reconcile with the run file, under the real principal.
+describe("run_done totals", () => {
+  it("accumulates llm, tool, repair, and cost signals into one snapshot", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "traces-totals-"));
+    const emit = createSpanEmitter({
+      runId: "run-totals-1",
+      threadId: "thread-totals-1",
+      userId: "user-totals-1",
+      role: "marketing",
+      tracesDir: dir,
+    });
+    emit.emitLlmCall("propose", {
+      model: "openai/gpt-oss-120b",
+      inputTokens: 100,
+      outputTokens: 50,
+      estimatedCostUsd: 0.00045,
+      pricingKnown: true,
+      durationMs: 5,
+      attempt: 1,
+    });
+    emit.emitLlmCall("understand", {
+      model: "openai/gpt-oss-120b",
+      inputTokens: 10,
+      outputTokens: 5,
+      estimatedCostUsd: 0.00002,
+      pricingKnown: true,
+    });
+    emit.emitToolCall("run", "run_query", { rowCount: 2 });
+    emit.emitToolCall("describe", "describe_table", {});
+    emit({
+      node: "repair",
+      type: "node_done",
+      durationMs: 1,
+      payload: { code: "SYNTAX_ERROR", nextAttempt: 2 },
+      attempt: 1,
+    });
+    expect(emit.totals()).toMatchObject({
+      llmCalls: 2,
+      inputTokens: 110,
+      outputTokens: 55,
+      toolCalls: 2,
+      sqlAttempts: 1,
+      sqlFailures: 1,
+    });
+    expect(emit.totals().estimatedCostUsd).toBeCloseTo(0.00047, 9);
+    // Snapshots are copies: mutating the return never moves the roll-up.
+    const snap = emit.totals();
+    snap.llmCalls = 999;
+    expect(emit.totals().llmCalls).toBe(2);
+
+    emit.emitRunDone("ok");
+    const lines = readFileSync(
+      path.join(dir, "run-totals-1.jsonl"),
+      "utf8",
+    )
+      .trim()
+      .split("\n");
+    expect(lines).toHaveLength(6);
+    const events = lines.map((line) =>
+      TraceEventSchema.parse(JSON.parse(line)),
+    );
+    const done = events.filter((event) => event.type === "run_done");
+    expect(done).toHaveLength(1);
+    expect(done[0].payload).toMatchObject({
+      status: "ok",
+      llmCalls: 2,
+      inputTokens: 110,
+      outputTokens: 55,
+      toolCalls: 2,
+      sqlAttempts: 1,
+      sqlFailures: 1,
+    });
+    expect(
+      (done[0].payload as { estimatedCostUsd?: number }).estimatedCostUsd,
+    ).toBeCloseTo(0.00047, 9);
+    // The run_done event itself never perturbs the counters.
+    expect(emit.totals().llmCalls).toBe(2);
+    expect(emit.totals().toolCalls).toBe(2);
+  });
+
+  it("writes exactly one reconciling run_done on the text-to-sql ask path", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "traces-rundone-"));
+    const runId = "run-rundone-1";
+    const threadId = "thread-rundone-1";
+    const emit = createSpanEmitter({
+      runId,
+      threadId,
+      userId: "user-rundone-1",
+      role: "hr",
+      tracesDir: dir,
+    });
+    const executor = new ValidatedQueryExecutor({
+      model: {
+        withStructuredOutput: () => ({
+          invoke: async () => ({
+            sql: E2E_SQL,
+            tablesUsed: ["orders"],
+          }),
+        }),
+      },
+      mcp: {
+        call: async (tool: string) => {
+          if (tool === "describe_table") {
+            return {
+              table: "orders",
+              columns: E2E_COLUMNS,
+              primaryKey: ["id"],
+              foreignKeys: [],
+            };
+          }
+          if (tool === "explain_query") {
+            return { estimatedCost: 12.5, estimatedRows: 4 };
+          }
+          if (tool === "run_query") {
+            return {
+              columns: ["status", "n"],
+              rows: [{ status: "completed", n: 7 }],
+              rowCount: 1,
+              truncated: false,
+              maskedColumns: [],
+              durationMs: 1,
+            };
+          }
+          throw new Error(`unexpected tool ${tool}`);
+        },
+      },
+      // Same forwarding the entry installs for internally built executors:
+      // executor spans ride the run emitter so the roll-up sees them.
+      emitSpan: (event) =>
+        emit({
+          node: event.node,
+          type: event.type,
+          durationMs: event.durationMs ?? 0,
+          payload: event.payload,
+          attempt: event.attempt,
+        }),
+    });
+    const graph = buildRootGraph({
+      emitSpan: emit,
+      textToSql: {
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => ({
+              metric: "order_count",
+              dimensions: ["status"],
+              filters: [],
+              timeRange: null,
+              requestedMetrics: ["order_count"],
+              schemaEntities: ["orders"],
+              queryMode: "standard_query" as const,
+            }),
+          }),
+        },
+        executor,
+      },
+    });
+    const out = await graph.invoke(
+      {
+        question: "How many orders per status?",
+        ucId: TEXT_TO_SQL_UC_ID,
+        runId,
+        threadId,
+      },
+      {
+        configurable: {
+          thread_id: threadId,
+          threadId,
+          runId,
+          userId: "user-rundone-1",
+          roleScope: "hr",
+          mcpUrl: "http://127.0.0.1:1/mcp",
+          token: "stub-token",
+          tracesDir: dir,
+        },
+      },
+    );
+    expect(out.status).toBe("ok");
+    emit.emitRunDone(out.status);
+
+    const content = readFileSync(path.join(dir, `${runId}.jsonl`), "utf8");
+    const events = content
+      .trim()
+      .split("\n")
+      .map((line) => TraceEventSchema.parse(JSON.parse(line)));
+    const done = events.filter((event) => event.type === "run_done");
+    expect(done).toHaveLength(1);
+    const expected = countedPayload(
+      events as { type?: unknown; node?: unknown; payload?: unknown }[],
+    );
+    expect(done[0].payload).toMatchObject({
+      status: "ok",
+      llmCalls: expected.llmCalls,
+      inputTokens: expected.inputTokens,
+      outputTokens: expected.outputTokens,
+      toolCalls: expected.toolCalls,
+      sqlAttempts: expected.sqlAttempts,
+      sqlFailures: expected.sqlFailures,
+    });
+    expect(
+      (done[0].payload as { estimatedCostUsd?: number }).estimatedCostUsd,
+    ).toBeCloseTo(expected.estimatedCostUsd, 9);
+    // Scripted-model path: understand + propose llm calls, describe +
+    // explain + run tool calls, one successful SQL attempt, no repairs.
+    expect(expected).toMatchObject({
+      llmCalls: 2,
+      toolCalls: 3,
+      sqlAttempts: 1,
+      sqlFailures: 0,
+    });
+    // The real principal stamps every event; no hard-coded literal remains.
+    for (const event of events) {
+      expect(event.role).toBe("hr");
+    }
+    expect(content).not.toContain("sales_south");
+  });
+
+  it("keeps hard-coded role literals out of every emit path", () => {
+    const graphSrc = readFileSync(
+      new URL("../src/graph.ts", import.meta.url),
+      "utf8",
+    );
+    const registrySrc = readFileSync(
+      new URL("../src/subgraphs/registry.ts", import.meta.url),
+      "utf8",
+    );
+    expect(graphSrc).not.toContain('role: "sales_south"');
+    expect(registrySrc).not.toContain('role: "sales_south"');
   });
 });

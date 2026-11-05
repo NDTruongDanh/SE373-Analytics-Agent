@@ -45,6 +45,17 @@ export type IncomingSpan = SpanEvent | ExecutorSpan;
 /** Child emitter bound to one parent span id by span(). */
 export type ChildEmit = (event: IncomingSpan) => string;
 
+/** Per-run roll-up for the terminal run_done span (Phase 3 G3). */
+export interface RunTotals {
+  llmCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+  toolCalls: number;
+  sqlAttempts: number;
+  sqlFailures: number;
+}
+
 export interface AgentSpanEmitter extends SpanEmitter, SpanSink {
   /**
    * Run fn between a start and an end event, handing it a child emitter
@@ -86,13 +97,81 @@ export interface AgentSpanEmitter extends SpanEmitter, SpanSink {
       attempt?: number;
     },
   ): string;
+  /**
+   * Snapshot of the per-run roll-up so far (a copy, never live state).
+   */
+  totals(): RunTotals;
+  /**
+   * Write the terminal run_done span carrying status plus the roll-up.
+   * The run_done event itself never perturbs the counters.
+   */
+  emitRunDone(
+    status: string,
+    opts?: { parentSpanId?: string; attempt?: number },
+  ): string;
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asPayloadRecord(event: IncomingSpan): Record<string, unknown> {
+  return typeof event.payload === "object" && event.payload !== null
+    ? (event.payload as Record<string, unknown>)
+    : {};
+}
+
+/**
+ * Fold one event into the per-run roll-up, inside the existing emit paths
+ * so every host that shares the emitter gets consistent totals. An
+ * llm_call contributes its call plus token/cost sums; every tool_call
+ * contributes a tool call, and run_query ones additionally count as SQL
+ * attempts; each repair node_done follows a failed SQL attempt (guard or
+ * gate denial, TIMEOUT simplification, repairable MCP error routed to
+ * retry), so it counts as a SQL failure.
+ */
+function observeTotals(totals: RunTotals, event: IncomingSpan): void {
+  if (event.type === "llm_call") {
+    totals.llmCalls += 1;
+    const payload = asPayloadRecord(event);
+    const input = asFiniteNumber(payload["inputTokens"]);
+    const output = asFiniteNumber(payload["outputTokens"]);
+    const cost = asFiniteNumber(payload["estimatedCostUsd"]);
+    if (input !== null) totals.inputTokens += Math.max(0, Math.floor(input));
+    if (output !== null) totals.outputTokens += Math.max(0, Math.floor(output));
+    if (cost !== null) totals.estimatedCostUsd += Math.max(0, cost);
+    return;
+  }
+  if (event.type === "tool_call") {
+    totals.toolCalls += 1;
+    if (asPayloadRecord(event)["tool"] === "run_query") {
+      totals.sqlAttempts += 1;
+    }
+    return;
+  }
+  if (event.type === "node_done" && event.node === "repair") {
+    totals.sqlFailures += 1;
+  }
 }
 
 export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
   const tracesDir = ctx.tracesDir ?? "traces";
+  // Per-run instance state (mirroring the runs map discipline in
+  // apps/api): one emitter per run, never module globals, so concurrent
+  // runs cannot cross-talk.
+  const totals: RunTotals = {
+    llmCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsd: 0,
+    toolCalls: 0,
+    sqlAttempts: 0,
+    sqlFailures: 0,
+  };
 
-  const base = (event: IncomingSpan): string =>
-    appendTraceEvent(
+  const base = (event: IncomingSpan): string => {
+    observeTotals(totals, event);
+    return appendTraceEvent(
       {
         runId: ctx.runId,
         threadId: ctx.threadId,
@@ -107,6 +186,7 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
       },
       tracesDir,
     ).spanId;
+  };
 
   const emitter = base as AgentSpanEmitter;
 
@@ -167,6 +247,21 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
       type: "skill_call",
       durationMs: 0,
       payload: { skill },
+      parentSpanId: opts.parentSpanId,
+      attempt: opts.attempt,
+    });
+
+  emitter.totals = (): RunTotals => ({ ...totals });
+
+  emitter.emitRunDone = (
+    status: string,
+    opts: { parentSpanId?: string; attempt?: number } = {},
+  ): string =>
+    base({
+      node: "answer",
+      type: "run_done",
+      durationMs: 0,
+      payload: { status, ...totals },
       parentSpanId: opts.parentSpanId,
       attempt: opts.attempt,
     });

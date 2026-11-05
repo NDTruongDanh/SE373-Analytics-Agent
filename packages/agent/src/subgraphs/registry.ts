@@ -4,7 +4,10 @@ import {
   parseToolJson,
   type TracerRunConfig,
 } from "../mcpClient.js";
-import { writeTraceEvent } from "../traces/writer.js";
+import {
+  createSpanEmitter,
+  type AgentSpanEmitter,
+} from "../telemetry/spans.js";
 import {
   type AgentState,
   type AgentUpdate,
@@ -49,6 +52,28 @@ export function listUcIds(): string[] {
 export interface TracerDefaultContext extends TracerRunConfig {
   threadId: string;
   tracesDir: string;
+}
+
+/**
+ * Per-run emitter for the default route (Phase 3 G3). The frozen root
+ * builder (graph.ts) cannot import telemetry directly (UC-01 seam-only
+ * import boundary), so the factory lives here beside the entry that
+ * consumes it. Identity comes from the host context: the emitter stamps
+ * the real run principal on every event. Noted for UC-01 owner
+ * (nguyenhun11): registry entry events now flow through rt.emit instead
+ * of writing directly, so per-run totals accumulate; the on-disk event
+ * set is unchanged.
+ */
+export function createTracerRunEmitter(
+  ctx: TracerDefaultContext,
+): AgentSpanEmitter {
+  return createSpanEmitter({
+    runId: ctx.runId,
+    threadId: ctx.threadId,
+    userId: ctx.userId,
+    role: ctx.roleScope,
+    tracesDir: ctx.tracesDir,
+  });
 }
 
 interface ListTablesPayload {
@@ -99,25 +124,23 @@ function readTracerContext(rt: RootRuntime): TracerDefaultContext {
 export function createTracerDefaultEntry(): UcEntryHandler {
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     const ctx = readTracerContext(rt);
+    // All default-route events flow through the run emitter: identical
+    // on-disk shape to the former direct writes, but the real principal
+    // comes from the emitter context and every event feeds the G3 roll-up.
     const trace = (
       node: string,
       type: string,
       durationMs: number,
       extra: { payload?: unknown; parentSpanId?: string; attempt?: number } = {},
     ): string =>
-      writeTraceEvent(
-        {
-          runId: ctx.runId,
-          threadId: ctx.threadId,
-          userId: ctx.userId,
-          role: "sales_south",
-          node,
-          type,
-          durationMs,
-          ...extra,
-        },
-        ctx.tracesDir,
-      );
+      rt.emit({
+        node,
+        type,
+        durationMs,
+        payload: extra.payload,
+        parentSpanId: extra.parentSpanId,
+        attempt: extra.attempt,
+      });
 
     const toolConfig = {
       mcpUrl: ctx.mcpUrl,
