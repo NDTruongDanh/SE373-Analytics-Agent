@@ -36,6 +36,7 @@
     "@shared/access-policy": "workspace:*",
     "@shared/contracts": "workspace:*",
     "pino": "catalog:",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

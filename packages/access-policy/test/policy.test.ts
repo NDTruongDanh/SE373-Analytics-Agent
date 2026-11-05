@@ -406,7 +406,7 @@ describe("ColumnScopePolicy.check", () => {
       catalog: fixtureCatalog,
       principal: SENSITIVE_READER,
     });
-    expect(result).toEqual({ allowed: true, sql, maskedColumns: [] });
+    expect(result).toEqual({ allowed: true, sql, maskedColumns: [], rowScopeApplied: [] });
   });
 
   it("denies sensitive refs in WHERE without data:sensitive", async () => {
@@ -472,6 +472,12 @@ describe("ColumnScopePolicy.check", () => {
     if (!result.allowed) return;
     expect(result.sql).toContain("c.region = 'Nam'");
     expect(result.sql).toContain("s.region = 'Nam'");
+    // Server-minted scope record: table/column only, never the scoped value.
+    expect(result.rowScopeApplied).toEqual([
+      { table: "customers", column: "region" },
+      { table: "sellers", column: "region" },
+    ]);
+    expect(JSON.stringify(result.rowScopeApplied)).not.toContain("Nam");
     const reguard = await sqlGuard(result.sql, fixtureCatalog);
     expect(reguard.ok).toBe(true);
   });

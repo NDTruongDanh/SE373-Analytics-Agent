@@ -20,7 +20,8 @@ import {
   type ErrorCode,
   type SchemaCatalog,
 } from "@shared/contracts";
-import { sqlGuard } from "@shared/access-policy";
+import { sqlGuard, RowScopeAppliedSchema } from "@shared/access-policy";
+import type { RowScopeApplied } from "@shared/access-policy";
 import * as z from "zod";
 import {
   checkBudget,
@@ -30,6 +31,11 @@ import {
   type BudgetState,
   type BudgetTripReason,
 } from "./budgets.js";
+import {
+  estimateCostUsd,
+  invokeWithUsage,
+  type LlmUsage,
+} from "../telemetry/usage.js";
 import {
   clampLimit,
   hasWhereFilter,
@@ -54,7 +60,7 @@ export type SqlProposal = z.infer<typeof SqlProposalSchema>;
 export interface ChatModelLike {
   withStructuredOutput(
     schema: typeof SqlProposalSchema,
-    opts?: { name?: string },
+    opts?: { name?: string; includeRaw?: boolean },
   ): {
     invoke(input: string): Promise<SqlProposal>;
   };
@@ -381,14 +387,19 @@ export class ValidatedQueryExecutor {
         if (check.tripped) return budgetTrip(check.reason, attempt);
         const proposalStarted = Date.now();
         let proposal: SqlProposal;
+        let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+        let usageModel: string | undefined;
         const prompt =
           repairFeedback === null
             ? input.question
             : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
         try {
-          proposal = await this.model
-            .withStructuredOutput(SqlProposalSchema, { name: "sql_proposal" })
-            .invoke(prompt);
+          const out = await invokeWithUsage(this.model, SqlProposalSchema, prompt, {
+            name: "sql_proposal",
+          });
+          proposal = out.parsed;
+          usage = { inputTokens: out.inputTokens, outputTokens: out.outputTokens };
+          usageModel = out.model;
         } catch (thrown) {
           const message =
             thrown instanceof Error ? thrown.message : String(thrown);
@@ -402,10 +413,36 @@ export class ValidatedQueryExecutor {
             attempts: attempt,
           };
         }
-        // Structured-output adapters do not consistently expose provider usage.
-        // Charge a conservative local estimate so maxTokens remains a real
-        // circuit breaker instead of an inert counter.
-        recordLlmCall(budget, estimateTokens(prompt, JSON.stringify(proposal)));
+        // Real provider counts feed the budget when present; fakes and
+        // usage-less adapters fall back to the conservative local estimate
+        // so maxTokens remains a real circuit breaker instead of an inert
+        // counter.
+        const realTokens = usage.inputTokens + usage.outputTokens;
+        recordLlmCall(
+          budget,
+          realTokens > 0
+            ? realTokens
+            : estimateTokens(prompt, JSON.stringify(proposal)),
+        );
+        const proposalDurationMs = Date.now() - proposalStarted;
+        const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
+          usageModel,
+          usage.inputTokens,
+          usage.outputTokens,
+        );
+        this.span({
+          node: "propose",
+          type: "llm_call",
+          attempt,
+          durationMs: proposalDurationMs,
+          payload: {
+            model: usageModel ?? "unknown",
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            estimatedCostUsd,
+            pricingKnown,
+          },
+        });
         partials.lastSql = proposal.sql;
         sql = proposal.sql;
         lastTablesUsed = proposal.tablesUsed;
@@ -413,7 +450,7 @@ export class ValidatedQueryExecutor {
           node: "propose",
           type: "node_done",
           attempt,
-          durationMs: Date.now() - proposalStarted,
+          durationMs: proposalDurationMs,
           payload: { sql, tablesUsed: lastTablesUsed },
         });
       }
@@ -530,6 +567,7 @@ export class ValidatedQueryExecutor {
       let columns: string[];
       let rows: Record<string, unknown>[];
       let maskedColumns: string[];
+      let rowScopeApplied: RowScopeApplied[];
       try {
         const rawRun = await this.mcp.call("run_query", {
           ...identity,
@@ -551,13 +589,19 @@ export class ValidatedQueryExecutor {
         columns = parsedRun.data.columns;
         rows = parsedRun.data.rows;
         maskedColumns = parsedRun.data.maskedColumns;
+        rowScopeApplied = readRowScopeApplied(rawRun);
         partials.rowsFetched = rows.length;
         this.span({
           node: "run",
           type: "tool_call",
           attempt,
           durationMs: Date.now() - runStarted,
-          payload: { tool: "run_query", rowCount: parsedRun.data.rowCount },
+          payload: {
+            tool: "run_query",
+            rowCount: parsedRun.data.rowCount,
+            maskedColumns,
+            rowScopeApplied,
+          },
         });
       } catch (thrown) {
         const error = asDbToolError("run_query", thrown);
@@ -742,4 +786,15 @@ function feedbackFor(error: DbToolError): string {
       ? "unknown position"
       : `position ${error.cursorPosition}`;
   return `${error.code} at ${position}: ${error.message}`;
+}
+
+// The locked RunQueryOutputSchema strips the server-minted scope record, so
+// read it off the raw tool response through the shared access-policy schema
+// (single authority, no contracts change in this plan). Anything unexpected
+// defaults to empty fail-closed — the span carries names, never values.
+function readRowScopeApplied(rawRun: unknown): RowScopeApplied[] {
+  const candidate = (rawRun as { rowScopeApplied?: unknown } | null)
+    ?.rowScopeApplied;
+  const parsed = RowScopeAppliedSchema.array().safeParse(candidate);
+  return parsed.success ? parsed.data : [];
 }

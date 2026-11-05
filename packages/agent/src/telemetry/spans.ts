@@ -8,6 +8,7 @@
 import { appendTraceEvent } from "../traces/writer.js";
 import type { SpanEmitter, SpanEvent } from "../state.js";
 import type { ExecutorSpan, SpanSink } from "../queryExecutor/executor.js";
+import type { RowScopeApplied } from "@shared/access-policy";
 
 export interface SpanContext {
   runId: string;
@@ -41,7 +42,16 @@ export interface AgentSpanEmitter extends SpanEmitter, SpanSink {
   ): string;
   emitLlmCall(
     node: string,
-    opts?: { model?: string; parentSpanId?: string; attempt?: number },
+    opts?: {
+      model?: string;
+      inputTokens?: number;
+      outputTokens?: number;
+      estimatedCostUsd?: number;
+      pricingKnown?: boolean;
+      durationMs?: number;
+      parentSpanId?: string;
+      attempt?: number;
+    },
   ): string;
   emitToolCall(
     node: string,
@@ -49,6 +59,8 @@ export interface AgentSpanEmitter extends SpanEmitter, SpanSink {
     opts?: {
       rowCount?: number;
       columns?: string[];
+      maskedColumns?: string[];
+      rowScopeApplied?: RowScopeApplied[];
       parentSpanId?: string;
       attempt?: number;
     },
@@ -140,13 +152,30 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
 
   emitter.emitLlmCall = (
     node: string,
-    opts: { model?: string; parentSpanId?: string; attempt?: number } = {},
+    opts: {
+      model?: string;
+      inputTokens?: number;
+      outputTokens?: number;
+      estimatedCostUsd?: number;
+      pricingKnown?: boolean;
+      durationMs?: number;
+      parentSpanId?: string;
+      attempt?: number;
+    } = {},
   ): string =>
     base({
       node,
       type: "llm_call",
-      durationMs: 0,
-      payload: opts.model ? { model: opts.model } : {},
+      durationMs: opts.durationMs ?? 0,
+      payload: {
+        ...(opts.model !== undefined ? { model: opts.model } : {}),
+        ...(opts.inputTokens !== undefined ? { inputTokens: opts.inputTokens } : {}),
+        ...(opts.outputTokens !== undefined ? { outputTokens: opts.outputTokens } : {}),
+        ...(opts.estimatedCostUsd !== undefined
+          ? { estimatedCostUsd: opts.estimatedCostUsd }
+          : {}),
+        ...(opts.pricingKnown !== undefined ? { pricingKnown: opts.pricingKnown } : {}),
+      },
       parentSpanId: opts.parentSpanId,
       attempt: opts.attempt,
     });
@@ -157,6 +186,8 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
     opts: {
       rowCount?: number;
       columns?: string[];
+      maskedColumns?: string[];
+      rowScopeApplied?: RowScopeApplied[];
       parentSpanId?: string;
       attempt?: number;
     } = {},
@@ -169,6 +200,10 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
         tool,
         ...(opts.rowCount !== undefined ? { rowCount: opts.rowCount } : {}),
         ...(opts.columns !== undefined ? { columns: opts.columns } : {}),
+        ...(opts.maskedColumns !== undefined ? { maskedColumns: opts.maskedColumns } : {}),
+        ...(opts.rowScopeApplied !== undefined
+          ? { rowScopeApplied: opts.rowScopeApplied }
+          : {}),
       },
       parentSpanId: opts.parentSpanId,
       attempt: opts.attempt,

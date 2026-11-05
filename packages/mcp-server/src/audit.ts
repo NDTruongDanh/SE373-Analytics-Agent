@@ -6,7 +6,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import pino from "pino";
-import { redactPII } from "@shared/access-policy";
+import { redactPII, type RowScopeApplied } from "@shared/access-policy";
 
 export interface AuditRecord {
   ts: string;
@@ -23,6 +23,10 @@ export interface AuditRecord {
   errorCode?: string;
   explainCost?: number | null;
   piiHits: number;
+  /** Server-minted RBAC record (G5): masked `table.column` names. */
+  maskedColumns: string[];
+  /** Server-minted row-scope record (G5): `{ table, column }` only, never values. */
+  rowScopeApplied: RowScopeApplied[];
 }
 
 type Destination = { write(line: string): unknown };
