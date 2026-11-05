@@ -8,5 +8,6 @@ export * from "./trace.js";
 export * from "./catalog.js";
 export * from "./semantic.js";
 export * from "./benchmark.js";
+export * from "./rca.js";
 
 export { CONTRACTS_VERSION } from "./constants.js";

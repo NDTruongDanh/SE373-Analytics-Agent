@@ -32,6 +32,7 @@ data/*.duckdb
 # eval cases, seeded scenarios, seed fixtures, trace and audit payloads.
 evals/**
 data/seeded_scenarios.md
+docs/UC-plan/UC05.md
 packages/data/src/seeds.json
 data/seed_manifest.json
 data/seed_manifest.small.json

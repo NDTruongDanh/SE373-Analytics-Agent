@@ -152,7 +152,7 @@ describe("contracts 1.0.0", () => {
   });
 
   it("widens SQLAnswerStatus with needs_clarification and restricted", () => {
-    for (const status of ["ok", "no_data", "cannot_answer", "needs_clarification", "restricted", "error"]) {
+    for (const status of ["ok", "no_data", "cannot_answer", "needs_clarification", "restricted", "error", "false_premise"]) {
       expect(SQLAnswerStatusSchema.parse(status)).toBe(status);
       expect(SQLAnswerSchema.parse(validAnswer(status)).status).toBe(status);
     }
