@@ -7,7 +7,6 @@ import {
   PlanStepAxisSchema,
   PlanStepSchema,
   RootCauseAnswerSchema,
-  RootCauseItemSchema,
   RootCauseResponseSchema,
   SQLAnswerStatusSchema,
   StepStatusSchema,

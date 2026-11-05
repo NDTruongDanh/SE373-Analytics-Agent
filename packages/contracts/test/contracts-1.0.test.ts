@@ -160,10 +160,60 @@ describe("contracts 1.0.0", () => {
 
   it("discriminates all five AgentResponse variants", () => {
     expect(AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer() }).kind).toBe("sql_answer");
-    for (const kind of ["insight_report", "analysis_plan", "root_cause", "anomaly_alert"]) {
+
+    // insight_report and anomaly_alert still accept loose data (z.unknown)
+    for (const kind of ["insight_report", "anomaly_alert"]) {
       const parsed = AgentResponseSchema.parse({ kind, status: "ok", summary: "Noted.", data: { n: 1 } });
       expect(parsed.kind).toBe(kind);
     }
+
+    // analysis_plan requires strict AnalysisPlanSchema data
+    const validPlanData = {
+      question: "Vì sao doanh thu quý 3 giảm?",
+      metricName: "net_revenue",
+      metricType: "additive" as const,
+      currentPeriod: { start: "2026-07-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-04-01", end: "2026-06-30" },
+      baselineVal: 10000000,
+      currentVal: 8500000,
+      absDelta: -1500000,
+      pctDelta: -15.0,
+      isValidBaseline: true,
+      steps: [],
+      totalQueriesCount: 0,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      unexploredBranches: [],
+      residualOtherAbs: 0,
+    };
+    expect(
+      AgentResponseSchema.parse({ kind: "analysis_plan", status: "ok", summary: "Kế hoạch phân tích.", data: validPlanData }).kind,
+    ).toBe("analysis_plan");
+
+    // root_cause requires strict RootCauseAnswerSchema data
+    const validRcaData = {
+      question: "Vì sao doanh thu quý 3 giảm?",
+      metricName: "net_revenue",
+      metricType: "additive" as const,
+      currentPeriod: { start: "2026-07-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-04-01", end: "2026-06-30" },
+      baselineVal: 10000000,
+      currentVal: 8500000,
+      absDelta: -1500000,
+      pctDelta: -15.0,
+      mathVerified: true,
+      mathDiffRatio: 0.0,
+      primaryCauses: [],
+      residualOtherAbs: 0,
+      unexploredBranches: [],
+      totalQueriesCount: 0,
+      finalReportMarkdown: "# Báo cáo phân tích nguyên nhân",
+    };
+    expect(
+      AgentResponseSchema.parse({ kind: "root_cause", status: "ok", summary: "Nguyên nhân gốc.", data: validRcaData }).kind,
+    ).toBe("root_cause");
+
     expect(() => AgentResponseSchema.parse({ kind: "nope", status: "ok", summary: "x", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "insight_report", status: "ok", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer("bogus") })).toThrow();
