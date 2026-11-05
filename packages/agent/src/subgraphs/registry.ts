@@ -49,6 +49,36 @@ export function listUcIds(): string[] {
   return [...entries.keys()];
 }
 
+/**
+ * Count column of the tracer preview. A live model picks its own alias
+ * (e.g. COUNT(*) AS order_count), so read the canned "n" when present,
+ * else the first numeric non-status column.
+ */
+export function previewCountKey(
+  columns: readonly string[],
+  preview: readonly Record<string, unknown>[],
+): string {
+  return (
+    columns.find((column) => column === "n") ??
+    columns.find(
+      (column) =>
+        column !== "status" &&
+        preview.length > 0 &&
+        preview.every((row) => Number.isFinite(Number(row[column]))),
+    ) ??
+    "n"
+  );
+}
+
+/** Sum of the preview's count column (shared by the route and apps/api). */
+export function previewCountTotal(
+  columns: readonly string[],
+  preview: readonly Record<string, unknown>[],
+): number {
+  const key = previewCountKey(columns, preview);
+  return preview.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
+}
+
 /** Transport context the tracer default route reads from RunnableConfig. */
 export interface TracerDefaultContext extends TracerRunConfig {
   threadId: string;
@@ -214,21 +244,8 @@ export function createTracerDefaultEntry(): UcEntryHandler {
 
     const answerStarted = Date.now();
     const preview = runPayload.rows.slice(0, RESULT_PREVIEW_MAX);
-    // A live model picks its own alias (e.g. COUNT(*) AS order_count), so
-    // read the canned "n" when present, else the first numeric column.
-    const countKey =
-      runPayload.columns.find((column) => column === "n") ??
-      runPayload.columns.find(
-        (column) =>
-          column !== "status" &&
-          preview.length > 0 &&
-          preview.every((row) => Number.isFinite(Number(row[column]))),
-      ) ??
-      "n";
-    const total = preview.reduce(
-      (sum, row) => sum + Number(row[countKey] ?? 0),
-      0,
-    );
+    const countKey = previewCountKey(runPayload.columns, preview);
+    const total = previewCountTotal(runPayload.columns, preview);
     const status = preview.length > 0 ? "ok" : "no_data";
     const answerText =
       status === "ok"

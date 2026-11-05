@@ -8,6 +8,7 @@ import { runTracerGraph } from "../src/graph.js";
 import { createChatModel } from "../src/models/factory.js";
 import { TRACER_SQL_PROPOSAL } from "../src/constants.js";
 import { writeTraceEvent } from "../src/traces/writer.js";
+import { previewCountTotal } from "../src/subgraphs/registry.js";
 
 // Tracer slice: fake model + stub MCP transport assert at least 2 tool calls
 // per run, per-call X-Run-Id propagation, resultPreview cap, and zero raw
@@ -201,6 +202,17 @@ describe("tracer agent", () => {
     expect(out.status).toBe("ok");
     expect(out.answerText).toContain("3 status groups, 12 orders");
     expect(out.answerText).toContain("completed=7");
+  });
+
+  it("previewCountTotal reads n, a live alias, or nothing numeric", () => {
+    const aliased = [
+      { status: "a", order_count: "10" },
+      { status: "b", order_count: "5" },
+    ];
+    expect(previewCountTotal(["status", "order_count"], aliased)).toBe(15);
+    expect(previewCountTotal(["status", "n"], threeRows())).toBe(12);
+    expect(previewCountTotal(["status"], [{ status: "a" }])).toBe(0);
+    expect(previewCountTotal(["status", "n"], [])).toBe(0);
   });
 
   it("writes an 8-event redacted trace validated by the contract", async () => {

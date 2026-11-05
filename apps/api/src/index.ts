@@ -21,7 +21,13 @@ import type { Request, Response } from "express";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, readSync } from "node:fs";
 import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
-import { buildRootGraph, runTracerGraph, type AgentState, type UcEntryHandler } from "@shared/agent";
+import {
+  buildRootGraph,
+  previewCountTotal,
+  runTracerGraph,
+  type AgentState,
+  type UcEntryHandler,
+} from "@shared/agent";
 import {
   buildLangSmithRunConfig,
   createLangSmithTracer,
@@ -129,9 +135,6 @@ function interruptedOf(output: unknown): unknown[] | undefined {
   return (output as { __interrupt__?: unknown[] }).__interrupt__;
 }
 
-function previewTotal(preview: Record<string, unknown>[]): number {
-  return preview.reduce((sum, row) => sum + Number(row["n"] ?? 0), 0);
-}
 
 /** Verdict tokens safe to record verbatim: protocol decisions, never content. */
 const APPROVAL_VERDICTS = new Set([
@@ -327,7 +330,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         status: out.status,
         answerText: out.answerText,
         toolsCalled: [...(out.toolsCalled ?? [])],
-        total: previewTotal(preview),
+        total: previewCountTotal((out.columns ?? []) as string[], preview),
       }),
     });
   }
