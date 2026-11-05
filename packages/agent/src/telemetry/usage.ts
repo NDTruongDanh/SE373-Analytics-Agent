@@ -87,11 +87,13 @@ function asRawParsed(
 /**
  * Structured call preserving provider usage. Real path returns the parsed
  * value plus real counts and the raw model id; fake/stub path returns the
- * parsed value with zero counts and undefined model. Schema violations
- * still throw (fail-closed, same as the direct call it replaces).
+ * parsed value with zero counts and undefined model. The model position is
+ * anchored to z.ZodType so S infers from the schema argument alone.
+ * Schema violations still throw (fail-closed, same as the direct call it
+ * replaces).
  */
 export async function invokeWithUsage<S extends z.ZodType>(
-  model: StructuredModelLike<S>,
+  model: StructuredModelLike<z.ZodType>,
   schema: S,
   input: string,
   opts?: { name?: string },

@@ -11,6 +11,12 @@ import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ChatOpenAI } from "@langchain/openai";
 import * as z from "zod";
 import {
+  invokeWithUsage,
+  modelFromMessage,
+  usageFromMessage,
+} from "../telemetry/usage.js";
+import type { LlmUsage } from "../telemetry/usage.js";
+import {
   SqlProposalSchema,
   type SqlProposal,
 } from "../queryExecutor/executor.js";
@@ -80,11 +86,13 @@ class ProfileTracerModel implements TracerChatModel {
   constructor(private readonly model: AnyChatModel) {}
 
   async proposeSql(question: string): Promise<SqlProposal> {
-    const out = await withStructured(this.model, SqlProposalSchema, {
+    // Routed through the shared usage helper so includeRaw-capable models
+    // keep working and fakes degrade to zero-usage instead of throwing.
+    const out = await invokeWithUsage(this.model, SqlProposalSchema, question, {
       name: "sql_proposal",
-    }).invoke(question);
+    });
     // Fail-closed: every proposal path goes through schema validation.
-    return SqlProposalSchema.parse(out);
+    return SqlProposalSchema.parse(out.parsed);
   }
 }
 
@@ -120,8 +128,10 @@ export function createChatModel(
 /**
  * Structured-output helper taking a caller-supplied zod schema (the SQL
  * proposal schema itself is owned by the 01-11 executor, never duplicated
- * here). Returns a narrow invoke surface so callers never touch the raw
- * runnable type.
+ * here). Routes through the shared usage helper so includeRaw-capable
+ * models keep working and fakes degrade to zero-usage instead of throwing.
+ * Returns a narrow invoke surface so callers never touch the raw runnable
+ * type.
  */
 export function withStructured<S extends z.ZodType>(
   model: AnyChatModel,
@@ -130,12 +140,8 @@ export function withStructured<S extends z.ZodType>(
 ): { invoke(input: string): Promise<z.infer<S>> } {
   return {
     invoke: async (input: string): Promise<z.infer<S>> => {
-      const structured =
-        model instanceof ChatOpenAI
-          ? model.withStructuredOutput(schema, opts)
-          : model.withStructuredOutput(schema, opts);
-      const out = await structured.invoke(input);
-      return schema.parse(out);
+      const out = await invokeWithUsage(model, schema, input, opts);
+      return out.parsed;
     },
   };
 }
@@ -163,6 +169,17 @@ export function buildSynthesisPrompt(
 }
 
 /**
+ * Synthesis result: answer text plus the provider usage read directly off
+ * the plain invoke result (no structured wrapper here, so the AIMessage
+ * already carries usage_metadata). Fakes yield zero counts and no model.
+ */
+export interface SynthesisResult extends LlmUsage {
+  text: string;
+  model?: string;
+  durationMs: number;
+}
+
+/**
  * Synthesis entry point: builds the delimited prompt and invokes the
  * profile-3 model directly. Never calls the tool-binding method on this path
  * (architecture invariant: zero tools bound over untrusted data).
@@ -171,9 +188,15 @@ export async function synthesize(
   rows: Record<string, unknown>[],
   question: string,
   opts?: { model?: AnyChatModel },
-): Promise<string> {
+): Promise<SynthesisResult> {
   const model = opts?.model ?? createChatModel("synthesis");
+  const started = Date.now();
   const result = await model.invoke(buildSynthesisPrompt(rows, question));
   const content = result.content;
-  return typeof content === "string" ? content : JSON.stringify(content);
+  return {
+    text: typeof content === "string" ? content : JSON.stringify(content),
+    ...usageFromMessage(result),
+    model: modelFromMessage(result),
+    durationMs: Date.now() - started,
+  };
 }

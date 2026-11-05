@@ -1,6 +1,10 @@
 import { dbToolError, type DbToolError } from "@shared/contracts";
 import * as z from "zod";
-import { createChatModel, withStructured } from "../models/factory.js";
+import { createChatModel } from "../models/factory.js";
+import {
+  estimateCostUsd,
+  invokeWithUsage,
+} from "../telemetry/usage.js";
 import { checkBudget, createBudgetState, estimateTokens, type BudgetState } from "../queryExecutor/budgets.js";
 import {
   ValidatedQueryExecutor,
@@ -31,7 +35,7 @@ export type IntentProposal = z.infer<typeof IntentProposalSchema>;
 export interface IntentModelLike {
   withStructuredOutput(
     schema: typeof IntentProposalSchema,
-    opts?: { name?: string },
+    opts?: { name?: string; includeRaw?: boolean },
   ): { invoke(input: string): Promise<IntentProposal> };
 }
 
@@ -284,17 +288,48 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
   ): Promise<AgentUpdate> => {
     const skill = loadSkill("text-to-sql", { emit: rt.emit });
     const prompt = intentPrompt(state.question, skill.contract);
-    const proposal = deps.intentModel
-      ? await deps.intentModel
-          .withStructuredOutput(IntentProposalSchema, { name: "intent_proposal" })
-          .invoke(prompt)
-      : await withStructured(createChatModel("intent"), IntentProposalSchema, {
+    const intentStarted = Date.now();
+    const out = deps.intentModel
+      ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, {
           name: "intent_proposal",
-        }).invoke(prompt);
-    const intent = IntentProposalSchema.parse(proposal);
+        })
+      : await invokeWithUsage(
+          createChatModel("intent"),
+          IntentProposalSchema,
+          prompt,
+          { name: "intent_proposal" },
+        );
+    const intent = out.parsed;
+    const intentDurationMs = Date.now() - intentStarted;
+    // Real provider counts feed the budget when present; fakes fall back to
+    // the conservative local estimate.
+    const realTokens = out.inputTokens + out.outputTokens;
+    const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
+      out.model,
+      out.inputTokens,
+      out.outputTokens,
+    );
+    rt.emit({
+      node: "understand",
+      type: "llm_call",
+      durationMs: intentDurationMs,
+      payload: {
+        model: out.model ?? "unknown",
+        inputTokens: out.inputTokens,
+        outputTokens: out.outputTokens,
+        estimatedCostUsd,
+        pricingKnown,
+      },
+    });
     return {
       intent,
-      budget: { llmCalls: 1, tokensUsed: estimateTokens(prompt, JSON.stringify(intent)) },
+      budget: {
+        llmCalls: 1,
+        tokensUsed:
+          realTokens > 0
+            ? realTokens
+            : estimateTokens(prompt, JSON.stringify(intent)),
+      },
     };
   };
 

@@ -124,7 +124,12 @@ describe("chat-model factory", () => {
     const answer = await synthesize([{ status: "ok", n: 12 }], "How many?", {
       model,
     });
-    expect(answer).toBe("3 status groups, 12 orders");
+    expect(answer.text).toBe("3 status groups, 12 orders");
+    // The fake carries no provider usage: zero counts, no model, real timing.
+    expect(answer.inputTokens).toBe(0);
+    expect(answer.outputTokens).toBe(0);
+    expect(answer.model).toBeUndefined();
+    expect(typeof answer.durationMs).toBe("number");
     expect(bindSpy).not.toHaveBeenCalled();
   });
 

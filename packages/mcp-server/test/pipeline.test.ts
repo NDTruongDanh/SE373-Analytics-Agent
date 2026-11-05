@@ -330,6 +330,13 @@ describe("pipeline policy stage", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("SENSITIVE_COLUMN_DENIED");
     expect(calls).toHaveLength(0);
+    // G5: the deny line carries the RBAC fields (empty — nothing applied)
+    // plus the error code.
+    const audit = lastAudit();
+    expect(audit["decision"]).toBe("deny");
+    expect(audit["errorCode"]).toBe("SENSITIVE_COLUMN_DENIED");
+    expect(audit["maskedColumns"]).toEqual([]);
+    expect(audit["rowScopeApplied"]).toEqual([]);
   });
 
   it("injects the sales_south row-scope predicate on a scoped table", async () => {

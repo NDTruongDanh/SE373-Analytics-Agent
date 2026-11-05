@@ -136,6 +136,43 @@ describe("span emitter", () => {
     });
   });
 
+  it("carries usage, cost, and RBAC fields in llm_call and tool_call payloads", () => {
+    const { emit, readEvents } = makeEmitter();
+    emit.emitLlmCall("propose", {
+      model: "openai/gpt-oss-120b",
+      inputTokens: 100,
+      outputTokens: 50,
+      estimatedCostUsd: 0.00045,
+      pricingKnown: true,
+      durationMs: 12,
+      attempt: 1,
+    });
+    emit.emitToolCall("run", "run_query", {
+      rowCount: 2,
+      columns: ["status", "n"],
+      maskedColumns: ["customers.phone"],
+      rowScopeApplied: [{ table: "sellers", column: "region_group" }],
+      attempt: 1,
+    });
+    const events = readEvents();
+    expect(events).toHaveLength(2);
+    expect(events[0]["payload"]).toEqual({
+      model: "openai/gpt-oss-120b",
+      inputTokens: 100,
+      outputTokens: 50,
+      estimatedCostUsd: 0.00045,
+      pricingKnown: true,
+    });
+    expect(events[0]["durationMs"]).toBe(12);
+    expect(events[1]["payload"]).toEqual({
+      tool: "run_query",
+      rowCount: 2,
+      columns: ["status", "n"],
+      maskedColumns: ["customers.phone"],
+      rowScopeApplied: [{ table: "sellers", column: "region_group" }],
+    });
+  });
+
   it("redacts synthetic PII before write (markers present, literals absent)", () => {
     const { emit, readEvents } = makeEmitter();
     emit({
