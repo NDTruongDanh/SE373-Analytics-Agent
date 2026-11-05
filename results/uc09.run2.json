@@ -1,0 +1,238 @@
+{
+  "uc": "uc09",
+  "datasetVersion": "uc09-gateway-1",
+  "cases": [
+    {
+      "id": "tracer-01",
+      "status": "ok",
+      "exPass": true,
+      "ms": 1534,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-list-tables",
+      "status": "ok",
+      "exPass": true,
+      "ms": 10,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-describe-table",
+      "status": "ok",
+      "exPass": true,
+      "ms": 10,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-explain-query",
+      "status": "ok",
+      "exPass": true,
+      "ms": 9,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-run-query",
+      "status": "ok",
+      "exPass": true,
+      "ms": 60,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-sample-rows",
+      "status": "ok",
+      "exPass": true,
+      "ms": 13,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-sample-rows-n50",
+      "status": "error",
+      "exPass": true,
+      "ms": 9,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-maxrows-1001",
+      "status": "error",
+      "exPass": true,
+      "ms": 8,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-valid-truncated-1000",
+      "status": "ok",
+      "exPass": true,
+      "ms": 18,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-scope-schema-read-denied",
+      "status": "error",
+      "exPass": true,
+      "ms": 8,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-scope-no-token-401",
+      "status": "error",
+      "exPass": true,
+      "ms": 2,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-scope-bad-token-401",
+      "status": "error",
+      "exPass": true,
+      "ms": 1,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-select-star",
+      "status": "ok",
+      "exPass": true,
+      "ms": 12,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-where-like",
+      "status": "error",
+      "exPass": true,
+      "ms": 9,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-avg-salary",
+      "status": "error",
+      "exPass": true,
+      "ms": 9,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-concat-phone",
+      "status": "error",
+      "exPass": true,
+      "ms": 7,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-cte-rename",
+      "status": "error",
+      "exPass": true,
+      "ms": 7,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-nested-cte",
+      "status": "error",
+      "exPass": true,
+      "ms": 8,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-lateral",
+      "status": "error",
+      "exPass": true,
+      "ms": 12,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-mask-hr-raw-salary",
+      "status": "ok",
+      "exPass": true,
+      "ms": 11,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-block-delete",
+      "status": "error",
+      "exPass": true,
+      "ms": 86,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-block-multi-statement",
+      "status": "error",
+      "exPass": true,
+      "ms": 8,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-block-cte-dml",
+      "status": "error",
+      "exPass": true,
+      "ms": 90,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-block-pg-sleep",
+      "status": "error",
+      "exPass": true,
+      "ms": 5,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-block-pg-read-file",
+      "status": "error",
+      "exPass": true,
+      "ms": 6,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-block-slow-timeout",
+      "status": "error",
+      "exPass": true,
+      "ms": 30008,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-block-guard-off-direct",
+      "status": "ok",
+      "exPass": true,
+      "ms": 46,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-params-describe-bad-type",
+      "status": "error",
+      "exPass": true,
+      "ms": 9,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-params-describe-missing-field",
+      "status": "error",
+      "exPass": true,
+      "ms": 5,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-params-describe-injected",
+      "status": "error",
+      "exPass": true,
+      "ms": 4,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-error-leak-bad-password",
+      "status": "ok",
+      "exPass": true,
+      "ms": 1008,
+      "tokens": 0
+    },
+    {
+      "id": "uc09-audit",
+      "status": "ok",
+      "exPass": true,
+      "ms": 0,
+      "tokens": 0,
+      "note": "30 case(s) own exactly their audit line(s)"
+    }
+  ],
+  "summary": {
+    "total": 32,
+    "passed": 32,
+    "exRate": 1,
+    "avgMs": 0,
+    "avgTokens": 0
+  }
+}
