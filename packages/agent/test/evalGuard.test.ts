@@ -65,7 +65,11 @@ describe("buildLiveAdapter env guard", () => {
       delete process.env["EVAL_USE_LIVE_MODEL"];
       // Throws before any DB/gateway work (missing role URL); the scrub
       // already ran, so the flags stay deleted on the way out.
-      await expect(buildLiveAdapter(process.cwd())).rejects.toThrow();
+      // loadEnv: false keeps the developer's real .env out of the test
+      // (root `pnpm test` runs with cwd = repo root, where .env lives).
+      await expect(
+        buildLiveAdapter(process.cwd(), { loadEnv: false }),
+      ).rejects.toThrow(/AGENT_RO_DATABASE_URL is not set/);
       for (const flag of FLAGS) {
         expect(flag in process.env).toBe(false);
       }

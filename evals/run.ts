@@ -276,12 +276,19 @@ export function createEvalEmitter(
  * Every wait is bounded — a missing DB/gateway throws a clear message,
  * never hangs.
  */
-export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
-  try {
-    process.loadEnvFile?.();
-  } catch {
-    // No .env in cwd (unit tests, CI runners) — fall through to the
-    // explicit env checks below, which fail with clear messages.
+export async function buildLiveAdapter(
+  repoRoot: string,
+  opts: { loadEnv?: boolean } = {},
+): Promise<LiveHandle> {
+  // Unit tests pass loadEnv: false so a developer's real .env (keys, DB
+  // URLs) never leaks into the test process or spawns a live gateway.
+  if (opts.loadEnv !== false) {
+    try {
+      process.loadEnvFile?.();
+    } catch {
+      // No .env in cwd (CI runners) — fall through to the explicit env
+      // checks below, which fail with clear messages.
+    }
   }
   // D-04 first: scrub every tracing flag before any graph exists, so eval
   // can never export even with the env set. Never pass callbacks here —
