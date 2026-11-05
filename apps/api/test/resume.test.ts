@@ -4,7 +4,8 @@
 // injected UC handler (interrupt from @langchain/langgraph directly) so no
 // agent internals beyond the registry contract are touched.
 
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
@@ -28,6 +29,19 @@ function parseSse(text: string): SseBlock[] {
     }
   }
   return blocks;
+}
+
+function readTraceEvents(dir: string, runId: string): Record<string, unknown>[] {
+  const content = readFileSync(path.join(dir, `${runId}.jsonl`), "utf8");
+  return content
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+function eventsOf(events: Record<string, unknown>[], type: string): Record<string, unknown>[] {
+  return events.filter((event) => event["type"] === type);
 }
 
 const stubEnv = {
@@ -193,5 +207,62 @@ describe("buildApp resume", () => {
     writeFileSync(`${tracesDir}/bad-run.jsonl`, "not json at all\n", "utf8");
     const out = await post("/api/runs/bad-run/resume", { value: "approve" });
     expect(out.status).toBe(404);
+  });
+
+  it("emits one approval_requested plus one approval_decided with metadata only", async () => {
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
+    expect(asked.status).toBe(200);
+    expect(parseSse(asked.text).map((b) => b.event)).toEqual(["interrupt_waiting"]);
+    const runId = parseSse(asked.text)[0].data["runId"] as string;
+
+    // Interrupt leaves exactly one request and no terminal spans: the run
+    // is waiting, not finished.
+    let events = readTraceEvents(tracesDir, runId);
+    expect(eventsOf(events, "approval_requested")).toHaveLength(1);
+    expect(eventsOf(events, "approval_decided")).toHaveLength(0);
+    expect(eventsOf(events, "run_done")).toHaveLength(0);
+    const requested = eventsOf(events, "approval_requested")[0];
+    expect((requested["payload"] as { kind?: unknown }).kind).toBe("approval");
+
+    // A non-allowlisted resume value is metadata-only: decision degrades to
+    // "provided" with length and hash, and the raw value reaches no span.
+    const secret = "s3cr3t-resume-canary-9zqx";
+    const resumed = await post(`/api/runs/${runId}/resume`, { value: secret });
+    expect(resumed.status).toBe(200);
+    const resumeBlocks = parseSse(resumed.text);
+    expect(resumeBlocks[resumeBlocks.length - 1].event).toBe("completed");
+
+    events = readTraceEvents(tracesDir, runId);
+    expect(eventsOf(events, "approval_requested")).toHaveLength(1);
+    const decided = eventsOf(events, "approval_decided");
+    expect(decided).toHaveLength(1);
+    const payload = decided[0]["payload"] as Record<string, unknown>;
+    expect(payload["kind"]).toBe("approval");
+    expect(payload["decision"]).toBe("provided");
+    expect(payload["reviewer"]).toBe("sales_south");
+    expect(typeof payload["waitedMs"]).toBe("number");
+    expect(payload["waitedMs"] as number).toBeGreaterThanOrEqual(0);
+    expect(payload["valueLength"]).toBe(secret.length);
+    expect(payload["valueHash"]).toBe(
+      createHash("sha256").update(secret, "utf8").digest("hex"),
+    );
+    const raw = readFileSync(`${tracesDir}/${runId}.jsonl`, "utf8");
+    expect(raw).not.toContain(secret);
+    // The resumed run finishes exactly once.
+    expect(eventsOf(events, "run_done")).toHaveLength(1);
+  });
+
+  it("records allowlisted resume verdicts verbatim", async () => {
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
+    expect(asked.status).toBe(200);
+    const runId = parseSse(asked.text)[0].data["runId"] as string;
+    const resumed = await post(`/api/runs/${runId}/resume`, { value: "approve" });
+    expect(resumed.status).toBe(200);
+    const events = readTraceEvents(tracesDir, runId);
+    const decided = eventsOf(events, "approval_decided");
+    expect(decided).toHaveLength(1);
+    expect((decided[0]["payload"] as { decision?: unknown }).decision).toBe(
+      "approve",
+    );
   });
 });
