@@ -3,10 +3,12 @@ import {
   AnalysisPlanResponseSchema,
   AnalysisPlanSchema,
   AgentResponseSchema,
+  FormulaComponentsSchema,
   MetricTypeSchema,
   PlanStepAxisSchema,
   PlanStepSchema,
   RootCauseAnswerSchema,
+  RootCauseItemSchema,
   RootCauseResponseSchema,
   SQLAnswerStatusSchema,
   StepStatusSchema,
@@ -256,5 +258,175 @@ describe("UC-05 RCA Contract Schemas", () => {
 
     const parsed = AgentResponseSchema.parse(planEnvelope);
     expect(parsed.kind).toBe("analysis_plan");
+  });
+
+  it("validates FormulaComponentsSchema and AnalysisPlan with direction & formula", () => {
+    const fc = FormulaComponentsSchema.parse({
+      numerator: "revenue",
+      denominator: "orders",
+      formula: "revenue / orders",
+    });
+    expect(fc.numerator).toBe("revenue");
+    expect(fc.denominator).toBe("orders");
+
+    const ratioPlan = {
+      question: "Vì sao AOV giảm?",
+      metricName: "aov",
+      metricType: "ratio" as const,
+      direction: "decrease" as const,
+      formulaComponents: fc,
+      currentPeriod: { start: "2026-09-21", end: "2026-09-27" },
+      baselinePeriod: { start: "2026-09-14", end: "2026-09-20" },
+      baselineVal: 500000,
+      currentVal: 371500,
+      absDelta: -128500,
+      pctDelta: -25.7,
+      isValidBaseline: true,
+      steps: [
+        {
+          stepId: "step_factor_aov",
+          axis: "formula" as const,
+          dimensionOrFactor: "aov",
+          dimensionValue: null,
+          dimensionPath: ["formula", "aov"],
+          parentId: null,
+          depth: 0,
+          status: "done" as const,
+          delta: -128500,
+          contributionPct: 100,
+          sql: "SELECT ...",
+          hypothesis: "AOV drop caused by coupon misconfiguration",
+        },
+      ],
+      totalQueriesCount: 2,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      unexploredBranches: [],
+      residualOtherAbs: 0,
+    };
+
+    const parsedPlan = AnalysisPlanSchema.parse(ratioPlan);
+    expect(parsedPlan.direction).toBe("decrease");
+    expect(parsedPlan.formulaComponents?.formula).toBe("revenue / orders");
+    expect(parsedPlan.steps[0].dimensionPath).toEqual(["formula", "aov"]);
+    expect(parsedPlan.steps[0].hypothesis).toBe("AOV drop caused by coupon misconfiguration");
+  });
+
+  it("validates RootCauseItemSchema with summaryVi and dimensionPath", () => {
+    const item = {
+      stepId: "step_shopee_central_home",
+      axis: "dimension" as const,
+      dimensionOrFactor: "category",
+      dimensionValue: "Đồ gia dụng",
+      dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+      delta: -460000000,
+      contributionPct: 100.0,
+      sql: "SELECT ...",
+      hypothesis: "Tạm khóa gian hàng ngành Đồ gia dụng trên Shopee Miền Trung",
+      summaryVi: "Ngừng bán ngành Đồ gia dụng trên kênh Shopee tại kho Đà Nẵng",
+    };
+
+    const parsed = RootCauseItemSchema.parse(item);
+    expect(parsed.dimensionPath).toEqual(["Miền Trung", "Shopee", "Đồ gia dụng"]);
+    expect(parsed.summaryVi).toBe("Ngừng bán ngành Đồ gia dụng trên kênh Shopee tại kho Đà Nẵng");
+  });
+
+  it("validates 3 Seeded Scenarios contract compliance", () => {
+    // KB1: Net revenue decrease (Additive) - Miền Trung x Shopee x Đồ gia dụng
+    const kb1Plan = AnalysisPlanSchema.parse({
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+      metricName: "net_revenue",
+      metricType: "additive",
+      direction: "decrease",
+      currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+      baselineVal: 2500000000,
+      currentVal: 2040000000,
+      absDelta: -460000000,
+      pctDelta: -18.4,
+      isValidBaseline: true,
+      steps: [
+        {
+          stepId: "step_region_central",
+          axis: "dimension",
+          dimensionOrFactor: "region",
+          dimensionValue: "Miền Trung",
+          dimensionPath: ["Miền Trung"],
+          parentId: null,
+          depth: 0,
+          status: "done",
+          delta: -460000000,
+          contributionPct: 100.0,
+          sql: "SELECT region, SUM(amount) FROM ...",
+        },
+      ],
+      totalQueriesCount: 2,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      unexploredBranches: [],
+      residualOtherAbs: 0,
+    });
+    expect(kb1Plan.metricType).toBe("additive");
+    expect(kb1Plan.direction).toBe("decrease");
+
+    // KB2: AOV decrease (Ratio) - Miền Nam x TikTok Shop x Thời trang nữ
+    const kb2Answer = RootCauseAnswerSchema.parse({
+      question: "Vì sao AOV Tuần 39/2026 tại Miền Nam giảm 25.7%?",
+      metricName: "aov",
+      metricType: "ratio",
+      currentPeriod: { start: "2026-09-21", end: "2026-09-27" },
+      baselinePeriod: { start: "2026-09-14", end: "2026-09-20" },
+      baselineVal: 500000,
+      currentVal: 371500,
+      absDelta: -128500,
+      pctDelta: -25.7,
+      mathVerified: true,
+      mathDiffRatio: 0.01,
+      primaryCauses: [
+        {
+          stepId: "step_tiktok_south_women_fashion",
+          axis: "dimension",
+          dimensionOrFactor: "category",
+          dimensionValue: "Thời trang nữ",
+          dimensionPath: ["Miền Nam", "TikTok Shop", "Thời trang nữ"],
+          delta: -128500,
+          contributionPct: 100.0,
+          sql: "SELECT ...",
+          hypothesis: "Lỗi cấu hình voucher FLASH99_ERR giảm 60%",
+          summaryVi: "Voucher FLASH99_ERR giảm 60% làm tụt sâu AOV",
+        },
+      ],
+      residualOtherAbs: 0,
+      unexploredBranches: [],
+      totalQueriesCount: 5,
+      finalReportMarkdown: "# Báo cáo phân tích nguyên nhân AOV giảm...",
+    });
+    expect(kb2Answer.primaryCauses[0].dimensionPath).toContain("Thời trang nữ");
+
+    // KB3: Net revenue surge (Additive increase) - Miền Bắc x Website x Laptop & Thiết bị IT
+    const kb3Plan = AnalysisPlanSchema.parse({
+      question: "Vì sao doanh thu thuần tháng 08/2026 tại Miền Bắc tăng vọt 31.5% so với tháng 07/2026?",
+      metricName: "net_revenue",
+      metricType: "additive",
+      direction: "increase",
+      currentPeriod: { start: "2026-08-01", end: "2026-08-31" },
+      baselinePeriod: { start: "2026-07-01", end: "2026-07-31" },
+      baselineVal: 2000000000,
+      currentVal: 2630000000,
+      absDelta: 630000000,
+      pctDelta: 31.5,
+      isValidBaseline: true,
+      steps: [],
+      totalQueriesCount: 2,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      unexploredBranches: [],
+      residualOtherAbs: 0,
+    });
+    expect(kb3Plan.direction).toBe("increase");
+    expect(kb3Plan.pctDelta).toBe(31.5);
   });
 });

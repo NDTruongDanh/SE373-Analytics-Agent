@@ -66,6 +66,17 @@ export const TimePeriodSchema = z.object({
 export type TimePeriod = z.infer<typeof TimePeriodSchema>;
 
 /**
+ * Formula components specification for ratio metric decomposition.
+ */
+export const FormulaComponentsSchema = z.object({
+  numerator: z.string().min(1),
+  denominator: z.string().min(1),
+  formula: z.string().optional(),
+});
+
+export type FormulaComponents = z.infer<typeof FormulaComponentsSchema>;
+
+/**
  * Single diagnostic step in the RCA task tree.
  */
 export const PlanStepSchema = z.object({
@@ -73,6 +84,7 @@ export const PlanStepSchema = z.object({
   axis: PlanStepAxisSchema.default("dimension"),
   dimensionOrFactor: z.string().min(1),
   dimensionValue: z.string().nullable().default(null),
+  dimensionPath: z.array(z.string()).default([]),
   parentId: z.string().nullable(),
   depth: z.number().int().min(0).max(4),
   status: StepStatusSchema,
@@ -81,6 +93,7 @@ export const PlanStepSchema = z.object({
   sql: z.string().nullable(),
   errorMessage: z.string().optional(),
   retryCount: z.number().int().min(0).max(2).default(0),
+  hypothesis: z.string().optional(),
 });
 
 export type PlanStep = z.infer<typeof PlanStepSchema>;
@@ -92,6 +105,8 @@ export const AnalysisPlanSchema = z.object({
   question: z.string().min(1),
   metricName: z.string().min(1),
   metricType: MetricTypeSchema,
+  direction: z.enum(["increase", "decrease"]).optional(),
+  formulaComponents: FormulaComponentsSchema.optional(),
   currentPeriod: TimePeriodSchema,
   baselinePeriod: TimePeriodSchema,
   baselineVal: z.number(),
@@ -123,6 +138,7 @@ export const RootCauseItemSchema = z.object({
   contributionPct: z.number(),
   sql: z.string().nullable(),
   hypothesis: z.string().optional(),
+  summaryVi: z.string().optional(),
 });
 
 export type RootCauseItem = z.infer<typeof RootCauseItemSchema>;

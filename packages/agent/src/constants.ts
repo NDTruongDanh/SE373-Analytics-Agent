@@ -30,6 +30,9 @@ export const DETAIL_QUERY_LIMIT = 200;
 /** Stable registry key for the text-to-SQL entry. */
 export const TEXT_TO_SQL_UC_ID = "text-to-sql";
 
+/** Stable registry key for the RCA entry (UC-05). */
+export const RCA_UC_ID = "root-cause-analysis";
+
 // Default route id. Unknown ucIds fall through to this entry.
 export const DEFAULT_ROUTE_ID = "tracer";
 
