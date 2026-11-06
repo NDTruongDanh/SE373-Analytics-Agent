@@ -191,7 +191,6 @@ describe("OBS-01 PII canary", () => {
           reviewer: "sales_south",
           waitedMs: 12,
           valueLength: 9,
-          valueHash: "deadbeef",
         },
       },
       dir,
@@ -204,10 +203,10 @@ describe("OBS-01 PII canary", () => {
     expect(content).not.toContain(email);
     expect(content).toContain(MASKED_PHONE);
     expect(content).toContain(MASKED_EMAIL);
-    // Structural fields survive: totals, kinds, decisions, hashes.
+    // Structural fields survive: totals, kinds, decisions, lengths.
     expect(content).toContain("run_done");
     expect(content).toContain("approval_decided");
-    expect(content).toContain("deadbeef");
+    expect(content).toContain("valueLength");
     for (const line of content.trim().split("\n")) {
       TraceEventSchema.parse(JSON.parse(line));
     }

@@ -18,7 +18,7 @@
 
 import express from "express";
 import type { Request, Response } from "express";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, readSync } from "node:fs";
 import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
@@ -164,21 +164,20 @@ function approvalKindFor(out: AgentState): string {
 
 /**
  * Metadata-only resume verdict (T-03-08): allowlisted protocol tokens are
- * recorded verbatim; anything else (free-form clarification answers,
- * pasted secrets) becomes "provided" plus length and sha256 — the raw
- * resume value never enters a span.
+ * recorded verbatim; anything else (free-form clarification answers, pasted
+ * secrets) becomes "provided" plus length. The raw resume value never enters
+ * a span — and no hash of it either, since an unsalted sha256 of a short
+ * value is brute-forceable.
  */
 function approvalDecision(value: unknown): {
   decision: string;
   valueLength: number;
-  valueHash: string;
 } {
   const text = typeof value === "string" ? value : (JSON.stringify(value) ?? "");
   const lowered = typeof value === "string" ? value.toLowerCase() : "";
   return {
     decision: APPROVAL_VERDICTS.has(lowered) ? lowered : "provided",
     valueLength: text.length,
-    valueHash: createHash("sha256").update(text, "utf8").digest("hex"),
   };
 }
 
@@ -574,7 +573,6 @@ export function buildApp(options: BuildAppOptions): express.Express {
             ? Math.max(0, Date.now() - lastApproval.tsMs)
             : 0,
           valueLength: verdict.valueLength,
-          valueHash: verdict.valueHash,
         },
       });
       const out = (await graph.invoke(new Command({ resume: req.body["value"] }), {

@@ -5,7 +5,6 @@
 // agent internals beyond the registry contract are touched.
 
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
@@ -225,7 +224,8 @@ describe("buildApp resume", () => {
     expect((requested["payload"] as { kind?: unknown }).kind).toBe("approval");
 
     // A non-allowlisted resume value is metadata-only: decision degrades to
-    // "provided" with length and hash, and the raw value reaches no span.
+    // "provided" with length, and the raw value reaches no span — nor any
+    // hash of it (unsalted sha256 of a short value is brute-forceable).
     const secret = "s3cr3t-resume-canary-9zqx";
     const resumed = await post(`/api/runs/${runId}/resume`, { value: secret });
     expect(resumed.status).toBe(200);
@@ -243,9 +243,7 @@ describe("buildApp resume", () => {
     expect(typeof payload["waitedMs"]).toBe("number");
     expect(payload["waitedMs"] as number).toBeGreaterThanOrEqual(0);
     expect(payload["valueLength"]).toBe(secret.length);
-    expect(payload["valueHash"]).toBe(
-      createHash("sha256").update(secret, "utf8").digest("hex"),
-    );
+    expect(payload).not.toHaveProperty("valueHash");
     const raw = readFileSync(`${tracesDir}/${runId}.jsonl`, "utf8");
     expect(raw).not.toContain(secret);
     // The resumed run finishes exactly once.
