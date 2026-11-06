@@ -3,9 +3,6 @@ type: mcp-server-guide
 title: Database MCP server and gateway
 description: Implemented db-tools MCP gateway with scoped tools, 7-stage pipeline, read-only executor, audit, and operator surfaces.
 tags: [mcp, db-tools, scoped-auth, sql-validation, audit-log, operator-ui, uc-09]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
@@ -46,6 +43,9 @@ sources:
   - id: openwiki-source-239b7c4787e6faba4ea0bd52
     resource: repo://policies/mcp_clients.yaml
 generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-06T15:32:05.739Z
 ---
 
 # Database MCP server and gateway

@@ -1,11 +1,11 @@
 ---
-type: use-case-text-to-sql
+type: use-case
 title: Natural-language query with self-repair (UC-01)
 description: UC-01 text-to-SQL loop with validated generation, bounded repair, and EX acceptance.
 tags: [text-to-sql, self-repair, sql-validation, read-only-queries, structured-output, K1, K2]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
+    at: 2026-11-06T15:32:05.739Z
 sources:
   - id: openwiki-source-a55e0aedff6bc7c1b180ad4e
     resource: repo://packages/access-policy/src/constants.ts
@@ -35,7 +35,7 @@ sources:
     resource: repo://packages/mcp-server/src/pipeline.ts
   - id: openwiki-source-9ca63c47cf2805e788ed5fdb
     resource: repo://packages/mcp-server/src/tools.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
 ---
 
 # Natural-language query with self-repair (UC-01)
@@ -176,11 +176,13 @@ Final states and when to use them (`docs/prd.md:214`, `docs/UC-plan/UC01.md:102-
 - `restricted`: question touches sensitive columns or enables direct inference from them; refuse safely.
 - `error`: repair budget or safe infrastructure failed.
 
+The shared `SQLAnswer` contract additionally defines a seventh status, `false_premise`, for questions resting on a false assumption; the executor's `ExecutorResult` terminal states remain the six above (repo://packages/contracts/src/answers.ts#L28-L36).
+
 Errors shown to users or fed to the model must not contain passwords, connection strings, internal paths, or PII (repo://packages/mcp-server/src/pipeline.ts#L1-L7, `docs/UC-plan/UC01.md:159`). Every run carries `runId` with a PII-redacted trace of user and role, nodes, tool calls, all SQL attempts, applied policy, `EXPLAIN` cost, row counts, tokens, estimated cost, timing, and final status (`docs/UC-plan/UC01.md:209`).
 
 ## 9. Structured `SQLAnswer` contract and checkpointed state
 
-`SQLAnswerSchema` (zod) is the sole contract returned to UI and API (`docs/UC-plan/UC01.md:58-85`, repo://packages/contracts/src/answers.ts#L36-L57). The frozen shape is:
+`SQLAnswerSchema` (zod) is the sole contract returned to UI and API (`docs/UC-plan/UC01.md:58-85`, repo://packages/contracts/src/answers.ts#L38-L59). The frozen shape is:
 
 | Field | Type | Rule |
 |---|---|---|
@@ -191,7 +193,7 @@ Errors shown to users or fed to the model must not contain passwords, connection
 | `attempts` | list, max 3 | One entry per SQL generation with number, SQL, schema refs, validation, EXPLAIN summary, execution, diagnostic, repair reason, and duration (repo://packages/contracts/src/answers.ts#L7-L17, repo://packages/contracts/src/answers.ts#L46-L46) |
 | `resultPreview` | list of dict, max 50 | Already masked; UI shows at most 50 rows (repo://packages/contracts/src/answers.ts#L47-L47) |
 | `answerText` | string, min 1 | Short answer whose numbers come only from executed results (repo://packages/contracts/src/answers.ts#L48-L48) |
-| `status` | enum | `ok`, `no_data`, `cannot_answer`, `needs_clarification`, `restricted`, `error` (repo://packages/contracts/src/answers.ts#L27-L34) |
+| `status` | enum | `ok`, `no_data`, `cannot_answer`, `needs_clarification`, `restricted`, `error`, `false_premise` (repo://packages/contracts/src/answers.ts#L28-L36) |
 | `telemetry` | object | `promptTokens`, `completionTokens`, `embeddingTokens`, `estimatedCostUsd`, `latencyMs` (repo://packages/contracts/src/answers.ts#L50-L56) |
 
 Output validity is itself gated: 100% of responses must validate against `SQLAnswer`; a failed `SQLAnswer` parse gets at most 2 format repairs, then returns `status: "error"` with a safe message and no free-form model output (`docs/prd.md:221`, `docs/UC-plan/UC01.md:89`). If failure happens before intent or SQL exists, required fields take safe defaults (`metric: null`, empty arrays, `sql: null`, `resultPreview: []`) (`docs/UC-plan/UC01.md:90`). The executor does not yet assemble `SQLAnswer` — it returns the narrower `ExecutorResult` above; the `text-to-sql` entry maps that result into checkpointed `AgentState` (preview sliced to 50, tools and budget delta merged), while `SQLAnswer` assembly with citations and masked preview is still a UC-01 milestone (`docs/UC-plan/UC01.md:219-226`, repo://packages/agent/src/subgraphs/textToSql.ts#L149-L194).
