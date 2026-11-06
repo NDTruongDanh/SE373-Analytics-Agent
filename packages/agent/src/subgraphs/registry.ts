@@ -51,22 +51,41 @@ export function listUcIds(): string[] {
 
 /**
  * Count column of the tracer preview. A live model picks its own alias
- * (e.g. COUNT(*) AS order_count), so read the canned "n" when present,
- * else the first numeric non-status column.
+ * (e.g. COUNT(*) AS order_count), so read the canned "n" when present, else
+ * the first count-named column with count-like values, else the first column
+ * whose values are all numbers or numeric strings. Booleans, nulls, and
+ * empty strings never count as numeric — Number(true), Number(null), and
+ * Number("") are all finite and once picked the wrong column — so an id
+ * column wins only as a last resort when every value is genuinely numeric.
  */
+const COUNT_COLUMN_NAME = /^(n|count|total|.*_count|count_.*|num_.*)$/i;
+
+function isCountCell(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    /^-?\d+(\.\d+)?$/.test(value)
+  );
+}
+
 export function previewCountKey(
   columns: readonly string[],
   preview: readonly Record<string, unknown>[],
 ): string {
+  if (columns.includes("n")) return "n";
+  const countLike = (column: string): boolean =>
+    COUNT_COLUMN_NAME.test(column) &&
+    preview.length > 0 &&
+    preview.every((row) => isCountCell(row[column]));
+  const named = columns.find(countLike);
+  if (named !== undefined) return named;
   return (
-    columns.find((column) => column === "n") ??
     columns.find(
       (column) =>
-        column !== "status" &&
         preview.length > 0 &&
-        preview.every((row) => Number.isFinite(Number(row[column]))),
-    ) ??
-    "n"
+        preview.every((row) => isCountCell(row[column])),
+    ) ?? "n"
   );
 }
 

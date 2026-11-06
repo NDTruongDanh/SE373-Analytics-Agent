@@ -11,7 +11,7 @@ import { createTracerDefaultEntry } from "../src/subgraphs/registry.js";
 import { createSpanEmitter } from "../src/telemetry/spans.js";
 import type { AgentState, RootRuntime } from "../src/state.js";
 import { writeTraceEvent } from "../src/traces/writer.js";
-import { previewCountTotal } from "../src/subgraphs/registry.js";
+import { previewCountKey, previewCountTotal } from "../src/subgraphs/registry.js";
 
 // Tracer slice: fake model + stub MCP transport assert at least 2 tool calls
 // per run, per-call X-Run-Id propagation, resultPreview cap, and zero raw
@@ -216,6 +216,64 @@ describe("tracer agent", () => {
     expect(previewCountTotal(["status", "n"], threeRows())).toBe(12);
     expect(previewCountTotal(["status"], [{ status: "a" }])).toBe(0);
     expect(previewCountTotal(["status", "n"], [])).toBe(0);
+  });
+
+  it("previewCountKey ignores boolean, null, and empty columns", () => {
+    // Number(true), Number(null), and Number("") are all finite: the old
+    // Number.isFinite(Number(...)) probe picked these as count columns.
+    expect(
+      previewCountKey(
+        ["status", "active"],
+        [
+          { status: "a", active: true },
+          { status: "b", active: false },
+        ],
+      ),
+    ).toBe("n");
+    expect(
+      previewCountKey(["region", "x"], [{ region: "s", x: null }]),
+    ).toBe("n");
+    expect(previewCountKey(["region", "x"], [{ region: "s", x: "" }])).toBe(
+      "n",
+    );
+  });
+
+  it("previewCountKey prefers count names, then the first all-numeric column", () => {
+    expect(
+      previewCountKey(
+        ["id", "status", "order_count"],
+        [
+          { id: 1, status: "a", order_count: "10" },
+          { id: 2, status: "b", order_count: "5" },
+        ],
+      ),
+    ).toBe("order_count");
+    expect(
+      previewCountKey(["status", "total"], [{ status: "a", total: 7 }]),
+    ).toBe("total");
+    expect(
+      previewCountKey(
+        ["status", "num_orders"],
+        [{ status: "a", num_orders: "3" }],
+      ),
+    ).toBe("num_orders");
+    expect(
+      previewCountKey(["status", "count"], [{ status: "a", count: 4 }]),
+    ).toBe("count");
+    // An id column wins only as a last resort over genuinely numeric values.
+    expect(
+      previewCountKey(
+        ["id", "status"],
+        [
+          { id: 1, status: "a" },
+          { id: 2, status: "b" },
+        ],
+      ),
+    ).toBe("id");
+    // A count-named column with non-numeric values falls through to "n".
+    expect(
+      previewCountKey(["status", "total"], [{ status: "a", total: "high" }]),
+    ).toBe("n");
   });
 
   it("writes an 8-event redacted trace validated by the contract", async () => {
