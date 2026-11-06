@@ -16,6 +16,8 @@ import express from "express";
 import type { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { dbToolError } from "@shared/contracts";
 import {
   ColumnScopePolicy,
@@ -101,6 +103,30 @@ function mcpErrorPayload(message: string, code: string): {
   };
 }
 
+// The SDK validates tool arguments against the registered inputSchema before
+// the handler runs, so a strict schema there would reject malformed params
+// outside the pipeline: no audit line, and zod ahead of the scope check.
+// Register a pass-through schema so every call reaches executeToolCall,
+// where auth -> scope -> zod -> ... -> audit runs in order (UC09.md B.1).
+const PASS_THROUGH_INPUT = z.looseObject({});
+
+// tools/list still advertises the strict contract schemas: the pass-through
+// above is a dispatch detail, not the public tool interface.
+function listToolsResult(): {
+  tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+} {
+  return {
+    tools: TOOL_SPECS.map((spec) => ({
+      name: spec.name,
+      description: spec.description,
+      inputSchema: z.toJSONSchema(spec.inputSchema, {
+        target: "draft-7",
+        io: "input",
+      }) as Record<string, unknown>,
+    })),
+  };
+}
+
 export async function createGatewayApp(
   options: GatewayAppOptions = {},
 ): Promise<express.Express> {
@@ -171,7 +197,7 @@ export async function createGatewayApp(
         spec.name,
         {
           description: spec.description,
-          inputSchema: spec.inputSchema.shape,
+          inputSchema: PASS_THROUGH_INPUT,
         },
         async (
           args: Record<string, unknown>,
@@ -202,6 +228,9 @@ export async function createGatewayApp(
         },
       );
     }
+    // Replace the SDK's tools/list handler (which would describe the
+    // pass-through schema) with the strict contract schemas.
+    server.server.setRequestHandler(ListToolsRequestSchema, listToolsResult);
 
     const resourceEntries = [
       {
