@@ -46,6 +46,7 @@ import {
 import { sqlGuard, warmupSqlGuard, redactPII } from "@shared/access-policy";
 import type { SchemaCatalog } from "@shared/contracts";
 import { LARGE_TABLES } from "../packages/mcp-server/src/catalog.js";
+import { EVAL_CLIENTS_ENV } from "../packages/mcp-server/src/config.js";
 import { gradeExecution } from "./exGrader.js";
 import { compareRuns, type EvalResultsFile } from "./regression.js";
 import {
@@ -348,7 +349,14 @@ export async function buildLiveAdapter(
   const mcpUrl = process.env.MCP_URL ?? `http://127.0.0.1:${mcpPort}/mcp`;
   const gateway: ChildProcess = spawn("node", ["--import", "tsx", "packages/mcp-server/src/server.ts"], {
     cwd: repoRoot,
-    env: { ...process.env, MCP_PORT: String(mcpPort), AGENT_RO_DATABASE_URL: agentRoUrl },
+    // Eval's own gateway child opts the eval-only scope client in (issue #39);
+    // no other boot path sets this flag.
+    env: {
+      ...process.env,
+      MCP_PORT: String(mcpPort),
+      AGENT_RO_DATABASE_URL: agentRoUrl,
+      [EVAL_CLIENTS_ENV]: "1",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let gatewayStderr = "";
@@ -1088,6 +1096,9 @@ async function driveGatewayCaseBadDsn(
         ...process.env,
         MCP_PORT: String(BAD_DSN_PORT),
         AGENT_RO_DATABASE_URL: bad.toString(),
+        // Same client set as the main eval gateway, so the boot fails on the
+        // wrong password, not on token resolution.
+        [EVAL_CLIENTS_ENV]: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

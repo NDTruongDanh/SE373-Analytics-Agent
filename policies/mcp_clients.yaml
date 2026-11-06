@@ -33,12 +33,14 @@ clients:
       - schema:read
       - data:read
       - data:sensitive
-  # Eval-only scope probe (issue #39, 02-01 Task 2 APPROVED): the single
-  # client carrying only schema:read, so the SCOPE_DENIED case proves the
-  # scope stage live. Token value lives in MCP_TOKEN_EVAL_SCOPE (local
-  # .env, CI secrets); every gateway boot fails closed when it is missing.
+  # Eval-only scope probe (issue #39): the single client carrying only
+  # schema:read, so the SCOPE_DENIED case proves the scope stage live.
+  # evalOnly: the gateway registers it only when MCP_ENABLE_EVAL_CLIENTS=1
+  # (set by `pnpm eval` for its own gateway child); the API host never
+  # serves it. MCP_TOKEN_EVAL_SCOPE is needed for `pnpm eval` only.
   - clientId: eval_schema_only
     role: eval_schema_only
     tokenEnv: MCP_TOKEN_EVAL_SCOPE
+    evalOnly: true
     scopes:
       - schema:read
