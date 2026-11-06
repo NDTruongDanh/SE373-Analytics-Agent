@@ -180,6 +180,76 @@ describe("buildApp /api/ask", () => {
     expect(out.json).toMatchObject({ code: "INVALID_PARAMS" });
   });
 
+  it("sends the initial progress event while the graph is still running", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const app = buildApp({
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      ucHandlers: { tracer: async () => { await gate; return { status: "ok", answerText: "done" }; } },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "q", persona: "sales_south" }), signal: AbortSignal.timeout(5000),
+      });
+      const reader = response.body!.getReader();
+      const first = await reader.read();
+      const text = new TextDecoder().decode(first.value);
+      expect(text).toContain("intent_parsed");
+      expect(text).not.toContain("completed");
+      release();
+      let remaining = "";
+      for (;;) { const chunk = await reader.read(); if (chunk.done) break; remaining += new TextDecoder().decode(chunk.value); }
+      expect(remaining).toContain("completed");
+    } finally {
+      release();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("streams stage metadata before completion without exposing SQL or row values", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const app = buildApp({
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      ucHandlers: { tracer: async (_state, rt) => {
+        rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: "SELECT secret FROM orders WHERE phone = '0901111111'", tablesUsed: ["orders"] } });
+        rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
+        await gate;
+        return { status: "ok", answerText: "done" };
+      } },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "q", persona: "sales_south" }), signal: AbortSignal.timeout(5000),
+      });
+      const reader = response.body!.getReader();
+      let streamed = "";
+      while (!streamed.includes("event: query_running")) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error("stream ended before query progress");
+        streamed += new TextDecoder().decode(chunk.value);
+      }
+      expect(streamed).toContain("event: sql_generated");
+      expect(streamed).toContain("event: schema_retrieved");
+      expect(streamed).not.toContain("completed");
+      expect(streamed).not.toContain("0901111111");
+      expect(streamed).not.toContain("SELECT secret");
+      release();
+      await reader.cancel();
+    } finally {
+      release();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("streams allowlisted schema-validated SSE with minted chat ids", async () => {
     const out = await ask({ question: "How many orders do we have per status?", persona: "sales_south" });
     expect(out.status).toBe(200);
@@ -187,8 +257,8 @@ describe("buildApp /api/ask", () => {
     const blocks = parseSse(out.text);
     expect(blocks.map((b) => b.event)).toEqual([
       "intent_parsed",
-      "schema_retrieved",
       "sql_generated",
+      "schema_retrieved",
       "query_running",
       "completed",
     ]);
