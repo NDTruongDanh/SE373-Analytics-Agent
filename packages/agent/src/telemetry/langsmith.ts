@@ -139,6 +139,46 @@ export interface CreateTracerOptions {
 const liveClients = new Set<Client>();
 
 /**
+ * Process-wide client cache (one entry per apiKey/apiUrl/transport triple):
+ * every tracer for the same LangSmith endpoint shares a single Client, so
+ * per-run tracer construction cannot grow `liveClients` without bound. The
+ * fetchImplementation is part of the key by reference so a test injecting a
+ * different stub transport still gets its own client.
+ */
+const cachedClients: {
+  apiKey: string;
+  apiUrl: string | undefined;
+  fetchImplementation: typeof fetch | undefined;
+  client: Client;
+}[] = [];
+
+function getSharedClient(
+  apiKey: string | undefined,
+  apiUrl: string | undefined,
+  fetchImplementation: typeof fetch | undefined,
+): Client {
+  const key = apiKey ?? "";
+  const found = cachedClients.find(
+    (entry) =>
+      entry.apiKey === key &&
+      entry.apiUrl === apiUrl &&
+      entry.fetchImplementation === fetchImplementation,
+  );
+  if (found) return found.client;
+  const client = new Client({
+    apiKey,
+    ...(apiUrl !== undefined ? { apiUrl } : {}),
+    anonymizer: piiSafeProcessor,
+    omitTracedRuntimeInfo: true,
+    ...(fetchImplementation !== undefined
+      ? { fetchImplementation }
+      : {}),
+  });
+  cachedClients.push({ apiKey: key, apiUrl, fetchImplementation, client });
+  return client;
+}
+
+/**
  * Scrub a LangChain `serialized` model blob the SDK uploads WITHOUT
  * passing it through the client anonymizer: drop `kwargs.configuration`
  * structurally (ChatOpenAI embeds the live API key there in plaintext and
@@ -267,23 +307,20 @@ export class PiiSafeLangChainTracer extends LangChainTracer {
 /**
  * Build our anonymizing tracer, or `undefined` when the three-var gate is
  * closed (callers pass `callbacks: tracer ? [tracer] : undefined`). The
- * client sets `omitTracedRuntimeInfo` as defense in depth. Every created
- * client is tracked so `flushLangSmith` can drain the tail.
+ * client sets `omitTracedRuntimeInfo` as defense in depth. The underlying
+ * Client is shared per process (one per endpoint/transport), so every
+ * created client is tracked and `flushLangSmith` can drain the tail.
  */
 export function createLangSmithTracer(
   env: NodeJS.ProcessEnv = process.env,
   opts: CreateTracerOptions = {},
 ): PiiSafeLangChainTracer | undefined {
   if (!isLangSmithEnabled(env)) return undefined;
-  const client = new Client({
-    apiKey: opts.apiKey ?? env["LANGSMITH_API_KEY"],
-    ...(opts.apiUrl !== undefined ? { apiUrl: opts.apiUrl } : {}),
-    anonymizer: piiSafeProcessor,
-    omitTracedRuntimeInfo: true,
-    ...(opts.fetchImplementation !== undefined
-      ? { fetchImplementation: opts.fetchImplementation }
-      : {}),
-  });
+  const client = getSharedClient(
+    opts.apiKey ?? env["LANGSMITH_API_KEY"],
+    opts.apiUrl,
+    opts.fetchImplementation,
+  );
   liveClients.add(client);
   return new PiiSafeLangChainTracer({
     client,
@@ -305,6 +342,12 @@ export async function flushLangSmith(): Promise<void> {
 /** Test seam: drop tracked clients so suites stay isolated. */
 export function resetLangSmithForTests(): void {
   liveClients.clear();
+  cachedClients.length = 0;
+}
+
+/** Test seam: number of tracked clients (proves the per-process sharing). */
+export function langSmithClientCountForTests(): number {
+  return liveClients.size;
 }
 
 /** Run identity attached to every traced invoke for UI filtering (D-05). */

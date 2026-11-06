@@ -18,6 +18,7 @@ export {
   createLangSmithTracer,
   flushLangSmith,
   isLangSmithEnabled,
+  langSmithClientCountForTests,
   LANGSMITH_ENV_FLAGS,
   LANGSMITH_PROJECT_DEFAULT,
   piiSafeProcessor,

@@ -16,6 +16,7 @@ import {
   createLangSmithTracer,
   flushLangSmith,
   isLangSmithEnabled,
+  langSmithClientCountForTests,
   LANGSMITH_ENV_FLAGS,
   piiSafeProcessor,
   resetLangSmithForTests,
@@ -141,6 +142,34 @@ describe("createLangSmithTracer", () => {
     expect(tracer).toBeDefined();
     expect(tracer?.name).toBe("langchain_tracer");
     expect(tracer?.projectName).toBe("se373-test-project");
+    resetLangSmithForTests();
+  });
+
+  it("shares one client per endpoint/transport across tracers", () => {
+    resetLangSmithForTests();
+    const fetch = stubTransport([]);
+    const first = createLangSmithTracer(ENABLED_ENV, {
+      apiKey: "test-key-not-real",
+      fetchImplementation: fetch,
+    });
+    const second = createLangSmithTracer(ENABLED_ENV, {
+      apiKey: "test-key-not-real",
+      fetchImplementation: fetch,
+    });
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    // Same config: one shared Client, one tracked entry.
+    expect(first?.client).toBe(second?.client);
+    expect(langSmithClientCountForTests()).toBe(1);
+    // A different apiUrl (or transport) gets its own client instead.
+    const other = createLangSmithTracer(ENABLED_ENV, {
+      apiKey: "test-key-not-real",
+      apiUrl: "https://other.invalid",
+      fetchImplementation: stubTransport([]),
+    });
+    expect(other).toBeDefined();
+    expect(other?.client).not.toBe(first?.client);
+    expect(langSmithClientCountForTests()).toBe(2);
     resetLangSmithForTests();
   });
 });
