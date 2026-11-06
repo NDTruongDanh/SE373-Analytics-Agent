@@ -316,6 +316,8 @@ export interface GatewayObserved {
   data?: unknown;
   rowCountBefore?: number;
   rowCountAfter?: number;
+  /** Credential literals that must not appear in message (bad-DSN probe). */
+  forbiddenLiterals?: string[];
 }
 
 // postgres://user:pass@host:port/db — kills credentials, host, port, dbname.
@@ -360,6 +362,39 @@ export function assertNoSecretsInMessage(message: string): {
     return { pass: false, reason: "message contains raw phone or email PII" };
   }
   return { pass: true, reason: "message carries no secret shapes" };
+}
+
+// Node stack frames ("    at fn (/path/file.ts:12:3)") and absolute host
+// paths: the raw boot-failure leak shapes sanitizeError must strip.
+const STACK_FRAME_PATTERN = /^\s*at\s.+:\d+:\d+\)?\s*$/m;
+const ABS_PATH_PATTERN =
+  /(?:^|[\s"'(=:])(?:file:\/\/)?(?:\/(?:home|Users|root|tmp|var|etc|opt|usr|srv|mnt)\/|[A-Za-z]:\\)/;
+
+/**
+ * Error/boot output check: every assertNoSecretsInMessage shape, plus stack
+ * frames, absolute host paths, and caller-supplied credential literals (the
+ * probe's wrong password and role name). Reasons never echo the match.
+ */
+export function assertNoLeaksInOutput(
+  output: string,
+  forbiddenLiterals: string[] = [],
+): { pass: boolean; reason: string } {
+  const base = assertNoSecretsInMessage(output);
+  if (!base.pass) return base;
+  if (STACK_FRAME_PATTERN.test(output)) {
+    return { pass: false, reason: "output contains a stack frame" };
+  }
+  if (ABS_PATH_PATTERN.test(output)) {
+    return { pass: false, reason: "output contains an absolute host path" };
+  }
+  if (
+    forbiddenLiterals.some(
+      (literal) => literal.length >= 3 && output.includes(literal),
+    )
+  ) {
+    return { pass: false, reason: "output contains a forbidden credential literal" };
+  }
+  return { pass: true, reason: "output carries no secret or leak shapes" };
 }
 
 const OUTPUT_SCHEMAS: Record<
@@ -483,7 +518,10 @@ export function gradeGatewayCase(
     }
   }
   if (expect.noSecretsInMessage === true) {
-    const checked = assertNoSecretsInMessage(observed.message ?? "");
+    const checked = assertNoLeaksInOutput(
+      observed.message ?? "",
+      observed.forbiddenLiterals,
+    );
     if (!checked.pass) failures.push(checked.reason);
   }
   if (expect.rowCountUnchanged !== undefined) {
@@ -540,6 +578,53 @@ export function gradeGatewayCase(
   }
   const asserted = Object.keys(expect).length;
   return { pass: true, reason: `${asserted} expectation(s) hold` };
+}
+
+/**
+ * Map one tool result (parsed JSON text plus the MCP isError flag) to the
+ * observed shape the grader reads.
+ */
+export function observedFromPayload(
+  parsed: unknown,
+  isError: boolean | undefined,
+  httpStatus: number,
+): GatewayObserved {
+  // isError is the authoritative denial signal; the payload shape is not
+  // (a data payload may legitimately carry a top-level "code" field).
+  if (isError === true) {
+    const denied =
+      typeof parsed === "object" && parsed !== null
+        ? (parsed as { code?: unknown; message?: unknown })
+        : {};
+    if (typeof denied.code !== "string") {
+      throw new Error("gateway returned isError without a DbToolError code");
+    }
+    return {
+      ok: false,
+      httpStatus,
+      code: denied.code,
+      message:
+        typeof denied.message === "string" ? denied.message : "denied",
+      isError,
+    };
+  }
+  const record = (parsed ?? {}) as Record<string, unknown>;
+  return {
+    ok: true,
+    httpStatus,
+    data: parsed,
+    rows: Array.isArray(record["rows"])
+      ? (record["rows"] as Record<string, unknown>[])
+      : undefined,
+    truncated:
+      typeof record["truncated"] === "boolean"
+        ? (record["truncated"] as boolean)
+        : undefined,
+    maskedColumns: Array.isArray(record["maskedColumns"])
+      ? (record["maskedColumns"] as string[])
+      : undefined,
+    message: "",
+  };
 }
 
 export interface AuditExpectation {

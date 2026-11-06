@@ -49,7 +49,7 @@ import type { SchemaCatalog } from "@shared/contracts";
 import { LARGE_TABLES } from "../packages/mcp-server/src/catalog.js";
 import { EVAL_CLIENTS_ENV } from "../packages/mcp-server/src/config.js";
 import { gradeExecution } from "./exGrader.js";
-import { compareRuns, type EvalResultsFile } from "./regression.js";
+import { compareRuns, summarizeCases, type EvalResultsFile } from "./regression.js";
 import {
   gatewayStageFor,
   gradeAnswerCase,
@@ -65,6 +65,7 @@ import {
   auditTailLines,
   gradeGatewayCase,
   gradeAuditLines,
+  observedFromPayload,
   validateGatewayRecord,
   type GatewayCase,
   type GatewayObserved,
@@ -517,17 +518,10 @@ export async function runEval(
       ...(pass ? {} : { note: mismatches.join("; ") }),
     });
   }
-  const passed = graded.filter((g) => g.exPass).length;
   return {
     datasetVersion: cases[0]?.datasetVersion ?? "unknown",
     cases: graded,
-    summary: {
-      total: graded.length,
-      passed,
-      exRate: graded.length === 0 ? 0 : passed / graded.length,
-      avgMs: 0,
-      avgTokens: 0,
-    },
+    summary: summarizeCases(graded),
   };
 }
 
@@ -880,46 +874,6 @@ export function loadGatewayCases(repoRoot: string, uc: string): GatewayCase[] {
     });
 }
 
-function observedFromPayload(
-  parsed: unknown,
-  isError: boolean | undefined,
-  httpStatus: number,
-): GatewayObserved {
-  if (
-    typeof parsed === "object" &&
-    parsed !== null &&
-    "code" in parsed &&
-    typeof (parsed as { code: unknown }).code === "string"
-  ) {
-    const denied = parsed as { code: string; message?: unknown };
-    return {
-      ok: false,
-      httpStatus,
-      code: denied.code,
-      message:
-        typeof denied.message === "string" ? denied.message : "denied",
-      isError,
-    };
-  }
-  const record = (parsed ?? {}) as Record<string, unknown>;
-  return {
-    ok: true,
-    httpStatus,
-    data: parsed,
-    rows: Array.isArray(record["rows"])
-      ? (record["rows"] as Record<string, unknown>[])
-      : undefined,
-    truncated:
-      typeof record["truncated"] === "boolean"
-        ? (record["truncated"] as boolean)
-        : undefined,
-    maskedColumns: Array.isArray(record["maskedColumns"])
-      ? (record["maskedColumns"] as string[])
-      : undefined,
-    message: "",
-  };
-}
-
 /** Drive one gateway case through callMcpTool (authed legs only). */
 async function driveGatewayCaseMcp(
   mcpUrl: string,
@@ -1134,7 +1088,11 @@ async function driveGatewayCaseBadDsn(
         "eval: bad-DSN gateway produced no output — probe inconclusive",
       );
     }
-    return { ok: true, httpStatus: 0, message };
+    // The wrong password and the role name must never surface: the grader
+    // checks these literals plus stack frames and absolute paths.
+    const forbiddenLiterals = [bad.password, decodeURIComponent(bad.username)]
+      .filter((literal) => literal !== "");
+    return { ok: true, httpStatus: 0, message, forbiddenLiterals };
   } finally {
     child?.kill();
   }
@@ -1305,17 +1263,10 @@ export function mergeGatewayResults(
   gatewayGraded: GradedCase[],
 ): EvalResultsFile {
   const merged = [...exResults.cases, ...gatewayGraded];
-  const passed = merged.filter((g) => g.exPass).length;
   return {
     datasetVersion: GATEWAY_DATASET_VERSION,
     cases: merged,
-    summary: {
-      total: merged.length,
-      passed,
-      exRate: merged.length === 0 ? 0 : passed / merged.length,
-      avgMs: 0,
-      avgTokens: 0,
-    },
+    summary: summarizeCases(merged),
   };
 }
 

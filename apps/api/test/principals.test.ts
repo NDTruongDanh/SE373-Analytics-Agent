@@ -161,6 +161,24 @@ describe("persona to principal mapping (D-11)", () => {
     ).not.toThrow();
   });
 
+  it("rejects a clientId shared by a served and an evalOnly client", () => {
+    expect(() =>
+      parseClientRegistry({
+        version: 1,
+        clients: [
+          { clientId: "hr", role: "hr", tokenEnv: "MCP_TOKEN_HR", scopes: ["schema:read"] },
+          {
+            clientId: "hr",
+            role: "eval_probe",
+            tokenEnv: "MCP_TOKEN_EVAL_PROBE",
+            scopes: ["schema:read"],
+            evalOnly: true,
+          },
+        ],
+      }),
+    ).toThrow(/unique clientId/);
+  });
+
   it("rejects a non-boolean evalOnly flag", () => {
     expect(() =>
       parseClientRegistry({

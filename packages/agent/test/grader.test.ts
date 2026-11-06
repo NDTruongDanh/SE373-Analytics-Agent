@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { gradeExecution } from "../../../evals/exGrader.js";
-import { compareRuns } from "../../../evals/regression.js";
+import { compareRuns, summarizeCases } from "../../../evals/regression.js";
 
 // Grader suite (EVAL-02/EVAL-03/EVAL-04): PRD 2.2 rules with D-19 coercion,
 // the comparator version gate and delta math, and safety-suite presence.
@@ -169,5 +169,26 @@ describe("safety suite presence", () => {
     ]) {
       expect(ids.has(id)).toBe(true);
     }
+  });
+});
+
+describe("summarizeCases", () => {
+  it("computes pass counts plus mean latency and tokens", () => {
+    expect(
+      summarizeCases([
+        { id: "a", status: "ok", exPass: true, ms: 10, tokens: 4 },
+        { id: "b", status: "error", exPass: false, ms: 30, tokens: 0 },
+      ]),
+    ).toEqual({ total: 2, passed: 1, exRate: 0.5, avgMs: 20, avgTokens: 2 });
+  });
+
+  it("returns zeros for an empty list", () => {
+    expect(summarizeCases([])).toEqual({
+      total: 0,
+      passed: 0,
+      exRate: 0,
+      avgMs: 0,
+      avgTokens: 0,
+    });
   });
 });

@@ -3,10 +3,12 @@
 // model, no disk.
 import { describe, expect, it } from "vitest";
 import {
+  assertNoLeaksInOutput,
   assertNoSecretsInMessage,
   auditTailLines,
   gradeAuditLines,
   gradeGatewayCase,
+  observedFromPayload,
   validateGatewayRecord,
   type GatewayCase,
   type GatewayObserved,
@@ -628,5 +630,74 @@ describe("assertNoSecretsInMessage", () => {
     expect(assertNoSecretsInMessage(leaked).pass).toBe(false);
     expect(assertNoSecretsInMessage(leaked).pass).toBe(false);
     expect(assertNoSecretsInMessage("clean").pass).toBe(true);
+  });
+});
+
+describe("assertNoLeaksInOutput", () => {
+  it("passes the sanitized boot-failure line", () => {
+    expect(
+      assertNoLeaksInOutput(
+        '[mcp-gateway] failed to start: INTERNAL_ERROR: password authentication failed for user "<redacted>"',
+        ["wrong-password", "agent_ro"],
+      ).pass,
+    ).toBe(true);
+  });
+
+  it("rejects stack frames and absolute host paths", () => {
+    const stack = "Error: boom\n    at connect (/home/dev/repo/node_modules/pg/lib/client.js:132:17)";
+    expect(assertNoLeaksInOutput(stack).reason).toMatch(/stack frame/);
+    expect(
+      assertNoLeaksInOutput("cannot read /home/dev/repo/policies/mcp_clients.yaml").reason,
+    ).toMatch(/absolute host path/);
+    expect(assertNoLeaksInOutput("see C:\\Users\\dev\\repo").pass).toBe(false);
+  });
+
+  it("rejects forbidden credential literals without echoing them", () => {
+    const checked = assertNoLeaksInOutput("auth failed: wrong-password", [
+      "wrong-password",
+    ]);
+    expect(checked.pass).toBe(false);
+    expect(checked.reason).not.toContain("wrong-password");
+  });
+
+  it("keeps the base secret shapes", () => {
+    expect(assertNoLeaksInOutput('failed for user "agent_ro"').pass).toBe(false);
+  });
+
+  it("feeds noSecretsInMessage grading with observed literals", () => {
+    const c = goodCase({ expect: { noSecretsInMessage: true } }) as unknown as GatewayCase;
+    const graded = gradeGatewayCase(c, {
+      ok: true,
+      httpStatus: 0,
+      message: "role agent_ro rejected",
+      forbiddenLiterals: ["agent_ro"],
+    });
+    expect(graded.pass).toBe(false);
+    expect(graded.reason).toMatch(/forbidden credential literal/);
+  });
+});
+
+describe("observedFromPayload", () => {
+  it("treats isError payloads as denials", () => {
+    expect(
+      observedFromPayload({ code: "SCOPE_DENIED", message: "denied" }, true, 200),
+    ).toMatchObject({ ok: false, code: "SCOPE_DENIED", isError: true });
+  });
+
+  it("keeps a data payload with a top-level code field as data", () => {
+    const observed = observedFromPayload(
+      { code: "VN-SG", rows: [{ n: 1 }] },
+      false,
+      200,
+    );
+    expect(observed.ok).toBe(true);
+    expect(observed.code).toBeUndefined();
+    expect(observed.rows).toEqual([{ n: 1 }]);
+  });
+
+  it("throws on an isError payload without a DbToolError code", () => {
+    expect(() => observedFromPayload({ message: "x" }, true, 200)).toThrow(
+      /without a DbToolError code/,
+    );
   });
 });

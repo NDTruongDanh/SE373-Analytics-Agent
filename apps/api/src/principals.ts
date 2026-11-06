@@ -106,6 +106,9 @@ export function parseClientRegistry(raw: unknown): ClientRegistry {
     fail("a non-empty clients list");
   }
   const entries = raw["clients"] as unknown[];
+  // Uniqueness covers every entry, eval-only ones included: the gateway
+  // loads both sets together when MCP_ENABLE_EVAL_CLIENTS=1.
+  const allIds: string[] = [];
   const clients: McpClientEntry[] = entries.flatMap((entry, index) => {
     if (!isRecord(entry)) fail(`clients[${index}] to be a mapping`);
     const { clientId, role, tokenEnv, scopes, rowScope, evalOnly } = entry;
@@ -115,6 +118,7 @@ export function parseClientRegistry(raw: unknown): ClientRegistry {
     if (typeof clientId !== "string" || clientId.length === 0) {
       fail(`clients[${index}].clientId to be a non-empty string`);
     }
+    allIds.push(clientId as string);
     if (typeof role !== "string" || role.length === 0) {
       fail(`clients[${index}].role to be a non-empty string`);
     }
@@ -157,8 +161,7 @@ export function parseClientRegistry(raw: unknown): ClientRegistry {
       },
     ];
   });
-  const ids = new Set(clients.map((c) => c.clientId));
-  if (ids.size !== clients.length) fail("unique clientId values");
+  if (new Set(allIds).size !== allIds.length) fail("unique clientId values");
   return { version: 1, clients };
 }
 
