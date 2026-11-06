@@ -19,8 +19,9 @@
 //
 // Safety secrecy: fixture attack text reaches only the scripted model (which
 // ignores its prompt input), the pure guard/gate functions, and the gateway
-// under test. The driver uses a noop span sink, writes no trace files, and
-// evals/** stays under .openwikiignore.
+// under test. The driver traces through a real per-run JSONL emitter into
+// the eval traces directory (local only, redacted before write, never
+// LangSmith) and evals/** stays under .openwikiignore.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -30,6 +31,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildRootGraph } from "@shared/agent";
 import { createCheckpointer } from "@shared/agent/ports";
+import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
+import { createSpanEmitter } from "../packages/agent/src/telemetry/spans.js";
 // Relative source import, not the frozen root barrel: graph.test.ts pins the
 // barrel to the root surface only, so the eval-only HTTP caller resolves from
 // the agent source file (same module graph the agent tests use).
@@ -40,7 +43,7 @@ import {
   type ChatModelLike,
   type McpToolCaller,
 } from "@shared/agent/queryExecutor";
-import { sqlGuard, warmupSqlGuard } from "@shared/access-policy";
+import { sqlGuard, warmupSqlGuard, redactPII } from "@shared/access-policy";
 import type { SchemaCatalog } from "@shared/contracts";
 import { LARGE_TABLES } from "../packages/mcp-server/src/catalog.js";
 import { gradeExecution } from "./exGrader.js";
@@ -169,6 +172,20 @@ export function stubAdapter(c: EvalCase): Promise<HarnessOutcome> {
 // running gateway + loaded DB. No mcp-server/src imports here — the agent
 // root builder plus its ./ports checkpointer only (ESLint §5.2 graph).
 
+/**
+ * Eval environment guard (Phase 3, D-04): `pnpm eval` must NEVER export to
+ * LangSmith, even with the env set (gold questions and injection rows stay
+ * private). Deletes every tracing flag in-process before any graph is built
+ * and drops the live model key unless explicitly opted in. Called first in
+ * `buildLiveAdapter`, before any DB/gateway work.
+ */
+export function prepareEvalEnv(env: NodeJS.ProcessEnv = process.env): void {
+  scrubLangSmithEnv(env);
+  if (env["EVAL_USE_LIVE_MODEL"] !== "1") {
+    delete env["AGENT_MODEL_API_KEY"];
+  }
+}
+
 /** Role → bearer-token env var (D-11 registry; tokens stay in env only). */
 const ROLE_TOKEN_ENV: Record<string, string> = {
   sales_south: "MCP_TOKEN_SALES_SOUTH",
@@ -224,6 +241,30 @@ export interface LiveHandle {
   close: () => Promise<void>;
   /** Base URL of the booted gateway child (safety driver reuses it). */
   mcpUrl: string;
+  /** Directory the live adapter and safety driver trace into (JSONL only). */
+  tracesDir: string;
+}
+
+/** Eval run identity for the per-case JSONL emitter (Phase 3 B6). */
+export interface EvalRunIdentity {
+  runId: string;
+  threadId: string;
+  userId: string;
+  role: string;
+}
+
+/**
+ * Per-case JSONL span emitter for eval runs (Phase 3 B6, D-01/D-04): the
+ * same redacted writer the product path uses, bound to the case run
+ * identity. JSONL-only by construction — this helper knows nothing about
+ * LangSmith, and the adapter never passes callbacks, so eval traces stay
+ * local even with the env set.
+ */
+export function createEvalEmitter(
+  tracesDir: string,
+  identity: EvalRunIdentity,
+) {
+  return createSpanEmitter({ ...identity, tracesDir });
 }
 
 /**
@@ -235,11 +276,24 @@ export interface LiveHandle {
  * Every wait is bounded — a missing DB/gateway throws a clear message,
  * never hangs.
  */
-export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
-  process.loadEnvFile?.();
-  if (process.env.EVAL_USE_LIVE_MODEL !== "1") {
-    delete process.env.AGENT_MODEL_API_KEY;
+export async function buildLiveAdapter(
+  repoRoot: string,
+  opts: { loadEnv?: boolean } = {},
+): Promise<LiveHandle> {
+  // Unit tests pass loadEnv: false so a developer's real .env (keys, DB
+  // URLs) never leaks into the test process or spawns a live gateway.
+  if (opts.loadEnv !== false) {
+    try {
+      process.loadEnvFile?.();
+    } catch {
+      // No .env in cwd (CI runners) — fall through to the explicit env
+      // checks below, which fail with clear messages.
+    }
   }
+  // D-04 first: scrub every tracing flag before any graph exists, so eval
+  // can never export even with the env set. Never pass callbacks here —
+  // the adapter below invokes bare on purpose (JSONL traces only).
+  prepareEvalEnv();
 
   const agentRoUrl = process.env.AGENT_RO_DATABASE_URL ?? "";
   if (!agentRoUrl) {
@@ -311,13 +365,18 @@ export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
     const runId = randomUUID();
     const userId = role;
     const threadId = `chat:${userId}:${runId}`;
+    // B6: a real per-run emitter into the run traces directory (JSONL
+    // only — invoke below stays callback-free per D-04).
+    const emit = createEvalEmitter(tracesDir, { runId, threadId, userId, role });
     const t0 = Date.now();
     try {
-      const graph = buildRootGraph({ checkpointer });
+      const graph = buildRootGraph({ checkpointer, emitSpan: emit });
       const out = (await withTimeout(
         graph.invoke(
           { question: c.question, ucId: "tracer", runId, threadId },
           {
+            // D-04: never pass LangSmith callbacks here — eval traces stay
+            // JSONL-local even if the flags were somehow re-set at runtime.
             configurable: {
               thread_id: threadId,
               mcpUrl,
@@ -333,19 +392,27 @@ export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
         150_000,
         `eval: case ${c.id} timed out after 150s`,
       )) as { status?: string; resultPreview?: Record<string, unknown>[] };
+      const status = out.status ?? "error";
+      emit.emitRunDone(status);
       return {
-        status: out.status ?? "error",
+        status,
         rows: out.resultPreview ?? [],
-        reason: out.status === "ok" || out.status === "no_data" ? undefined : `harness status '${out.status}'`,
+        reason: status === "ok" || status === "no_data" ? undefined : `harness status '${status}'`,
         ms: Date.now() - t0,
         tokens: 0,
         wired: true,
       };
     } catch (error) {
+      // Redact before storing: the raw model/gateway message never lands
+      // in results (B6) — only the scrubbed text survives.
+      const reason = redactPII(
+        error instanceof Error ? error.message : String(error),
+      ).redacted;
+      emit.emitRunDone("error");
       return {
         status: "error",
         rows: [],
-        reason: error instanceof Error ? error.message : String(error),
+        reason,
         ms: Date.now() - t0,
         tokens: 0,
         wired: true,
@@ -356,6 +423,7 @@ export async function buildLiveAdapter(repoRoot: string): Promise<LiveHandle> {
   return {
     adapter,
     mcpUrl,
+    tracesDir,
     close: async () => {
       gateway.kill();
       await (checkpointer as unknown as { end?: () => Promise<void> }).end?.();
@@ -560,11 +628,15 @@ async function safetyCatalog(
  * LocalQuerySafetyGate + real MCP gateway, attributing the stopping layer
  * from actual behavior: zero explain/run calls means a local stop
  * (disambiguated by re-running the exact pure guard/gate inputs);
- * gateway-reached denials map by their real error code.
+ * gateway-reached denials map by their real error code. The executor
+ * writes through a real per-run JSONL emitter (B6) into the caller's
+ * traces directory — local traces only, never LangSmith (D-04: this file
+ * scrubs the flags up front and passes no callbacks anywhere).
  */
 async function driveSafetyCase(
   mcpUrl: string,
   c: SafetyCase,
+  tracesDir: string,
 ): Promise<SafetyDrive> {
   const tokenEnv = ROLE_TOKEN_ENV[c.role];
   if (!tokenEnv) {
@@ -578,10 +650,25 @@ async function driveSafetyCase(
   const calls: string[] = [];
   const caller = httpCaller(mcpUrl, token, runId, c.role, c.role, calls);
   const catalog = await safetyCatalog(caller, c.candidateTables);
+  // B6: the safety drive traces like every other eval run (local JSONL
+  // only); the shared writer redacts before anything reaches disk.
+  const emit = createEvalEmitter(tracesDir, {
+    runId,
+    threadId: `safety:${c.id}:${runId}`,
+    userId: c.role,
+    role: c.role,
+  });
   const executor = new ValidatedQueryExecutor({
     model: scriptedModel(c.attackSql, c.candidateTables),
     mcp: caller,
-    emitSpan: () => "",
+    emitSpan: (event) =>
+      emit({
+        node: event.node,
+        type: event.type,
+        durationMs: event.durationMs ?? 0,
+        payload: event.payload,
+        attempt: event.attempt,
+      }),
   });
   const result = await executor.run({
     question: c.question,
@@ -589,6 +676,7 @@ async function driveSafetyCase(
     principal: { runId, userId: c.role, roleScope: c.role },
     catalog,
   });
+  emit.emitRunDone(result.status);
   const reachedGateway =
     calls.includes("explain_query") || calls.includes("run_query");
   if (!reachedGateway) {
@@ -715,12 +803,12 @@ async function main(): Promise<void> {
     const safetyOut: Record<string, unknown>[] = [];
     for (const s of safety) {
       const resubmit = s.id === "safety-05-resubmit";
-      const first = await driveSafetyCase(live.mcpUrl, s);
+      const first = await driveSafetyCase(live.mcpUrl, s, live.tracesDir);
       let observed = first.observedBlockingLayer;
       let pass: boolean;
       let reason: string;
       if (resubmit) {
-        const second = await driveSafetyCase(live.mcpUrl, s);
+        const second = await driveSafetyCase(live.mcpUrl, s, live.tracesDir);
         const graded = gradeResubmitPair(s, first, second);
         pass = graded.pass;
         reason = graded.reason;

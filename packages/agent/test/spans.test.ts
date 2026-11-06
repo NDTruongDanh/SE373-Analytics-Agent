@@ -136,6 +136,84 @@ describe("span emitter", () => {
     });
   });
 
+  it("carries usage, cost, and RBAC fields in llm_call and tool_call payloads", () => {
+    const { emit, readEvents } = makeEmitter();
+    emit.emitLlmCall("propose", {
+      model: "openai/gpt-oss-120b",
+      inputTokens: 100,
+      outputTokens: 50,
+      estimatedCostUsd: 0.00045,
+      pricingKnown: true,
+      durationMs: 12,
+      attempt: 1,
+    });
+    emit.emitToolCall("run", "run_query", {
+      rowCount: 2,
+      columns: ["status", "n"],
+      maskedColumns: ["customers.phone"],
+      rowScopeApplied: [{ table: "sellers", column: "region_group" }],
+      attempt: 1,
+    });
+    const events = readEvents();
+    expect(events).toHaveLength(2);
+    expect(events[0]["payload"]).toEqual({
+      model: "openai/gpt-oss-120b",
+      inputTokens: 100,
+      outputTokens: 50,
+      estimatedCostUsd: 0.00045,
+      pricingKnown: true,
+    });
+    expect(events[0]["durationMs"]).toBe(12);
+    expect(events[1]["payload"]).toEqual({
+      tool: "run_query",
+      rowCount: 2,
+      columns: ["status", "n"],
+      maskedColumns: ["customers.phone"],
+      rowScopeApplied: [{ table: "sellers", column: "region_group" }],
+    });
+  });
+
+  it("counts run_query attempts off every tool_call and failures off ok:false", () => {
+    const { emit, readEvents } = makeEmitter();
+    emit.emitToolCall("run", "run_query", { rowCount: 2, ok: true, attempt: 1 });
+    emit.emitToolCall("run", "run_query", {
+      ok: false,
+      code: "TIMEOUT",
+      attempt: 2,
+    });
+    emit.emitToolCall("describe", "describe_table", {});
+    // Legacy payloads without an ok flag still count as attempts, never
+    // failures, so pre-change trace files keep reconciling.
+    emit({
+      node: "run",
+      type: "tool_call",
+      durationMs: 1,
+      payload: { tool: "run_query", rowCount: 1 },
+    });
+    emit({
+      node: "repair",
+      type: "node_done",
+      durationMs: 1,
+      payload: { code: "TIMEOUT", nextAttempt: 3 },
+      attempt: 2,
+    });
+    expect(emit.totals()).toMatchObject({
+      toolCalls: 4,
+      sqlAttempts: 3,
+      sqlFailures: 1,
+      repairs: 1,
+    });
+    emit.emitRunDone("error");
+    const events = readEvents();
+    const done = events.find((event) => event["type"] === "run_done");
+    expect(done?.["payload"]).toMatchObject({
+      status: "error",
+      sqlAttempts: 3,
+      sqlFailures: 1,
+      repairs: 1,
+    });
+  });
+
   it("redacts synthetic PII before write (markers present, literals absent)", () => {
     const { emit, readEvents } = makeEmitter();
     emit({

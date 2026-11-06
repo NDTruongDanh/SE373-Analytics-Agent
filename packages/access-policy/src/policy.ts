@@ -11,7 +11,7 @@ import { walk } from "@pgsql/traverse";
 import type { NodePath } from "@pgsql/traverse";
 import { deparse, parse } from "pgsql-parser";
 import type { DbToolError, ErrorCode, SchemaCatalog } from "@shared/contracts";
-import { dbToolError } from "@shared/contracts";
+import { dbToolError, type RowScopeApplied } from "@shared/contracts";
 import { sqlGuard } from "./guard.js";
 import type { GuardAst } from "./guard.js";
 import { DEFAULT_SENSITIVE_COLUMNS } from "./sensitive-columns.js";
@@ -43,8 +43,18 @@ export type Principal = {
 };
 
 export type PolicyResult =
-  | { allowed: true; sql: string; maskedColumns: string[] }
+  | {
+      allowed: true;
+      sql: string;
+      maskedColumns: string[];
+      /** Server-minted row-scope record: table/column where a predicate was
+       * injected, never the scoped value itself (column names only, D-03). */
+      rowScopeApplied: RowScopeApplied[];
+    }
   | { allowed: false; error: DbToolError };
+
+/** One applied row-scope predicate: scoped table plus scoped column. */
+export { RowScopeAppliedSchema, type RowScopeApplied } from "@shared/contracts";
 
 export interface AccessPolicy {
   readonly name: string;
@@ -1123,10 +1133,18 @@ export class ColumnScopePolicy implements AccessPolicy {
     // Row-scope predicates, injected per query level whose FROM directly
     // includes a scoped table (hand-built equality on the level's alias or
     // bare name). Opaque or ambiguous placement denies FORBIDDEN_STATEMENT.
+    // Every injected predicate is recorded (table/column only, never the
+    // value) so audit and trace sinks can show scoping without PII.
+    const rowScopeApplied: RowScopeApplied[] = [];
     if (principal.rowScope !== undefined && principal.rowScope !== null) {
       const scoped = rowScopeTables(principal.rowScope, catalog);
       if (scoped.length > 0) {
-        const injection = this.injectRowScopes(analysis.levels, principal.rowScope, scoped);
+        const injection = this.injectRowScopes(
+          analysis.levels,
+          principal.rowScope,
+          scoped,
+          rowScopeApplied,
+        );
         if (injection === "deny-opaque") {
           return {
             allowed: false,
@@ -1150,7 +1168,7 @@ export class ColumnScopePolicy implements AccessPolicy {
     }
 
     if (!mutated) {
-      return { allowed: true, sql, maskedColumns: [] };
+      return { allowed: true, sql, maskedColumns: [], rowScopeApplied: [] };
     }
 
     let finalSql: string;
@@ -1176,10 +1194,13 @@ export class ColumnScopePolicy implements AccessPolicy {
       return { allowed: false, error: reguard.error };
     }
     void reparsed;
+    const byScope = (a: RowScopeApplied, b: RowScopeApplied): number =>
+      a.table < b.table ? -1 : a.table > b.table ? 1 : a.column < b.column ? -1 : a.column > b.column ? 1 : 0;
     return {
       allowed: true,
       sql: finalSql,
       maskedColumns: [...maskedColumns].sort(),
+      rowScopeApplied: [...rowScopeApplied].sort(byScope),
     };
   }
 
@@ -1256,11 +1277,14 @@ export class ColumnScopePolicy implements AccessPolicy {
   }
 
   // Returns true when a predicate was injected, false when no level names a
-  // scoped table, or a deny string when placement is impossible.
+  // scoped table, or a deny string when placement is impossible. Every
+  // injected predicate is appended to `applied` as a value-free
+  // { table, column } descriptor (server-minted, never request data).
   private injectRowScopes(
     levels: LevelScope[],
     rowScope: NonNullable<Principal["rowScope"]>,
     scoped: string[],
+    applied: RowScopeApplied[],
   ): boolean | "deny-opaque" | "deny-ambiguous" {
     let injected = false;
     for (const level of levels) {
@@ -1278,6 +1302,10 @@ export class ColumnScopePolicy implements AccessPolicy {
         if (list.length > 1) return "deny-ambiguous";
       }
       for (const entry of direct) {
+        applied.push({
+          table: entry.tableName.toLowerCase(),
+          column: rowScope.column,
+        });
         const predicate = {
           A_Expr: {
             kind: "AEXPR_OP",

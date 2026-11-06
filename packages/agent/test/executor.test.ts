@@ -280,4 +280,46 @@ describe("ValidatedQueryExecutor core path", () => {
     });
     expect(mcp.calls).toHaveLength(0);
   });
+
+  it("trips the token budget on real usage counts instead of the estimate", async () => {
+    // Fake usage seam: a real-shaped { raw, parsed } result carrying
+    // provider counts. Real total 150 exceeds maxTokens 100, while the
+    // estimate fallback (~40) would not trip — proving the trip runs on
+    // real counts.
+    const realUsageModel = {
+      withStructuredOutput: () => ({
+        invoke: async () => ({
+          raw: {
+            content: "proposal",
+            usage_metadata: {
+              input_tokens: 100,
+              output_tokens: 50,
+              total_tokens: 150,
+            },
+            response_metadata: { model: "openai/gpt-oss-120b" },
+          },
+          parsed: JSON.parse(proposalFor(TRACER_SQL, ["orders"])),
+        }),
+      }),
+    } as unknown as ChatModelLike;
+    const mcp = new StubMcpCaller({ describe_table: describeHandler });
+    const executor = new ValidatedQueryExecutor({
+      model: realUsageModel,
+      mcp,
+    });
+
+    const result = await executor.run({
+      question: "How many orders do we have per status?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+      budget: createBudgetState({ maxTokens: 100 }),
+    });
+
+    expect(result.status).toBe("cannot_answer");
+    if (result.status !== "cannot_answer") return;
+    expect(result.budgetExceeded).toBe(true);
+    expect(result.tripReason).toBe("tokens");
+    // Only the describe ran; explain/run never fired on the tripped budget.
+    expect(mcp.calls.map((call) => call.tool)).toEqual(["describe_table"]);
+  });
 });

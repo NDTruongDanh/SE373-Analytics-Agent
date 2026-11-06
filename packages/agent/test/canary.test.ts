@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { TraceEventSchema } from "@shared/contracts";
 import { MASKED_EMAIL, MASKED_PHONE } from "@shared/access-policy";
 import { appendTraceEvent } from "../src/traces/writer.js";
 
@@ -17,6 +18,11 @@ const CANARY_PHONES = [
   "024 3123 4567", // landline spaced
 ];
 const CANARY_EMAILS = ["canary.k27@example.vn", "k27.canary@example.com"];
+
+// New Phase-3 payload shapes whose string slots must stay covered by the
+// same redact-before-write guarantee (counts and column names only by
+// construction; the writer is the backstop if a string ever slips in).
+const CANARY_MODEL = "openai/gpt-oss-120b";
 
 describe("OBS-01 PII canary", () => {
   it("lets no raw canary literal reach disk while markers do", () => {
@@ -63,5 +69,146 @@ describe("OBS-01 PII canary", () => {
     }
     expect(content).toContain(MASKED_PHONE);
     expect(content).toContain(MASKED_EMAIL);
+  });
+
+  it("redacts canaries in the new llm_call and RBAC tool_call payloads", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "traces-canary-g5g1-"));
+    const phone = CANARY_PHONES[0] as string;
+    const email = CANARY_EMAILS[0] as string;
+    appendTraceEvent(
+      {
+        runId: "run-canary-2",
+        threadId: "thread-canary",
+        userId: "demo-user",
+        role: "sales_south",
+        node: "propose",
+        type: "llm_call",
+        durationMs: 12,
+        payload: {
+          model: CANARY_MODEL,
+          inputTokens: 100,
+          outputTokens: 50,
+          estimatedCostUsd: 0.00045,
+          pricingKnown: true,
+          // Backstop proof: even a free-text slot carrying PII is masked.
+          detail: `tong dai ${phone} hoac ${email}`,
+        },
+      },
+      dir,
+    );
+    appendTraceEvent(
+      {
+        runId: "run-canary-2",
+        threadId: "thread-canary",
+        userId: "demo-user",
+        role: "sales_south",
+        node: "run",
+        type: "tool_call",
+        durationMs: 4,
+        payload: {
+          tool: "run_query",
+          rowCount: 1,
+          maskedColumns: ["customers.phone"],
+          rowScopeApplied: [{ table: "sellers", column: "region_group" }],
+          filter: `region_group = '${phone}'`,
+        },
+      },
+      dir,
+    );
+    const content = readFileSync(
+      path.join(dir, "run-canary-2.jsonl"),
+      "utf8",
+    );
+    expect(content).not.toContain(phone);
+    expect(content).not.toContain(email);
+    expect(content).toContain(MASKED_PHONE);
+    expect(content).toContain(MASKED_EMAIL);
+    // Structural fields survive redaction: names and counts, never values.
+    expect(content).toContain("customers.phone");
+    expect(content).toContain("region_group");
+    expect(content).toContain(CANARY_MODEL);
+  });
+
+  it("redacts canaries in the eval-written run_done and approval event set", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "traces-canary-eval-"));
+    const phone = CANARY_PHONES[0] as string;
+    const email = CANARY_EMAILS[1] as string;
+    appendTraceEvent(
+      {
+        runId: "run-canary-3",
+        threadId: "thread-canary",
+        userId: "demo-user",
+        role: "sales_south",
+        node: "answer",
+        type: "run_done",
+        durationMs: 1,
+        payload: {
+          status: "error",
+          llmCalls: 1,
+          inputTokens: 10,
+          outputTokens: 5,
+          estimatedCostUsd: 0,
+          toolCalls: 1,
+          sqlAttempts: 1,
+          sqlFailures: 0,
+          // Backstop proof: even a free-text slot on the terminal span is
+          // masked before it reaches disk.
+          detail: `model said call ${phone}`,
+        },
+      },
+      dir,
+    );
+    appendTraceEvent(
+      {
+        runId: "run-canary-3",
+        threadId: "thread-canary",
+        userId: "demo-user",
+        role: "sales_south",
+        node: "answer",
+        type: "approval_requested",
+        durationMs: 0,
+        payload: {
+          kind: "clarification",
+          // Model-minted options ride the request span; the writer is the
+          // backstop if one ever carries PII.
+          pendingClarification: [`xac minh ${email} khong`],
+        },
+      },
+      dir,
+    );
+    appendTraceEvent(
+      {
+        runId: "run-canary-3",
+        threadId: "thread-canary",
+        userId: "demo-user",
+        role: "sales_south",
+        node: "answer",
+        type: "approval_decided",
+        durationMs: 0,
+        payload: {
+          kind: "clarification",
+          decision: "provided",
+          reviewer: "sales_south",
+          waitedMs: 12,
+          valueLength: 9,
+        },
+      },
+      dir,
+    );
+    const content = readFileSync(
+      path.join(dir, "run-canary-3.jsonl"),
+      "utf8",
+    );
+    expect(content).not.toContain(phone);
+    expect(content).not.toContain(email);
+    expect(content).toContain(MASKED_PHONE);
+    expect(content).toContain(MASKED_EMAIL);
+    // Structural fields survive: totals, kinds, decisions, lengths.
+    expect(content).toContain("run_done");
+    expect(content).toContain("approval_decided");
+    expect(content).toContain("valueLength");
+    for (const line of content.trim().split("\n")) {
+      TraceEventSchema.parse(JSON.parse(line));
+    }
   });
 });

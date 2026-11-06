@@ -124,7 +124,12 @@ describe("chat-model factory", () => {
     const answer = await synthesize([{ status: "ok", n: 12 }], "How many?", {
       model,
     });
-    expect(answer).toBe("3 status groups, 12 orders");
+    expect(answer.text).toBe("3 status groups, 12 orders");
+    // The fake carries no provider usage: zero counts, no model, real timing.
+    expect(answer.inputTokens).toBe(0);
+    expect(answer.outputTokens).toBe(0);
+    expect(answer.model).toBeUndefined();
+    expect(typeof answer.durationMs).toBe("number");
     expect(bindSpy).not.toHaveBeenCalled();
   });
 
@@ -136,6 +141,25 @@ describe("chat-model factory", () => {
       .withStructuredOutput(ExecutorSchema, { name: "sql_proposal" })
       .invoke("q");
     expect(out).toEqual({ sql: "SELECT 1", tablesUsed: ["t"] });
+  });
+
+  it("never forwards callbacks into the synthesis model invoke", async () => {
+    const model = createChatModel("synthesis", {
+      fake: { responses: ["3 status groups, 12 orders"] },
+    });
+    const invokeSpy = vi.spyOn(model, "invoke");
+    // Callers may still pass callbacks (e.g. a graph run tracer), but rows
+    // serialize into the prompt string, so any traced invoke would ship row
+    // values to LangSmith as one opaque prompt past the row-array drop.
+    // Synthesis stays untraced by construction: the invoke takes no config.
+    const answer = await synthesize([{ status: "ok", n: 12 }], "How many?", {
+      model,
+      callbacks: [],
+    });
+    expect(answer.text).toBe("3 status groups, 12 orders");
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
+    expect(invokeSpy.mock.calls[0]).toHaveLength(1);
+    expect(typeof invokeSpy.mock.calls[0]?.[0]).toBe("string");
   });
 
   it("keeps the legacy zero-arg surface on the canned proposal (no key)", async () => {

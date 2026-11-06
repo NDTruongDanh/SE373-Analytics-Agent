@@ -58,9 +58,9 @@ function validAnswer(status = "ok") {
   };
 }
 
-describe("contracts 1.0.0", () => {
-  it("freezes CONTRACTS_VERSION at 1.0.0 with 12 codes", () => {
-    expect(CONTRACTS_VERSION).toBe("1.0.0");
+describe("contracts 1.1.0", () => {
+  it("freezes CONTRACTS_VERSION at 1.1.0 with 12 codes", () => {
+    expect(CONTRACTS_VERSION).toBe("1.1.0");
     expect(ErrorCodes).toHaveLength(12);
     expect(ErrorCodes).toContain("SQL_EXECUTION_ERROR");
   });

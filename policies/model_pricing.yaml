@@ -1,0 +1,15 @@
+# Model pricing table (Phase 3 G1, D-06): per-1M-token input/output USD
+# rates consumed by the agent-side loader
+# (packages/agent/src/telemetry/pricing.ts). Human-readable source of
+# truth; unknown models cost 0 with pricingKnown false, never throw.
+# Groq rates corroborated from the official Groq pricing page 2026-11-05
+# (see 03-RESEARCH.md); agent-default is the keyless local fallback and
+# costs nothing by construction.
+version: 1
+models:
+  openai/gpt-oss-120b:
+    inputPer1M: 0.15
+    outputPer1M: 0.6
+  agent-default:
+    inputPer1M: 0
+    outputPer1M: 0
