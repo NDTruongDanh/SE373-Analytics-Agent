@@ -470,6 +470,8 @@ function auditLine(
     decision: "deny",
     errorCode: "FORBIDDEN_STATEMENT",
     piiHits: 0,
+    maskedColumns: [],
+    rowScopeApplied: [],
     ...overrides,
   };
 }
@@ -535,6 +537,17 @@ describe("gradeAuditLines", () => {
     );
     expect(graded.pass).toBe(false);
     expect(graded.reason).toMatch(/IPv4/);
+  });
+
+  it("fails lines missing the contracts-1.1.0 RBAC record", () => {
+    for (const field of ["maskedColumns", "rowScopeApplied"]) {
+      const graded = gradeAuditLines(
+        [JSON.stringify(auditLine({ runId: "a", [field]: undefined }))],
+        [{ runId: "a", expectedLines: 1 }],
+      );
+      expect(graded.pass).toBe(false);
+      expect(graded.reason).toContain(field);
+    }
   });
 
   it("fails a deny without errorCode", () => {

@@ -29,6 +29,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { buildRootGraph } from "@shared/agent";
 import { createCheckpointer } from "@shared/agent/ports";
 import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
@@ -925,6 +926,7 @@ async function driveGatewayCaseMcp(
   runId: string,
   token: string,
   role: string,
+  timeoutMs: number,
 ): Promise<{ observed: GatewayObserved; reachedGateway: boolean }> {
   let result: { text: string; isError?: boolean };
   try {
@@ -934,8 +936,8 @@ async function driveGatewayCaseMcp(
         c.tool,
         c.params,
       ),
-      GATEWAY_CASE_TIMEOUT_MS,
-      `eval: gateway case ${c.id} timed out after ${GATEWAY_CASE_TIMEOUT_MS}ms`,
+      timeoutMs,
+      `eval: gateway case ${c.id} timed out after ${timeoutMs}ms`,
     );
   } catch (error) {
     // SDK client-side input validation (-32602) fires before dispatch on
@@ -1075,9 +1077,10 @@ const BAD_DSN_PORT = 18081;
 
 /**
  * Error-leak probe (D-05): boot a SECOND gateway whose role URL carries a
- * wrong password, assert it never becomes healthy, and return its output
- * for the noSecretsInMessage grade. Fail-closed: a healthy boot with a
- * wrong password, or empty output, is an infra error, never a pass.
+ * wrong password, assert it exits non-zero without ever becoming healthy,
+ * and return its output for the noSecretsInMessage grade. Fail-closed: a
+ * busy probe port, a healthy boot, a child that neither exits nor serves,
+ * a zero exit, or empty output is an infra error, never a pass.
  */
 async function driveGatewayCaseBadDsn(
   repoRoot: string,
@@ -1085,6 +1088,13 @@ async function driveGatewayCaseBadDsn(
   const url = process.env.AGENT_RO_DATABASE_URL ?? "";
   if (!url) {
     throw new Error("eval: AGENT_RO_DATABASE_URL is not set for bad-DSN probe");
+  }
+  // A listener already on the probe port would answer healthz and make the
+  // probe misreport "healthy with a wrong password": refuse up front.
+  if (await tcpReady("127.0.0.1", BAD_DSN_PORT, 500)) {
+    throw new Error(
+      `eval: bad-DSN probe port ${BAD_DSN_PORT} is already in use — free it, then re-run`,
+    );
   }
   const bad = new URL(url);
   bad.password = "wrong-password";
@@ -1117,11 +1127,22 @@ async function driveGatewayCaseBadDsn(
           "eval: bad-DSN gateway became healthy with a wrong password — refusing to pass",
         );
       }
-      if (child.exitCode !== null && child.exitCode !== undefined) break;
-      await new Promise((r) => setTimeout(r, 500));
+      if (child.exitCode !== null || child.signalCode !== null) break;
+      await sleep(500);
     }
-    // Give a slow-exiting child a moment to flush its output.
-    await new Promise((r) => setTimeout(r, 500));
+    const exitCode = child.exitCode;
+    if (exitCode === null && child.signalCode === null) {
+      throw new Error(
+        "eval: bad-DSN gateway neither exited nor became healthy within 10s — probe inconclusive",
+      );
+    }
+    if (exitCode === 0) {
+      throw new Error(
+        "eval: bad-DSN gateway exited 0 with a wrong password — refusing to pass",
+      );
+    }
+    // Give the exited child's pipes a moment to flush their output.
+    await sleep(500);
     const message = out.slice(-2000);
     if (message.trim() === "") {
       throw new Error(
@@ -1199,7 +1220,14 @@ async function driveGatewayCase(
         `eval: gateway case ${c.id} count-before timed out`,
       );
     }
-    const leg = await driveGatewayCaseMcp(mcpUrl, c, runId, token, role);
+    const leg = await driveGatewayCaseMcp(
+      mcpUrl,
+      c,
+      runId,
+      token,
+      role,
+      timeoutMs,
+    );
     const observed = leg.observed;
     if (countTable !== undefined) {
       const rowCountAfter = await withTimeout(
@@ -1361,6 +1389,11 @@ async function main(): Promise<void> {
         // and both merge into one compare-compatible envelope.
         const gatewayCases = loadGatewayCases(repoRoot, uc);
         const exResults = await runEval(cases, live.adapter);
+        // Same drift guard as the EX-only path: the merged envelope swaps in
+        // GATEWAY_DATASET_VERSION, so check the EX cases before that.
+        if (cases.length > 0 && exResults.datasetVersion !== cases[0].datasetVersion) {
+          throw new Error(`datasetVersion drift inside ${uc}`);
+        }
         const gatewayGraded = await driveGatewaySuite(
           live.mcpUrl,
           gatewayCases,

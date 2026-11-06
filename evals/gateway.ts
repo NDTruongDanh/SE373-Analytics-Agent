@@ -517,7 +517,8 @@ export function gradeGatewayCase(
       failures.push("denial arrived as data (isError false), not a tool error");
     }
   }
-  if (expect.pgDenyCodes !== undefined) {    if (
+  if (expect.pgDenyCodes !== undefined) {
+    if (
       observed.code === undefined ||
       !expect.pgDenyCodes.includes(observed.code)
     ) {
@@ -651,8 +652,15 @@ export function gradeAuditLines(
           );
         }
       }
-      if (!Array.isArray(record["scopes"])) {
-        failures.push(`audit line ${lineIndex} for a suite case misses scopes`);
+      // scopes plus the contracts-1.1.0 RBAC record (maskedColumns,
+      // rowScopeApplied): the gateway writes all three on every line,
+      // denials included, defaulting to [].
+      for (const field of ["scopes", "maskedColumns", "rowScopeApplied"] as const) {
+        if (!Array.isArray(record[field])) {
+          failures.push(
+            `audit line ${lineIndex} for a suite case misses ${field}`,
+          );
+        }
       }
       if (
         typeof record["rowCount"] !== "number" ||
