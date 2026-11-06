@@ -542,27 +542,6 @@ export function gradeGatewayCase(
   return { pass: true, reason: `${asserted} expectation(s) hold` };
 }
 
-/**
- * Map an MCP SDK client-side input-validation failure to the gateway's
- * frozen INVALID_PARAMS denial. The SDK validates tool arguments against the
- * tool inputSchema before dispatch, so malformed params (n=50, table:123) come
- * back as isError text "MCP error -32602: ..." instead of a JSON DbToolError —
- * the denial is still fail-closed, and -32602 IS "Invalid params". Returns
- * undefined for anything else so unknown shapes stay driver errors.
- */
-export function sdkInvalidParamsObserved(
-  source: string,
-): GatewayObserved | undefined {
-  if (!/^MCP error -32602\b/.test(source)) return undefined;
-  return {
-    ok: false,
-    httpStatus: 200,
-    code: "INVALID_PARAMS",
-    message: source.slice(0, 500),
-    isError: true,
-  };
-}
-
 export interface AuditExpectation {
   runId: string;
   expectedLines: number;

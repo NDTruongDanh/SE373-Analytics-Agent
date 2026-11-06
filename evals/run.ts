@@ -65,7 +65,6 @@ import {
   auditTailLines,
   gradeGatewayCase,
   gradeAuditLines,
-  sdkInvalidParamsObserved,
   validateGatewayRecord,
   type GatewayCase,
   type GatewayObserved,
@@ -929,45 +928,29 @@ async function driveGatewayCaseMcp(
   token: string,
   role: string,
   timeoutMs: number,
-): Promise<{ observed: GatewayObserved; reachedGateway: boolean }> {
-  let result: { text: string; isError?: boolean };
-  try {
-    result = await withTimeout(
-      callMcpTool(
-        { mcpUrl, token, runId, userId: role, roleScope: role },
-        c.tool,
-        c.params,
-      ),
-      timeoutMs,
-      `eval: gateway case ${c.id} timed out after ${timeoutMs}ms`,
-    );
-  } catch (error) {
-    // SDK client-side input validation (-32602) fires before dispatch on
-    // malformed params: still a fail-closed INVALID_PARAMS denial, but no
-    // gateway request exists, so the suite expects zero audit lines.
-    const mapped =
-      error instanceof Error
-        ? sdkInvalidParamsObserved(error.message)
-        : undefined;
-    if (mapped === undefined) throw error;
-    return { observed: mapped, reachedGateway: false };
-  }
+): Promise<GatewayObserved> {
+  const result = await withTimeout(
+    callMcpTool(
+      { mcpUrl, token, runId, userId: role, roleScope: role },
+      c.tool,
+      c.params,
+    ),
+    timeoutMs,
+    `eval: gateway case ${c.id} timed out after ${timeoutMs}ms`,
+  );
+  // Every authed call must come back as gateway JSON (data or DbToolError).
+  // A non-JSON payload — e.g. the SDK's own "MCP error -32602" text when it
+  // validates params ahead of the pipeline — means the call skipped the
+  // harness chain and its audit line, so it is a driver error, never a pass.
   let parsed: unknown;
   try {
     parsed = JSON.parse(result.text) as unknown;
   } catch {
-    const mapped = sdkInvalidParamsObserved(result.text);
-    if (mapped === undefined) {
-      throw new Error(
-        `gateway case ${c.id} returned a non-JSON payload: ${result.text.slice(0, 200)}`,
-      );
-    }
-    return { observed: mapped, reachedGateway: false };
+    throw new Error(
+      `gateway case ${c.id} returned a non-JSON payload (bypassed the pipeline?): ${result.text.slice(0, 200)}`,
+    );
   }
-  return {
-    observed: observedFromPayload(parsed, result.isError, 200),
-    reachedGateway: true,
-  };
+  return observedFromPayload(parsed, result.isError, 200);
 }
 
 /** Raw JSON-RPC probe asserting the HTTP 401 layer (no/bogus token). */
@@ -1222,7 +1205,7 @@ async function driveGatewayCase(
         `eval: gateway case ${c.id} count-before timed out`,
       );
     }
-    const leg = await driveGatewayCaseMcp(
+    const observed = await driveGatewayCaseMcp(
       mcpUrl,
       c,
       runId,
@@ -1230,7 +1213,6 @@ async function driveGatewayCase(
       role,
       timeoutMs,
     );
-    const observed = leg.observed;
     if (countTable !== undefined) {
       const rowCountAfter = await withTimeout(
         mcpCountRows(mcpUrl, token, role, runId, countTable),
@@ -1243,11 +1225,8 @@ async function driveGatewayCase(
         expectedAuditLines: 3,
       };
     }
-    return {
-      observed,
-      runId,
-      expectedAuditLines: leg.reachedGateway ? 1 : 0,
-    };
+    // One audit line per gateway request, denials included (UC09.md B.1).
+    return { observed, runId, expectedAuditLines: 1 };
   };
   return withTimeout(
     work(),
