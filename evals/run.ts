@@ -120,6 +120,9 @@ export function validateCase(raw: unknown): {
   if (!hasRows && !hasPath) {
     errors.push("one of goldRows or goldResultPath is required");
   }
+  if (typeof raw["goldSql"] !== "string" || raw["goldSql"].trim() === "") {
+    errors.push("goldSql must be a non-empty string");
+  }
   if (raw["ordered"] !== undefined && typeof raw["ordered"] !== "boolean") {
     errors.push("ordered must be a boolean");
   }
@@ -149,8 +152,13 @@ function loadGoldRows(c: EvalCase, repoRoot: string): Record<string, unknown>[] 
   // UC-01 benchmark scale: rows live behind a goldResultPath pointer.
   const raw = readFileSync(path.join(repoRoot, c.goldResultPath as string), "utf8");
   const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error(`gold rows at ${c.goldResultPath} are not an array`);
-  return parsed as Record<string, unknown>[];
+  if (Array.isArray(parsed)) return parsed as Record<string, unknown>[];
+  // A benchmark may keep its snapshots in one immutable catalogue.  The
+  // row's id selects its array, so every case still has an explicit path.
+  if (isRecord(parsed) && Array.isArray(parsed[c.id])) {
+    return parsed[c.id] as Record<string, unknown>[];
+  }
+  throw new Error(`gold rows for ${c.id} at ${c.goldResultPath} are not an array`);
 }
 
 /** Default stub adapter: explicit not-wired marker, never a fake pass. */
@@ -393,7 +401,11 @@ export async function runEval(
     }
     const { pass, mismatches } = gradeExecution(
       { status: outcome.status, rows: outcome.rows ?? [], reason: outcome.reason },
-      { rows: c.goldRows ?? [], ordered: c.ordered ?? false },
+      {
+        status: c.tags?.includes("unanswerable") ? "cannot_answer" : undefined,
+        rows: c.goldRows ?? [],
+        ordered: c.ordered ?? false,
+      },
     );
     graded.push({
       id: c.id,
@@ -425,21 +437,35 @@ function discoverUcDirs(repoRoot: string): string[] {
     .sort();
 }
 
-function loadUcCases(repoRoot: string, uc: string): EvalCase[] {
+export function loadUcCases(repoRoot: string, uc: string): EvalCase[] {
   const dir = path.join(repoRoot, "evals", uc);
   const out: EvalCase[] = [];
   for (const file of readdirSync(dir).sort()) {
-    if (!file.endsWith(".json")) continue;
-    const raw: unknown = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
-    const checked = validateCase(raw);
-    if (!checked.ok || !checked.value) {
-      throw new Error(`invalid case ${uc}/${file}: ${checked.errors?.join("; ")}`);
+    if (!file.endsWith(".json") && !file.endsWith(".jsonl")) continue;
+    const contents = readFileSync(path.join(dir, file), "utf8");
+    const records: unknown[] = file.endsWith(".jsonl")
+      ? contents
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .map((line, index) => {
+            try {
+              return JSON.parse(line) as unknown;
+            } catch {
+              throw new Error(`invalid JSON in ${uc}/${file} line ${index + 1}`);
+            }
+          })
+      : [JSON.parse(contents) as unknown];
+    for (const raw of records) {
+      const checked = validateCase(raw);
+      if (!checked.ok || !checked.value) {
+        throw new Error(`invalid case ${uc}/${file}: ${checked.errors?.join("; ")}`);
+      }
+      const c = checked.value;
+      if (!c.goldRows && c.goldResultPath) {
+        c.goldRows = loadGoldRows(c, repoRoot);
+      }
+      out.push(c);
     }
-    const c = checked.value;
-    if (!c.goldRows && c.goldResultPath) {
-      c.goldRows = loadGoldRows(c, repoRoot);
-    }
-    out.push(c);
   }
   return out;
 }
