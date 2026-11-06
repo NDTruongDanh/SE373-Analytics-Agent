@@ -199,3 +199,7 @@ export function createTracerDefaultEntry(): UcEntryHandler {
 // The default route is always registered; runTracerGraph (graph.ts) and the
 // root builder resolve it through this table, never by direct import.
 registerUC(DEFAULT_ROUTE_ID, createTracerDefaultEntry());
+
+// Register UC-05 Root Cause Analysis subgraph
+import { createRcaRuntime, RCA_UC_ID } from "./rootCauseAnalysis.js";
+registerUC(RCA_UC_ID, createRcaRuntime().entry);

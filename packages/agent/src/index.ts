@@ -11,3 +11,4 @@ export type AgentShellError = DbToolError;
 export * from "./state.js";
 export * from "./graph.js";
 export * from "./subgraphs/registry.js";
+export * from "./subgraphs/rootCauseAnalysis.js";
