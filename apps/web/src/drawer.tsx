@@ -22,9 +22,12 @@ function changes(before: string, after: string): string {
 
 export function ResultDrawer({ answer, events }: Props) {
   const [open, setOpen] = useState(false);
-  const sqlEvent = [...events].reverse().find((event) => event.event === "sql_generated");
+  const sqlEvent = [...events].reverse().find((event) => event.event === "sql_generated" && event.data && typeof event.data === "object" && "sql" in event.data);
+  const metadataEvent = [...events].reverse().find((event) => event.event === "sql_generated" && event.data && typeof event.data === "object" && "statementType" in event.data);
   const sqlData = sqlEvent?.data && typeof sqlEvent.data === "object" ? sqlEvent.data as Record<string, unknown> : null;
-  const tables = Array.isArray(sqlData?.tablesUsed) ? sqlData.tablesUsed.filter((value): value is string => typeof value === "string") : [];
+  const metadata = metadataEvent?.data && typeof metadataEvent.data === "object" ? metadataEvent.data as Record<string, unknown> : null;
+  const tables = Array.isArray(metadata?.tablesUsed) ? metadata.tablesUsed.filter((value): value is string => typeof value === "string") : [];
+  const withheld = events.some((event) => event.event === "sql_generated" && event.data && typeof event.data === "object" && "withheld" in event.data && event.data.withheld === true);
   const columns = answer ? [...new Set(answer.resultPreview.flatMap((row) => Object.keys(row)))] : [];
   return <section className="details">
     <button className="details-toggle" type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="result-details">
@@ -32,8 +35,10 @@ export function ResultDrawer({ answer, events }: Props) {
     </button>
     {open && <div id="result-details" className="details-body">
       {!answer ? <>
-        <p>Chi tiết kết quả chưa được API cung cấp.</p>
-        {typeof sqlData?.statementType === "string" && <p>Loại truy vấn: <strong>{sqlData.statementType}</strong></p>}
+        {typeof sqlData?.sql === "string" && <><h3>SQL đề xuất</h3><pre>{sqlData.sql}</pre><p>SQL do model đề xuất; truy vấn thực tế có thể được chính sách truy cập điều chỉnh.</p></>}
+        {withheld && <p>Không hiển thị SQL vì có thể chứa giá trị nhạy cảm hoặc nằm ngoài phạm vi demo được hỗ trợ.</p>}
+        <p>Chi tiết kết quả khác chưa được API cung cấp.</p>
+        {typeof metadata?.statementType === "string" && <p>Loại truy vấn: <strong>{metadata.statementType}</strong></p>}
         {tables.length > 0 && <p>Bảng: {tables.join(", ")}</p>}
       </> : <>
         <h3>SQL</h3><pre>{answer.sql ?? "Không có SQL."}</pre>

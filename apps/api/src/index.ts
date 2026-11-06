@@ -50,6 +50,7 @@ import {
 } from "./principals.js";
 import {
   completedPayload,
+  displayableSql,
   emitSseEvent,
   failedPayload,
   interruptPayload,
@@ -268,6 +269,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
       tracesDir: run.tracesDir,
     });
     const sent = new Set<string>();
+    let proposedSql: string | null = null;
     function progress(event: SpanEvent): string {
       const spanId = emit(event);
       const payload = isRecord(event.payload) ? event.payload : {};
@@ -276,6 +278,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
       // filter literals, result cells, or credentials.
       if (event.node === "understand" && event.type === "node_done" && typeof payload["sql"] === "string" && !sent.has("sql_generated")) {
         const sql = payload["sql"];
+        proposedSql = sql;
         const tables = Array.isArray(payload["tablesUsed"]) ? payload["tablesUsed"].filter(
           (table): table is string => typeof table === "string" && /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(table),
         ) : [];
@@ -289,6 +292,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
         emitSseEvent(res, "schema_retrieved", { ...envelope, node: "describe", data: schemaPayload(tables) });
         emitSseEvent(res, "query_running", { ...envelope, node: "run", data: { phase: "starting" } });
         sent.add("schema_retrieved");
+      }
+      if (event.node === "run" && event.type === "tool_call" && payload["tool"] === "run_query" && payload["ok"] === true && proposedSql && !sent.has("sql_display")) {
+        const sql = displayableSql(proposedSql);
+        emitSseEvent(res, "sql_generated", { ...envelope, node: "run", data: { phase: "display", ...(sql ? { sql } : { withheld: true }) } });
+        sent.add("sql_display");
       }
       return spanId;
     }

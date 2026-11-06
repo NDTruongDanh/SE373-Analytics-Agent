@@ -233,7 +233,9 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       expect(sseText).not.toContain(literal);
     }
     expect(sseText).not.toContain(SALES_TOKEN);
-    expect(sseText).not.toContain("COUNT(*)");
-    expect(sseText).not.toContain("GROUP BY");
+    const displayed = blocks.find((block) => block.event === "sql_generated" && (block.data["data"] as Record<string, unknown>)?.["phase"] === "display");
+    expect(displayed).toBeDefined();
+    const sqlData = displayed?.data["data"] as Record<string, unknown>;
+    expect(typeof sqlData["sql"] === "string" || sqlData["withheld"] === true).toBe(true);
   }, 120_000);
 });

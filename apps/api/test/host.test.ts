@@ -210,7 +210,7 @@ describe("buildApp /api/ask", () => {
     }
   });
 
-  it("streams stage metadata before completion without exposing SQL or row values", async () => {
+  it("withholds sensitive SQL even after a successful query", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const app = buildApp({
@@ -218,6 +218,7 @@ describe("buildApp /api/ask", () => {
       ucHandlers: { tracer: async (_state, rt) => {
         rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: "SELECT secret FROM orders WHERE phone = '0901111111'", tablesUsed: ["orders"] } });
         rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
+        rt.emit({ node: "run", type: "tool_call", durationMs: 1, payload: { tool: "run_query", ok: true } });
         await gate;
         return { status: "ok", answerText: "done" };
       } },
@@ -242,6 +243,12 @@ describe("buildApp /api/ask", () => {
       expect(streamed).not.toContain("completed");
       expect(streamed).not.toContain("0901111111");
       expect(streamed).not.toContain("SELECT secret");
+      while (!streamed.includes('"withheld":true')) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error("stream ended before SQL display verdict");
+        streamed += new TextDecoder().decode(chunk.value);
+      }
+      expect(streamed).not.toContain("0901111111");
       release();
       await reader.cancel();
     } finally {
@@ -260,6 +267,7 @@ describe("buildApp /api/ask", () => {
       "sql_generated",
       "schema_retrieved",
       "query_running",
+      "sql_generated",
       "completed",
     ]);
     for (const block of blocks) {
@@ -299,16 +307,17 @@ describe("buildApp /api/ask", () => {
     );
   });
 
-  it("leaks no cell values, SQL literals, or tokens through SSE", async () => {
+  it("sends the literal-free SQL proposal only after the gateway succeeds, without row values or tokens", async () => {
     const out = await ask({ question: "How many orders do we have per status?", persona: "hr" });
     for (const phone of SEED_PHONES) {
       expect(out.text).not.toContain(phone);
     }
     expect(out.text).not.toContain(SEED_EMAIL);
     expect(out.text).not.toContain("MASKED_PHONE");
-    expect(out.text).not.toContain("COUNT(*)");
-    expect(out.text).not.toContain("public.orders");
-    expect(out.text).not.toContain("GROUP BY");
+    const blocks = parseSse(out.text);
+    const sqlEvent = blocks.find((block) => block.event === "sql_generated" && (block.data["data"] as Record<string, unknown>)?.["phase"] === "display");
+    expect(sqlEvent?.data["data"]).toMatchObject({ sql: "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status" });
+    expect(blocks.findIndex((block) => block === sqlEvent)).toBeGreaterThan(blocks.findIndex((block) => block.event === "query_running"));
     expect(out.text).not.toContain("stub-hr");
   });
 

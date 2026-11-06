@@ -4,11 +4,12 @@ import { chatReducer, initialChat } from "./chat.js";
 import { ResultDrawer } from "./drawer.js";
 import { postStream } from "./stream.js";
 import "./styles.css";
+import "./progress.css";
 
 const labels: Record<SseEventName, string> = {
-  intent_parsed: "Đang phân tích câu hỏi", schema_retrieved: "Đã tìm nguồn dữ liệu", sql_generated: "Đã tạo SQL đề xuất (chưa kiểm tra)",
-  sql_repaired: "Đã điều chỉnh truy vấn", query_running: "Đang kiểm tra và truy vấn dữ liệu", viz: "Chuẩn bị biểu đồ",
-  completed: "Hoàn tất", failed: "Không thể hoàn tất", interrupt_waiting: "Cần bạn làm rõ",
+  intent_parsed: "Mình đã nhận câu hỏi và đang bắt đầu phân tích.", schema_retrieved: "Mình đã tìm được thông tin về nguồn dữ liệu.", sql_generated: "Model đã đề xuất truy vấn SQL; truy vấn này chưa được kiểm tra.",
+  sql_repaired: "Mình đã điều chỉnh truy vấn.", query_running: "Mình đang kiểm tra và truy vấn dữ liệu.", viz: "Mình đang chuẩn bị biểu đồ.",
+  completed: "Đã hoàn tất câu trả lời.", failed: "Mình chưa thể hoàn tất yêu cầu.", interrupt_waiting: "Mình cần bạn làm rõ trước khi tiếp tục.",
 };
 const personas = [
   { value: "sales_south", label: "Kinh doanh miền Nam" },
@@ -98,9 +99,9 @@ export function App() {
           {history.map((message, index) => <div className={`message ${message.role}`} key={index}><span className="avatar">{message.role === "user" ? "B" : "✦"}</span><div><strong>{message.role === "user" ? "Bạn" : "Trợ lý phân tích"}</strong><p>{message.text}</p></div></div>)}
           {(state.events.length > 0 || busy) && <details className="progress" open><summary className="progress-title"><span className="pulse" /> TIẾN TRÌNH PHÂN TÍCH</summary>{busy && state.events.length === 0 && <p>Đang kết nối máy chủ…</p>}<ol>{state.events.map((event, i) => {
             const data = event.data && typeof event.data === "object" ? event.data as Record<string, unknown> : null;
-            const label = event.event === "intent_parsed" && data?.phase === "resuming" ? "Đang tiếp tục xử lý" : labels[event.event];
+            const label = event.event === "intent_parsed" && data?.phase === "resuming" ? "Mình đang tiếp tục xử lý câu trả lời của bạn." : event.event === "sql_generated" && data?.phase === "display" ? (data.withheld === true ? "Truy vấn đã chạy; SQL chưa thể hiển thị an toàn trong bản demo." : "Truy vấn đã chạy. Bạn có thể xem SQL đề xuất bên dưới.") : labels[event.event];
             const tables = Array.isArray(data?.tables) ? data.tables.filter((value): value is string => typeof value === "string") : [];
-            return <li key={i}><span className="event-dot" />{label}{tables.length > 0 && <span> · {tables.join(", ")}</span>}{event.event === "sql_generated" && typeof data?.statementType === "string" && <span> · {data.statementType}</span>}</li>;
+            return <li key={i} className="progress-update"><span className="event-dot" /><span>{label}{tables.length > 0 && <span className="progress-meta"> Bảng: {tables.join(", ")}.</span>}{event.event === "sql_generated" && typeof data?.statementType === "string" && <span className="progress-meta"> Loại: {data.statementType}.</span>}</span></li>;
           })}</ol></details>}
           {state.clarification && (state.phase === "waiting" || state.phase === "failed" || busy) && <div className="clarification"><strong>{state.clarification.question}</strong><div>{state.clarification.options.map((option) => <button key={option} type="button" disabled={busy} onClick={() => choose(option)}>{option}</button>)}</div></div>}
           {state.error && <div className="error" role="alert">{state.error}</div>}

@@ -1,0 +1,14 @@
+.progress .progress-update {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  line-height: 1.6;
+}
+
+.progress .event-dot {
+  flex: 0 0 7px;
+}
+
+.progress-meta {
+  color: #849b8c;
+}
