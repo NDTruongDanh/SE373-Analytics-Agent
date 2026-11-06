@@ -196,7 +196,13 @@ export interface SynthesisResult extends LlmUsage {
 /**
  * Synthesis entry point: builds the delimited prompt and invokes the
  * profile-3 model directly. Never calls the tool-binding method on this path
- * (architecture invariant: zero tools bound over untrusted data).
+ * (architecture invariant: zero tools bound over untrusted data). The
+ * callbacks option is accepted for call-site compatibility but deliberately
+ * NEVER forwarded: rows serialize into the prompt string, so a traced model
+ * invoke would ship row values to LangSmith as one opaque prompt — past the
+ * piiSafeProcessor's row-array drop, which only drops values under ROW_ARRAY
+ * KEYS and cannot see inside a serialized prompt. Synthesis stays untraced
+ * by construction; the redactPII backstop is not relied upon here.
  */
 export async function synthesize(
   rows: Record<string, unknown>[],
@@ -205,8 +211,8 @@ export async function synthesize(
 ): Promise<SynthesisResult> {
   const model = opts?.model ?? createChatModel("synthesis");
   const started = Date.now();
-  const config = opts?.callbacks !== undefined ? { callbacks: opts.callbacks } : undefined;
-  const result = await model.invoke(buildSynthesisPrompt(rows, question), config);
+  // NOTE: opts.callbacks is intentionally not forwarded (see above).
+  const result = await model.invoke(buildSynthesisPrompt(rows, question));
   const content = result.content;
   return {
     text: typeof content === "string" ? content : JSON.stringify(content),
