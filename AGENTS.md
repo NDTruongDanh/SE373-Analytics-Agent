@@ -96,18 +96,6 @@ Wiki scripts (`pnpm wiki:init | wiki:update | wiki:dry-run`) need
 - Treat gold data as hidden: `evals/questions/`, seeded scenarios, and injection
   rows stay out of prompts and out of OpenWiki indexing.
 
-## UC workflow
-
-- Add your own files under your area (`packages/agent/src/subgraphs/uc<NN>*`,
-  `packages/mcp-server/src/...`, `skills/<name>/`, `evals/<uc>/`); register nodes
-  without rewriting another UC or the shared root builder.
-- Reuse the shared `ValidatedQueryExecutor` (selective describe → generate →
-  local pre-check → `run_query` → bounded repair) for every agent SQL query.
-  `retryable` guides client retry, `repairable` guides the ≤3-attempt repair loop.
-- Route data answers through UC-03 verification (chart + numeric validators)
-  on `ok` / `no_data` before responding.
-- Add ≥5 eval cases per UC (UC-01: full ≥30-question benchmark), plus the shared
-  safety attack cases; keep one successful trace per UC under `traces/`.
 
 ## Example — call `run_query` via MCP, not `pg`
 
