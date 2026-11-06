@@ -163,6 +163,12 @@ export function validateCase(raw: unknown): {
   if (raw["tags"] !== undefined && !Array.isArray(raw["tags"])) {
     errors.push("tags must be an array");
   }
+  if (
+    raw["ucId"] !== undefined &&
+    (typeof raw["ucId"] !== "string" || raw["ucId"].trim() === "")
+  ) {
+    errors.push("ucId must be a non-empty string");
+  }
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -177,6 +183,7 @@ export function validateCase(raw: unknown): {
       ordered: (raw["ordered"] as boolean | undefined) ?? false,
       datasetVersion: raw["datasetVersion"] as string,
       tags: (raw["tags"] as string[] | undefined) ?? [],
+      ucId: raw["ucId"] as string | undefined,
     },
   };
 }
@@ -312,8 +319,10 @@ export function createEvalEmitter(
  * Build the live adapter: DB TCP preflight, gateway child boot with
  * bounded healthz wait, PostgresSaver checkpointer (fail-fast setup),
  * then per-case buildRootGraph invoke with the 01-12 identity shape.
- * Deterministic fake model by default (no API key): AGENT_MODEL_API_KEY
- * is dropped unless EVAL_USE_LIVE_MODEL=1 explicitly opts into keyed runs.
+ * Benchmarks are deliberately live-model only: the model key is dropped
+ * unless EVAL_USE_LIVE_MODEL=1 explicitly opts into a keyed run. Failing
+ * closed prevents a synthetic or unrelated graph route being graded as a
+ * real Text-to-SQL evaluation.
  * Every wait is bounded — a missing DB/gateway throws a clear message,
  * never hangs.
  */
@@ -346,6 +355,12 @@ export async function buildLiveAdapter(
   if (!harnessStateUrl) {
     throw new Error(
       "eval: HARNESS_STATE_DATABASE_URL is not set — the live checkpointer needs the harness_state identity.",
+    );
+  }
+
+  if (process.env.EVAL_USE_LIVE_MODEL !== "1" || !process.env.AGENT_MODEL_API_KEY) {
+    throw new Error(
+      "eval: a real benchmark requires EVAL_USE_LIVE_MODEL=1 and AGENT_MODEL_API_KEY; refusing to run a synthetic result.",
     );
   }
 
@@ -445,13 +460,23 @@ export async function buildLiveAdapter(
         answerText?: unknown;
       };
       const status = out.status ?? "error";
+      // Graph errors are normalized into answerText instead of being thrown.
+      // Keep a redacted, bounded diagnostic so a failed benchmark remains
+      // actionable without writing returned rows to results.
+      const diagnostic =
+        typeof out.answerText === "string" && out.answerText.length > 0
+          ? redactPII(out.answerText).redacted.slice(0, 500)
+          : undefined;
       emit.emitRunDone(status);
       return {
         status,
         rows: out.resultPreview ?? [],
         answerText:
           typeof out.answerText === "string" ? out.answerText : undefined,
-        reason: status === "ok" || status === "no_data" ? undefined : `harness status '${status}'`,
+        reason:
+          status === "ok" || status === "no_data"
+            ? undefined
+            : diagnostic ?? `harness status '${status}'`,
         ms: Date.now() - t0,
         tokens: 0,
         wired: true,
@@ -479,7 +504,16 @@ export async function buildLiveAdapter(
     mcpUrl,
     tracesDir,
     close: async () => {
-      gateway.kill();
+      if (gateway.exitCode === null && !gateway.killed) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 5_000);
+          gateway.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          gateway.kill();
+        });
+      }
       await (checkpointer as unknown as { end?: () => Promise<void> }).end?.();
     },
   };
@@ -527,7 +561,14 @@ export async function runEval(
       exPass: pass,
       ms: outcome.ms,
       tokens: outcome.tokens,
-      ...(pass ? {} : { note: mismatches.join("; ") }),
+      ...(pass
+        ? {}
+        : {
+            note: [
+              ...mismatches,
+              ...(outcome.reason ? [`reason: ${outcome.reason}`] : []),
+            ].join("; "),
+          }),
     });
   }
   return {
