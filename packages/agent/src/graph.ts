@@ -1,7 +1,6 @@
 // FROZEN root builder (AGENT-01). UC owners MUST NOT edit topology; extend via registry.ts (registerUC) and RootGraphDeps seams (retrieve/ucHandlers/viz/synthesize/emitSpan/textToSql). Budget guard here is generic run governance, not UC logic. Keep topology generic.
 import {
   END,
-  interrupt,
   MemorySaver,
   START,
   StateGraph,
@@ -51,57 +50,6 @@ export interface RootGraphDeps {
 
 const noopEmit: SpanEmitter = () => "";
 const noopUpdate = async (): Promise<AgentUpdate> => ({});
-
-/** Apply exactly one selected clarification without re-running understand. */
-function applyClarification(
-  state: AgentState,
-  value: unknown,
-): AgentUpdate {
-  const pending = state.pendingClarification;
-  if (!pending) {
-    return {
-      status: "needs_clarification",
-      answerText: "No clarification request is pending for this run.",
-    };
-  }
-  if (typeof value !== "string" || !pending.options.includes(value)) {
-    const nextAttempts = pending.attempts + 1;
-    if (nextAttempts >= 2) {
-      return {
-        status: "needs_clarification",
-        pendingClarification: null,
-        answerText: "The clarification could not be resolved after two responses.",
-      };
-    }
-    return {
-      status: "needs_clarification",
-      pendingClarification: { ...pending, attempts: nextAttempts },
-      answerText: `Choose one of: ${pending.options.join(", ")}.`,
-    };
-  }
-
-  const intent = { ...state.intent };
-  if (pending.field === "metric") {
-    intent.metric = value;
-    intent.requestedMetrics = [value];
-  } else if (pending.field === "timeRange") {
-    intent.timeRange = value;
-  } else if (pending.field === "scope") {
-    intent.filters = [...intent.filters, { field: "scope", operator: "=", value }];
-  } else {
-    intent.filters = [...intent.filters, { field: "filterValue", operator: "=", value }];
-  }
-  return {
-    intent,
-    // The SQL model consumes question text, so retain the original question
-    // and append the selected metadata without invoking understand again.
-    question: `${state.question}\nClarification (${pending.field}): ${value}`,
-    pendingClarification: null,
-    clarificationAttempts: state.clarificationAttempts + 1,
-    status: "no_data",
-    answerText: "",
-  };
-}
 
 /** Default synthesis: keep a handler-written answer, else derive one. */
 async function defaultSynthesize(state: AgentState): Promise<AgentUpdate> {
@@ -203,20 +151,6 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     }))
     .addNode("retrieve", runWithRuntime((state, rt) => retrieve(state, rt)))
     .addNode("router", noopUpdate)
-    .addNode("clarification", async (state: AgentState): Promise<AgentUpdate> => {
-      const pending = state.pendingClarification;
-      if (!pending) {
-        return {
-          status: "needs_clarification",
-          answerText: "No clarification request is pending for this run.",
-        };
-      }
-      const value = interrupt({
-        action: "clarify_then_query",
-        pendingClarification: pending,
-      });
-      return applyClarification(state, value);
-    })
     .addNode(
       "ucEntry",
       runWithRuntime((state, rt) => {
@@ -255,16 +189,9 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     )
     .addEdge("ucEntry", "statusCheck")
     .addEdge("defaultEntry", "statusCheck")
-    .addConditionalEdges("statusCheck", (state: AgentState) => {
-      if (state.status === "needs_clarification" && state.pendingClarification) {
-        return "clarification";
-      }
-      return state.status === "ok" || state.status === "no_data" ? "vizSeam" : "answer";
-    })
-    .addConditionalEdges("clarification", (state: AgentState) => {
-      if (state.pendingClarification) return "clarification";
-      return state.status === "needs_clarification" ? "statusCheck" : "ucEntry";
-    })
+    .addConditionalEdges("statusCheck", (state: AgentState) =>
+      state.status === "ok" || state.status === "no_data" ? "vizSeam" : "answer",
+    )
     .addEdge("vizSeam", "answer")
     .addEdge("answer", END)
     .compile({ checkpointer: deps.checkpointer ?? new MemorySaver() });
