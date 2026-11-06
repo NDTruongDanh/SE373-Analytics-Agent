@@ -3,7 +3,11 @@ import {
   StateSchema,
   type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
-import { SQLAnswerStatusSchema } from "@shared/contracts";
+import {
+  AnalysisPlanSchema,
+  RootCauseAnswerSchema,
+  SQLAnswerStatusSchema,
+} from "@shared/contracts";
 import * as z from "zod";
 import { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
 
@@ -139,6 +143,10 @@ export const AgentStateSchema = new StateSchema({
   vizSpec: z.unknown().nullable().default(null),
   /** Clarification options carried for the 01-12 HITL resume path. */
   pendingClarification: z.array(z.string()).nullable().default(null),
+  /** UC-05 AnalysisPlan checkpointed state (architecture §4.3 Tier 2). */
+  analysisPlan: AnalysisPlanSchema.nullable().default(null),
+  /** UC-05 Final verified root cause answer payload. */
+  rootCauseAnswer: RootCauseAnswerSchema.nullable().default(null),
 });
 
 export type AgentState = typeof AgentStateSchema.State;

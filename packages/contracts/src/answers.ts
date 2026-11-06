@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { AnalysisPlanSchema, RootCauseAnswerSchema } from "./rca.js";
 
 // Single answer contract shared by UC-01 and UC-02 (UC-01 section 3.1/3.2,
 // UC-02 Feature 5). camelCase is the canonical shape; UC-02's snake_case
@@ -31,6 +32,7 @@ export const SQLAnswerStatusSchema = z.enum([
   "needs_clarification",
   "restricted",
   "error",
+  "false_premise",
 ]);
 
 export const SQLAnswerSchema = z.object({
@@ -83,12 +85,14 @@ export type InsightReportResponse = z.infer<typeof InsightReportResponseSchema>;
 
 export const AnalysisPlanResponseSchema = AgentEnvelopeBaseSchema.extend({
   kind: z.literal("analysis_plan"),
+  data: AnalysisPlanSchema,
 });
 
 export type AnalysisPlanResponse = z.infer<typeof AnalysisPlanResponseSchema>;
 
 export const RootCauseResponseSchema = AgentEnvelopeBaseSchema.extend({
   kind: z.literal("root_cause"),
+  data: RootCauseAnswerSchema,
 });
 
 export type RootCauseResponse = z.infer<typeof RootCauseResponseSchema>;
