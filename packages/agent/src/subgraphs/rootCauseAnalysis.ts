@@ -10,7 +10,6 @@ import {
   type TimePeriod,
 } from "@shared/contracts";
 import * as z from "zod";
-import { RCA_UC_ID } from "../constants.js";
 import type {
   AgentState,
   AgentUpdate,
