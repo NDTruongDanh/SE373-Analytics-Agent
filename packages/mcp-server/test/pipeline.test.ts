@@ -315,6 +315,9 @@ describe("pipeline policy stage", () => {
     const audit = lastAudit();
     expect(audit["decision"]).toBe("allow");
     expect(audit["piiHits"]).toBe(1);
+    // G5: the allow line carries the server-minted RBAC record.
+    expect(audit["maskedColumns"]).toEqual(["customers.phone"]);
+    expect(audit["rowScopeApplied"]).toEqual([]);
   });
 
   it("denies a sensitive column in a WHERE clause without data:sensitive", async () => {
@@ -327,6 +330,13 @@ describe("pipeline policy stage", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("SENSITIVE_COLUMN_DENIED");
     expect(calls).toHaveLength(0);
+    // G5: the deny line carries the RBAC fields (empty — nothing applied)
+    // plus the error code.
+    const audit = lastAudit();
+    expect(audit["decision"]).toBe("deny");
+    expect(audit["errorCode"]).toBe("SENSITIVE_COLUMN_DENIED");
+    expect(audit["maskedColumns"]).toEqual([]);
+    expect(audit["rowScopeApplied"]).toEqual([]);
   });
 
   it("injects the sales_south row-scope predicate on a scoped table", async () => {
@@ -340,6 +350,15 @@ describe("pipeline policy stage", () => {
     const body = calls[0]?.bodies[0] ?? "";
     expect(body).toContain("region_group");
     expect(body).toContain("Nam");
+    // G5: the allow line records the applied scope by table/column only —
+    // never the scoped value.
+    const audit = lastAudit();
+    expect(audit["decision"]).toBe("allow");
+    expect(audit["maskedColumns"]).toEqual([]);
+    expect(audit["rowScopeApplied"]).toEqual([
+      { table: "sellers", column: "region_group" },
+    ]);
+    expect(JSON.stringify(audit)).not.toContain("Nam");
   });
 
   it("leaves SQL untouched when the principal carries no row-scope", async () => {

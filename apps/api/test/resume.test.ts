@@ -4,14 +4,15 @@
 // injected UC handler (interrupt from @langchain/langgraph directly) so no
 // agent internals beyond the registry contract are touched.
 
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { MemorySaver, interrupt } from "@langchain/langgraph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildApp } from "../src/index.js";
+import { buildApp, buildResumeInvokeOptions } from "../src/index.js";
 import type { UcEntryHandler } from "@shared/agent";
+import type { LangSmithRunConfig } from "@shared/agent/telemetry";
 
 interface SseBlock {
   event: string;
@@ -28,6 +29,19 @@ function parseSse(text: string): SseBlock[] {
     }
   }
   return blocks;
+}
+
+function readTraceEvents(dir: string, runId: string): Record<string, unknown>[] {
+  const content = readFileSync(path.join(dir, `${runId}.jsonl`), "utf8");
+  return content
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+function eventsOf(events: Record<string, unknown>[], type: string): Record<string, unknown>[] {
+  return events.filter((event) => event["type"] === type);
 }
 
 const stubEnv = {
@@ -193,5 +207,196 @@ describe("buildApp resume", () => {
     writeFileSync(`${tracesDir}/bad-run.jsonl`, "not json at all\n", "utf8");
     const out = await post("/api/runs/bad-run/resume", { value: "approve" });
     expect(out.status).toBe(404);
+  });
+
+  it("emits one approval_requested plus one approval_decided with metadata only", async () => {
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
+    expect(asked.status).toBe(200);
+    expect(parseSse(asked.text).map((b) => b.event)).toEqual(["interrupt_waiting"]);
+    const runId = parseSse(asked.text)[0].data["runId"] as string;
+
+    // Interrupt leaves exactly one request and no terminal spans: the run
+    // is waiting, not finished.
+    let events = readTraceEvents(tracesDir, runId);
+    expect(eventsOf(events, "approval_requested")).toHaveLength(1);
+    expect(eventsOf(events, "approval_decided")).toHaveLength(0);
+    expect(eventsOf(events, "run_done")).toHaveLength(0);
+    const requested = eventsOf(events, "approval_requested")[0];
+    expect((requested["payload"] as { kind?: unknown }).kind).toBe("approval");
+
+    // A non-allowlisted resume value is metadata-only: decision degrades to
+    // "provided" with length, and the raw value reaches no span — nor any
+    // hash of it (unsalted sha256 of a short value is brute-forceable).
+    const secret = "s3cr3t-resume-canary-9zqx";
+    const resumed = await post(`/api/runs/${runId}/resume`, { value: secret });
+    expect(resumed.status).toBe(200);
+    const resumeBlocks = parseSse(resumed.text);
+    expect(resumeBlocks[resumeBlocks.length - 1].event).toBe("completed");
+
+    events = readTraceEvents(tracesDir, runId);
+    expect(eventsOf(events, "approval_requested")).toHaveLength(1);
+    const decided = eventsOf(events, "approval_decided");
+    expect(decided).toHaveLength(1);
+    const payload = decided[0]["payload"] as Record<string, unknown>;
+    expect(payload["kind"]).toBe("approval");
+    expect(payload["decision"]).toBe("provided");
+    expect(payload["reviewer"]).toBe("sales_south");
+    expect(typeof payload["waitedMs"]).toBe("number");
+    expect(payload["waitedMs"] as number).toBeGreaterThanOrEqual(0);
+    expect(payload["valueLength"]).toBe(secret.length);
+    expect(payload).not.toHaveProperty("valueHash");
+    const raw = readFileSync(`${tracesDir}/${runId}.jsonl`, "utf8");
+    expect(raw).not.toContain(secret);
+    // The resumed run finishes exactly once.
+    expect(eventsOf(events, "run_done")).toHaveLength(1);
+  });
+
+  it("records allowlisted resume verdicts verbatim", async () => {
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
+    expect(asked.status).toBe(200);
+    const runId = parseSse(asked.text)[0].data["runId"] as string;
+    const resumed = await post(`/api/runs/${runId}/resume`, { value: "approve" });
+    expect(resumed.status).toBe(200);
+    const events = readTraceEvents(tracesDir, runId);
+    const decided = eventsOf(events, "approval_decided");
+    expect(decided).toHaveLength(1);
+    expect((decided[0]["payload"] as { decision?: unknown }).decision).toBe(
+      "approve",
+    );
+  });
+});
+
+describe("buildResumeInvokeOptions", () => {
+  const stored = {
+    threadId: "chat:sales_south:t1",
+    userId: "sales_south",
+    roleScope: "sales_south",
+    token: "stub-token",
+    mcpUrl: "http://127.0.0.1:1/mcp",
+    tracesDir: "traces",
+  };
+
+  // Offline stand-in for buildLangSmithRunConfig output: the helper only
+  // forwards callbacks/tags/metadata, so no client or network is needed.
+  function fakeLangSmith(runId: string): LangSmithRunConfig {
+    return {
+      runId,
+      callbacks: [],
+      tags: ["se373", "uc:tracer"],
+      metadata: {
+        runId,
+        threadId: stored.threadId,
+        userId: stored.userId,
+        role: stored.roleScope,
+        ucId: "",
+        maskedColumns: [],
+      },
+    };
+  }
+
+  it("mints a fresh root runId per resume while metadata keeps the API runId", () => {
+    const first = buildResumeInvokeOptions({
+      langsmith: fakeLangSmith("api-run-1"),
+      run: stored,
+      runId: "api-run-1",
+    });
+    const second = buildResumeInvokeOptions({
+      langsmith: fakeLangSmith("api-run-1"),
+      run: stored,
+      runId: "api-run-1",
+    });
+    // Fresh LangSmith root on every resume, distinct from the ask's root —
+    // the ask already owns a root run under the API runId.
+    expect(first.runId).not.toBe("api-run-1");
+    expect(second.runId).not.toBe("api-run-1");
+    expect(first.runId).not.toBe(second.runId);
+    // Correlation preserved: JSONL runId and LangSmith metadata agree.
+    expect(first.metadata?.["runId"]).toBe("api-run-1");
+    expect(first.metadata?.["threadId"]).toBe(stored.threadId);
+    expect(first.configurable["runId"]).toBe("api-run-1");
+    expect(first.configurable["thread_id"]).toBe(stored.threadId);
+    expect(first.callbacks).toEqual([]);
+    expect(first.tags).toEqual(["se373", "uc:tracer"]);
+  });
+
+  it("stays untraced when LangSmith is off", () => {
+    const opts = buildResumeInvokeOptions({
+      langsmith: undefined,
+      run: stored,
+      runId: "api-run-1",
+    });
+    expect(typeof opts.runId).toBe("string");
+    expect(opts.runId).not.toBe("api-run-1");
+    expect(opts.callbacks).toBeUndefined();
+    expect(opts.metadata).toBeUndefined();
+    expect(opts.configurable["runId"]).toBe("api-run-1");
+  });
+
+  it("keeps the JSONL runId stable across ask and resume", async () => {
+    const localDir = mkdtempSync(path.join(tmpdir(), "fullhost-resume-meta-"));
+    const localEnv = {
+      MCP_TOKEN_SALES_SOUTH: "stub-sales",
+      MCP_TOKEN_MARKETING: "stub-marketing",
+      MCP_TOKEN_HR: "stub-hr",
+      MCP_TOKEN_ADMIN: "stub-admin",
+    } as unknown as NodeJS.ProcessEnv;
+    const seenConfigurable: Record<string, unknown>[] = [];
+    const capturing: UcEntryHandler = async (state, rt) => {
+      seenConfigurable.push({
+        ...(rt.config.configurable as Record<string, unknown>),
+      });
+      const verdict = interrupt({ action: "review_sql", sql: "SELECT 1" }) as string;
+      return {
+        answerText: `decided:${String(verdict)}`,
+        status: "ok",
+        toolsCalled: [...state.toolsCalled, "review_tool"],
+      };
+    };
+    const capturingApp = buildApp({
+      checkpointer: new MemorySaver(),
+      mcpUrl: "http://127.0.0.1:1/mcp",
+      tracesDir: localDir,
+      env: localEnv,
+      ucHandlers: { tracer: capturing },
+    });
+    let capturingServer: { close: (cb?: () => void) => void } | null = null;
+    await new Promise<void>((resolve) => {
+      capturingServer = capturingApp.listen(0, "127.0.0.1", () => resolve());
+    });
+    try {
+      const address = (
+        capturingServer as unknown as { address: () => AddressInfo }
+      ).address();
+      const base = `http://127.0.0.1:${address.port}`;
+      const askRes = await fetch(`${base}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "please review", persona: "sales_south" }),
+      });
+      expect(askRes.status).toBe(200);
+      const askBlocks = parseSse(await askRes.text());
+      expect(askBlocks.map((b) => b.event)).toEqual(["interrupt_waiting"]);
+      const runId = askBlocks[0].data["runId"] as string;
+      const resumeRes = await fetch(`${base}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: "approve" }),
+      });
+      expect(resumeRes.status).toBe(200);
+      expect(parseSse(await resumeRes.text()).at(-1)?.event).toBe("completed");
+      // The handler ran once per invoke on the same thread: both invokes
+      // carry the JSONL runId, so traces and metadata keep correlating.
+      expect(seenConfigurable).toHaveLength(2);
+      expect(seenConfigurable[0]["runId"]).toBe(runId);
+      expect(seenConfigurable[1]["runId"]).toBe(runId);
+      expect(seenConfigurable[0]["thread_id"]).toBe(
+        seenConfigurable[1]["thread_id"],
+      );
+    } finally {
+      await new Promise<void>((resolve) => {
+        if (capturingServer) capturingServer.close(() => resolve());
+        else resolve();
+      });
+    }
   });
 });

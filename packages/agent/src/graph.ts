@@ -18,6 +18,7 @@ import {
   type VizFn,
 } from "./state.js";
 import {
+  createTracerRunEmitter,
   getUcEntry,
   listUcIds,
   type TracerDefaultContext,
@@ -28,7 +29,6 @@ import {
   type TextToSqlRuntimeDeps,
 } from "./subgraphs/textToSql.js";
 import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
-import { writeTraceEvent } from "./traces/writer.js";
 
 
 export interface RootGraphDeps {
@@ -221,7 +221,12 @@ export async function runTracerGraph(
   question: string,
   ctx: TracerGraphContext,
 ): Promise<TracerRunResult> {
-  const graph = buildRootGraph({ checkpointer: new MemorySaver() });
+  // One emitter per run (G3): the default-route entry writes through it,
+  // so every event feeds the roll-up read back at run_done below. No
+  // topology change — buildRootGraph wiring only. Noted for UC-01 owner
+  // (nguyenhun11): this runTracerGraph touch plus the role fix.
+  const emit = createTracerRunEmitter(ctx);
+  const graph = buildRootGraph({ checkpointer: new MemorySaver(), emitSpan: emit });
   const out = (await graph.invoke(
     {
       question,
@@ -243,22 +248,11 @@ export async function runTracerGraph(
     },
   )) as AgentState;
 
-  writeTraceEvent(
-    {
-      runId: ctx.runId,
-      threadId: ctx.threadId,
-      userId: ctx.userId,
-      role: "sales_south",
-      node: "answer",
-      type: "run_done",
-      durationMs: 0,
-      attempt: 0,
-    },
-    ctx.tracesDir,
-  );
+  const status = out.status === "ok" ? "ok" : "no_data";
+  emit.emitRunDone(status);
 
   return {
-    status: out.status === "ok" ? "ok" : "no_data",
+    status,
     answerText: out.answerText,
     toolsCalled: out.toolsCalled,
     sql: out.sql ?? "",

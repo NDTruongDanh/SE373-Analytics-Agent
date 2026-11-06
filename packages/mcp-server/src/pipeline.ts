@@ -16,6 +16,7 @@ import {
   sqlGuard,
   type AccessPolicy,
   type Principal,
+  type RowScopeApplied,
 } from "@shared/access-policy";
 import {
   authenticateRequest,
@@ -101,6 +102,19 @@ export async function executeToolCall(
   let rowCount = 0;
   let piiHits = 0;
   let explainCost: number | null = null;
+  // Server-minted RBAC record (G5): populated from the AccessPolicy result
+  // by the SQL stages below; every audit line carries both, defaulting to
+  // empty on non-SQL tools and denials.
+  let maskedColumns: string[] = [];
+  let rowScopeApplied: RowScopeApplied[] = [];
+
+  const finishPolicy = (info: {
+    maskedColumns: string[];
+    rowScopeApplied: RowScopeApplied[];
+  }): void => {
+    maskedColumns = info.maskedColumns;
+    rowScopeApplied = info.rowScopeApplied;
+  };
 
   const finish = (result: PipelineResult): PipelineResult => {
     if (result.ok) {
@@ -118,6 +132,8 @@ export async function executeToolCall(
         decision: "allow",
         explainCost,
         piiHits,
+        maskedColumns,
+        rowScopeApplied,
       });
     } else {
       auditCall({
@@ -134,6 +150,8 @@ export async function executeToolCall(
         decision: "deny",
         errorCode: result.error.code,
         piiHits,
+        maskedColumns,
+        rowScopeApplied,
       });
     }
     return result;
@@ -166,9 +184,13 @@ export async function executeToolCall(
     const finishCounts = (counts: {
       rowCount: number;
       piiHits: number;
+      maskedColumns?: string[];
+      rowScopeApplied?: RowScopeApplied[];
     }): void => {
       rowCount = counts.rowCount;
       piiHits = counts.piiHits;
+      if (counts.maskedColumns !== undefined) maskedColumns = counts.maskedColumns;
+      if (counts.rowScopeApplied !== undefined) rowScopeApplied = counts.rowScopeApplied;
     };
 
     const scopeError = requireScope(principal, TOOL_SCOPES[tool] as ScopeName);
@@ -260,6 +282,10 @@ export async function executeToolCall(
           principal,
         });
         if (!policy.allowed) return finish(deny(policy.error));
+        finishPolicy({
+          maskedColumns: policy.maskedColumns,
+          rowScopeApplied: policy.rowScopeApplied,
+        });
         const explained = await executeReadOnly(
           `EXPLAIN (FORMAT JSON) ${policy.sql}`,
           50,
@@ -312,7 +338,12 @@ async function runSqlStages(
   principal: Principal,
   sql: string,
   maxRows: number,
-  counts: (info: { rowCount: number; piiHits: number }) => void,
+  counts: (info: {
+    rowCount: number;
+    piiHits: number;
+    maskedColumns?: string[];
+    rowScopeApplied?: RowScopeApplied[];
+  }) => void,
 ): Promise<PipelineResult> {
   const guard = await sqlGuard(sql, deps.catalog.catalog);
   if (!guard.ok) return { ok: false, error: guard.error };
@@ -335,7 +366,12 @@ async function runSqlStages(
     if (redacted.hit) hits += 1;
     return redacted.row;
   });
-  counts({ rowCount: executed.rowCount, piiHits: hits });
+  counts({
+    rowCount: executed.rowCount,
+    piiHits: hits,
+    maskedColumns: policy.maskedColumns,
+    rowScopeApplied: policy.rowScopeApplied,
+  });
   return {
     ok: true,
     data: {
@@ -344,6 +380,7 @@ async function runSqlStages(
       rowCount: executed.rowCount,
       truncated: executed.truncated,
       maskedColumns: policy.maskedColumns,
+      rowScopeApplied: policy.rowScopeApplied,
       durationMs: executed.durationMs,
     },
   };
@@ -389,6 +426,8 @@ export async function executeResourceRead(
       decision: "deny",
       errorCode: auth.error.code,
       piiHits: 0,
+      maskedColumns: [],
+      rowScopeApplied: [],
     });
     return { ok: false, error: auth.error };
   }
@@ -408,6 +447,8 @@ export async function executeResourceRead(
     rowCount: 0,
     durationMs: Date.now() - started,
     piiHits: 0,
+    maskedColumns: [] as string[],
+    rowScopeApplied: [] as RowScopeApplied[],
   };
   if (scopeError !== null) {
     auditCall({ ...record, decision: "deny", errorCode: scopeError.code });

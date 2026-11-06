@@ -19,10 +19,22 @@
 import express from "express";
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync } from "node:fs";
 import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
-import { buildRootGraph, runTracerGraph, type AgentState, type UcEntryHandler } from "@shared/agent";
-import { createSpanEmitter } from "@shared/agent/telemetry";
+import {
+  buildRootGraph,
+  previewCountTotal,
+  runTracerGraph,
+  type AgentState,
+  type UcEntryHandler,
+} from "@shared/agent";
+import {
+  buildLangSmithRunConfig,
+  createLangSmithTracer,
+  createSpanEmitter,
+  flushLangSmith,
+  type LangSmithRunConfig,
+} from "@shared/agent/telemetry";
 import { dbToolError, type DbToolError } from "@shared/contracts";
 import { createHostPorts, type HostPorts } from "./ports.js";
 import {
@@ -111,7 +123,7 @@ export async function defaultReindex(ctx: {
 }
 
 /** Per-run identity retained for resume on the same thread_id. */
-interface StoredRun {
+export interface StoredRun {
   threadId: string;
   userId: string;
   roleScope: string;
@@ -124,8 +136,97 @@ function interruptedOf(output: unknown): unknown[] | undefined {
   return (output as { __interrupt__?: unknown[] }).__interrupt__;
 }
 
-function previewTotal(preview: Record<string, unknown>[]): number {
-  return preview.reduce((sum, row) => sum + Number(row["n"] ?? 0), 0);
+
+/** Verdict tokens safe to record verbatim: protocol decisions, never content. */
+const APPROVAL_VERDICTS = new Set([
+  "approve",
+  "approved",
+  "yes",
+  "confirm",
+  "accept",
+  "proceed",
+  "reject",
+  "rejected",
+  "no",
+  "deny",
+  "cancel",
+]);
+
+/**
+ * Open-ended approval kind (Phase 3 G2): clarification options imply a
+ * clarification gate; anything else stays a generic approval so future
+ * gates (cost_approval, …) can mint their own kinds without a shape change.
+ */
+function approvalKindFor(out: AgentState): string {
+  return out.pendingClarification && out.pendingClarification.length > 0
+    ? "clarification"
+    : "approval";
+}
+
+/**
+ * Metadata-only resume verdict (T-03-08): allowlisted protocol tokens are
+ * recorded verbatim; anything else (free-form clarification answers, pasted
+ * secrets) becomes "provided" plus length. The raw resume value never enters
+ * a span — and no hash of it either, since an unsalted sha256 of a short
+ * value is brute-forceable.
+ */
+function approvalDecision(value: unknown): {
+  decision: string;
+  valueLength: number;
+} {
+  const text = typeof value === "string" ? value : (JSON.stringify(value) ?? "");
+  const lowered = typeof value === "string" ? value.toLowerCase() : "";
+  return {
+    decision: APPROVAL_VERDICTS.has(lowered) ? lowered : "provided",
+    valueLength: text.length,
+  };
+}
+
+/**
+ * Latest approval_requested for this run, read from its own trace file (no
+ * new state store). The header-only rehydrateRun read cannot see non-first
+ * request events, so this scans the same run file for the latest request
+ * timestamp and kind; absent or unreadable files yield null (waitedMs 0).
+ */
+function readLastApprovalRequest(
+  tracesDir: string,
+  runId: string,
+): { kind: string; tsMs: number } | null {
+  if (runId.includes("/") || runId.includes("\\") || runId.includes("..")) {
+    return null;
+  }
+  let text: string;
+  try {
+    text = readFileSync(`${tracesDir}/${runId}.jsonl`, "utf8");
+  } catch {
+    return null;
+  }
+  let last: { kind: string; tsMs: number } | null = null;
+  for (const line of text.split("\n")) {
+    if (!line) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as { type?: unknown }).type === "approval_requested"
+    ) {
+      const record = parsed as { ts?: unknown; payload?: unknown };
+      const ts = typeof record.ts === "string" ? Date.parse(record.ts) : NaN;
+      if (!Number.isFinite(ts)) continue;
+      const kind = (record.payload as { kind?: unknown } | null | undefined)
+        ?.kind;
+      last = {
+        kind: typeof kind === "string" && kind.length > 0 ? kind : "approval",
+        tsMs: ts,
+      };
+    }
+  }
+  return last;
 }
 
 const SSE_HEADERS = {
@@ -133,6 +234,13 @@ const SSE_HEADERS = {
   "cache-control": "no-cache",
   connection: "keep-alive",
 };
+
+/**
+ * Bound for the background LangSmith tail drain (Phase 3 review): the SSE
+ * response always ends first, then the flush runs detached so a stalled
+ * batch can never hold a run — or shutdown — open.
+ */
+const LANGSMITH_FLUSH_TIMEOUT_MS = 2500;
 
 export function buildApp(options: BuildAppOptions): express.Express {
   const tracesDir = options.tracesDir ?? "traces";
@@ -171,16 +279,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
   }
 
   function configurableFor(run: StoredRun, runId: string): Record<string, unknown> {
-    return {
-      thread_id: run.threadId,
-      threadId: run.threadId,
-      runId,
-      userId: run.userId,
-      roleScope: run.roleScope,
-      token: run.token,
-      mcpUrl: run.mcpUrl,
-      tracesDir: run.tracesDir,
-    };
+    return configurableForRun(run, runId);
   }
 
   /** Stream the five-event completion sequence for a finished run. */
@@ -229,7 +328,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         status: out.status,
         answerText: out.answerText,
         toolsCalled: [...(out.toolsCalled ?? [])],
-        total: previewTotal(preview),
+        total: previewCountTotal((out.columns ?? []) as string[], preview),
       }),
     });
   }
@@ -295,13 +394,48 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
     res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
 
+    let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
-      const { graph, emit } = buildGraph(run, runId);
+      const built = buildGraph(run, runId);
+      emit = built.emit;
+      const graph = built.graph;
+      // Optional LangSmith export (Phase 3, D-04): the tracer exists only
+      // when all three vars are set; its handler name suppresses the bare
+      // env auto-tracer. runId equals the JSONL runId for 1:1 correlation.
+      const tracer = createLangSmithTracer(env);
+      const ls = tracer
+        ? buildLangSmithRunConfig(tracer, {
+            runId,
+            threadId,
+            userId: principal.userId,
+            role: principal.role,
+            ucId: "",
+            maskedColumns: [],
+          })
+        : undefined;
       const out = (await graph.invoke(
         { question, ucId: "", runId, threadId },
-        { configurable: configurableFor(run, runId) },
+        {
+          runId,
+          callbacks: ls?.callbacks,
+          tags: ls?.tags,
+          metadata: ls?.metadata,
+          configurable: configurableFor(run, runId),
+        },
       )) as AgentState;
       if (interruptedOf(out)?.length) {
+        emit({
+          node: "answer",
+          type: "approval_requested",
+          durationMs: 0,
+          attempt: 0,
+          payload: {
+            kind: approvalKindFor(out),
+            ...(out.pendingClarification
+              ? { pendingClarification: [...out.pendingClarification] }
+              : {}),
+          },
+        });
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId,
@@ -313,8 +447,9 @@ export function buildApp(options: BuildAppOptions): express.Express {
         return;
       }
       streamCompletion(res, runId, threadId, out);
-      emit({ node: "answer", type: "run_done", durationMs: 0, attempt: 0 });
+      emit.emitRunDone(out.status);
     } catch (error) {
+      emit?.emitRunDone("error");
       emitSseEvent(res, "failed", {
         runId,
         threadId,
@@ -327,7 +462,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
         }),
       });
     } finally {
+      // End the response first, then drain the LangSmith tail detached
+      // (no-op when tracing is off): a stalled batch never holds the run.
       res.end();
+      void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
   });
 
@@ -391,12 +529,60 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
     res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
 
+    let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
-      const { graph, emit } = buildGraph(stored, runId);
+      const built = buildGraph(stored, runId);
+      emit = built.emit;
+      const graph = built.graph;
+      // Same LangSmith shape as ask (same runId + threadId metadata), so
+      // one logical run stays correlatable by threadId across the resume.
+      const tracer = createLangSmithTracer(env);
+      const ls = tracer
+        ? buildLangSmithRunConfig(tracer, {
+            runId,
+            threadId: stored.threadId,
+            userId: stored.userId,
+            role: stored.roleScope,
+            ucId: "",
+            maskedColumns: [],
+          })
+        : undefined;
+      // Approval decision (Phase 3 G2): metadata only — the raw resume
+      // value never enters the span (T-03-08). waitedMs reuses the run's
+      // own trace file (no new state store).
+      const lastApproval = readLastApprovalRequest(stored.tracesDir, runId);
+      const verdict = approvalDecision(req.body["value"]);
+      emit({
+        node: "answer",
+        type: "approval_decided",
+        durationMs: 0,
+        attempt: 0,
+        payload: {
+          kind: lastApproval?.kind ?? "approval",
+          decision: verdict.decision,
+          reviewer: stored.userId,
+          waitedMs: lastApproval
+            ? Math.max(0, Date.now() - lastApproval.tsMs)
+            : 0,
+          valueLength: verdict.valueLength,
+        },
+      });
       const out = (await graph.invoke(new Command({ resume: req.body["value"] }), {
-        configurable: configurableFor(stored, runId),
+        ...buildResumeInvokeOptions({ langsmith: ls, run: stored, runId }),
       })) as AgentState;
       if (interruptedOf(out)?.length) {
+        emit({
+          node: "answer",
+          type: "approval_requested",
+          durationMs: 0,
+          attempt: 0,
+          payload: {
+            kind: approvalKindFor(out),
+            ...(out.pendingClarification
+              ? { pendingClarification: [...out.pendingClarification] }
+              : {}),
+          },
+        });
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId: stored.threadId,
@@ -408,8 +594,9 @@ export function buildApp(options: BuildAppOptions): express.Express {
         return;
       }
       streamCompletion(res, runId, stored.threadId, out);
-      emit({ node: "answer", type: "run_done", durationMs: 0, attempt: 0 });
+      emit.emitRunDone(out.status);
     } catch (error) {
+      emit?.emitRunDone("error");
       emitSseEvent(res, "failed", {
         runId,
         threadId: stored.threadId,
@@ -422,7 +609,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
         }),
       });
     } finally {
+      // End the response first, then drain the LangSmith tail detached
+      // (no-op when tracing is off): a stalled batch never holds the run.
       res.end();
+      void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
   });
 
@@ -490,6 +680,52 @@ function readTraceHeader(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** RunnableConfig.configurable for one run: thread plus identity. */
+export function configurableForRun(
+  run: StoredRun,
+  runId: string,
+): Record<string, unknown> {
+  return {
+    thread_id: run.threadId,
+    threadId: run.threadId,
+    runId,
+    userId: run.userId,
+    roleScope: run.roleScope,
+    token: run.token,
+    mcpUrl: run.mcpUrl,
+    tracesDir: run.tracesDir,
+  };
+}
+
+/**
+ * Invoke options for POST /api/runs/:runId/resume. The ask already created a
+ * LangSmith root run under the API runId, so the resume must NOT reuse it as
+ * its root: every resume mints a fresh UUID for the RunnableConfig runId
+ * (the new LangSmith root), while configurable.runId and metadata
+ * runId/threadId keep the JSONL runId so the one logical run stays
+ * correlatable. Checkpointing keys on configurable.thread_id, never on the
+ * RunnableConfig runId, so the fresh root cannot fork the thread.
+ */
+export function buildResumeInvokeOptions(args: {
+  langsmith: LangSmithRunConfig | undefined;
+  run: StoredRun;
+  runId: string;
+}): {
+  runId: string;
+  callbacks: LangSmithRunConfig["callbacks"] | undefined;
+  tags: string[] | undefined;
+  metadata: Record<string, unknown> | undefined;
+  configurable: Record<string, unknown>;
+} {
+  return {
+    runId: randomUUID(),
+    callbacks: args.langsmith?.callbacks,
+    tags: args.langsmith?.tags,
+    metadata: args.langsmith?.metadata,
+    configurable: configurableForRun(args.run, args.runId),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -691,4 +927,13 @@ if (
     console.log(`[api] listening on 127.0.0.1:${apiPort}`);
   });
   await new Promise<void>((resolve) => server.on("listening", resolve));
+  // Drain the LangSmith tail on shutdown (no-op when tracing is off),
+  // bounded so a stalled batch cannot hold the process open.
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.once(signal, () => {
+      void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS }).finally(() =>
+        process.exit(0),
+      );
+    });
+  }
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { gradeExecution } from "../../../evals/exGrader.js";
-import { compareRuns } from "../../../evals/regression.js";
+import { compareRuns, summarizeCases } from "../../../evals/regression.js";
 
 // Grader suite (EVAL-02/EVAL-03/EVAL-04): PRD 2.2 rules with D-19 coercion,
 // the comparator version gate and delta math, and safety-suite presence.
@@ -121,10 +121,10 @@ describe("compareRuns", () => {
 });
 
 describe("safety suite presence", () => {
-  it("holds six UC-07 cases with attack SQL, observed-layer contract, and fix", () => {
+  it("holds the six UC-07 cases plus PRD 4.3 extension records", () => {
     const url = new URL("../../../evals/safety/cases.jsonl", import.meta.url);
     const lines = readFileSync(url, "utf8").trim().split("\n");
-    expect(lines).toHaveLength(6);
+    expect(lines.length).toBeGreaterThanOrEqual(6);
     const layers = new Set([
       "local-guard",
       "safetyGate",
@@ -158,7 +158,37 @@ describe("safety suite presence", () => {
         ),
       ).toBe(true);
     }
-    expect(ids.size).toBe(6);
-    expect(ids.has("safety-06-light")).toBe(true);
+    expect(ids.size).toBe(lines.length);
+    for (const id of [
+      "safety-01-full-scan",
+      "safety-02-cartesian",
+      "safety-03-hang",
+      "safety-04-injection-drop",
+      "safety-05-resubmit",
+      "safety-06-light",
+    ]) {
+      expect(ids.has(id)).toBe(true);
+    }
+  });
+});
+
+describe("summarizeCases", () => {
+  it("computes pass counts plus mean latency and tokens", () => {
+    expect(
+      summarizeCases([
+        { id: "a", status: "ok", exPass: true, ms: 10, tokens: 4 },
+        { id: "b", status: "error", exPass: false, ms: 30, tokens: 0 },
+      ]),
+    ).toEqual({ total: 2, passed: 1, exRate: 0.5, avgMs: 20, avgTokens: 2 });
+  });
+
+  it("returns zeros for an empty list", () => {
+    expect(summarizeCases([])).toEqual({
+      total: 0,
+      passed: 0,
+      exRate: 0,
+      avgMs: 0,
+      avgTokens: 0,
+    });
   });
 });

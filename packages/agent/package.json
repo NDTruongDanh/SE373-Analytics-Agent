@@ -37,9 +37,10 @@
     "@modelcontextprotocol/sdk": "catalog:",
     "@shared/access-policy": "workspace:*",
     "@shared/contracts": "workspace:*",
+    "langsmith": "0.11.1",
     "pino": "catalog:",
-    "zod": "catalog:",
-    "yaml": "catalog:"
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:"
