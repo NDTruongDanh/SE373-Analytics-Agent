@@ -39,7 +39,16 @@ const baseCatalog: SchemaCatalog = {
         { ...col("id"), type: "integer", nullable: false },
         { ...col("customer_id"), type: "integer" },
         { ...col("status") },
+        { ...col("purchase_date"), type: "timestamp" },
         { ...col("total"), type: "numeric" },
+      ],
+    },
+    {
+      name: "order_items",
+      columns: [
+        { ...col("id"), type: "integer", nullable: false },
+        { ...col("order_id"), type: "integer", nullable: false },
+        { ...col("product_id"), type: "integer", nullable: false },
       ],
     },
     {
@@ -65,7 +74,7 @@ const baseCatalog: SchemaCatalog = {
 /** orders flagged large: any large column marks the table large. */
 const largeCatalog: SchemaCatalog = {
   tables: baseCatalog.tables.map((table) =>
-    table.name === "orders"
+    table.name === "orders" || table.name === "order_items"
       ? { ...table, columns: table.columns.map((c) => ({ ...c, large: true })) }
       : table,
   ),
@@ -132,14 +141,38 @@ describe("LocalQuerySafetyGate", () => {
     expect(result.reason).toContain("orders");
   });
 
-  it("passes a filtered large-table scan (with the LIMIT clamp)", async () => {
+  it("requires the indexed purchase_date filter, not an arbitrary WHERE clause", async () => {
     const result = await gate(
       "SELECT id, status FROM orders WHERE status = 'ok'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("passes a large-table scan bounded by purchase_date", async () => {
+    const result = await gate(
+      "SELECT id, status FROM orders WHERE purchase_date >= '2026-01-01'",
       largeCatalog,
     );
     expect(result.verdict).toBe("pass");
     if (result.verdict !== "pass") return;
     expect(result.sql).toContain(`LIMIT ${DETAIL_QUERY_LIMIT}`);
+  });
+
+  it("requires purchase_date even for an aggregate over a large table", async () => {
+    const result = await gate(
+      "SELECT status, COUNT(*) AS n FROM orders GROUP BY status",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("allows order_items only when its parent orders time filter is present", async () => {
+    const result = await gate(
+      "SELECT i.id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.purchase_date >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
   });
 
   it("appends LIMIT 200 to a detail query with no LIMIT", async () => {

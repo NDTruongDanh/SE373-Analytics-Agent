@@ -144,6 +144,29 @@ function hasAggregate(ast: GuardAst): boolean {
   return having !== undefined && having !== null;
 }
 
+/** Column names referenced specifically inside a WHERE expression. */
+function whereUsesColumn(ast: GuardAst, column: string): boolean {
+  const needle = column.toLowerCase();
+  return findNodes(ast, "whereClause").some((where) => {
+    // pgsql-parser represents a ColumnRef as nested object keys. Restricting
+    // the scan to whereClause keeps a projection-only purchase_date from
+    // satisfying the guard while accepting both qualified and bare refs.
+    return JSON.stringify(where).toLowerCase().includes(needle);
+  });
+}
+
+/**
+ * UC-01 performance policy: both large fact tables must be bounded by the
+ * indexed parent-order timestamp. `order_items` gets its bound through the
+ * required join to `orders`; province/region can further narrow a query but
+ * cannot replace the time bound.
+ */
+function hasLargeTableTimeFilter(guard: GuardSuccess, large: string[]): boolean {
+  const names = new Set(large.map((table) => table.toLowerCase()));
+  if (!names.has("orders") && !names.has("order_items")) return true;
+  return whereUsesColumn(guard.ast, "purchase_date");
+}
+
 /**
  * Clamp or append a top-level LIMIT. Operates on the statement tail so inner
  * subquery LIMITs are untouched; non-numeric LIMITs (parameters) are left
@@ -202,18 +225,14 @@ export function localQuerySafetyGate(
   }
 
   const large = largeScannedTables(guard, catalog);
-  if (
-    large.length > 0 &&
-    !hasWhereFilter(guard.ast) &&
-    !hasAggregate(guard.ast)
-  ) {
+  if (large.length > 0 && !hasLargeTableTimeFilter(guard, large)) {
     const table = large[0];
     return {
       verdict: "needs_clarification",
       table,
       reason:
-        `Query scans large table "${table}" with no WHERE filter and no ` +
-        `aggregate; add a filter, an aggregate, or pick a smaller table.`,
+        `Query scans large table "${table}" without an indexed ` +
+        "orders.purchase_date filter; choose a time range before running it.",
     };
   }
 

@@ -16,6 +16,7 @@ import {
 } from "../queryExecutor/executor.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import { loadSkill } from "../skills/loader.js";
+import { requestClarification } from "../hitl.js";
 import {
   IntentSchema,
   type AgentState,
@@ -277,6 +278,54 @@ const KNOWN_TOOL_NAMES = new Set([
   "sample_rows",
 ]);
 
+const LARGE_QUERY_TIME_OPTIONS = [
+  "01/01/2025–31/12/2025",
+  "01/01/2026–31/03/2026",
+  "01/04/2026–30/06/2026",
+  "01/07/2026–30/09/2026",
+];
+
+function clarificationForLargeQuery(
+  table: string | undefined,
+  attempts: number,
+) {
+  return requestClarification({
+    field: "timeRange",
+    question:
+      `Truy vấn bảng lớn ${table ?? "này"} cần một khoảng thời gian theo orders.purchase_date. ` +
+      "Bạn muốn xem khoảng nào?",
+    options: LARGE_QUERY_TIME_OPTIONS,
+    attempts,
+    ...(table ? { table } : {}),
+  });
+}
+
+/** Ask only when intent extraction has identified multiple candidate KPIs. */
+function clarificationForAmbiguousMetric(state: AgentState): AgentUpdate | null {
+  if (state.intent.metric !== null || state.intent.queryMode !== "standard_query") return null;
+  const options = [...new Set(state.intent.requestedMetrics.map((metric) => metric.trim()))]
+    .filter((metric) => metric.length > 0);
+  if (options.length < 2 || options.length > 4) return null;
+  if (state.clarificationAttempts >= 2) {
+    return {
+      status: "needs_clarification",
+      pendingClarification: null,
+      answerText: "The requested KPI could not be disambiguated after two responses.",
+    };
+  }
+  const clarification = requestClarification({
+    field: "metric",
+    question: `Bạn muốn xem chỉ số nào: ${options.join(", ")}?`,
+    options,
+    attempts: state.clarificationAttempts,
+  });
+  return {
+    status: "needs_clarification",
+    answerText: clarification.reason,
+    pendingClarification: clarification.pendingClarification,
+  };
+}
+
 /**
  * Builds the text-to-SQL understanding node and entry handler. The root graph owns
  * dispatch; this module owns model, skill, and executor wiring for the UC.
@@ -345,6 +394,8 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     if (definition) return definition;
     const unknownTerm = handleUnknownTerm(state);
     if (unknownTerm) return unknownTerm;
+    const ambiguousMetric = clarificationForAmbiguousMetric(state);
+    if (ambiguousMetric) return ambiguousMetric;
     const { identity, transport } = readRunContext(rt);
     if (!deps.executor && !transport) {
       return {
@@ -410,6 +461,24 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       callbacks: rt.config.callbacks,
     });
     const update = updateFromExecutor(result);
+    if (result.status === "needs_clarification") {
+      if (state.clarificationAttempts >= 2) {
+        return {
+          ...update,
+          pendingClarification: null,
+          answerText: "The query still needs clarification after two responses.",
+        };
+      }
+      const clarification = clarificationForLargeQuery(
+        result.table,
+        state.clarificationAttempts,
+      );
+      return {
+        ...update,
+        answerText: clarification.reason,
+        pendingClarification: clarification.pendingClarification,
+      };
+    }
     const isOkLike = result.status === "ok" || result.status === "no_data";
     const observedTools =
       collectedTools.length > 0
