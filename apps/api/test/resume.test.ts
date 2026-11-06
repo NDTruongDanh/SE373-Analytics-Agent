@@ -340,6 +340,7 @@ describe("buildResumeInvokeOptions", () => {
       MCP_TOKEN_MARKETING: "stub-marketing",
       MCP_TOKEN_HR: "stub-hr",
       MCP_TOKEN_ADMIN: "stub-admin",
+      MCP_TOKEN_EVAL_SCOPE: "stub-eval-scope",
     } as unknown as NodeJS.ProcessEnv;
     const seenConfigurable: Record<string, unknown>[] = [];
     const capturing: UcEntryHandler = async (state, rt) => {
