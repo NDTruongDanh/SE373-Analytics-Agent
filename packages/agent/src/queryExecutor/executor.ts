@@ -49,6 +49,7 @@ export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 /** Rows retained for in-process validation; checkpoint state keeps only 50. */
 export const TRANSIENT_ROW_BUFFER_MAX = 1000;
 const DIAGNOSTIC_DISTINCT_LIMIT = 20;
+const MAX_DIAGNOSTIC_FILTER_PROBES = 3;
 
 /** Structured SQL proposal the model must produce (untrusted until gated). */
 export const SqlProposalSchema = z.object({
@@ -289,8 +290,104 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-/** Extract direct column references from WHERE clauses in the guarded AST. */
-function whereColumnNames(ast: unknown): string[] {
+type FilterLiteral = {
+  table: string;
+  column: string;
+  literal: string;
+};
+
+function stringField(value: unknown): string | undefined {
+  const record = asRecord(value);
+  const string = record ? asRecord(record["String"]) : undefined;
+  const text = string?.["sval"];
+  return typeof text === "string" ? text : undefined;
+}
+
+function columnRef(value: unknown): { qualifier?: string; column: string } | undefined {
+  const inner = asRecord(asRecord(value)?.["ColumnRef"]);
+  const fields = inner?.["fields"];
+  if (!Array.isArray(fields) || fields.length === 0) return undefined;
+  const names = fields.map(stringField);
+  if (names.some((name) => name === undefined)) return undefined;
+  const column = names[names.length - 1];
+  if (column === undefined) return undefined;
+  return {
+    ...(names.length >= 2 && names[names.length - 2] !== undefined
+      ? { qualifier: names[names.length - 2] }
+      : {}),
+    column,
+  };
+}
+
+function stringConstant(value: unknown): string | undefined {
+  const constant = asRecord(asRecord(value)?.["A_Const"]);
+  if (!constant) return undefined;
+  const scalar = constant["sval"];
+  if (typeof scalar === "string") return scalar;
+  const text = asRecord(scalar)?.["sval"];
+  return typeof text === "string" ? text : stringField(scalar);
+}
+
+function tableAliases(ast: unknown, catalog: SchemaCatalog): Map<string, string> {
+  const catalogNames = new Map(
+    catalog.tables.map((table) => [table.name.toLowerCase(), table.name]),
+  );
+  const aliases = new Map<string, string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) visit(entry);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    const rangeVar = asRecord(record["RangeVar"]);
+    if (rangeVar) {
+      const relname = rangeVar["relname"];
+      const table =
+        typeof relname === "string"
+          ? catalogNames.get(relname.toLowerCase())
+          : undefined;
+      if (table) {
+        aliases.set(table.toLowerCase(), table);
+        const alias = asRecord(rangeVar["alias"])?.["aliasname"];
+        if (typeof alias === "string" && alias.length > 0) {
+          aliases.set(alias.toLowerCase(), table);
+        }
+      }
+    }
+    for (const entry of Object.values(record)) visit(entry);
+  };
+  visit(ast);
+  return aliases;
+}
+
+function resolveFilterTable(
+  ref: { qualifier?: string; column: string },
+  aliases: Map<string, string>,
+  catalog: SchemaCatalog,
+  scannedTables: readonly string[],
+): string | undefined {
+  if (ref.qualifier) return aliases.get(ref.qualifier.toLowerCase());
+  const scanned = new Set(scannedTables.map((table) => table.toLowerCase()));
+  const matches = catalog.tables.filter(
+    (table) =>
+      scanned.has(table.name.toLowerCase()) &&
+      table.columns.some((column) => column.name.toLowerCase() === ref.column.toLowerCase()),
+  );
+  return matches.length === 1 ? matches[0]?.name : undefined;
+}
+
+/**
+ * Extract only direct WHERE comparisons between a real column and a string
+ * literal. Each value stays paired to its table/alias-qualified column; this
+ * avoids guessing from unrelated numeric predicates, SELECT expressions, or
+ * comments.
+ */
+function stringFilterPredicates(
+  ast: unknown,
+  catalog: SchemaCatalog,
+  scannedTables: readonly string[],
+): FilterLiteral[] {
   const whereClauses: unknown[] = [];
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
@@ -308,7 +405,8 @@ function whereColumnNames(ast: unknown): string[] {
   };
   visit(ast);
 
-  const columns = new Set<string>();
+  const aliases = tableAliases(ast, catalog);
+  const predicates = new Map<string, FilterLiteral>();
   const collect = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const entry of node) collect(entry);
@@ -316,28 +414,46 @@ function whereColumnNames(ast: unknown): string[] {
     }
     const record = asRecord(node);
     if (!record) return;
-    const columnRef = asRecord(record["ColumnRef"]);
-    if (columnRef && Array.isArray(columnRef["fields"])) {
-      const fields = columnRef["fields"] as unknown[];
-      const last = asRecord(fields[fields.length - 1]);
-      const string = last ? asRecord(last["String"]) : undefined;
-      const value = string?.["sval"];
-      if (typeof value === "string") columns.add(value.toLowerCase());
+    const expression = asRecord(record["A_Expr"]);
+    if (expression) {
+      const leftRef = columnRef(expression["lexpr"]);
+      const rightRef = columnRef(expression["rexpr"]);
+      const leftLiteral = stringConstant(expression["lexpr"]);
+      const rightLiteral = stringConstant(expression["rexpr"]);
+      const ref = leftRef && rightLiteral !== undefined
+        ? leftRef
+        : rightRef && leftLiteral !== undefined
+          ? rightRef
+          : undefined;
+      const literal = leftRef && rightLiteral !== undefined
+        ? rightLiteral
+        : rightRef && leftLiteral !== undefined
+          ? leftLiteral
+          : undefined;
+      if (ref && literal !== undefined) {
+        const table = resolveFilterTable(ref, aliases, catalog, scannedTables);
+        if (table) {
+          const catalogTable = catalog.tables.find(
+            (entry) => entry.name.toLowerCase() === table.toLowerCase(),
+          );
+          const column = catalogTable?.columns.find(
+            (entry) => entry.name.toLowerCase() === ref.column.toLowerCase(),
+          )?.name;
+          if (column) {
+            const predicate = { table, column, literal };
+            predicates.set(`${table}\u0000${column}\u0000${literal}`, predicate);
+          }
+        }
+      }
     }
     for (const value of Object.values(record)) collect(value);
   };
   for (const where of whereClauses) collect(where);
-  return [...columns];
+  return [...predicates.values()].slice(0, MAX_DIAGNOSTIC_FILTER_PROBES);
 }
 
 function quotedIdentifier(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
-}
-
-function sqlStringLiterals(sql: string): string[] {
-  return [...sql.matchAll(/'((?:''|[^'])*)'/g)].map((match) =>
-    match[1].replaceAll("''", "'"),
-  );
 }
 
 function normalizeDiagnosticValue(value: string): string {
@@ -345,39 +461,38 @@ function normalizeDiagnosticValue(value: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replaceAll("đ", "d")
     .replace(/[^a-z0-9]/g, "");
 }
 
 /** Detect a bounded synonym signal such as "Mien Nam" versus "Nam". */
 function diagnosticMismatch(
-  originalSql: string,
-  table: string,
-  column: string,
+  predicate: FilterLiteral,
   rows: Record<string, unknown>[],
 ): string | undefined {
   const values = rows
-    .map((row) => row[column])
+    .map((row) => row[predicate.column])
     .filter((value): value is string => typeof value === "string")
     .slice(0, DIAGNOSTIC_DISTINCT_LIMIT);
-  for (const requested of sqlStringLiterals(originalSql)) {
-    const normalizedRequested = normalizeDiagnosticValue(requested);
-    if (normalizedRequested.length < 2) continue;
-    for (const actual of values) {
-      const normalizedActual = normalizeDiagnosticValue(actual);
-      if (
-        normalizedActual.length >= 2 &&
-        normalizedActual !== normalizedRequested &&
-        (normalizedActual.includes(normalizedRequested) ||
-          normalizedRequested.includes(normalizedActual))
-      ) {
-        return (
-          `Zero-row diagnostic found a likely filter-value mismatch on ` +
-          `${table}.${column}: the query used ${JSON.stringify(requested)}, ` +
-          `while the database contains ${JSON.stringify(actual)}. ` +
-          `Repair the SQL using the discovered value. Available values: ` +
-          `${JSON.stringify(values)}.`
-        );
-      }
+  const normalizedRequested = normalizeDiagnosticValue(predicate.literal);
+  if (normalizedRequested.length < 2) return undefined;
+  for (const actual of values) {
+    const normalizedActual = normalizeDiagnosticValue(actual);
+    if (
+      normalizedActual.length >= 2 &&
+      normalizedActual !== normalizedRequested &&
+      (normalizedActual.includes(normalizedRequested) ||
+        normalizedRequested.includes(normalizedActual))
+    ) {
+      return [
+        "Zero-row diagnostic found one likely filter-value mismatch. Use only the evidence below to repair the SQL.",
+        "<untrusted-diagnostic-data>",
+        `table: ${predicate.table}`,
+        `column: ${predicate.column}`,
+        `requested: ${JSON.stringify(predicate.literal)}`,
+        `observed: ${JSON.stringify(actual)}`,
+        "</untrusted-diagnostic-data>",
+      ].join("\n");
     }
   }
   return undefined;
@@ -762,13 +877,12 @@ export class ValidatedQueryExecutor {
         // immediately with zero probes.
         if (attempt === 1 && hasWhereFilter(guard.ast)) {
           const diagnostic = await this.zeroRowProbe(
-            guard.tables[0] ?? input.candidateTables[0],
             identity,
             budget,
             attempt,
             catalog,
             guard.ast,
-            finalSql,
+            guard.tables,
           );
           if (diagnostic.budgetTripped) {
             return budgetTrip(diagnostic.budgetTripped, attempt);
@@ -873,159 +987,219 @@ export class ValidatedQueryExecutor {
   }
 
   /**
-   * One bounded zero-row diagnostic pass. It re-describes the target table,
-   * samples five rows, then checks one WHERE column with a guarded DISTINCT
-   * query capped at 20 rows. Only a concrete near-match may trigger attempt 2.
+   * One bounded zero-row diagnostic pass. It resolves direct string-literal
+   * filters to their table/column pairs, re-describes and samples each relevant
+   * table once, then runs guarded DISTINCT probes capped at 20 rows. Only a
+   * concrete near-match may trigger attempt 2.
    */
   private async zeroRowProbe(
-    table: string | undefined,
     identity: { runId: string; userId: string; roleScope: string },
     budget: BudgetState,
     attempt: number,
     catalog: SchemaCatalog,
     ast: unknown,
-    originalSql: string,
+    scannedTables: readonly string[],
   ): Promise<{
     note: string;
     repairFeedback?: string;
     budgetTripped?: BudgetTripReason;
   }> {
-    const target = table ?? "unknown";
-    const check = checkBudget(budget);
-    if (check.tripped) return { note: "", budgetTripped: check.reason };
-
-    let described: z.infer<typeof DescribeTableOutputSchema>;
-    try {
-      const started = Date.now();
-      const raw = await this.mcp.call("describe_table", {
-        ...identity,
-        table: target,
-      });
-      const parsed = DescribeTableOutputSchema.safeParse(raw);
-      if (!parsed.success) {
-        return { note: `zero-row diagnostic: describe_table ${target} returned an unexpected shape` };
-      }
-      described = parsed.data;
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        durationMs: Date.now() - started,
-        payload: { tool: "describe_table", table: target },
-      });
-    } catch (thrown) {
-      const error = asDbToolError("describe_table", thrown);
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        payload: { tool: "describe_table", table: target, probeError: error.code },
-      });
-      return {
-        note: `zero-row diagnostic: describe_table ${target} probe failed (${error.code}), concluding no_data`,
-      };
-    }
-
-    const sampleCheck = checkBudget(budget);
-    if (sampleCheck.tripped) return { note: "", budgetTripped: sampleCheck.reason };
-    let sampleNote = "sample_rows was unavailable";
-    try {
-      const started = Date.now();
-      const raw = await this.mcp.call("sample_rows", {
-        ...identity,
-        table: target,
-        n: 5,
-      });
-      const parsed = SampleRowsOutputSchema.safeParse(raw);
-      sampleNote = parsed.success
-        ? `sample_rows ${target} n=5 returned ${parsed.data.rowCount} rows`
-        : `sample_rows ${target} returned an unexpected shape`;
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        durationMs: Date.now() - started,
-        payload: { tool: "sample_rows", table: target },
-      });
-    } catch (thrown) {
-      const error = asDbToolError("sample_rows", thrown);
-      sampleNote = `sample_rows ${target} probe failed (${error.code})`;
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        payload: { tool: "sample_rows", table: target, probeError: error.code },
-      });
-    }
-
-    const knownColumns = new Map(
-      described.columns.map((column) => [column.name.toLowerCase(), column.name]),
-    );
-    const column = whereColumnNames(ast)
-      .map((name) => knownColumns.get(name))
-      .find((name): name is string => name !== undefined);
-    if (!column) {
-      return {
-        note: `zero-row diagnostic: ${sampleNote}; no direct filter column was available for a distinct probe, concluding no_data`,
-      };
-    }
-
-    const distinctSql =
-      `SELECT DISTINCT ${quotedIdentifier(column)} FROM ${quotedIdentifier(described.table)} ` +
-      `LIMIT ${DIAGNOSTIC_DISTINCT_LIMIT}`;
-    const distinctGuard = await sqlGuard(distinctSql, catalog);
-    if (!distinctGuard.ok) {
-      return {
-        note: `zero-row diagnostic: ${sampleNote}; guarded distinct probe was denied, concluding no_data`,
-      };
-    }
-    const distinctCheck = checkBudget(budget);
-    if (distinctCheck.tripped) return { note: "", budgetTripped: distinctCheck.reason };
-    try {
-      const started = Date.now();
-      const raw = await this.mcp.call("run_query", {
-        ...identity,
-        sql: distinctSql,
-        maxRows: DIAGNOSTIC_DISTINCT_LIMIT,
-      });
-      const parsed = RunQueryOutputSchema.safeParse(raw);
-      if (!parsed.success) {
-        return {
-          note: `zero-row diagnostic: ${sampleNote}; distinct probe returned an unexpected shape, concluding no_data`,
-        };
-      }
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        durationMs: Date.now() - started,
-        payload: { tool: "run_query", table: target, column, rowCount: parsed.data.rowCount },
-      });
-      const repairFeedback = diagnosticMismatch(
-        originalSql,
-        described.table,
-        column,
-        parsed.data.rows,
-      );
+    const predicates = stringFilterPredicates(ast, catalog, scannedTables);
+    if (predicates.length === 0) {
       return {
         note:
-          `zero-row diagnostic: ${sampleNote}; ` +
-          `distinct ${described.table}.${column} returned ${parsed.data.rowCount} values` +
-          (repairFeedback ? "; attempting one repair" : "; concluding no_data"),
-        ...(repairFeedback ? { repairFeedback } : {}),
-      };
-    } catch (thrown) {
-      const error = asDbToolError("run_query", thrown);
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        payload: { tool: "run_query", table: target, column, probeError: error.code },
-      });
-      return {
-        note: `zero-row diagnostic: ${sampleNote}; distinct probe failed (${error.code}), concluding no_data`,
+          "zero-row diagnostic: no direct string-literal filter could be " +
+          "safely resolved, concluding no_data",
       };
     }
+
+    const described = new Set<string>();
+    const sampled = new Set<string>();
+    const notes: string[] = [];
+    for (const predicate of predicates) {
+      const tableKey = predicate.table.toLowerCase();
+      if (!described.has(tableKey)) {
+        const check = checkBudget(budget);
+        if (check.tripped) return { note: "", budgetTripped: check.reason };
+        try {
+          const started = Date.now();
+          const raw = await this.mcp.call("describe_table", {
+            ...identity,
+            table: predicate.table,
+          });
+          const parsed = DescribeTableOutputSchema.safeParse(raw);
+          if (!parsed.success) {
+            notes.push(`describe_table ${predicate.table} returned an unexpected shape`);
+            continue;
+          }
+          described.add(tableKey);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - started,
+            payload: { tool: "describe_table", table: predicate.table },
+          });
+        } catch (thrown) {
+          const error = asDbToolError("describe_table", thrown);
+          notes.push(`describe_table ${predicate.table} probe failed (${error.code})`);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            payload: { tool: "describe_table", table: predicate.table, probeError: error.code },
+          });
+          continue;
+        }
+      }
+
+      let sampleNote = "sample_rows was unavailable";
+      if (!sampled.has(tableKey)) {
+        const check = checkBudget(budget);
+        if (check.tripped) return { note: "", budgetTripped: check.reason };
+        try {
+          const started = Date.now();
+          const raw = await this.mcp.call("sample_rows", {
+            ...identity,
+            table: predicate.table,
+            n: 5,
+          });
+          const parsed = SampleRowsOutputSchema.safeParse(raw);
+          sampleNote = parsed.success
+            ? `sample_rows ${predicate.table} n=5 returned ${parsed.data.rowCount} rows`
+            : `sample_rows ${predicate.table} returned an unexpected shape`;
+          sampled.add(tableKey);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - started,
+            payload: {
+              tool: "sample_rows",
+              table: predicate.table,
+              ...(parsed.success ? { rowCount: parsed.data.rowCount } : {}),
+            },
+          });
+        } catch (thrown) {
+          const error = asDbToolError("sample_rows", thrown);
+          sampleNote = `sample_rows ${predicate.table} probe failed (${error.code})`;
+          sampled.add(tableKey);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            payload: { tool: "sample_rows", table: predicate.table, probeError: error.code },
+          });
+        }
+      }
+
+      const distinctSql =
+        `SELECT DISTINCT ${quotedIdentifier(predicate.column)} ` +
+        `FROM ${quotedIdentifier(predicate.table)} LIMIT ${DIAGNOSTIC_DISTINCT_LIMIT}`;
+      const distinctGuard = await sqlGuard(distinctSql, catalog);
+      if (!distinctGuard.ok) {
+        notes.push(`guarded distinct ${predicate.table}.${predicate.column} was denied`);
+        continue;
+      }
+
+      const explainCheck = checkBudget(budget);
+      if (explainCheck.tripped) return { note: "", budgetTripped: explainCheck.reason };
+      try {
+        const started = Date.now();
+        const raw = await this.mcp.call("explain_query", {
+          ...identity,
+          sql: distinctSql,
+        });
+        const parsed = ExplainQueryOutputSchema.safeParse(raw);
+        if (!parsed.success) {
+          notes.push(`distinct ${predicate.table}.${predicate.column} explain returned an unexpected shape`);
+          continue;
+        }
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          durationMs: Date.now() - started,
+          payload: {
+            tool: "explain_query",
+            table: predicate.table,
+            column: predicate.column,
+            estimatedCost: parsed.data.estimatedCost,
+          },
+        });
+      } catch (thrown) {
+        const error = asDbToolError("explain_query", thrown);
+        notes.push(`distinct ${predicate.table}.${predicate.column} explain failed (${error.code})`);
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          payload: {
+            tool: "explain_query",
+            table: predicate.table,
+            column: predicate.column,
+            probeError: error.code,
+          },
+        });
+        continue;
+      }
+
+      const runCheck = checkBudget(budget);
+      if (runCheck.tripped) return { note: "", budgetTripped: runCheck.reason };
+      try {
+        const started = Date.now();
+        const raw = await this.mcp.call("run_query", {
+          ...identity,
+          sql: distinctSql,
+          maxRows: DIAGNOSTIC_DISTINCT_LIMIT,
+        });
+        const parsed = RunQueryOutputSchema.safeParse(raw);
+        if (!parsed.success) {
+          notes.push(`distinct ${predicate.table}.${predicate.column} returned an unexpected shape`);
+          continue;
+        }
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          durationMs: Date.now() - started,
+          payload: {
+            tool: "run_query",
+            table: predicate.table,
+            column: predicate.column,
+            rowCount: parsed.data.rowCount,
+          },
+        });
+        const repairFeedback = diagnosticMismatch(predicate, parsed.data.rows);
+        const resultNote =
+          `${sampleNote}; distinct ${predicate.table}.${predicate.column} ` +
+          `returned ${parsed.data.rowCount} values`;
+        if (repairFeedback) {
+          return {
+            note: `zero-row diagnostic: ${resultNote}; attempting one repair`,
+            repairFeedback,
+          };
+        }
+        notes.push(resultNote);
+      } catch (thrown) {
+        const error = asDbToolError("run_query", thrown);
+        notes.push(`distinct ${predicate.table}.${predicate.column} probe failed (${error.code})`);
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          payload: {
+            tool: "run_query",
+            table: predicate.table,
+            column: predicate.column,
+            probeError: error.code,
+          },
+        });
+      }
+    }
+    return {
+      note: `zero-row diagnostic: ${notes.join("; ")}; concluding no_data`,
+    };
   }
 }
 
