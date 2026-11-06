@@ -3,9 +3,6 @@ type: semantic-layer
 title: Semantic layer and retrieval
 description: Versioned semantic corpus, incremental indexing, and 3-way hybrid retrieval with weighted RRF and join-rule expansion grounding the Analytics Agent.
 tags: [semantic-layer, retrieval, rag, citations, knowledge-base, text-to-sql]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-03T15:42:11.322Z
 sources:
   - id: openwiki-source-4912fb87763cb10856716453
     resource: repo://docker/initdb/02_schemas.sql
@@ -48,6 +45,9 @@ sources:
   - id: openwiki-source-d2c7e7764edc89333a818b3e
     resource: repo://semantic/tables.yaml
 generated: { by: "openwiki/0.7.2", at: "2026-11-03T15:42:11.322Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-06T15:32:05.739Z
 ---
 
 # Semantic layer and retrieval

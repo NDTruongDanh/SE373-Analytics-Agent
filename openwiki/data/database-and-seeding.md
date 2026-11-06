@@ -5,7 +5,7 @@ description: Olist-VN PostgreSQL database, Vietnamesization transforms, loader a
 tags: [database, seeding, vietnamesization, olist, pii, eval-fixtures]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
+    at: 2026-11-06T15:32:05.739Z
 sources:
   - id: openwiki-source-e119253b3c3737247dc63f2a
     resource: repo://.openwikiignore
@@ -41,14 +41,14 @@ sources:
     resource: repo://packages/data/test/seedHiding.test.ts
   - id: openwiki-source-b7ac2104581a67282056d573
     resource: repo://policies/sensitive_columns.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
 ---
 
 # Business database and seeded scenarios
 
 This page owns the Olist-VN business database the Analytics Agent queries: where the source bytes come from, how they are Vietnamesized, what the `public.*` schema and role grants look like, how `packages/data` loads and verifies the database, and how seeded drift, anomaly, and injection fixtures stay hidden from the agent.
 
-> Read boundary: this page documents loader scripts and schema files only. It never reproduces ignored data dumps (`data/*.csv`, `data/*.parquet`, `data/*.db`, `data/*.sqlite`, `data/*.duckdb`), `packages/data/src/seeds.json` payloads, `data/seed_manifest*.json` checksums, `data/seeded_scenarios.md`, or `evals/**` gold content. See `.openwikiignore` for the full boundary.
+> Read boundary: this page documents loader scripts and schema files only. It never reproduces ignored data dumps (`data/*.csv`, `data/*.parquet`, `data/*.db`, `data/*.sqlite`, `data/*.duckdb`), `packages/data/src/seeds.json` payloads, `data/seed_manifest*.json` checksums, `data/seeded_scenarios.md`, or `evals/**` gold content. Trace, log, and result payloads (`traces/**`, `logs/*.jsonl`, `results/**`) are likewise never reproduced. See `.openwikiignore` for the full boundary.
 
 ## 1. Responsibility and scope
 
@@ -176,7 +176,7 @@ Use `pnpm db:reset` (`down -v` plus `up -d`) only when intentionally wiping the 
 
 - Read-only by grants. `agent_ro` cannot write, create temp tables, or advance sequences; session defaults can be overridden by `SET`, so the missing grants are the enforcement point.
 - No real PII ever. Every phone, email, address, and salary is Faker output. A violation zeroes the related use case and requires purging the data.
-- Hidden means hidden. Gold questions, seeded causes, and injection payloads are excluded from agent retrieval and few-shot examples. `packages/data/test/seedHiding.test.ts` scans agent, app, skills, eval, docs, policy, semantic, and script trees for any committed scenario id, payload, or manifest path pointer and fails the build on a leak.
+- Hidden means hidden. Gold questions, seeded causes, and injection payloads are excluded from agent retrieval and few-shot examples. `packages/data/test/seedHiding.test.ts` enforces this in three checks: no committed scenario id or injection payload in `packages/agent`, `apps`, `skills`, `evals`, `docs`, `policies`, `semantic`, `scripts` plus root `README.md` and `AGENTS.md` (payload matching exempts only `docs/prd.md` and `docs/architecture.md` as spec sources, while id matching has no exemption anywhere); no seed or gold path pointer (`data/seeded_scenarios.md`, `packages/data/src/seeds.json`, `seed_manifest` fragments) in code roots only, so docs may reference the scenario file; and `.openwikiignore` still lists all four seed path fragments.
 - Scale and sensitivity invariants: at least one table holds one million or more rows at full scale; fake PII columns are marked `restricted_pii` in the semantic layer and masked or denied by scope in the MCP server; `orders.status` semantics and the payments fan-out trap are part of the contract the semantic layer depends on.
 - Regenerability: a fresh checkout with the recorded source, license, and transform steps rebuilds the database from the loader alone. If the load and manifest disagree, the loader refuses to finish rather than silently accepting drift.
 

@@ -3,9 +3,6 @@ type: workflow-architecture
 title: Agent workflow and harness architecture
 description: Reference agent loop and shared harness with frozen LangGraph root, registry seam, ValidatedQueryExecutor, memory ports, trace, and import boundaries.
 tags: [agent-workflow, langgraph, harness, tools, skills, memory, guardrails, trace]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -67,7 +64,10 @@ sources:
     resource: repo://packages/contracts/test/schemas.test.ts
   - id: openwiki-source-5ce0b28a6cb6c2f639298bc1
     resource: repo://packages/contracts/test/tools.test.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-06T15:32:05.739Z
 ---
 
 # Agent workflow and harness architecture
@@ -157,11 +157,13 @@ The first real UC overlay is text-to-SQL. Its `understand` node loads the `text-
 
 ## 6. Shared frozen contracts
 
-Contracts evolve additive-only after the freeze: adding optional fields, schemas, or widening enum members needs one code-owner review, while removing or renaming fields, tightening types, changing enum members, or changing error codes needs a `CONTRACTS_VERSION` major bump plus approval from every affected UC owner (`packages/contracts/README.md:8-19`). The single version constant is `CONTRACTS_VERSION = "1.0.0"` (`packages/contracts/src/constants.ts:1`, `packages/contracts/src/index.ts:12`). All fields are canonical `camelCase`; snake-case variants are not added and consumers map them at their own boundary (`packages/contracts/README.md:21-27`).
+Contracts evolve additive-only after the freeze: adding optional fields, schemas, or widening enum members needs one code-owner review, while removing or renaming fields, tightening types, changing enum members, or changing error codes needs a `CONTRACTS_VERSION` major bump plus approval from every affected UC owner (`packages/contracts/README.md:8-19`). The single version constant is `CONTRACTS_VERSION = "1.1.0"` (`packages/contracts/src/constants.ts:1`, `packages/contracts/src/index.ts:13`). Version 1.1.0 is the additive precedent: `RunQueryOutputSchema` gains optional `rowScopeApplied` carrying the server-minted row-scope record (strict table plus column, column names only), with pre-1.1.0 payloads still parsing via default (`packages/contracts/README.md:21-28`). All fields are canonical `camelCase`; snake-case variants are not added and consumers map them at their own boundary (`packages/contracts/README.md:30-36`).
 
 Errors are 12 frozen codes. Only `TIMEOUT`, `RATE_LIMITED`, and `INTERNAL_ERROR` are retryable; only `INVALID_SQL`, `UNKNOWN_TABLE`, and `SQL_EXECUTION_ERROR` are repairable, computed by `dbToolError()` from `RETRYABLE_CODES` and `REPAIRABLE_CODES` with an optional non-negative `cursorPosition` (`packages/contracts/src/constants.ts:8-33`, `packages/contracts/src/errors.ts:26-38`). Routing is transport retry with backoff for transient codes with one `TIMEOUT` simplification rewrite, bounded repair with sanitized code plus cursor for SQL diagnostics (at most 3 attempts), and immediate hard abort on attempt 1 for hard security and policy codes (`packages/contracts/README.md:54-64`).
 
-`SQLAnswer` carries structured intent with metric, dimensions, filters, and time range, nullable SQL, tables used, citations defaulting to empty, attempts capped at 3, result preview capped at 50 rows, non-empty answer text, a six-value status enum (`ok`, `no_data`, `cannot_answer`, `needs_clarification`, `restricted`, `error`), and telemetry with prompt, completion, and embedding tokens plus cost and latency. The schema test rejects a fourth attempt and a 51-row preview. The `AgentResponse` union adds `insight_report`, `analysis_plan`, `root_cause`, and `anomaly_alert` envelope variants around the same status core.
+`SQLAnswer` carries structured intent with metric, dimensions, filters, and time range, nullable SQL, tables used, citations defaulting to empty, attempts capped at 3, result preview capped at 50 rows, non-empty answer text, a seven-value status enum (`ok`, `no_data`, `cannot_answer`, `needs_clarification`, `restricted`, `error`, `false_premise`), and telemetry with prompt, completion, and embedding tokens plus cost and latency. The schema test rejects a fourth attempt and a 51-row preview. The `AgentResponse` union adds `insight_report`, `analysis_plan`, `root_cause`, and `anomaly_alert` envelope variants around the same status core.
+
+Frozen tool schemas keep scope filtering server-side (`ListTablesInputSchema` is a strict empty object, so clients cannot claim scope), keep per-column `sensitive` flags on describe output, cap `run_query` with `maxRows` 1–1000 (default 200) plus `maskedColumns` and server-minted `rowScopeApplied` reporting (column names only), and cap `sample_rows` at `n <= 5` (default 5).
 
 Trace identity is `runId`, `threadId`, `userId`, `role`, node, type, timestamp, and duration, with optional `spanId`, `parentSpanId`, and `attempt` so older writers stay valid. The schema test rejects an empty run ID. Trace and audit sinks must remain redacted of raw PII values.
 

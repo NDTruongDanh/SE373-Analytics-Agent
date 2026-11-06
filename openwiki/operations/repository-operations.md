@@ -5,6 +5,9 @@ description: Toolchain, build and test entrypoints, provider and session-header
   configuration, scheduled wiki CI, and submission layout for the Analytics
   Agent monorepo.
 tags: [operations, repository, openwiki-automation, configuration, ci]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-06T15:32:05.739Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -58,6 +61,8 @@ sources:
     resource: repo://scripts/openwiki-fetch-patch.mjs
   - id: openwiki-source-e7483dfec98b06f6039f2f12
     resource: repo://scripts/skills-check.ts
+  - id: openwiki-source-8f237913979f09c8e64c25ba
+    resource: repo://scripts/trace-show.ts
   - id: openwiki-source-4fd3e19fe0c023887ba08260
     resource: repo://semantic/data_dictionary.md
   - id: openwiki-source-df1e4d0dc0a35c64fd0e652b
@@ -66,10 +71,7 @@ sources:
     resource: repo://tsconfig.json
   - id: openwiki-source-b6f224d26b4ec604e90101e3
     resource: repo://vitest.workspace.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-03T15:42:11.322Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-03T15:42:11.322Z
+generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
 ---
 
 # Repository operations
@@ -110,7 +112,7 @@ Start with [Quickstart](../quickstart.md) for the task-routing map.
 ### 2.1 Harness operator scripts
 
 The canonical operator loop is defined in `README.md:13-27` and implemented in
-`package.json:14-21`:
+`package.json:14-22`:
 
 | Command | What it does |
 |---|---|
@@ -120,9 +122,10 @@ The canonical operator loop is defined in `README.md:13-27` and implemented in
 | `pnpm data:load --scale=small` | CI-speed seed with the same foreign-key graph and seed scenarios, smaller volumes (`packages/data/src/load.ts:21-27`, `.github/workflows/ci.yml:137-138`) |
 | `pnpm data:verify` | Pin the loaded volume to `data/seed_manifest.json`; with `--scale=small` pin to `data/seed_manifest.small.json` (`packages/data/src/verify.ts:1-7`, `packages/data/src/load.ts:25-27`) |
 | `pnpm demo:tracer` | End-to-end proof: gateway plus host, seven PII-clean trace events (`package.json:16`, `scripts/demo-tracer.ts:1-15`) |
+| `pnpm trace:show <runId>` | Offline G4 trace viewer over redacted `traces/<runId>.jsonl` plus `logs/mcp_audit.jsonl` with no DB or network I/O (`package.json:17`, `scripts/trace-show.ts:1-5`) |
 | `pnpm eval --uc uc09` or `--all` | Live harness evaluation; needs the database plus gateway environment (`README.md:25`) |
-| `pnpm skills:check` | Declarative-skills invariant: no runnable scripts, no credentials (`package.json:21`, `scripts/skills-check.ts:1-7`) |
-| `pnpm external-client` | External MCP client probe over Streamable HTTP (`package.json:17`) |
+| `pnpm skills:check` | Declarative-skills invariant: no runnable scripts, no credentials (`package.json:22`, `scripts/skills-check.ts:1-7`) |
+| `pnpm external-client` | External MCP client probe over Streamable HTTP (`package.json:18`) |
 
 The loader owns writes through owner transactions and `COPY`; the verifier
 connects as owner and runs `SELECT`/`COUNT` only with zero DDL. Schema DDL lives
