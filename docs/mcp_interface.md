@@ -292,6 +292,28 @@ Required scope: `data:read`.
         "type": "string"
       }
     },
+    "rowScopeApplied": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string",
+            "minLength": 1
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "table",
+          "column"
+        ],
+        "additionalProperties": false
+      }
+    },
     "durationMs": {
       "type": "number",
       "minimum": 0
@@ -303,6 +325,7 @@ Required scope: `data:read`.
     "rowCount",
     "truncated",
     "maskedColumns",
+    "rowScopeApplied",
     "durationMs"
   ],
   "additionalProperties": false

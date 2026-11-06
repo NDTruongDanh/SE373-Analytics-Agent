@@ -1,4 +1,4 @@
-export const CONTRACTS_VERSION = "1.0.0";
+export const CONTRACTS_VERSION = "1.1.0";
 
 // The 12 frozen error codes: UC-09 A.7 codes E1-E9 plus E11, with E10
 // (truncation) represented by the `truncated` boolean flag rather than an

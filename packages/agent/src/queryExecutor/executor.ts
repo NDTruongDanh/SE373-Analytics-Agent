@@ -18,11 +18,11 @@ import {
   dbToolError,
   type DbToolError,
   type ErrorCode,
+  type RowScopeApplied,
   type SchemaCatalog,
 } from "@shared/contracts";
-import { sqlGuard, RowScopeAppliedSchema } from "@shared/access-policy";
+import { sqlGuard } from "@shared/access-policy";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
-import type { RowScopeApplied } from "@shared/access-policy";
 import * as z from "zod";
 import {
   checkBudget,
@@ -597,7 +597,7 @@ export class ValidatedQueryExecutor {
         columns = parsedRun.data.columns;
         rows = parsedRun.data.rows;
         maskedColumns = parsedRun.data.maskedColumns;
-        rowScopeApplied = readRowScopeApplied(rawRun);
+        rowScopeApplied = parsedRun.data.rowScopeApplied;
         partials.rowsFetched = rows.length;
         this.span({
           node: "run",
@@ -794,15 +794,4 @@ function feedbackFor(error: DbToolError): string {
       ? "unknown position"
       : `position ${error.cursorPosition}`;
   return `${error.code} at ${position}: ${error.message}`;
-}
-
-// The locked RunQueryOutputSchema strips the server-minted scope record, so
-// read it off the raw tool response through the shared access-policy schema
-// (single authority, no contracts change in this plan). Anything unexpected
-// defaults to empty fail-closed — the span carries names, never values.
-function readRowScopeApplied(rawRun: unknown): RowScopeApplied[] {
-  const candidate = (rawRun as { rowScopeApplied?: unknown } | null)
-    ?.rowScopeApplied;
-  const parsed = RowScopeAppliedSchema.array().safeParse(candidate);
-  return parsed.success ? parsed.data : [];
 }

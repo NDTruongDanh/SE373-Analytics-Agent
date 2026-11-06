@@ -10,9 +10,8 @@
 import { walk } from "@pgsql/traverse";
 import type { NodePath } from "@pgsql/traverse";
 import { deparse, parse } from "pgsql-parser";
-import * as z from "zod";
 import type { DbToolError, ErrorCode, SchemaCatalog } from "@shared/contracts";
-import { dbToolError } from "@shared/contracts";
+import { dbToolError, type RowScopeApplied } from "@shared/contracts";
 import { sqlGuard } from "./guard.js";
 import type { GuardAst } from "./guard.js";
 import { DEFAULT_SENSITIVE_COLUMNS } from "./sensitive-columns.js";
@@ -55,12 +54,7 @@ export type PolicyResult =
   | { allowed: false; error: DbToolError };
 
 /** One applied row-scope predicate: scoped table plus scoped column. */
-export const RowScopeAppliedSchema = z.strictObject({
-  table: z.string().min(1),
-  column: z.string().min(1),
-});
-
-export type RowScopeApplied = z.infer<typeof RowScopeAppliedSchema>;
+export { RowScopeAppliedSchema, type RowScopeApplied } from "@shared/contracts";
 
 export interface AccessPolicy {
   readonly name: string;

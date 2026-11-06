@@ -14,9 +14,18 @@ After the Phase 1 freeze, contract changes follow the **additive-only** rule:
   members, changing error codes — require a `CONTRACTS_VERSION` major bump
   **plus approval from every affected UC owner**.
 
-`CONTRACTS_VERSION` (`src/index.ts`, currently `1.0.0`) is the single version
+`CONTRACTS_VERSION` (`src/index.ts`, currently `1.1.0`) is the single version
 constant consumers can assert against. Enforcement is by CODEOWNERS review on
 `packages/contracts/` (see `.github/CODEOWNERS`).
+
+## Version history
+
+- **1.1.0** (additive, one code-owner review): `RunQueryOutputSchema` gains
+  optional `rowScopeApplied` (`RowScopeAppliedSchema`: strict `{ table, column }`,
+  column names only) carrying the server-minted row-scope record the MCP
+  gateway already returned. Pre-1.1.0 payloads without the field still parse
+  (`default: []`). Single authority lives here; `@shared/access-policy`
+  re-exports the schema.
 
 ## Naming: camelCase is canonical
 
