@@ -46,6 +46,10 @@ import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
 export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
+/** Rows retained for in-process validation; checkpoint state keeps only 50. */
+export const TRANSIENT_ROW_BUFFER_MAX = 1000;
+const DIAGNOSTIC_DISTINCT_LIMIT = 20;
+
 /** Structured SQL proposal the model must produce (untrusted until gated). */
 export const SqlProposalSchema = z.object({
   sql: z.string().min(1),
@@ -277,6 +281,106 @@ function catalogFromDescribe(
       })),
     })),
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** Extract direct column references from WHERE clauses in the guarded AST. */
+function whereColumnNames(ast: unknown): string[] {
+  const whereClauses: unknown[] = [];
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) visit(entry);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "whereClause" && value !== undefined && value !== null) {
+        whereClauses.push(value);
+      }
+      visit(value);
+    }
+  };
+  visit(ast);
+
+  const columns = new Set<string>();
+  const collect = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) collect(entry);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    const columnRef = asRecord(record["ColumnRef"]);
+    if (columnRef && Array.isArray(columnRef["fields"])) {
+      const fields = columnRef["fields"] as unknown[];
+      const last = asRecord(fields[fields.length - 1]);
+      const string = last ? asRecord(last["String"]) : undefined;
+      const value = string?.["sval"];
+      if (typeof value === "string") columns.add(value.toLowerCase());
+    }
+    for (const value of Object.values(record)) collect(value);
+  };
+  for (const where of whereClauses) collect(where);
+  return [...columns];
+}
+
+function quotedIdentifier(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
+function sqlStringLiterals(sql: string): string[] {
+  return [...sql.matchAll(/'((?:''|[^'])*)'/g)].map((match) =>
+    match[1].replaceAll("''", "'"),
+  );
+}
+
+function normalizeDiagnosticValue(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** Detect a bounded synonym signal such as "Mien Nam" versus "Nam". */
+function diagnosticMismatch(
+  originalSql: string,
+  table: string,
+  column: string,
+  rows: Record<string, unknown>[],
+): string | undefined {
+  const values = rows
+    .map((row) => row[column])
+    .filter((value): value is string => typeof value === "string")
+    .slice(0, DIAGNOSTIC_DISTINCT_LIMIT);
+  for (const requested of sqlStringLiterals(originalSql)) {
+    const normalizedRequested = normalizeDiagnosticValue(requested);
+    if (normalizedRequested.length < 2) continue;
+    for (const actual of values) {
+      const normalizedActual = normalizeDiagnosticValue(actual);
+      if (
+        normalizedActual.length >= 2 &&
+        normalizedActual !== normalizedRequested &&
+        (normalizedActual.includes(normalizedRequested) ||
+          normalizedRequested.includes(normalizedActual))
+      ) {
+        return (
+          `Zero-row diagnostic found a likely filter-value mismatch on ` +
+          `${table}.${column}: the query used ${JSON.stringify(requested)}, ` +
+          `while the database contains ${JSON.stringify(actual)}. ` +
+          `Repair the SQL using the discovered value. Available values: ` +
+          `${JSON.stringify(values)}.`
+        );
+      }
+    }
+  }
+  return undefined;
 }
 
 export class ValidatedQueryExecutor {
@@ -566,10 +670,10 @@ export class ValidatedQueryExecutor {
         };
       }
 
-      // run_query: rows pass through untouched (D-19). Every attempt emits
-      // its own tool_call span: ok:true on success, ok:false plus the
-      // contract code (never message/PII) on any failure, so the run_done
-      // roll-up counts attempts and failures off the same span stream.
+      // run_query retains a bounded transient validation buffer; values pass
+      // through untouched (D-19). Every attempt emits its own tool_call span:
+      // ok:true on success, ok:false plus the contract code (never
+      // message/PII) on failure, so run_done can derive attempt/failure counts.
       {
         const check = checkBudget(budget);
         if (check.tripped) return budgetTrip(check.reason, attempt);
@@ -583,7 +687,7 @@ export class ValidatedQueryExecutor {
         const rawRun = await this.mcp.call("run_query", {
           ...identity,
           sql: finalSql,
-          maxRows: 200,
+          maxRows: TRANSIENT_ROW_BUFFER_MAX,
         });
         const parsedRun = RunQueryOutputSchema.safeParse(rawRun);
         if (!parsedRun.success) {
@@ -605,7 +709,7 @@ export class ValidatedQueryExecutor {
           };
         }
         columns = parsedRun.data.columns;
-        rows = parsedRun.data.rows;
+        rows = parsedRun.data.rows.slice(0, TRANSIENT_ROW_BUFFER_MAX);
         maskedColumns = parsedRun.data.maskedColumns;
         rowScopeApplied = parsedRun.data.rowScopeApplied;
         partials.rowsFetched = rows.length;
@@ -662,9 +766,22 @@ export class ValidatedQueryExecutor {
             identity,
             budget,
             attempt,
+            catalog,
+            guard.ast,
+            finalSql,
           );
           if (diagnostic.budgetTripped) {
             return budgetTrip(diagnostic.budgetTripped, attempt);
+          }
+          if (diagnostic.repairFeedback && attempt < this.maxAttempts) {
+            repairFeedback = diagnostic.repairFeedback;
+            this.span({
+              node: "repair",
+              type: "node_done",
+              attempt,
+              payload: { strategy: "zero_row_diagnostic", nextAttempt: attempt + 1 },
+            });
+            continue;
           }
           return {
             status: "no_data",
@@ -756,51 +873,157 @@ export class ValidatedQueryExecutor {
   }
 
   /**
-   * The single zero-row probe: sample_rows (server cap n <= 5) against the
-   * first scanned table. Never a full-table rescan; probe failure still
-   * concludes no_data.
+   * One bounded zero-row diagnostic pass. It re-describes the target table,
+   * samples five rows, then checks one WHERE column with a guarded DISTINCT
+   * query capped at 20 rows. Only a concrete near-match may trigger attempt 2.
    */
   private async zeroRowProbe(
     table: string | undefined,
     identity: { runId: string; userId: string; roleScope: string },
     budget: BudgetState,
     attempt: number,
-  ): Promise<{ note: string; budgetTripped?: BudgetTripReason }> {
+    catalog: SchemaCatalog,
+    ast: unknown,
+    originalSql: string,
+  ): Promise<{
+    note: string;
+    repairFeedback?: string;
+    budgetTripped?: BudgetTripReason;
+  }> {
     const target = table ?? "unknown";
     const check = checkBudget(budget);
-    if (check.tripped) {
-      return { note: "", budgetTripped: check.reason };
-    }
-    const started = Date.now();
+    if (check.tripped) return { note: "", budgetTripped: check.reason };
+
+    let described: z.infer<typeof DescribeTableOutputSchema>;
     try {
+      const started = Date.now();
+      const raw = await this.mcp.call("describe_table", {
+        ...identity,
+        table: target,
+      });
+      const parsed = DescribeTableOutputSchema.safeParse(raw);
+      if (!parsed.success) {
+        return { note: `zero-row diagnostic: describe_table ${target} returned an unexpected shape` };
+      }
+      described = parsed.data;
+      this.span({
+        node: "diagnose",
+        type: "tool_call",
+        attempt,
+        durationMs: Date.now() - started,
+        payload: { tool: "describe_table", table: target },
+      });
+    } catch (thrown) {
+      const error = asDbToolError("describe_table", thrown);
+      this.span({
+        node: "diagnose",
+        type: "tool_call",
+        attempt,
+        payload: { tool: "describe_table", table: target, probeError: error.code },
+      });
+      return {
+        note: `zero-row diagnostic: describe_table ${target} probe failed (${error.code}), concluding no_data`,
+      };
+    }
+
+    const sampleCheck = checkBudget(budget);
+    if (sampleCheck.tripped) return { note: "", budgetTripped: sampleCheck.reason };
+    let sampleNote = "sample_rows was unavailable";
+    try {
+      const started = Date.now();
       const raw = await this.mcp.call("sample_rows", {
         ...identity,
         table: target,
         n: 5,
       });
       const parsed = SampleRowsOutputSchema.safeParse(raw);
-      const rowCount = parsed.success ? parsed.data.rowCount : -1;
+      sampleNote = parsed.success
+        ? `sample_rows ${target} n=5 returned ${parsed.data.rowCount} rows`
+        : `sample_rows ${target} returned an unexpected shape`;
       this.span({
         node: "diagnose",
         type: "tool_call",
         attempt,
         durationMs: Date.now() - started,
-        payload: { tool: "sample_rows", table: target, rowCount },
+        payload: { tool: "sample_rows", table: target },
       });
-      return {
-        note: `zero-row diagnostic: sample_rows ${target} n=5 returned ${rowCount} rows; filters match nothing, concluding no_data`,
-      };
     } catch (thrown) {
       const error = asDbToolError("sample_rows", thrown);
+      sampleNote = `sample_rows ${target} probe failed (${error.code})`;
+      this.span({
+        node: "diagnose",
+        type: "tool_call",
+        attempt,
+        payload: { tool: "sample_rows", table: target, probeError: error.code },
+      });
+    }
+
+    const knownColumns = new Map(
+      described.columns.map((column) => [column.name.toLowerCase(), column.name]),
+    );
+    const column = whereColumnNames(ast)
+      .map((name) => knownColumns.get(name))
+      .find((name): name is string => name !== undefined);
+    if (!column) {
+      return {
+        note: `zero-row diagnostic: ${sampleNote}; no direct filter column was available for a distinct probe, concluding no_data`,
+      };
+    }
+
+    const distinctSql =
+      `SELECT DISTINCT ${quotedIdentifier(column)} FROM ${quotedIdentifier(described.table)} ` +
+      `LIMIT ${DIAGNOSTIC_DISTINCT_LIMIT}`;
+    const distinctGuard = await sqlGuard(distinctSql, catalog);
+    if (!distinctGuard.ok) {
+      return {
+        note: `zero-row diagnostic: ${sampleNote}; guarded distinct probe was denied, concluding no_data`,
+      };
+    }
+    const distinctCheck = checkBudget(budget);
+    if (distinctCheck.tripped) return { note: "", budgetTripped: distinctCheck.reason };
+    try {
+      const started = Date.now();
+      const raw = await this.mcp.call("run_query", {
+        ...identity,
+        sql: distinctSql,
+        maxRows: DIAGNOSTIC_DISTINCT_LIMIT,
+      });
+      const parsed = RunQueryOutputSchema.safeParse(raw);
+      if (!parsed.success) {
+        return {
+          note: `zero-row diagnostic: ${sampleNote}; distinct probe returned an unexpected shape, concluding no_data`,
+        };
+      }
       this.span({
         node: "diagnose",
         type: "tool_call",
         attempt,
         durationMs: Date.now() - started,
-        payload: { tool: "sample_rows", table: target, probeError: error.code },
+        payload: { tool: "run_query", table: target, column, rowCount: parsed.data.rowCount },
+      });
+      const repairFeedback = diagnosticMismatch(
+        originalSql,
+        described.table,
+        column,
+        parsed.data.rows,
+      );
+      return {
+        note:
+          `zero-row diagnostic: ${sampleNote}; ` +
+          `distinct ${described.table}.${column} returned ${parsed.data.rowCount} values` +
+          (repairFeedback ? "; attempting one repair" : "; concluding no_data"),
+        ...(repairFeedback ? { repairFeedback } : {}),
+      };
+    } catch (thrown) {
+      const error = asDbToolError("run_query", thrown);
+      this.span({
+        node: "diagnose",
+        type: "tool_call",
+        attempt,
+        payload: { tool: "run_query", table: target, column, probeError: error.code },
       });
       return {
-        note: `zero-row diagnostic: sample_rows ${target} probe failed (${error.code}), concluding no_data`,
+        note: `zero-row diagnostic: ${sampleNote}; distinct probe failed (${error.code}), concluding no_data`,
       };
     }
   }

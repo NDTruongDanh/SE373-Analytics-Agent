@@ -254,7 +254,7 @@ describe("bounded repair loop", () => {
     ]);
   });
 
-  it("probes exactly once before no_data on filtered zero rows", async () => {
+  it("runs one guarded diagnostic pass before no_data on filtered zero rows", async () => {
     const model = new RepairFakeModel([
       proposalFor("SELECT id, status FROM orders WHERE status = 'zzz'", [
         "orders",
@@ -297,11 +297,96 @@ describe("bounded repair loop", () => {
     if (result.status !== "no_data") return;
     expect(result.diagnostic).toContain("sample_rows");
     expect(probeSeen).toEqual([["orders", 5]]);
+    const distinctCall = probeCaller.calls.find(
+      (call) =>
+        call.tool === "run_query" &&
+        String(call.args["sql"]).startsWith('SELECT DISTINCT "status"'),
+    );
+    expect(distinctCall?.args["maxRows"]).toBe(20);
     expect(probeCaller.tools()).toEqual([
       "describe_table",
       "explain_query",
       "run_query",
+      "describe_table",
       "sample_rows",
+      "run_query",
+    ]);
+  });
+
+  it("repairs a discovered filter-value synonym once on attempt 2", async () => {
+    const model = new RepairFakeModel([
+      proposalFor("SELECT id, status FROM orders WHERE status = 'Mien Nam'", [
+        "orders",
+      ]),
+      proposalFor("SELECT id, status FROM orders WHERE status = 'Nam'", [
+        "orders",
+      ]),
+    ]);
+    let primaryRuns = 0;
+    const mcp = new StubMcpCaller({
+      ...baseHandlers(
+        () => ({ estimatedCost: 2, estimatedRows: 1 }),
+        (args) => {
+          const sql = String(args["sql"]);
+          if (sql.startsWith('SELECT DISTINCT "status"')) {
+            return {
+              columns: ["status"],
+              rows: [{ status: "Nam" }],
+              rowCount: 1,
+              truncated: false,
+              maskedColumns: [],
+              durationMs: 1,
+            };
+          }
+          primaryRuns += 1;
+          return primaryRuns === 1
+            ? {
+                columns: ["id", "status"],
+                rows: [],
+                rowCount: 0,
+                truncated: false,
+                maskedColumns: [],
+                durationMs: 1,
+              }
+            : {
+                columns: ["id", "status"],
+                rows: [{ id: 1, status: "Nam" }],
+                rowCount: 1,
+                truncated: false,
+                maskedColumns: [],
+                durationMs: 1,
+              };
+        },
+      ),
+      sample_rows: () => ({
+        columns: ["id", "status"],
+        rows: [{ id: 1, status: "Nam" }],
+        rowCount: 1,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+
+    const result = await executor.run({
+      question: "orders in Mien Nam",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.attempts).toBe(2);
+    expect(model.inputs).toHaveLength(2);
+    expect(model.inputs[1]).toContain("Mien Nam");
+    expect(model.inputs[1]).toContain("Nam");
+    expect(mcp.tools()).toEqual([
+      "describe_table",
+      "explain_query",
+      "run_query",
+      "describe_table",
+      "sample_rows",
+      "run_query",
+      "explain_query",
+      "run_query",
     ]);
   });
 
