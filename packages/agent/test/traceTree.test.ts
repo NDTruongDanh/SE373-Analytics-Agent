@@ -130,13 +130,14 @@ describe("traceTree summary", () => {
       event({
         spanId: "tool-1",
         type: "tool_call",
-        payload: { tool: "run_query", maskedColumns: ["customers.phone"] },
+        payload: { tool: "run_query", ok: true, maskedColumns: ["customers.phone"] },
       }),
       event({
         spanId: "tool-2",
         type: "tool_call",
         payload: {
           tool: "run_query",
+          ok: true,
           maskedColumns: ["customers.phone", "orders.region"],
         },
       }),
@@ -158,6 +159,7 @@ describe("traceTree summary", () => {
           toolCalls: 2,
           sqlAttempts: 2,
           sqlFailures: 0,
+          repairs: 0,
         },
       }),
     ];
@@ -174,6 +176,7 @@ describe("traceTree summary", () => {
       toolCalls: 2,
       sqlAttempts: 2,
       sqlFailures: 0,
+      repairs: 0,
       maskedColumns: ["customers.phone", "orders.region"],
       approvals: { requested: 1, decided: 1 },
     });

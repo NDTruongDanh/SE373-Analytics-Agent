@@ -123,6 +123,7 @@ function printTree(tree: TraceTree): void {
   console.log(`  toolCalls: ${summary.toolCalls}`);
   console.log(`  sqlAttempts: ${summary.sqlAttempts}`);
   console.log(`  sqlFailures: ${summary.sqlFailures}`);
+  console.log(`  repairs: ${summary.repairs}`);
   console.log(`  maskedColumns: [${summary.maskedColumns.join(", ")}]`);
   console.log(
     `  approvals: requested=${summary.approvals.requested} decided=${summary.approvals.decided}`,

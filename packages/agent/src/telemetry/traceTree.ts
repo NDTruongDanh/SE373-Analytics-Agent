@@ -51,6 +51,7 @@ export interface TraceSummary {
   toolCalls: number;
   sqlAttempts: number;
   sqlFailures: number;
+  repairs: number;
   maskedColumns: string[];
   approvals: TraceApprovals;
 }
@@ -207,6 +208,7 @@ export function deriveSummary(events: TreeInputEvent[]): TraceSummary | null {
     toolCalls: num("toolCalls"),
     sqlAttempts: num("sqlAttempts"),
     sqlFailures: num("sqlFailures"),
+    repairs: num("repairs"),
     maskedColumns: [...masked].sort(),
     approvals: { requested, decided },
   };

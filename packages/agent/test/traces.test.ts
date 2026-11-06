@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { TraceEventSchema } from "@shared/contracts";
+import { TraceEventSchema, dbToolError } from "@shared/contracts";
 import { MASKED_EMAIL, MASKED_PHONE } from "@shared/access-policy";
 import { appendTraceEvent } from "../src/traces/writer.js";
 import { buildRootGraph } from "../src/graph.js";
@@ -210,6 +210,7 @@ function countedPayload(
   toolCalls: number;
   sqlAttempts: number;
   sqlFailures: number;
+  repairs: number;
 } {
   const sums = {
     llmCalls: 0,
@@ -219,6 +220,7 @@ function countedPayload(
     toolCalls: 0,
     sqlAttempts: 0,
     sqlFailures: 0,
+    repairs: 0,
   };
   for (const event of bodyOf(events)) {
     const payload =
@@ -238,9 +240,12 @@ function countedPayload(
       }
     } else if (event.type === "tool_call") {
       sums.toolCalls += 1;
-      if (payload["tool"] === "run_query") sums.sqlAttempts += 1;
+      if (payload["tool"] === "run_query") {
+        sums.sqlAttempts += 1;
+        if (payload["ok"] === false) sums.sqlFailures += 1;
+      }
     } else if (event.type === "node_done" && event.node === "repair") {
-      sums.sqlFailures += 1;
+      sums.repairs += 1;
     }
   }
   return sums;
@@ -280,7 +285,7 @@ describe("run_done totals", () => {
       estimatedCostUsd: 0.00002,
       pricingKnown: true,
     });
-    emit.emitToolCall("run", "run_query", { rowCount: 2 });
+    emit.emitToolCall("run", "run_query", { rowCount: 2, ok: true });
     emit.emitToolCall("describe", "describe_table", {});
     emit({
       node: "repair",
@@ -295,7 +300,8 @@ describe("run_done totals", () => {
       outputTokens: 55,
       toolCalls: 2,
       sqlAttempts: 1,
-      sqlFailures: 1,
+      sqlFailures: 0,
+      repairs: 1,
     });
     expect(emit.totals().estimatedCostUsd).toBeCloseTo(0.00047, 9);
     // Snapshots are copies: mutating the return never moves the roll-up.
@@ -323,7 +329,8 @@ describe("run_done totals", () => {
       outputTokens: 55,
       toolCalls: 2,
       sqlAttempts: 1,
-      sqlFailures: 1,
+      sqlFailures: 0,
+      repairs: 1,
     });
     expect(
       (done[0].payload as { estimatedCostUsd?: number }).estimatedCostUsd,
@@ -450,6 +457,7 @@ describe("run_done totals", () => {
       toolCalls: expected.toolCalls,
       sqlAttempts: expected.sqlAttempts,
       sqlFailures: expected.sqlFailures,
+      repairs: expected.repairs,
     });
     expect(
       (done[0].payload as { estimatedCostUsd?: number }).estimatedCostUsd,
@@ -461,6 +469,7 @@ describe("run_done totals", () => {
       toolCalls: 3,
       sqlAttempts: 1,
       sqlFailures: 0,
+      repairs: 0,
     });
     // The real principal stamps every event; no hard-coded literal remains.
     for (const event of events) {
@@ -480,5 +489,176 @@ describe("run_done totals", () => {
     );
     expect(graphSrc).not.toContain('role: "sales_south"');
     expect(registrySrc).not.toContain('role: "sales_south"');
+  });
+});
+
+// run_query attempt accounting: every MCP attempt emits one tool_call with
+// ok true/false, so sqlAttempts/sqlFailures reconcile with the run file
+// while repairs tracks repair node_done independently. Deterministic fakes
+// only: no API key, no DB, no network.
+describe("run_query attempt accounting", () => {
+  const PRINCIPAL = {
+    runId: "run-attempts-1",
+    userId: "demo-user",
+    roleScope: "sales_south",
+  };
+  const COLUMNS = [
+    { name: "id", type: "integer", nullable: false, sensitive: false },
+    { name: "status", type: "text", nullable: true, sensitive: false },
+  ];
+
+  function scriptedExecutor(
+    modelResponses: string[],
+    handlers: Record<string, (args: Record<string, unknown>) => unknown>,
+    seen: { node?: unknown; type?: unknown; payload?: unknown; attempt?: unknown }[],
+  ): ValidatedQueryExecutor {
+    const queue = [...modelResponses];
+    return new ValidatedQueryExecutor({
+      model: {
+        withStructuredOutput: () => ({
+          invoke: async (input: string) => {
+            void input;
+            const next = queue.shift();
+            if (next === undefined) throw new Error("model responses exhausted");
+            return JSON.parse(next) as { sql: string; tablesUsed: string[] };
+          },
+        }),
+      },
+      mcp: {
+        call: async (tool: string, _args: Record<string, unknown>) => {
+          const handler = handlers[tool];
+          if (!handler) throw new Error(`unexpected tool ${tool}`);
+          return handler(_args);
+        },
+      },
+      emitSpan: (event) => {
+        seen.push(event);
+        return `span-${seen.length}`;
+      },
+    });
+  }
+
+  function describeHandler(args: Record<string, unknown>): unknown {
+    return {
+      table: String(args["table"] ?? ""),
+      columns: COLUMNS,
+      primaryKey: ["id"],
+      foreignKeys: [],
+    };
+  }
+
+  function wiredTotals(
+    runId: string,
+    seen: { node?: unknown; type?: unknown; payload?: unknown; attempt?: unknown }[],
+  ): ReturnType<ReturnType<typeof createSpanEmitter>["totals"]> {
+    const dir = mkdtempSync(path.join(tmpdir(), "traces-attempts-"));
+    const emit = createSpanEmitter({
+      runId,
+      threadId: "thread-attempts-1",
+      userId: "user-attempts-1",
+      role: "hr",
+      tracesDir: dir,
+    });
+    for (const event of seen) {
+      emit({
+        node: String(event.node ?? "run"),
+        type: String(event.type ?? "tool_call"),
+        durationMs: 0,
+        payload: event.payload,
+        attempt: typeof event.attempt === "number" ? event.attempt : 0,
+      });
+    }
+    return emit.totals();
+  }
+
+  it("counts a final-attempt non-repairable run_query failure", async () => {
+    const seen: {
+      node?: unknown;
+      type?: unknown;
+      payload?: unknown;
+      attempt?: unknown;
+    }[] = [];
+    const executor = scriptedExecutor(
+      [JSON.stringify({ sql: E2E_SQL, tablesUsed: ["orders"] })],
+      {
+        describe_table: describeHandler,
+        explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 4 }),
+        run_query: () => {
+          throw dbToolError("SCOPE_DENIED", "row scope denies south slice");
+        },
+      },
+      seen,
+    );
+    const result = await executor.run({
+      question: "How many orders per status?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+    expect(result.status).toBe("restricted");
+    const failures = seen.filter(
+      (event) =>
+        event.type === "tool_call" &&
+        (event.payload as { tool?: unknown })?.tool === "run_query",
+    );
+    expect(failures).toHaveLength(1);
+    expect(failures[0].payload).toMatchObject({ ok: false, code: "SCOPE_DENIED" });
+    expect(
+      (failures[0].payload as Record<string, unknown>)["message"],
+    ).toBeUndefined();
+    expect(wiredTotals("run-attempts-fail", seen)).toMatchObject({
+      sqlAttempts: 1,
+      sqlFailures: 1,
+      repairs: 0,
+    });
+  });
+
+  it("counts a local guard denial as a repair but not a sqlFailure", async () => {
+    const seen: {
+      node?: unknown;
+      type?: unknown;
+      payload?: unknown;
+      attempt?: unknown;
+    }[] = [];
+    const executor = scriptedExecutor(
+      [
+        JSON.stringify({ sql: "SELECT * FROM ghosts", tablesUsed: ["ghosts"] }),
+        JSON.stringify({ sql: E2E_SQL, tablesUsed: ["orders"] }),
+      ],
+      {
+        describe_table: describeHandler,
+        explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 4 }),
+        run_query: () => ({
+          columns: ["status", "n"],
+          rows: [{ status: "completed", n: 7 }],
+          rowCount: 1,
+          truncated: false,
+          maskedColumns: [],
+          durationMs: 1,
+        }),
+      },
+      seen,
+    );
+    const result = await executor.run({
+      question: "How many orders per status?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+    expect(result.status).toBe("ok");
+    const attempts = seen.filter(
+      (event) =>
+        event.type === "tool_call" &&
+        (event.payload as { tool?: unknown })?.tool === "run_query",
+    );
+    // The denied proposal never reached MCP: exactly one successful attempt.
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].payload).toMatchObject({ ok: true });
+    expect(
+      seen.filter((event) => event.type === "node_done" && event.node === "repair"),
+    ).toHaveLength(1);
+    expect(wiredTotals("run-attempts-guard", seen)).toMatchObject({
+      sqlAttempts: 1,
+      sqlFailures: 0,
+      repairs: 1,
+    });
   });
 });

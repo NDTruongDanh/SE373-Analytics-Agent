@@ -117,6 +117,7 @@ describe("createEvalEmitter (B6)", () => {
       toolCalls: 1,
       sqlAttempts: 1,
       sqlFailures: 0,
+      repairs: 0,
     });
   });
 

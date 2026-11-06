@@ -173,6 +173,47 @@ describe("span emitter", () => {
     });
   });
 
+  it("counts run_query attempts off every tool_call and failures off ok:false", () => {
+    const { emit, readEvents } = makeEmitter();
+    emit.emitToolCall("run", "run_query", { rowCount: 2, ok: true, attempt: 1 });
+    emit.emitToolCall("run", "run_query", {
+      ok: false,
+      code: "TIMEOUT",
+      attempt: 2,
+    });
+    emit.emitToolCall("describe", "describe_table", {});
+    // Legacy payloads without an ok flag still count as attempts, never
+    // failures, so pre-change trace files keep reconciling.
+    emit({
+      node: "run",
+      type: "tool_call",
+      durationMs: 1,
+      payload: { tool: "run_query", rowCount: 1 },
+    });
+    emit({
+      node: "repair",
+      type: "node_done",
+      durationMs: 1,
+      payload: { code: "TIMEOUT", nextAttempt: 3 },
+      attempt: 2,
+    });
+    expect(emit.totals()).toMatchObject({
+      toolCalls: 4,
+      sqlAttempts: 3,
+      sqlFailures: 1,
+      repairs: 1,
+    });
+    emit.emitRunDone("error");
+    const events = readEvents();
+    const done = events.find((event) => event["type"] === "run_done");
+    expect(done?.["payload"]).toMatchObject({
+      status: "error",
+      sqlAttempts: 3,
+      sqlFailures: 1,
+      repairs: 1,
+    });
+  });
+
   it("redacts synthetic PII before write (markers present, literals absent)", () => {
     const { emit, readEvents } = makeEmitter();
     emit({

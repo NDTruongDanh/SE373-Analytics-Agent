@@ -235,6 +235,7 @@ export function createTracerDefaultEntry(): UcEntryHandler {
     const runSpan = trace("run", "tool_call", Date.now() - runStarted, {
       payload: {
         tool: "run_query",
+        ok: true,
         rowCount: runPayload.rowCount,
         truncated: runPayload.truncated,
       },

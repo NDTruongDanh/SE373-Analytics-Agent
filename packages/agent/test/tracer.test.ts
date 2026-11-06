@@ -7,6 +7,9 @@ import { TraceEventSchema } from "@shared/contracts";
 import { runTracerGraph } from "../src/graph.js";
 import { createChatModel } from "../src/models/factory.js";
 import { TRACER_SQL_PROPOSAL } from "../src/constants.js";
+import { createTracerDefaultEntry } from "../src/subgraphs/registry.js";
+import { createSpanEmitter } from "../src/telemetry/spans.js";
+import type { AgentState, RootRuntime } from "../src/state.js";
 import { writeTraceEvent } from "../src/traces/writer.js";
 import { previewCountTotal } from "../src/subgraphs/registry.js";
 
@@ -263,5 +266,139 @@ describe("tracer agent", () => {
       expect(content).not.toContain(phone);
     }
     expect(content).not.toContain(SEED_EMAIL);
+  });
+
+  it("marks the demo run_query tool_call ok:true on success", async () => {
+    await runTracerGraph("How many orders do we have per status?", ctx("run-ok-1"));
+    const events = readFileSync(`${tracesDir}/run-ok-1.jsonl`, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const runCalls = events.filter(
+      (event) =>
+        event["type"] === "tool_call" &&
+        (event["payload"] as { tool?: unknown })?.tool === "run_query",
+    );
+    expect(runCalls).toHaveLength(1);
+    expect(runCalls[0]["payload"]).toMatchObject({ ok: true, rowCount: 3 });
+  });
+
+  it("leaves totals sane when the demo run_query throws (no partial span)", async () => {
+    // Stub MCP: list_tables succeeds, run_query answers with a contract
+    // error payload so parseToolJson throws before any run span is written.
+    const failing = createServer(async (req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      let data = "";
+      req.on("data", (chunk) => (data += chunk));
+      req.on("end", () => {
+        const body = JSON.parse(data) as {
+          id?: number;
+          method?: string;
+          params?: { name?: string };
+        };
+        const reply = (result: unknown): void => {
+          res.writeHead(200, { "content-type": "text/event-stream" });
+          res.end(
+            `event: message\ndata: ${JSON.stringify({ result, jsonrpc: "2.0", id: body.id ?? 0 })}\n\n`,
+          );
+        };
+        if (body.method === "initialize") {
+          reply({
+            protocolVersion: "2025-11-25",
+            capabilities: { tools: {} },
+            serverInfo: { name: "stub", version: "0" },
+          });
+          return;
+        }
+        if (body.method === "notifications/initialized") {
+          res.writeHead(202);
+          res.end();
+          return;
+        }
+        if (body.params?.name === "list_tables") {
+          reply({
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  tables: [{ name: "orders", schema: "public", columns: [] }],
+                }),
+              },
+            ],
+          });
+          return;
+        }
+        reply({
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ code: "TIMEOUT", message: "stub timeout" }),
+            },
+          ],
+        });
+      });
+    });
+    await new Promise<void>((resolve) => {
+      failing.listen(0, "127.0.0.1", () => resolve());
+    });
+    try {
+      const address = failing.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const failCtx = {
+        ...ctx("run-throw-1"),
+        mcpUrl: `http://127.0.0.1:${port}/mcp`,
+      };
+      const seen: { type?: unknown; payload?: unknown }[] = [];
+      const entry = createTracerDefaultEntry();
+      await expect(
+        entry(
+          { question: "How many?", toolsCalled: [] } as unknown as AgentState,
+          {
+            emit: (event) => {
+              seen.push(event);
+              return `span-${seen.length}`;
+            },
+            config: { configurable: { ...failCtx } } as RootRuntime["config"],
+          },
+        ),
+      ).rejects.toThrow(/TIMEOUT/);
+      // The throw happens before the run span: no run_query attempt exists
+      // to count, so the totals fold stays at zero instead of NaN/partial.
+      expect(
+        seen.filter(
+          (event) =>
+            event.type === "tool_call" &&
+            (event.payload as { tool?: unknown } | undefined)?.tool === "run_query",
+        ),
+      ).toHaveLength(0);
+      const replay = createSpanEmitter({
+        runId: "run-throw-1",
+        threadId: "thread-run-throw-1",
+        userId: "demo-user",
+        role: "sales_south",
+        tracesDir: failCtx.tracesDir,
+      });
+      for (const event of seen) {
+        replay({
+          node: "run",
+          type: String(event.type),
+          durationMs: 0,
+          payload: event.payload,
+        });
+      }
+      expect(replay.totals()).toMatchObject({
+        sqlAttempts: 0,
+        sqlFailures: 0,
+        repairs: 0,
+      });
+    } finally {
+      await new Promise<void>((resolve) => {
+        failing.close(() => resolve());
+      });
+    }
   });
 });

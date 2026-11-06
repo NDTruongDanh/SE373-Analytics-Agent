@@ -566,7 +566,10 @@ export class ValidatedQueryExecutor {
         };
       }
 
-      // run_query: rows pass through untouched (D-19).
+      // run_query: rows pass through untouched (D-19). Every attempt emits
+      // its own tool_call span: ok:true on success, ok:false plus the
+      // contract code (never message/PII) on any failure, so the run_done
+      // roll-up counts attempts and failures off the same span stream.
       {
         const check = checkBudget(budget);
         if (check.tripped) return budgetTrip(check.reason, attempt);
@@ -584,6 +587,13 @@ export class ValidatedQueryExecutor {
         });
         const parsedRun = RunQueryOutputSchema.safeParse(rawRun);
         if (!parsedRun.success) {
+          this.span({
+            node: "run",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - runStarted,
+            payload: { tool: "run_query", ok: false, code: "INTERNAL_ERROR" },
+          });
           return {
             status: "error",
             error: dbToolError(
@@ -606,6 +616,7 @@ export class ValidatedQueryExecutor {
           durationMs: Date.now() - runStarted,
           payload: {
             tool: "run_query",
+            ok: true,
             rowCount: parsedRun.data.rowCount,
             maskedColumns,
             rowScopeApplied,
@@ -613,6 +624,13 @@ export class ValidatedQueryExecutor {
         });
       } catch (thrown) {
         const error = asDbToolError("run_query", thrown);
+        this.span({
+          node: "run",
+          type: "tool_call",
+          attempt,
+          durationMs: Date.now() - runStarted,
+          payload: { tool: "run_query", ok: false, code: error.code },
+        });
         const routed = this.routeMcpError(error, {
           attempt,
           sql: finalSql,

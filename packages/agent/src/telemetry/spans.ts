@@ -70,6 +70,7 @@ export interface RunTotals {
   toolCalls: number;
   sqlAttempts: number;
   sqlFailures: number;
+  repairs: number;
 }
 
 export interface AgentSpanEmitter extends SpanEmitter, SpanSink {
@@ -142,9 +143,10 @@ function asPayloadRecord(event: IncomingSpan): Record<string, unknown> {
  * so every host that shares the emitter gets consistent totals. An
  * llm_call contributes its call plus token/cost sums; every tool_call
  * contributes a tool call, and run_query ones additionally count as SQL
- * attempts; each repair node_done follows a failed SQL attempt (guard or
- * gate denial, TIMEOUT simplification, repairable MCP error routed to
- * retry), so it counts as a SQL failure.
+ * attempts (failed ones — payload ok:false — as SQL failures). Each repair
+ * node_done (local guard/gate denials, TIMEOUT simplification, repairable
+ * MCP errors routed to retry) counts as a repair, independent of whether a
+ * run_query attempt failed.
  */
 function observeTotals(totals: RunTotals, event: IncomingSpan): void {
   if (event.type === "llm_call") {
@@ -160,13 +162,15 @@ function observeTotals(totals: RunTotals, event: IncomingSpan): void {
   }
   if (event.type === "tool_call") {
     totals.toolCalls += 1;
-    if (asPayloadRecord(event)["tool"] === "run_query") {
+    const payload = asPayloadRecord(event);
+    if (payload["tool"] === "run_query") {
       totals.sqlAttempts += 1;
+      if (payload["ok"] === false) totals.sqlFailures += 1;
     }
     return;
   }
   if (event.type === "node_done" && event.node === "repair") {
-    totals.sqlFailures += 1;
+    totals.repairs += 1;
   }
 }
 
@@ -183,6 +187,7 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
     toolCalls: 0,
     sqlAttempts: 0,
     sqlFailures: 0,
+    repairs: 0,
   };
 
   const base = (event: IncomingSpan): string => {
@@ -320,6 +325,10 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
       columns?: string[];
       maskedColumns?: string[];
       rowScopeApplied?: RowScopeApplied[];
+      /** run_query attempt outcome: true on success, false on failure. */
+      ok?: boolean;
+      /** Contract code on a failed run_query attempt (never message/PII). */
+      code?: string;
       parentSpanId?: string;
       attempt?: number;
     } = {},
@@ -330,6 +339,8 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
       durationMs: 0,
       payload: {
         tool,
+        ...(opts.ok !== undefined ? { ok: opts.ok } : {}),
+        ...(opts.code !== undefined ? { code: opts.code } : {}),
         ...(opts.rowCount !== undefined ? { rowCount: opts.rowCount } : {}),
         ...(opts.columns !== undefined ? { columns: opts.columns } : {}),
         ...(opts.maskedColumns !== undefined ? { maskedColumns: opts.maskedColumns } : {}),
