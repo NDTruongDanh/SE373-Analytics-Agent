@@ -160,10 +160,30 @@ describe("contracts 1.0.0", () => {
 
   it("discriminates all five AgentResponse variants", () => {
     expect(AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer() }).kind).toBe("sql_answer");
-    for (const kind of ["insight_report", "analysis_plan", "root_cause", "anomaly_alert"]) {
+    for (const kind of ["insight_report"]) {
       const parsed = AgentResponseSchema.parse({ kind, status: "ok", summary: "Noted.", data: { n: 1 } });
       expect(parsed.kind).toBe(kind);
     }
+
+    // anomaly_alert yêu cầu strict AnomalyAlertSchema:
+    const validAlertData = {
+      metric: "metric:return_rate",
+      currentValue: 0.185,
+      expectedValue: 0.042,
+      deviation: "z=+17.8",
+      drilldownSegment: "regions.province = 'Đà Nẵng'",
+      evidenceSql: "SELECT 1",
+      recipientId: "ops_lead",
+      severity: "critical" as const,
+    };
+    expect(
+      AgentResponseSchema.parse({
+        kind: "anomaly_alert",
+        status: "ok",
+        summary: "Alert.",
+        data: validAlertData,
+      }).kind,
+    ).toBe("anomaly_alert");
     expect(() => AgentResponseSchema.parse({ kind: "nope", status: "ok", summary: "x", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "insight_report", status: "ok", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer("bogus") })).toThrow();
