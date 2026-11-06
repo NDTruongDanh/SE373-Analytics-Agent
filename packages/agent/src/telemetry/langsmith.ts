@@ -332,11 +332,36 @@ export function createLangSmithTracer(
 /**
  * Await every tracked client's pending batches. Call after each served run
  * and on server shutdown — auto-batching otherwise loses the tail on exit.
+ * The drain never rejects (a failed tail must not fail the run) and accepts
+ * a timeout bound: late batches are abandoned, never awaited unbounded.
  */
-export async function flushLangSmith(): Promise<void> {
-  await Promise.all(
-    [...liveClients].map((client) => client.awaitPendingTraceBatches()),
-  );
+export async function flushLangSmith(
+  opts: { timeoutMs?: number } = {},
+): Promise<void> {
+  const pending = (async (): Promise<void> => {
+    try {
+      await Promise.all(
+        [...liveClients].map((client) => client.awaitPendingTraceBatches()),
+      );
+    } catch {
+      // Swallowed: flush is best-effort on every path that calls it.
+    }
+  })();
+  if (opts.timeoutMs === undefined) {
+    await pending;
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      pending,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => resolve(), opts.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 /** Test seam: drop tracked clients so suites stay isolated. */

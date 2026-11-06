@@ -235,6 +235,13 @@ const SSE_HEADERS = {
   connection: "keep-alive",
 };
 
+/**
+ * Bound for the background LangSmith tail drain (Phase 3 review): the SSE
+ * response always ends first, then the flush runs detached so a stalled
+ * batch can never hold a run — or shutdown — open.
+ */
+const LANGSMITH_FLUSH_TIMEOUT_MS = 2500;
+
 export function buildApp(options: BuildAppOptions): express.Express {
   const tracesDir = options.tracesDir ?? "traces";
   const env = options.env ?? process.env;
@@ -464,9 +471,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
         }),
       });
     } finally {
-      // Drain the LangSmith tail (no-op when tracing is off) before closing.
-      await flushLangSmith();
+      // End the response first, then drain the LangSmith tail detached
+      // (no-op when tracing is off): a stalled batch never holds the run.
       res.end();
+      void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
   });
 
@@ -615,9 +623,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
         }),
       });
     } finally {
-      // Drain the LangSmith tail (no-op when tracing is off) before closing.
-      await flushLangSmith();
+      // End the response first, then drain the LangSmith tail detached
+      // (no-op when tracing is off): a stalled batch never holds the run.
       res.end();
+      void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
   });
 
@@ -886,10 +895,13 @@ if (
     console.log(`[api] listening on 127.0.0.1:${apiPort}`);
   });
   await new Promise<void>((resolve) => server.on("listening", resolve));
-  // Drain the LangSmith tail on shutdown (no-op when tracing is off).
+  // Drain the LangSmith tail on shutdown (no-op when tracing is off),
+  // bounded so a stalled batch cannot hold the process open.
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {
-      void flushLangSmith().finally(() => process.exit(0));
+      void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS }).finally(() =>
+        process.exit(0),
+      );
     });
   }
 }

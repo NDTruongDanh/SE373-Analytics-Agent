@@ -7,7 +7,7 @@
 // Canary literals below are invented for this proof (never seed data) so
 // the DB-07 seed-hiding scan stays green.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { Client } from "langsmith";
@@ -387,5 +387,31 @@ describe("buildLangSmithRunConfig", () => {
     expect(config.metadata["maskedColumns"]).toEqual(["customers.phone"]);
     expect(config.metadata["maskedColumns"]).not.toBe(masked);
     resetLangSmithForTests();
+  });
+});
+
+describe("flushLangSmith", () => {
+  it("returns after the timeout when a batch never resolves (never rejects)", async () => {
+    resetLangSmithForTests();
+    createLangSmithTracer(ENABLED_ENV, {
+      apiKey: "test-key-not-real",
+      fetchImplementation: stubTransport([]),
+    });
+    const hang = vi
+      .spyOn(Client.prototype, "awaitPendingTraceBatches")
+      .mockImplementation(() => new Promise<void>(() => {}));
+    try {
+      const started = Date.now();
+      await flushLangSmith({ timeoutMs: 25 });
+      expect(Date.now() - started).toBeLessThan(5000);
+    } finally {
+      hang.mockRestore();
+      resetLangSmithForTests();
+    }
+  });
+
+  it("clears the timer on a fast drain so handles never leak", async () => {
+    resetLangSmithForTests();
+    await flushLangSmith({ timeoutMs: 25 });
   });
 });
