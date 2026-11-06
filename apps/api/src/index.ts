@@ -33,6 +33,7 @@ import {
   createLangSmithTracer,
   createSpanEmitter,
   flushLangSmith,
+  type LangSmithRunConfig,
 } from "@shared/agent/telemetry";
 import { dbToolError, type DbToolError } from "@shared/contracts";
 import { createHostPorts, type HostPorts } from "./ports.js";
@@ -122,7 +123,7 @@ export async function defaultReindex(ctx: {
 }
 
 /** Per-run identity retained for resume on the same thread_id. */
-interface StoredRun {
+export interface StoredRun {
   threadId: string;
   userId: string;
   roleScope: string;
@@ -278,16 +279,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
   }
 
   function configurableFor(run: StoredRun, runId: string): Record<string, unknown> {
-    return {
-      thread_id: run.threadId,
-      threadId: run.threadId,
-      runId,
-      userId: run.userId,
-      roleScope: run.roleScope,
-      token: run.token,
-      mcpUrl: run.mcpUrl,
-      tracesDir: run.tracesDir,
-    };
+    return configurableForRun(run, runId);
   }
 
   /** Stream the five-event completion sequence for a finished run. */
@@ -576,11 +568,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         },
       });
       const out = (await graph.invoke(new Command({ resume: req.body["value"] }), {
-        runId,
-        callbacks: ls?.callbacks,
-        tags: ls?.tags,
-        metadata: ls?.metadata,
-        configurable: configurableFor(stored, runId),
+        ...buildResumeInvokeOptions({ langsmith: ls, run: stored, runId }),
       })) as AgentState;
       if (interruptedOf(out)?.length) {
         emit({
@@ -692,6 +680,52 @@ function readTraceHeader(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** RunnableConfig.configurable for one run: thread plus identity. */
+export function configurableForRun(
+  run: StoredRun,
+  runId: string,
+): Record<string, unknown> {
+  return {
+    thread_id: run.threadId,
+    threadId: run.threadId,
+    runId,
+    userId: run.userId,
+    roleScope: run.roleScope,
+    token: run.token,
+    mcpUrl: run.mcpUrl,
+    tracesDir: run.tracesDir,
+  };
+}
+
+/**
+ * Invoke options for POST /api/runs/:runId/resume. The ask already created a
+ * LangSmith root run under the API runId, so the resume must NOT reuse it as
+ * its root: every resume mints a fresh UUID for the RunnableConfig runId
+ * (the new LangSmith root), while configurable.runId and metadata
+ * runId/threadId keep the JSONL runId so the one logical run stays
+ * correlatable. Checkpointing keys on configurable.thread_id, never on the
+ * RunnableConfig runId, so the fresh root cannot fork the thread.
+ */
+export function buildResumeInvokeOptions(args: {
+  langsmith: LangSmithRunConfig | undefined;
+  run: StoredRun;
+  runId: string;
+}): {
+  runId: string;
+  callbacks: LangSmithRunConfig["callbacks"] | undefined;
+  tags: string[] | undefined;
+  metadata: Record<string, unknown> | undefined;
+  configurable: Record<string, unknown>;
+} {
+  return {
+    runId: randomUUID(),
+    callbacks: args.langsmith?.callbacks,
+    tags: args.langsmith?.tags,
+    metadata: args.langsmith?.metadata,
+    configurable: configurableForRun(args.run, args.runId),
+  };
 }
 
 // ---------------------------------------------------------------------------
