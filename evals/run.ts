@@ -29,6 +29,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { buildRootGraph } from "@shared/agent";
 import { createCheckpointer } from "@shared/agent/ports";
 import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
@@ -46,15 +47,33 @@ import {
 import { sqlGuard, warmupSqlGuard, redactPII } from "@shared/access-policy";
 import type { SchemaCatalog } from "@shared/contracts";
 import { LARGE_TABLES } from "../packages/mcp-server/src/catalog.js";
+import { EVAL_CLIENTS_ENV } from "../packages/mcp-server/src/config.js";
 import { gradeExecution } from "./exGrader.js";
-import { compareRuns, type EvalResultsFile } from "./regression.js";
+import { compareRuns, summarizeCases, type EvalResultsFile } from "./regression.js";
 import {
   gatewayStageFor,
+  gradeAnswerCase,
   gradeResubmitPair,
   gradeSafetyCase,
+  isAnswerLiveReady,
+  scrapeDeniedCode,
   validateSafetyRecord,
+  type AnswerObserved,
   type SafetyCase,
 } from "./safety.js";
+import {
+  auditTailLines,
+  gradeGatewayCase,
+  gradeAuditLines,
+  observedFromPayload,
+  validateGatewayRecord,
+  type GatewayCase,
+  type GatewayObserved,
+} from "./gateway.js";
+import {
+  parseCountValue,
+  probeAgentRoWriteRefused,
+} from "../packages/data/src/guardOffProbe.js";
 
 export { gradeExecution } from "./exGrader.js";
 export { compareRuns } from "./regression.js";
@@ -76,11 +95,23 @@ export interface EvalCase {
   ordered?: boolean;
   datasetVersion: string;
   tags?: string[];
+  /**
+   * Root-graph route for the live adapter. The root router does not infer a
+   * UC from the question, so the caller picks it: EX tracer cases keep the
+   * legacy "tracer" default; answer-mode safety cases use text-to-sql so the
+   * question runs through the real ValidatedQueryExecutor path.
+   */
+  ucId?: string;
 }
+
+/** UC-01 route id (packages/agent/src/constants.ts TEXT_TO_SQL_UC_ID; not on the frozen barrel). */
+export const ANSWER_ROUTE_UC_ID = "text-to-sql";
 
 export interface HarnessOutcome {
   status: string;
   rows?: Record<string, unknown>[];
+  /** Agent answer text (tracer synthesis). Graded in memory only — never persisted raw. */
+  answerText?: string;
   reason?: string;
   ms: number;
   tokens: number;
@@ -193,6 +224,8 @@ const ROLE_TOKEN_ENV: Record<string, string> = {
   hr: "MCP_TOKEN_HR",
   admin: "MCP_TOKEN_ADMIN",
   data_admin: "MCP_TOKEN_ADMIN",
+  // Eval-only scope probe (issue #39, 02-01 Task 2 APPROVED): schema:read only.
+  eval_schema_only: "MCP_TOKEN_EVAL_SCOPE",
 };
 
 function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
@@ -319,7 +352,14 @@ export async function buildLiveAdapter(
   const mcpUrl = process.env.MCP_URL ?? `http://127.0.0.1:${mcpPort}/mcp`;
   const gateway: ChildProcess = spawn("node", ["--import", "tsx", "packages/mcp-server/src/server.ts"], {
     cwd: repoRoot,
-    env: { ...process.env, MCP_PORT: String(mcpPort), AGENT_RO_DATABASE_URL: agentRoUrl },
+    // Eval's own gateway child opts the eval-only scope client in (issue #39);
+    // no other boot path sets this flag.
+    env: {
+      ...process.env,
+      MCP_PORT: String(mcpPort),
+      AGENT_RO_DATABASE_URL: agentRoUrl,
+      [EVAL_CLIENTS_ENV]: "1",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let gatewayStderr = "";
@@ -373,7 +413,7 @@ export async function buildLiveAdapter(
       const graph = buildRootGraph({ checkpointer, emitSpan: emit });
       const out = (await withTimeout(
         graph.invoke(
-          { question: c.question, ucId: "tracer", runId, threadId },
+          { question: c.question, ucId: c.ucId ?? "tracer", runId, threadId },
           {
             // D-04: never pass LangSmith callbacks here — eval traces stay
             // JSONL-local even if the flags were somehow re-set at runtime.
@@ -391,12 +431,18 @@ export async function buildLiveAdapter(
         ),
         150_000,
         `eval: case ${c.id} timed out after 150s`,
-      )) as { status?: string; resultPreview?: Record<string, unknown>[] };
+      )) as {
+        status?: string;
+        resultPreview?: Record<string, unknown>[];
+        answerText?: unknown;
+      };
       const status = out.status ?? "error";
       emit.emitRunDone(status);
       return {
         status,
         rows: out.resultPreview ?? [],
+        answerText:
+          typeof out.answerText === "string" ? out.answerText : undefined,
         reason: status === "ok" || status === "no_data" ? undefined : `harness status '${status}'`,
         ms: Date.now() - t0,
         tokens: 0,
@@ -472,17 +518,10 @@ export async function runEval(
       ...(pass ? {} : { note: mismatches.join("; ") }),
     });
   }
-  const passed = graded.filter((g) => g.exPass).length;
   return {
     datasetVersion: cases[0]?.datasetVersion ?? "unknown",
     cases: graded,
-    summary: {
-      total: graded.length,
-      passed,
-      exRate: graded.length === 0 ? 0 : passed / graded.length,
-      avgMs: 0,
-      avgTokens: 0,
-    },
+    summary: summarizeCases(graded),
   };
 }
 
@@ -739,6 +778,498 @@ async function driveSafetyCase(
   };
 }
 
+// Agent-answer safety leg (D-04, issue #39): the case question runs through
+// the real agent graph under the case role token (same buildRootGraph path
+// as the EX adapter), then rows plus answerText are graded in memory. Rows
+// plus answerText may carry PII when masking regresses, so they are graded
+// and dropped — never written to results, traces, or the console. Without
+// EVAL_USE_LIVE_MODEL=1 plus a model key the case reports not_wired
+// infra-skip: never a pass, never counted in pass-rate math.
+async function driveAnswerCase(
+  adapter: HarnessAdapter,
+  c: SafetyCase,
+): Promise<{
+  grade: { pass: boolean; reason: string; notWired: boolean };
+  observedBlockingLayer: string;
+  status: string;
+  blocked: boolean;
+  skipped: boolean;
+}> {
+  if (!isAnswerLiveReady(process.env)) {
+    const observed: AnswerObserved = {
+      status: "not_wired",
+      rows: [],
+      answerText: "",
+      wired: false,
+    };
+    return {
+      grade: gradeAnswerCase(c, observed),
+      observedBlockingLayer: "not_wired",
+      status: "not_wired",
+      blocked: false,
+      skipped: true,
+    };
+  }
+  const outcome = await adapter({
+    id: c.id,
+    question: c.question,
+    role: c.role,
+    datasetVersion: "safety-1",
+    ucId: ANSWER_ROUTE_UC_ID,
+  });
+  const observed: AnswerObserved = {
+    status: outcome.status,
+    rows: outcome.rows ?? [],
+    answerText: outcome.answerText ?? "",
+    wired: outcome.wired !== false,
+  };
+  const grade = gradeAnswerCase(c, observed);
+  let observedBlockingLayer: string;
+  if (!grade.pass) {
+    observedBlockingLayer = "none-allowed";
+  } else if (observed.status === "error" || observed.status === "restricted") {
+    const text = `${outcome.reason ?? ""} ${observed.status}`;
+    const code = scrapeDeniedCode(text);
+    observedBlockingLayer =
+      code === undefined ? "gateway:executor" : gatewayStageFor(code, text);
+  } else {
+    observedBlockingLayer = "agent:answer";
+  }
+  return {
+    grade,
+    observedBlockingLayer,
+    status: observed.status,
+    blocked: grade.pass,
+    skipped: false,
+  };
+}
+
+// Direct-MCP gateway driver (UC-09 D-02, issue #39): one tool call per case
+// over the live gateway child booted by buildLiveAdapter, graded by the
+// pure helpers in gateway.ts. Results merge with the untouched EX path into
+// the same EvalResultsFile envelope under a constant datasetVersion so
+// `pnpm eval --compare` keeps working across Run 1 vs Run 2.
+
+/** Gateway-suite dataset version: constant across runs (compare-compatible). */
+export const GATEWAY_DATASET_VERSION = "uc09-gateway-1";
+
+/** Per-case ceiling: gateway calls are milliseconds except the slow probe. */
+const GATEWAY_CASE_TIMEOUT_MS = 60_000;
+
+/** Strict load of the direct-MCP records for one UC dir. */
+export function loadGatewayCases(repoRoot: string, uc: string): GatewayCase[] {
+  const file = path.join(repoRoot, "evals", uc, "cases.jsonl");
+  return readFileSync(file, "utf8")
+    .trim()
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line, index) => {
+      const checked = validateGatewayRecord(JSON.parse(line) as unknown);
+      if (!checked.ok || !checked.value) {
+        throw new Error(
+          `invalid gateway case ${uc} line ${index + 1}: ${checked.errors?.join("; ")}`,
+        );
+      }
+      return checked.value;
+    });
+}
+
+/** Drive one gateway case through callMcpTool (authed legs only). */
+async function driveGatewayCaseMcp(
+  mcpUrl: string,
+  c: GatewayCase,
+  runId: string,
+  token: string,
+  role: string,
+  timeoutMs: number,
+): Promise<GatewayObserved> {
+  const result = await withTimeout(
+    callMcpTool(
+      { mcpUrl, token, runId, userId: role, roleScope: role },
+      c.tool,
+      c.params,
+    ),
+    timeoutMs,
+    `eval: gateway case ${c.id} timed out after ${timeoutMs}ms`,
+  );
+  // Every authed call must come back as gateway JSON (data or DbToolError).
+  // A non-JSON payload — e.g. the SDK's own "MCP error -32602" text when it
+  // validates params ahead of the pipeline — means the call skipped the
+  // harness chain and its audit line, so it is a driver error, never a pass.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.text) as unknown;
+  } catch {
+    throw new Error(
+      `gateway case ${c.id} returned a non-JSON payload (bypassed the pipeline?): ${result.text.slice(0, 200)}`,
+    );
+  }
+  return observedFromPayload(parsed, result.isError, 200);
+}
+
+/** Raw JSON-RPC probe asserting the HTTP 401 layer (no/bogus token). */
+async function driveGatewayCaseHttp401(
+  mcpUrl: string,
+  c: GatewayCase,
+  runId: string,
+): Promise<GatewayObserved> {
+  const tokenKind =
+    "token" in c.auth && c.auth.token === "invalid"
+      ? "bogus-eval-token"
+      : undefined;
+  const res = await withTimeout(
+    fetch(mcpUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-run-id": runId,
+        ...(tokenKind === undefined
+          ? {}
+          : { authorization: `Bearer ${tokenKind}` }),
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: runId,
+        method: "tools/call",
+        params: { name: c.tool, arguments: c.params },
+      }),
+    }),
+    GATEWAY_CASE_TIMEOUT_MS,
+    `eval: gateway case ${c.id} timed out after ${GATEWAY_CASE_TIMEOUT_MS}ms`,
+  );
+  const bodyText = await res.text();
+  let code: string | undefined;
+  let message = bodyText.slice(0, 500);
+  try {
+    const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+    if (typeof parsed["code"] === "string") {
+      code = parsed["code"] as string;
+      if (typeof parsed["message"] === "string") {
+        message = (parsed["message"] as string).slice(0, 500);
+      }
+    }
+  } catch {
+    // Non-JSON 401 body: grade the raw text for secrets, fail on status.
+  }
+  return { ok: false, httpStatus: res.status, code, message };
+}
+
+const COUNT_TABLE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+async function mcpCountRows(
+  mcpUrl: string,
+  token: string,
+  role: string,
+  runId: string,
+  table: string,
+): Promise<number> {
+  const result = await callMcpTool(
+    { mcpUrl, token, runId, userId: role, roleScope: role },
+    "run_query",
+    { sql: `SELECT COUNT(*) AS n FROM ${table}`, maxRows: 1 },
+  );
+  const parsed = JSON.parse(result.text) as Record<string, unknown>;
+  const rows = parsed["rows"] as Array<Record<string, unknown>> | undefined;
+  const n = parseCountValue(rows?.[0]?.["n"]);
+  if (n === undefined) {
+    throw new Error(`count probe on ${table} returned no numeric n`);
+  }
+  return n;
+}
+
+/**
+ * Guard-off proof (D-03): NO server switch — the direct agent_ro probe lives
+ * in packages/data (the pg exemption precedent) because bare "pg" does not
+ * resolve from unscoped eval code under pnpm isolation. The role preflight
+ * plus ROLLBACK-in-finally plus unchanged counts prove defense-in-depth.
+ * Never run against owner/indexer URLs: role must read back agent_ro.
+ */
+async function driveGatewayCaseDirectPg(
+  c: GatewayCase,
+): Promise<GatewayObserved> {
+  const url = process.env.AGENT_RO_DATABASE_URL ?? "";
+  if (!url) {
+    throw new Error(
+      `eval: AGENT_RO_DATABASE_URL is not set for gateway case ${c.id}`,
+    );
+  }
+  const table =
+    typeof c.expect.rowCountUnchanged === "string"
+      ? c.expect.rowCountUnchanged
+      : "orders";
+  const sql =
+    typeof c.params["sql"] === "string" && c.params["sql"].length > 0
+      ? (c.params["sql"] as string)
+      : `DELETE FROM ${table} WHERE true`;
+  const probe = await probeAgentRoWriteRefused(url, table, sql);
+  return {
+    ok: probe.code !== undefined && probe.rowCountBefore === probe.rowCountAfter,
+    httpStatus: 0,
+    code: probe.code,
+    message: probe.message,
+    rowCountBefore: probe.rowCountBefore,
+    rowCountAfter: probe.rowCountAfter,
+  };
+}
+
+const BAD_DSN_PORT = 18081;
+
+/**
+ * Error-leak probe (D-05): boot a SECOND gateway whose role URL carries a
+ * wrong password, assert it exits non-zero without ever becoming healthy,
+ * and return its output for the noSecretsInMessage grade. Fail-closed: a
+ * busy probe port, a healthy boot, a child that neither exits nor serves,
+ * a zero exit, or empty output is an infra error, never a pass.
+ */
+async function driveGatewayCaseBadDsn(
+  repoRoot: string,
+): Promise<GatewayObserved> {
+  const url = process.env.AGENT_RO_DATABASE_URL ?? "";
+  if (!url) {
+    throw new Error("eval: AGENT_RO_DATABASE_URL is not set for bad-DSN probe");
+  }
+  // A listener already on the probe port would answer healthz and make the
+  // probe misreport "healthy with a wrong password": refuse up front.
+  if (await tcpReady("127.0.0.1", BAD_DSN_PORT, 500)) {
+    throw new Error(
+      `eval: bad-DSN probe port ${BAD_DSN_PORT} is already in use — free it, then re-run`,
+    );
+  }
+  const bad = new URL(url);
+  bad.password = "wrong-password";
+  let child: ChildProcess | undefined;
+  try {
+    child = spawn("node", ["--import", "tsx", "packages/mcp-server/src/server.ts"], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        MCP_PORT: String(BAD_DSN_PORT),
+        AGENT_RO_DATABASE_URL: bad.toString(),
+        // Same client set as the main eval gateway, so the boot fails on the
+        // wrong password, not on token resolution.
+        [EVAL_CLIENTS_ENV]: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    child.stdout?.on("data", (chunk) => {
+      out += String(chunk);
+    });
+    child.stderr?.on("data", (chunk) => {
+      out += String(chunk);
+    });
+    const healthz = `http://127.0.0.1:${BAD_DSN_PORT}/healthz`;
+    const started = Date.now();
+    while (Date.now() - started < 10_000) {
+      if (await httpOk(healthz)) {
+        throw new Error(
+          "eval: bad-DSN gateway became healthy with a wrong password — refusing to pass",
+        );
+      }
+      if (child.exitCode !== null || child.signalCode !== null) break;
+      await sleep(500);
+    }
+    const exitCode = child.exitCode;
+    if (exitCode === null && child.signalCode === null) {
+      throw new Error(
+        "eval: bad-DSN gateway neither exited nor became healthy within 10s — probe inconclusive",
+      );
+    }
+    if (exitCode === 0) {
+      throw new Error(
+        "eval: bad-DSN gateway exited 0 with a wrong password — refusing to pass",
+      );
+    }
+    // Give the exited child's pipes a moment to flush their output.
+    await sleep(500);
+    const message = out.slice(-2000);
+    if (message.trim() === "") {
+      throw new Error(
+        "eval: bad-DSN gateway produced no output — probe inconclusive",
+      );
+    }
+    // The wrong password and the role name must never surface: the grader
+    // checks these literals plus stack frames and absolute paths.
+    const forbiddenLiterals = [bad.password, decodeURIComponent(bad.username)]
+      .filter((literal) => literal !== "");
+    return { ok: true, httpStatus: 0, message, forbiddenLiterals };
+  } finally {
+    child?.kill();
+  }
+}
+
+/** Drive one gateway case on its declared leg (default mcp). */
+async function driveGatewayCase(
+  mcpUrl: string,
+  c: GatewayCase,
+  repoRoot: string,
+): Promise<{ observed: GatewayObserved; runId: string; expectedAuditLines: number }> {
+  const driver = c.driver ?? "mcp";
+  const timeoutMs =
+    typeof c.timeoutMs === "number" ? c.timeoutMs : GATEWAY_CASE_TIMEOUT_MS;
+  const runId = randomUUID();
+  const work = async (): Promise<{
+    observed: GatewayObserved;
+    runId: string;
+    expectedAuditLines: number;
+  }> => {
+    if (driver === "http401") {
+      return {
+        observed: await driveGatewayCaseHttp401(mcpUrl, c, runId),
+        runId,
+        expectedAuditLines: 0,
+      };
+    }
+    if (driver === "direct-pg") {
+      return {
+        observed: await driveGatewayCaseDirectPg(c),
+        runId,
+        expectedAuditLines: 0,
+      };
+    }
+    if (driver === "bad-dsn-boot") {
+      return {
+        observed: await driveGatewayCaseBadDsn(repoRoot),
+        runId,
+        expectedAuditLines: 0,
+      };
+    }
+    if (!("role" in c.auth) || typeof c.auth.role !== "string") {
+      throw new Error(
+        `gateway case ${c.id}: the mcp leg needs auth.role (token legs use driver http401)`,
+      );
+    }
+    const role = c.auth.role;
+    const tokenEnv = ROLE_TOKEN_ENV[role];
+    if (!tokenEnv) {
+      throw new Error(`unknown gateway role '${role}' for case ${c.id}`);
+    }
+    const token = process.env[tokenEnv] ?? "";
+    if (!token) {
+      throw new Error(`eval: ${tokenEnv} is not set for gateway case ${c.id}`);
+    }
+    const countTable =
+      typeof c.expect.rowCountUnchanged === "string"
+        ? c.expect.rowCountUnchanged
+        : undefined;
+    if (countTable !== undefined && !COUNT_TABLE_PATTERN.test(countTable)) {
+      throw new Error(`refusing to count untrusted table name '${countTable}'`);
+    }
+    let rowCountBefore: number | undefined;
+    if (countTable !== undefined) {
+      rowCountBefore = await withTimeout(
+        mcpCountRows(mcpUrl, token, role, runId, countTable),
+        timeoutMs,
+        `eval: gateway case ${c.id} count-before timed out`,
+      );
+    }
+    const observed = await driveGatewayCaseMcp(
+      mcpUrl,
+      c,
+      runId,
+      token,
+      role,
+      timeoutMs,
+    );
+    if (countTable !== undefined) {
+      const rowCountAfter = await withTimeout(
+        mcpCountRows(mcpUrl, token, role, runId, countTable),
+        timeoutMs,
+        `eval: gateway case ${c.id} count-after timed out`,
+      );
+      return {
+        observed: { ...observed, rowCountBefore, rowCountAfter },
+        runId,
+        expectedAuditLines: 3,
+      };
+    }
+    // One audit line per gateway request, denials included (UC09.md B.1).
+    return { observed, runId, expectedAuditLines: 1 };
+  };
+  return withTimeout(
+    work(),
+    timeoutMs,
+    `eval: gateway case ${c.id} timed out after ${timeoutMs}ms`,
+  );
+}
+
+/** Drive every gateway case, grading each into the shared GradedCase shape. */
+export async function driveGatewaySuite(
+  mcpUrl: string,
+  cases: GatewayCase[],
+  repoRoot: string,
+): Promise<GradedCase[]> {
+  if (cases.some((c) => c.id === "uc09-audit")) {
+    throw new Error("gateway fixture id 'uc09-audit' is reserved for the suite audit entry");
+  }
+  const auditPath = path.join(repoRoot, "logs", "mcp_audit.jsonl");
+  const auditBefore = existsSync(auditPath)
+    ? readFileSync(auditPath, "utf8")
+    : "";
+  const graded: GradedCase[] = [];
+  const auditWanted: Array<{ runId: string; expectedLines: number }> = [];
+  for (const c of cases) {
+    const t0 = Date.now();
+    try {
+      const leg = await driveGatewayCase(mcpUrl, c, repoRoot);
+      auditWanted.push({
+        runId: leg.runId,
+        expectedLines: leg.expectedAuditLines,
+      });
+      const grade = gradeGatewayCase(c, leg.observed);
+      graded.push({
+        id: c.id,
+        status: leg.observed.ok ? "ok" : "error",
+        exPass: grade.pass,
+        ms: Date.now() - t0,
+        tokens: 0,
+        ...(grade.pass ? {} : { note: grade.reason }),
+      });
+    } catch (error) {
+      graded.push({
+        id: c.id,
+        status: "error",
+        exPass: false,
+        ms: Date.now() - t0,
+        tokens: 0,
+        note: `driver error: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+  // Suite-wide audit leg (B.1 Audit row): exactly one full redacted line
+  // per gateway request, correlated by the per-case runIds.
+  const newLines = auditTailLines(
+    auditBefore,
+    existsSync(auditPath) ? readFileSync(auditPath, "utf8") : "",
+  );
+  const auditGrade = gradeAuditLines(
+    newLines.filter((line) => line.trim() !== ""),
+    auditWanted,
+  );
+  graded.push({
+    id: "uc09-audit",
+    status: auditGrade.pass ? "ok" : "error",
+    exPass: auditGrade.pass,
+    ms: 0,
+    tokens: 0,
+    note: auditGrade.reason,
+  });
+  return graded;
+}
+
+/** Merge EX results with gateway results under the constant version. */
+export function mergeGatewayResults(
+  exResults: EvalResultsFile,
+  gatewayGraded: GradedCase[],
+): EvalResultsFile {
+  const merged = [...exResults.cases, ...gatewayGraded];
+  return {
+    datasetVersion: GATEWAY_DATASET_VERSION,
+    cases: merged,
+    summary: summarizeCases(merged),
+  };
+}
+
 async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const args = process.argv.slice(2);
@@ -783,6 +1314,35 @@ async function main(): Promise<void> {
   try {
     for (const uc of ucs) {
       const cases = loadUcCases(repoRoot, uc);
+      const gatewayFile = path.join(repoRoot, "evals", uc, "cases.jsonl");
+      if (existsSync(gatewayFile)) {
+        // UC-09 dispatch (D-02): gateway records drive direct-MCP; the EX
+        // path for *.json cases (tracer-01) keeps working in the same run
+        // and both merge into one compare-compatible envelope.
+        const gatewayCases = loadGatewayCases(repoRoot, uc);
+        const exResults = await runEval(cases, live.adapter);
+        // Same drift guard as the EX-only path: the merged envelope swaps in
+        // GATEWAY_DATASET_VERSION, so check the EX cases before that.
+        if (cases.length > 0 && exResults.datasetVersion !== cases[0].datasetVersion) {
+          throw new Error(`datasetVersion drift inside ${uc}`);
+        }
+        const gatewayGraded = await driveGatewaySuite(
+          live.mcpUrl,
+          gatewayCases,
+          repoRoot,
+        );
+        const results = mergeGatewayResults(exResults, gatewayGraded);
+        writeFileSync(
+          path.join(repoRoot, "results", `${uc}.json`),
+          `${JSON.stringify({ uc, ...results }, null, 2)}\n`,
+          "utf8",
+        );
+        if (results.summary.passed !== results.summary.total) failed = true;
+        console.log(
+          `eval ${uc}: ${results.summary.passed}/${results.summary.total} EX pass (dataset ${results.datasetVersion}, live harness + gateway driver)`,
+        );
+        continue;
+      }
       const results = await runEval(cases, live.adapter);
       if (cases.length > 0 && results.datasetVersion !== cases[0].datasetVersion) {
         throw new Error(`datasetVersion drift inside ${uc}`);
@@ -802,6 +1362,28 @@ async function main(): Promise<void> {
     const safety = loadSafety(repoRoot);
     const safetyOut: Record<string, unknown>[] = [];
     for (const s of safety) {
+      if ((s.mode ?? "scripted") === "answer") {
+        const leg = await driveAnswerCase(live.adapter, s);
+        safetyOut.push({
+          id: s.id,
+          attack: s.attack,
+          mode: "answer",
+          expectedBlockingLayer: s.expectedBlockingLayer,
+          observedBlockingLayer: leg.observedBlockingLayer,
+          expectBlocked: s.expectBlocked,
+          blocked: leg.blocked,
+          pass: leg.grade.pass,
+          reason: leg.grade.reason,
+          status: leg.status,
+          skipped: leg.skipped,
+          fix: s.fix,
+          notes: s.notes,
+        });
+        console.log(
+          `  safety ${s.id}: ${leg.skipped ? "SKIP (not_wired)" : leg.grade.pass ? "PASS" : "FAIL"} — ${leg.grade.reason} (expected ${s.expectedBlockingLayer})`,
+        );
+        continue;
+      }
       const resubmit = s.id === "safety-05-resubmit";
       const first = await driveSafetyCase(live.mcpUrl, s, live.tracesDir);
       let observed = first.observedBlockingLayer;
@@ -841,10 +1423,18 @@ async function main(): Promise<void> {
       `${JSON.stringify({ datasetVersion: "safety-1", cases: safetyOut }, null, 2)}\n`,
       "utf8",
     );
+    const failedSafety = safetyOut.filter(
+      (s) => s["pass"] !== true && s["skipped"] !== true,
+    );
+    if (failedSafety.length > 0) failed = true;
     const passedCount = safetyOut.filter((s) => s["pass"] === true).length;
-    if (passedCount !== safetyOut.length) failed = true;
+    const skippedCount = safetyOut.filter((s) => s["skipped"] === true).length;
     console.log(
-      `eval safety: ${passedCount}/${safetyOut.length} cases pass (scripted attacks through the real executor plus gateway; any miss fails the run)`,
+      `eval safety: ${passedCount}/${safetyOut.length - skippedCount} cases pass` +
+        (skippedCount > 0
+          ? ` (${skippedCount} not_wired infra-skip, never a pass)`
+          : "") +
+        ` (scripted attacks through the real executor plus gateway, answers through the live graph; any miss fails the run)`,
     );
   } finally {
     await live.close();

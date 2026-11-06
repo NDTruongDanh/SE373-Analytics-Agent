@@ -105,53 +105,63 @@ export function parseClientRegistry(raw: unknown): ClientRegistry {
   if (!Array.isArray(raw["clients"]) || raw["clients"].length === 0) {
     fail("a non-empty clients list");
   }
-  const clients: McpClientEntry[] = (raw["clients"] as unknown[]).map(
-    (entry, index) => {
-      if (!isRecord(entry)) fail(`clients[${index}] to be a mapping`);
-      const { clientId, role, tokenEnv, scopes, rowScope } = entry;
-      if (typeof clientId !== "string" || clientId.length === 0) {
-        fail(`clients[${index}].clientId to be a non-empty string`);
-      }
-      if (typeof role !== "string" || role.length === 0) {
-        fail(`clients[${index}].role to be a non-empty string`);
-      }
-      if (typeof tokenEnv !== "string" || tokenEnv.length === 0) {
-        fail(`clients[${index}].tokenEnv to be a non-empty string`);
-      }
+  const entries = raw["clients"] as unknown[];
+  // Uniqueness covers every entry, eval-only ones included: the gateway
+  // loads both sets together when MCP_ENABLE_EVAL_CLIENTS=1.
+  const allIds: string[] = [];
+  const clients: McpClientEntry[] = entries.flatMap((entry, index) => {
+    if (!isRecord(entry)) fail(`clients[${index}] to be a mapping`);
+    const { clientId, role, tokenEnv, scopes, rowScope, evalOnly } = entry;
+    if (evalOnly !== undefined && typeof evalOnly !== "boolean") {
+      fail(`clients[${index}].evalOnly to be a boolean`);
+    }
+    if (typeof clientId !== "string" || clientId.length === 0) {
+      fail(`clients[${index}].clientId to be a non-empty string`);
+    }
+    allIds.push(clientId as string);
+    if (typeof role !== "string" || role.length === 0) {
+      fail(`clients[${index}].role to be a non-empty string`);
+    }
+    if (typeof tokenEnv !== "string" || tokenEnv.length === 0) {
+      fail(`clients[${index}].tokenEnv to be a non-empty string`);
+    }
+    if (
+      !Array.isArray(scopes) ||
+      scopes.length === 0 ||
+      !scopes.every((s): s is string => typeof s === "string" && s.length > 0)
+    ) {
+      fail(`clients[${index}].scopes to be a non-empty string list`);
+    }
+    let parsedScope: RowScope | undefined;
+    if (rowScope !== undefined) {
+      if (!isRecord(rowScope)) fail(`clients[${index}].rowScope to be a mapping`);
       if (
-        !Array.isArray(scopes) ||
-        scopes.length === 0 ||
-        !scopes.every((s): s is string => typeof s === "string" && s.length > 0)
+        typeof rowScope["column"] !== "string" ||
+        rowScope["column"].length === 0 ||
+        typeof rowScope["value"] !== "string" ||
+        rowScope["value"].length === 0
       ) {
-        fail(`clients[${index}].scopes to be a non-empty string list`);
+        fail(`clients[${index}].rowScope to carry column and value strings`);
       }
-      let parsedScope: RowScope | undefined;
-      if (rowScope !== undefined) {
-        if (!isRecord(rowScope)) fail(`clients[${index}].rowScope to be a mapping`);
-        if (
-          typeof rowScope["column"] !== "string" ||
-          rowScope["column"].length === 0 ||
-          typeof rowScope["value"] !== "string" ||
-          rowScope["value"].length === 0
-        ) {
-          fail(`clients[${index}].rowScope to carry column and value strings`);
-        }
-        parsedScope = {
-          column: rowScope["column"] as string,
-          value: rowScope["value"] as string,
-        };
-      }
-      return {
+      parsedScope = {
+        column: rowScope["column"] as string,
+        value: rowScope["value"] as string,
+      };
+    }
+    // Eval-only clients (issue #39) are validated, then dropped: no persona
+    // maps to them and the host never needs their token at boot.
+    if (evalOnly === true) return [];
+    return [
+      {
         clientId: clientId as string,
         role: role as string,
         tokenEnv: tokenEnv as string,
         scopes: [...(scopes as string[])],
         ...(parsedScope ? { rowScope: parsedScope } : {}),
-      };
-    },
-  );
-  const ids = new Set(clients.map((c) => c.clientId));
-  if (ids.size !== clients.length) fail("unique clientId values");
+      },
+    ];
+  });
+  if (new Set(allIds).size !== allIds.length) fail("unique clientId values");
   return { version: 1, clients };
 }
 
