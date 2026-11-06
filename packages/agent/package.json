@@ -20,7 +20,9 @@
       "default": "./dist/queryExecutor/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
@@ -36,7 +38,8 @@
     "@shared/access-policy": "workspace:*",
     "@shared/contracts": "workspace:*",
     "pino": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:"
