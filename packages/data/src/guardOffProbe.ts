@@ -34,6 +34,21 @@ export function parseCountValue(value: unknown): number | undefined {
   return undefined;
 }
 
+/** Narrow one cell of the first result row (node-pg rows are untyped). */
+function firstCell(rows: unknown, key: string): unknown {
+  if (!Array.isArray(rows) || rows.length === 0) return undefined;
+  const row: unknown = rows[0];
+  if (typeof row !== "object" || row === null) return undefined;
+  return (row as Record<string, unknown>)[key];
+}
+
+/** SQLSTATE of a driver error, or undefined when the shape carries none. */
+export function pgErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code = (error as Record<string, unknown>)["code"];
+  return typeof code === "string" && code.length > 0 ? code : undefined;
+}
+
 export async function probeAgentRoWriteRefused(
   url: string,
   table: string,
@@ -45,16 +60,18 @@ export async function probeAgentRoWriteRefused(
   const client = new Client({ connectionString: url });
   await client.connect();
   try {
-    const roleRows = (await client.query("SELECT current_user AS role"))
-      .rows as Array<{ role?: unknown }>;
-    if (roleRows[0]?.role !== "agent_ro") {
+    const role = firstCell(
+      (await client.query("SELECT current_user AS role")).rows,
+      "role",
+    );
+    if (role !== "agent_ro") {
       throw new Error(
-        `refusing direct-pg probe: connected as '${String(roleRows[0]?.role)}', expected agent_ro`,
+        `refusing direct-pg probe: connected as '${String(role)}', expected agent_ro`,
       );
     }
-    const beforeRaw = (await client.query(`SELECT COUNT(*) AS n FROM ${table}`))
-      .rows[0].n;
-    const before = parseCountValue(beforeRaw);
+    const before = parseCountValue(
+      firstCell((await client.query(`SELECT COUNT(*) AS n FROM ${table}`)).rows, "n"),
+    );
     if (before === undefined) {
       throw new Error(`count probe on ${table} returned no numeric n`);
     }
@@ -69,15 +86,15 @@ export async function probeAgentRoWriteRefused(
       await client.query(statement);
       message = "write unexpectedly succeeded";
     } catch (error) {
-      code = (error as { code?: unknown }).code as string | undefined;
+      code = pgErrorCode(error);
       message =
         error instanceof Error ? error.message.slice(0, 500) : String(error);
     } finally {
       await client.query("ROLLBACK");
     }
-    const afterRaw = (await client.query(`SELECT COUNT(*) AS n FROM ${table}`))
-      .rows[0].n;
-    const after = parseCountValue(afterRaw);
+    const after = parseCountValue(
+      firstCell((await client.query(`SELECT COUNT(*) AS n FROM ${table}`)).rows, "n"),
+    );
     if (after === undefined) {
       throw new Error(`count re-probe on ${table} returned no numeric n`);
     }

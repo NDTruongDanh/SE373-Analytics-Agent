@@ -70,8 +70,10 @@ import {
   type GatewayCase,
   type GatewayObserved,
 } from "./gateway.js";
-import { parseCountValue } from "../packages/data/src/guardOffProbe.js";
-import { probeAgentRoWriteRefused } from "../packages/data/src/guardOffProbe.js";
+import {
+  parseCountValue,
+  probeAgentRoWriteRefused,
+} from "../packages/data/src/guardOffProbe.js";
 
 export { gradeExecution } from "./exGrader.js";
 export { compareRuns } from "./regression.js";

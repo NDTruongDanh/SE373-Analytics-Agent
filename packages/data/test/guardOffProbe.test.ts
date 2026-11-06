@@ -5,8 +5,23 @@
 import { describe, expect, it } from "vitest";
 import {
   parseCountValue,
+  pgErrorCode,
   probeAgentRoWriteRefused,
 } from "../src/guardOffProbe.js";
+
+describe("pgErrorCode", () => {
+  it("reads a string SQLSTATE from a driver-shaped error", () => {
+    expect(pgErrorCode({ code: "25006", message: "read-only" })).toBe("25006");
+  });
+
+  it("returns undefined for shapes without a usable code", () => {
+    expect(pgErrorCode(new Error("boom"))).toBeUndefined();
+    expect(pgErrorCode({ code: 25006 })).toBeUndefined();
+    expect(pgErrorCode({ code: "" })).toBeUndefined();
+    expect(pgErrorCode(null)).toBeUndefined();
+    expect(pgErrorCode("25006")).toBeUndefined();
+  });
+});
 
 describe("parseCountValue", () => {
   it("accepts finite numbers", () => {
