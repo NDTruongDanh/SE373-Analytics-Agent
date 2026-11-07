@@ -278,6 +278,13 @@ describe("root graph seam", () => {
         spans.push({ node, type });
         return "span-1";
       },
+      // UC-02 two-tier gate: metric queries must be grounded. Provide the
+      // retrieved turn context so order_count passes the gate.
+      retrieve: async () => ({
+        semanticChunks: [
+          { chunkId: "metric:order_count", text: "order count", aliasMatched: true, denseScore: 0.95 },
+        ],
+      }),
       textToSql: {
         intentModel: {
           withStructuredOutput: () => ({

@@ -1,0 +1,16 @@
+{"id": "uc02-r01", "question": "doanh số ròng tháng 8 là bao nhiêu?", "expectedChunkId": "metric:net_revenue"}
+{"id": "uc02-r02", "question": "net sales in Q2 2026?", "expectedChunkId": "metric:net_revenue"}
+{"id": "uc02-r03", "question": "GMV quý 1 2026 theo kênh?", "expectedChunkId": "metric:gross_merchandise_value"}
+{"id": "uc02-r04", "question": "Khách hàng hoạt động được tính thế nào?", "expectedChunkId": "metric:active_customers"}
+{"id": "uc02-r05", "question": "AOV theo kênh bán hàng?", "expectedChunkId": "metric:aov"}
+{"id": "uc02-r06", "question": "tỉ lệ hoàn đơn theo ngành hàng?", "expectedChunkId": "metric:return_rate"}
+{"id": "uc02-r07", "question": "tỉ lệ huỷ đơn theo tháng?", "expectedChunkId": "metric:cancellation_rate"}
+{"id": "uc02-r08", "question": "repeat customer rate in 2025?", "expectedChunkId": "metric:repeat_customer_rate"}
+{"id": "uc02-r09", "question": "khách hàng mới tháng 9/2026?", "expectedChunkId": "metric:new_customers"}
+{"id": "uc02-r10", "question": "tỉ lệ giao hàng đúng hạn theo vùng?", "expectedChunkId": "metric:on_time_delivery_rate"}
+{"id": "uc02-r11", "question": "doanh thu trung bình mỗi nhà bán theo vùng?", "expectedChunkId": "metric:revenue_per_seller"}
+{"id": "uc02-r12", "question": "số đơn hàng theo trạng thái?", "expectedChunkId": "metric:order_count"}
+{"id": "uc02-r13", "question": "trạng thái đơn hàng gồm những giá trị nào?", "expectedChunkId": "column:orders.status"}
+{"id": "uc02-r14", "question": "đối soát doanh thu và thanh toán theo đơn, tránh nhân dòng fan-out?", "expectedChunkId": "join_rule:orders_items_payments"}
+{"id": "uc02-r15", "question": "doanh thu thuần join orders và order_items, đếm đơn distinct?", "expectedChunkId": "join_rule:orders_order_items"}
+{"id": "uc02-r16", "question": "điểm đánh giá trung bình theo ngành hàng?", "expectedChunkId": "column:reviews.score"}
