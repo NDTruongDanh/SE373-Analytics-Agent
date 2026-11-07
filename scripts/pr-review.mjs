@@ -358,10 +358,40 @@ async function main() {
   }
   opts.headSha = headSha;
   opts.reviewedAt = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  // List every commit in the reviewed range (base..HEAD = exactly what the PR
+  // adds) so the comment shows which commits the review checked.
+  const cleanSubject = (s) => String(s || "").replace(/`/g, "'").slice(0, 120);
+  let commitList = [];
+  try {
+    const log = await git(["log", "--format=%H%x00%h%x00%s", `${opts.base}..HEAD`]);
+    commitList = log
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [full, short, ...rest] = line.split("\0");
+        return { full: (full || "").trim(), short: (short || "").trim(), subject: cleanSubject(rest.join(" ")) };
+      })
+      .filter((c) => c.full);
+  } catch {
+    commitList = [];
+  }
+  opts.commitList = commitList;
+  opts.headTitle =
+    commitList.length > 0 && commitList[0].full.slice(0, 12) === headSha.slice(0, 12)
+      ? commitList[0].subject
+      : "";
+  if (!opts.headTitle && headSha) {
+    try {
+      opts.headTitle = cleanSubject(await git(["log", "-1", "--format=%s", "HEAD"]));
+    } catch {
+      opts.headTitle = "";
+    }
+  }
 
   const header = [
     `PR: #${prMeta.number || "?"} ${prMeta.title || "(title unavailable)"}`,
     `Base → Head: ${prMeta.base} → ${prMeta.head || "HEAD"} (base ref ${opts.base})`,
+    `Commits reviewed (${commitList.length}):${commitList.length > 0 ? `\n${commitList.slice(0, 20).map((c) => `- ${c.short} ${c.subject}`).join("\n")}${commitList.length > 20 ? `\n- … and ${commitList.length - 20} more` : ""}` : " (unavailable)"}`,
     `Files: ${reviewFiles.length} reviewed${skipped.length ? `, ${skipped.length} skipped (generated/vendor: ${skipped.slice(0, 10).join(", ")}${skipped.length > 10 ? ", …" : ""})` : ""}${truncated ? " — DIFF TRUNCATED" : ""}`,
     prMeta.body ? `PR description (first 4k chars):\n${prMeta.body}` : "PR description: (unavailable)",
   ].join("\n");
@@ -389,10 +419,12 @@ async function main() {
       `[pr-review] dry-run: model=${opts.model} effort=${opts.effort} base=${opts.base}`,
     );
     console.log(
-      `[pr-review] files=${files.length} reviewed=${reviewFiles.length} skipped=${skipped.length} diffChars=${diff.length} archChars=${architecture.length} inputChars=${input.length}`,
+      `[pr-review] files=${files.length} reviewed=${reviewFiles.length} skipped=${skipped.length} diffChars=${diff.length} archChars=${architecture.length} inputChars=${input.length} commits=${opts.commitList?.length ?? 0} head=${(opts.headSha || "").slice(0, 12)}${opts.headTitle ? ` "${opts.headTitle}"` : ""}`,
     );
     console.log("---INPUT HEAD---");
     console.log(input.slice(0, 3000));
+    console.log("---HEADER---");
+    console.log(header);
     return;
   }
 
@@ -478,7 +510,7 @@ async function main() {
   }
 
   const stamp = opts.headSha
-    ? `_Reviewed commit \`${opts.headSha.slice(0, 12)}\` · ${opts.reviewedAt || ""} — this comment is updated on every push._`
+    ? `_Reviewed commit \`${opts.headSha.slice(0, 12)}\`${opts.headTitle ? ` — "${opts.headTitle}"` : ""} · ${opts.reviewedAt || ""} — this comment is updated on every push._`
     : "_This comment is updated on every push._";
   const body = [
     "<!-- opencode-pr-review -->",
