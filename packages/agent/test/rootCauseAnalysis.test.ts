@@ -2486,5 +2486,49 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       ),
     ).rejects.toThrow("Lỗi lưu checkpoint tiến độ bước");
   });
+
+  it("T36-T21: Fail-fast when currentTuple.config is missing during step checkpointing", async () => {
+    const memory = new MemorySaver();
+    const threadId = makeThreadId("u_tuple_config_missing", "s_step_fail");
+
+    let inStepExecution = false;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        inStepExecution = true;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+
+    const originalGetTuple = memory.getTuple.bind(memory);
+    memory.getTuple = async (config) => {
+      const res = await originalGetTuple(config);
+      if (inStepExecution && res) {
+        return { ...res, config: undefined as unknown as typeof res.config };
+      }
+      return res;
+    };
+
+    const rcaRuntime = createRcaRuntime(deps);
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // Resuming will run step 1 and attempt to checkpoint it, but getTuple returns undefined config
+    await expect(
+      testGraph.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      ),
+    ).rejects.toThrow("Lỗi lưu checkpoint tiến độ bước");
+  });
 });
 

@@ -2219,25 +2219,28 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
             try {
               const currentTuple =
                 await checkpointer.getTuple({ configurable: { thread_id: threadId } });
-              if (currentTuple?.config) {
-                await checkpointer.putWrites(
-                  currentTuple.config,
-                  [
-                    [
-                      "__interrupt__",
-                      {
-                        id: `step_${step.stepId}`,
-                        value: {
-                          action: "review_analysis_plan",
-                          currentPlan: p,
-                          plan: p,
-                        },
-                      },
-                    ],
-                  ],
-                  `step_${step.stepId}`,
+              if (!currentTuple?.config) {
+                throw new Error(
+                  `Không tìm thấy checkpoint tuple hợp lệ để lưu tiến độ (threadId: ${threadId})`,
                 );
               }
+              await checkpointer.putWrites(
+                currentTuple.config,
+                [
+                  [
+                    "__interrupt__",
+                    {
+                      id: `step_${step.stepId}`,
+                      value: {
+                        action: "review_analysis_plan",
+                        currentPlan: p,
+                        plan: p,
+                      },
+                    },
+                  ],
+                ],
+                `step_${step.stepId}`,
+              );
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               throw new Error(`Lỗi lưu checkpoint tiến độ bước ${step.stepId}: ${msg}`);

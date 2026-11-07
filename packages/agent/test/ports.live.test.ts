@@ -23,45 +23,22 @@ import { makeThreadId, resumeDecision } from "../src/hitl.js";
 import { AgentStateSchema, type AgentState } from "../src/state.js";
 import { createRcaRuntime } from "../src/subgraphs/rootCauseAnalysis.js";
 import type { PlanStep } from "@shared/contracts";
-import net from "node:net";
+import path from "node:path";
+import fs from "node:fs";
 
 if (!process.env["HARNESS_STATE_DATABASE_URL"]) {
-  try {
-    process.loadEnvFile?.();
-  } catch {
-    // .env absent or unreadable, continue
-  }
-}
-
-async function isDbReachable(urlStr: string | undefined): Promise<boolean> {
-  if (!urlStr) return false;
-  try {
-    const parsed = new URL(urlStr);
-    const host = parsed.hostname || "127.0.0.1";
-    const port = Number(parsed.port) || 5432;
-    return await new Promise<boolean>((resolve) => {
-      const socket = net.createConnection({ host, port, timeout: 500 });
-      socket.on("connect", () => {
-        socket.destroy();
-        resolve(true);
-      });
-      socket.on("error", () => {
-        socket.destroy();
-        resolve(false);
-      });
-      socket.on("timeout", () => {
-        socket.destroy();
-        resolve(false);
-      });
-    });
-  } catch {
-    return false;
+  const rootEnv = path.resolve(import.meta.dirname, "../../../.env");
+  if (fs.existsSync(rootEnv)) {
+    try {
+      process.loadEnvFile?.(rootEnv);
+    } catch {
+      // .env unreadable, continue
+    }
   }
 }
 
 const LIVE_URL = process.env["HARNESS_STATE_DATABASE_URL"];
-const isReachable = await isDbReachable(LIVE_URL);
-const describeLive = describe.skipIf(!isReachable);
+const describeLive = describe.skipIf(!LIVE_URL);
 
 const EXPECTED_TABLES = [
   "checkpoint_blobs",
