@@ -213,10 +213,11 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
         call++;
         capturedInputs.push(input);
         const val = call === 1 ? 2_500_000_000 : 2_040_000_000;
-        const periodDate = call === 1 ? "2026-08-31" : "2026-09-30";
+        const start = call === 1 ? "2026-08-01" : "2026-09-01";
+        const end = call === 1 ? "2026-08-31" : "2026-09-30";
         return {
           status: "ok" as const,
-          sql: `SELECT ${val} AS val WHERE purchase_date <= '${periodDate}'`,
+          sql: `SELECT ${val} AS val FROM orders WHERE purchase_date >= '${start}' AND purchase_date <= '${end}' AND status = 'delivered'`,
           tablesUsed: ["orders", "order_items"],
           columns: ["val"],
           rows: [{ val }],
@@ -254,6 +255,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(capturedInputs[1].question).toContain("Reference SQL:");
 
     // Verify lastSql contains actual executed SQL with date filter
+    expect(update.sql).toContain("2026-09-01");
     expect(update.sql).toContain("2026-09-30");
   });
 
@@ -319,7 +321,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Calling validateBaseline directly with empty deps throws error
     await expect(validateBaseline(q, intent, {}, mockPrincipal)).rejects.toThrow(
-      "RCA validateBaseline requires either fetchBaseline or executor dependency",
+      "RCA validateBaseline requires either fetchBaseline",
     );
 
     // Calling createRcaRuntime({}).entry returns status: 'error'
@@ -336,7 +338,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     const update = await runtime.entry(mockState, mockRt);
     expect(update.status).toBe("error");
-    expect(update.answerText).toContain("RCA validateBaseline requires either fetchBaseline or executor dependency");
+    expect(update.answerText).toContain("RCA validateBaseline requires either fetchBaseline");
   });
 
   it("T35-T_regex_missing_year: parses dates reliably without NaN when second year or both are omitted", () => {
@@ -359,6 +361,134 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const i3 = parseRcaIntent(q3);
     expect(i3.currentPeriod).toEqual({ start: "2026-09-01", end: "2026-09-30" });
     expect(i3.baselinePeriod).toEqual({ start: "2025-09-01", end: "2025-09-30" });
+  });
+
+  it("T35-T_regex_reversed_order: parses reversed phrasing where baseline precedes current", () => {
+    // Month reversed: "So với tháng 08/2026, vì sao doanh thu thuần tháng 09/2026 giảm 18.4%?"
+    const q1 = "So với tháng 08/2026, vì sao doanh thu thuần tháng 09/2026 giảm 18.4%?";
+    const i1 = parseRcaIntent(q1);
+    expect(i1.direction).toBe("decrease");
+    expect(i1.baselinePeriod).toEqual({ start: "2026-08-01", end: "2026-08-31" });
+    expect(i1.currentPeriod).toEqual({ start: "2026-09-01", end: "2026-09-30" });
+
+    // Quarter reversed: "So với quý 2/2026, quý 3/2026 doanh thu biến động ra sao?"
+    const q2 = "So với quý 2/2026, quý 3/2026 doanh thu tăng do đâu?";
+    const i2 = parseRcaIntent(q2);
+    expect(i2.baselinePeriod).toEqual({ start: "2026-04-01", end: "2026-06-30" });
+    expect(i2.currentPeriod).toEqual({ start: "2026-07-01", end: "2026-09-30" });
+
+    // Week reversed: "So với tuần 38/2026, tuần 39/2026 AOV giảm vì sao?"
+    const q3 = "So với tuần 38/2026, tuần 39/2026 AOV giảm vì sao?";
+    const i3 = parseRcaIntent(q3);
+    expect(i3.baselinePeriod).toEqual({ start: "2026-09-14", end: "2026-09-20" });
+    expect(i3.currentPeriod).toEqual({ start: "2026-09-21", end: "2026-09-27" });
+  });
+
+  it("T35-T_executor_error_not_zero: surfaces SQL execution failure as error, never disguises as zero delta", async () => {
+    // When executor fails with SQL error, runtime must return status: 'error' rather than no_data / false_premise
+    const failingExecutor = {
+      run: async () => {
+        return {
+          status: "error" as const,
+          error: {
+            code: "SQL_EXECUTION_ERROR" as const,
+            message: "syntax error at or near 'INVALID'",
+            retryable: false,
+            repairable: true,
+          },
+          sql: "SELECT INVALID",
+          attempts: 3,
+        };
+      },
+    };
+
+    const runtime = createRcaRuntime({ executor: failingExecutor });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    const update = await runtime.entry(mockState, mockRt);
+    expect(update.status).toBe("error");
+    expect(update.answerText).toContain("syntax error at or near 'INVALID'");
+    expect(update.analysisPlan).toBeUndefined();
+  });
+
+  it("T35-T_executor_missing_date_filters_rejected: throws when executor SQL omits required period dates", async () => {
+    // Executor generates SQL without date filters (e.g. LLM forgot WHERE date condition)
+    const badExecutor = {
+      run: async () => {
+        return {
+          status: "ok" as const,
+          sql: "SELECT SUM(price_vnd) AS val FROM orders", // missing purchase_date filter!
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val: 1_000_000 }],
+          maskedColumns: [],
+          attempts: 1,
+        };
+      },
+    };
+
+    const runtime = createRcaRuntime({ executor: badExecutor });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    const update = await runtime.entry(mockState, mockRt);
+    expect(update.status).toBe("error");
+    expect(update.answerText).toContain("thiếu bộ lọc ngày theo kỳ yêu cầu");
+  });
+
+  it("T35-T_mcp_caller_direct_baseline: executes exact baseline queries via direct McpToolCaller", async () => {
+    const executedSqls: string[] = [];
+    const mockMcpCaller = {
+      call: async (_tool: string, args: Record<string, unknown>) => {
+        const sql = String(args["sql"] ?? "");
+        executedSqls.push(sql);
+        const val = sql.includes("2026-08") ? 2_500_000_000 : 2_040_000_000;
+        return {
+          columns: ["val"],
+          rows: [{ val }],
+          rowCount: 1,
+          truncated: false,
+        };
+      },
+    };
+
+    const runtime = createRcaRuntime({ mcpCaller: mockMcpCaller });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    const update = await runtime.entry(mockState, mockRt);
+    expect(update.status).toBe("ok");
+    expect(update.analysisPlan).toBeDefined();
+    expect(update.analysisPlan?.isValidBaseline).toBe(true);
+    expect(executedSqls).toHaveLength(2);
+    expect(executedSqls[0]).toContain("purchase_date >= '2026-08-01'");
+    expect(executedSqls[1]).toContain("purchase_date >= '2026-09-01'");
+    expect(update.toolsCalled).toContain("run_query");
   });
 
   it("T35-T5b: createRcaRuntime halts immediately with false_premise when premise fails", async () => {

@@ -3,7 +3,9 @@ import {
   FormulaComponentsSchema,
   MetricTypeSchema,
   TimePeriodSchema,
+  dbToolError,
   type AnalysisPlan,
+  type DbToolError,
   type FormulaComponents,
   type MetricType,
   type PlanStep,
@@ -21,6 +23,13 @@ import type {
   ExecutorResult,
   ExecutorRunInput,
 } from "../queryExecutor/executor.js";
+import {
+  ValidatedQueryExecutor,
+  type ChatModelLike,
+  type McpToolCaller,
+} from "../queryExecutor/index.js";
+import { createChatModel } from "../models/factory.js";
+import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 
 export { RCA_UC_ID } from "../constants.js";
 
@@ -77,12 +86,67 @@ export interface IntentModelLike {
 export interface RcaRuntimeDeps {
   intentModel?: IntentModelLike;
   executor?: TextToSqlExecutorLike;
+  mcpCaller?: McpToolCaller;
+  sqlModel?: ChatModelLike;
   fetchBaseline?: (
     metricName: string,
     metricType: MetricType,
     period: TimePeriod,
     principal: ExecutorPrincipal,
   ) => Promise<number>;
+}
+
+export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
+  if (!sql) return false;
+  const s = sql.toLowerCase();
+  const hasDateCol =
+    s.includes("purchase_date") ||
+    s.includes("order_date") ||
+    s.includes("created_at") ||
+    s.includes("date");
+  const hasStart = s.includes(period.start) || s.includes(period.start.slice(0, 7));
+  const hasEnd = s.includes(period.end) || s.includes(period.end.slice(0, 7));
+  return hasDateCol && (hasStart || hasEnd);
+}
+
+function asMcpFailure(tool: string, text: string): DbToolError {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "code" in parsed &&
+      typeof (parsed as { code: unknown }).code === "string" &&
+      "message" in parsed &&
+      typeof (parsed as { message: unknown }).message === "string"
+    ) {
+      return parsed as DbToolError;
+    }
+  } catch {
+    // normalized below
+  }
+  return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${text.slice(0, 200)}`);
+}
+
+export function createRuntimeMcpCaller(config: TracerRunConfig): McpToolCaller {
+  return {
+    call: async (tool, args) => {
+      const toolArgs = { ...args };
+      delete toolArgs.runId;
+      delete toolArgs.userId;
+      delete toolArgs.roleScope;
+      const result = await callMcpTool(config, tool, toolArgs);
+      if (result.isError) throw asMcpFailure(tool, result.text);
+      try {
+        return JSON.parse(result.text) as unknown;
+      } catch {
+        throw dbToolError(
+          "INTERNAL_ERROR",
+          `MCP tool ${tool} returned invalid JSON`,
+        );
+      }
+    },
+  };
 }
 
 function parseMonth(monthStr: string, yearStr?: string): { start: string; end: string } {
@@ -164,6 +228,63 @@ export function parseRcaIntent(question: string): RcaIntent {
   }
 
   // 3. Time periods extraction
+  // Pattern 0: Reversed patterns where baseline comes first: "so với [tuần/quý/tháng] X ... [tuần/quý/tháng] Y"
+  const revMonthMatch = /(?:so với|vs)\s*tháng\s*(\d{1,2})(?:\/(\d{4}))?.*?(?:thì|thấy|\,|\s)+.*?tháng\s*(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
+  if (revMonthMatch) {
+    const mBaseline = parseInt(revMonthMatch[1], 10);
+    const mCurrent = parseInt(revMonthMatch[3], 10);
+    if (mBaseline >= 1 && mBaseline <= 12 && mCurrent >= 1 && mCurrent <= 12) {
+      const yBaseline = revMonthMatch[2] ?? revMonthMatch[4] ?? "2026";
+      const yCurrent = revMonthMatch[4] ?? revMonthMatch[2] ?? "2026";
+      const baseline = parseMonth(revMonthMatch[1], yBaseline);
+      const current = parseMonth(revMonthMatch[3], yCurrent);
+      return {
+        metricName,
+        metricType,
+        direction,
+        isExplicitDirection,
+        currentPeriod: current,
+        baselinePeriod: baseline,
+        formulaComponents,
+        candidateTables: ["orders", "order_items", "customers", "channels", "categories", "products"],
+      };
+    }
+  }
+
+  const revQuarterMatch = /(?:so với|vs)\s*quý\s*(\d{1})\/(\d{4}).*?quý\s*(\d{1})\/(\d{4})/i.exec(q);
+  if (revQuarterMatch) {
+    const baseline = parseQuarter(revQuarterMatch[1], revQuarterMatch[2]);
+    const current = parseQuarter(revQuarterMatch[3], revQuarterMatch[4]);
+    return {
+      metricName,
+      metricType,
+      direction,
+      isExplicitDirection,
+      currentPeriod: current,
+      baselinePeriod: baseline,
+      formulaComponents,
+      candidateTables: ["orders", "order_items", "customers", "channels", "categories", "products"],
+    };
+  }
+
+  const revWeekMatch = /(?:so với|vs)\s*tuần\s*(\d{1,2})(?:\/(\d{4}))?.*?tuần\s*(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
+  if (revWeekMatch) {
+    const y1 = revWeekMatch[2] ?? revWeekMatch[4] ?? "2026";
+    const y2 = revWeekMatch[4] ?? revWeekMatch[2] ?? "2026";
+    const baseline = parseWeek(revWeekMatch[1], y1);
+    const current = parseWeek(revWeekMatch[3], y2);
+    return {
+      metricName,
+      metricType,
+      direction,
+      isExplicitDirection,
+      currentPeriod: current,
+      baselinePeriod: baseline,
+      formulaComponents,
+      candidateTables: ["orders", "order_items", "customers", "channels", "categories", "products"],
+    };
+  }
+
   // Pattern A: Week matching: "tuần WW/YYYY ... so với [tuần] WW/YYYY"
   const weekMatch = /tuần\s*(\d{1,2})(?:\/(\d{4}))?.*?(?:so với|vs).*?(?:tuần\s*)?(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
   if (weekMatch) {
@@ -323,6 +444,63 @@ export async function validateBaseline(
     baselineVal = await deps.fetchBaseline(intent.metricName, intent.metricType, intent.baselinePeriod, principal);
     currentVal = await deps.fetchBaseline(intent.metricName, intent.metricType, intent.currentPeriod, principal);
     queriesExecuted = 2;
+  } else if (deps.mcpCaller) {
+    const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
+    const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
+
+    const baseRaw = (await deps.mcpCaller.call("run_query", { sql: baseSql, maxRows: 1 })) as {
+      rows?: Record<string, unknown>[];
+    };
+    queriesExecuted += 1;
+    actualToolsCalled.push("run_query");
+    if (!baseRaw.rows || baseRaw.rows.length === 0) {
+      return {
+        baselineVal: 0,
+        currentVal: 0,
+        absDelta: 0,
+        pctDelta: 0,
+        isValidBaseline: false,
+        isSignificant: false,
+        message: `Không tìm thấy dữ liệu cho ${intent.metricName} trong kỳ cơ sở (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}).`,
+        queriesExecuted,
+        lastSql: baseSql,
+        tablesUsed,
+        actualToolsCalled,
+        resolvedDirection: intent.direction,
+      };
+    }
+    baselineVal = Number(baseRaw.rows[0]["val"] ?? 0);
+    if (isNaN(baselineVal)) {
+      throw new Error(`Giá trị trả về của kỳ cơ sở không phải là số hợp lệ: ${String(baseRaw.rows[0]["val"])}`);
+    }
+
+    const currRaw = (await deps.mcpCaller.call("run_query", { sql: currSql, maxRows: 1 })) as {
+      rows?: Record<string, unknown>[];
+    };
+    queriesExecuted += 1;
+    actualToolsCalled.push("run_query");
+    if (!currRaw.rows || currRaw.rows.length === 0) {
+      return {
+        baselineVal,
+        currentVal: 0,
+        absDelta: 0,
+        pctDelta: 0,
+        isValidBaseline: false,
+        isSignificant: false,
+        message: `Không tìm thấy dữ liệu cho ${intent.metricName} trong kỳ phân tích (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}).`,
+        queriesExecuted,
+        lastSql: currSql,
+        tablesUsed,
+        actualToolsCalled,
+        resolvedDirection: intent.direction,
+      };
+    }
+    currentVal = Number(currRaw.rows[0]["val"] ?? 0);
+    if (isNaN(currentVal)) {
+      throw new Error(`Giá trị trả về của kỳ phân tích không phải là số hợp lệ: ${String(currRaw.rows[0]["val"])}`);
+    }
+
+    lastSql = currSql;
   } else if (deps.executor) {
     const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
     const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
@@ -334,8 +512,45 @@ export async function validateBaseline(
     });
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
-    if (baseRes.status === "ok" && baseRes.rows.length > 0) {
-      baselineVal = Number(baseRes.rows[0]["val"] ?? 0);
+
+    if (baseRes.status !== "ok") {
+      if (baseRes.status === "no_data") {
+        return {
+          baselineVal: 0,
+          currentVal: 0,
+          absDelta: 0,
+          pctDelta: 0,
+          isValidBaseline: false,
+          isSignificant: false,
+          message: `Không tìm thấy dữ liệu cho ${intent.metricName} trong kỳ cơ sở (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}).`,
+          queriesExecuted,
+          lastSql: baseRes.sql,
+          tablesUsed,
+          actualToolsCalled,
+          resolvedDirection: intent.direction,
+        };
+      }
+      const errMsg =
+        baseRes.status === "error" || baseRes.status === "restricted"
+          ? (baseRes.error?.message ?? `Truy vấn kỳ cơ sở thất bại (${baseRes.status})`)
+          : baseRes.status === "needs_clarification"
+            ? `Cần làm rõ câu hỏi: ${baseRes.reason}`
+            : `Không thể tính toán kỳ cơ sở (${baseRes.status})`;
+      throw new Error(`Lỗi tính toán baseline: ${errMsg}`);
+    }
+
+    if (!baseRes.rows || baseRes.rows.length === 0 || baseRes.rows[0]["val"] === undefined || baseRes.rows[0]["val"] === null) {
+      throw new Error("Dữ liệu kỳ cơ sở không chứa giá trị số hợp lệ ('val')");
+    }
+    baselineVal = Number(baseRes.rows[0]["val"]);
+    if (isNaN(baselineVal)) {
+      throw new Error(`Giá trị kỳ cơ sở không phải là số hợp lệ: ${String(baseRes.rows[0]["val"])}`);
+    }
+
+    if (baseRes.sql && !verifySqlDateFilter(baseRes.sql, intent.baselinePeriod)) {
+      throw new Error(
+        `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}): ${baseRes.sql}`,
+      );
     }
 
     const currRes = await deps.executor.run({
@@ -345,8 +560,45 @@ export async function validateBaseline(
     });
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
-    if (currRes.status === "ok" && currRes.rows.length > 0) {
-      currentVal = Number(currRes.rows[0]["val"] ?? 0);
+
+    if (currRes.status !== "ok") {
+      if (currRes.status === "no_data") {
+        return {
+          baselineVal,
+          currentVal: 0,
+          absDelta: 0,
+          pctDelta: 0,
+          isValidBaseline: false,
+          isSignificant: false,
+          message: `Không tìm thấy dữ liệu cho ${intent.metricName} trong kỳ phân tích (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}).`,
+          queriesExecuted,
+          lastSql: currRes.sql || baseRes.sql,
+          tablesUsed,
+          actualToolsCalled,
+          resolvedDirection: intent.direction,
+        };
+      }
+      const errMsg =
+        currRes.status === "error" || currRes.status === "restricted"
+          ? (currRes.error?.message ?? `Truy vấn kỳ phân tích thất bại (${currRes.status})`)
+          : currRes.status === "needs_clarification"
+            ? `Cần làm rõ câu hỏi: ${currRes.reason}`
+            : `Không thể tính toán kỳ phân tích (${currRes.status})`;
+      throw new Error(`Lỗi tính toán current value: ${errMsg}`);
+    }
+
+    if (!currRes.rows || currRes.rows.length === 0 || currRes.rows[0]["val"] === undefined || currRes.rows[0]["val"] === null) {
+      throw new Error("Dữ liệu kỳ phân tích không chứa giá trị số hợp lệ ('val')");
+    }
+    currentVal = Number(currRes.rows[0]["val"]);
+    if (isNaN(currentVal)) {
+      throw new Error(`Giá trị kỳ phân tích không phải là số hợp lệ: ${String(currRes.rows[0]["val"])}`);
+    }
+
+    if (currRes.sql && !verifySqlDateFilter(currRes.sql, intent.currentPeriod)) {
+      throw new Error(
+        `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}): ${currRes.sql}`,
+      );
     }
 
     lastSql = currRes.sql || baseRes.sql || null;
@@ -367,8 +619,8 @@ export async function validateBaseline(
     queriesExecuted = 2;
   } else {
     throw new Error(
-      "RCA validateBaseline requires either fetchBaseline or executor dependency. " +
-      "Inject deps via createRcaRuntime({executor: ...}) or createRcaRuntime({fetchBaseline: ...}).",
+      "RCA validateBaseline requires either fetchBaseline, executor, or mcpCaller dependency. " +
+      "Inject deps via createRcaRuntime({executor: ...}) or provide valid MCP transport in runtime config.",
     );
   }
 
@@ -577,14 +829,25 @@ export function createPlan(
   return AnalysisPlanSchema.parse(planPayload);
 }
 
-function readRunIdentity(rt: RootRuntime): ExecutorPrincipal {
+function readRunContext(rt: RootRuntime): {
+  identity: ExecutorPrincipal;
+  transport: TracerRunConfig | null;
+} {
   const cfg = (rt.config.configurable ?? {}) as Record<string, unknown>;
   const pick = (k: string): string => (typeof cfg[k] === "string" ? (cfg[k] as string) : "");
-  return {
-    runId: pick("runId") || "run_rca_default",
-    userId: pick("userId") || "user_default",
-    roleScope: pick("roleScope") || "sales_south",
-  };
+  const runId = pick("runId") || "run_rca_default";
+  const userId = pick("userId") || "user_default";
+  const roleScope = pick("roleScope") || "sales_south";
+  const identity: ExecutorPrincipal = { runId, userId, roleScope };
+
+  const mcpUrl = pick("mcpUrl");
+  const token = pick("token");
+  const transport: TracerRunConfig | null =
+    mcpUrl.length > 0 && token.length > 0
+      ? { mcpUrl, token, runId, userId, roleScope }
+      : null;
+
+  return { identity, transport };
 }
 
 /**
@@ -598,13 +861,36 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
-    const principal = readRunIdentity(rt);
+    const { identity, transport } = readRunContext(rt);
+    const principal = identity;
     const intent = parseRcaIntent(state.question);
+
+    let effectiveDeps = deps;
+    if (!deps.executor && !deps.mcpCaller && !deps.fetchBaseline && transport) {
+      const mcpCaller = createRuntimeMcpCaller(transport);
+      const executor = new ValidatedQueryExecutor({
+        model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
+        mcp: mcpCaller,
+        emitSpan: (event) =>
+          rt.emit({
+            node: event.node,
+            type: event.type,
+            durationMs: event.durationMs ?? 0,
+            payload: event.payload,
+            attempt: event.attempt,
+          }),
+      });
+      effectiveDeps = {
+        ...deps,
+        mcpCaller,
+        executor,
+      };
+    }
 
     // 1. validate_baseline
     let baseline: BaselineCheckResult;
     try {
-      baseline = await validateBaseline(state.question, intent, deps, principal);
+      baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
     } catch (err) {
       return {
         status: "error",
