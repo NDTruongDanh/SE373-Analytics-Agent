@@ -5,6 +5,9 @@ Initial setup for main branch.
 **Start here:** [`docs/architecture.md`](docs/architecture.md) — harness
 architecture, package boundaries, shared contracts, and where each UC's code goes.
 
+For a step-by-step local startup guide, including Docker, MCP, API, web, and
+troubleshooting, see [`docs/local-setup.md`](docs/local-setup.md).
+
 ## Operator setup (harness)
 
 Prerequisites: Node `>= 24`, `pnpm >= 10` (repo pins `pnpm@11.25.0`;
