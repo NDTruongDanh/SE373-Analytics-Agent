@@ -114,4 +114,20 @@ describe("UC-02 CitationValidator", () => {
     expect(twice?.split("\n").filter((line) => line.startsWith("-- @citations:")).length).toBe(1);
     expect(twice).toMatch(/metric:aov/);
   });
+
+  it("keeps citation_missing_metric unrepaired when no metric:* was retrieved", () => {
+    const input = {
+      citations: ["column:orders.status"],
+      sql: "SELECT 1",
+      requestedMetrics: ["doanh thu thuần"],
+      retrievedChunkIds: ["column:orders.status"],
+      catalogIds: ["metric:net_revenue", "column:orders.status"],
+    };
+    const checked = validateCitations(input);
+    expect(checked.ok).toBe(false);
+    if (!checked.ok) expect(checked.issue.code).toBe("citation_missing_metric");
+    const repaired = repairCitations(input, 2);
+    expect(repaired.ok).toBe(false);
+    if (!repaired.ok) expect(repaired.issue.code).toBe("citation_missing_metric");
+  });
 });

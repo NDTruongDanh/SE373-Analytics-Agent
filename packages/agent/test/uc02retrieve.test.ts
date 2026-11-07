@@ -219,4 +219,48 @@ describe("UC-02 unknown-term gate", () => {
     expect(out.answerText).toMatch(/metric:active_customers/);
     expect(out.answerText).toMatch(/Citations:/);
   });
+
+  it("fails closed when MCP transport is missing but metrics need grounding", async () => {
+    const retrieve = createRetrieveSemantic();
+    const out = await retrieve(
+      stateWith({ requestedMetrics: ["doanh thu thuần"] }, "doanh số ròng tháng 8?"),
+      fakeRuntime(),
+    );
+    expect(out.status).toBe("error");
+    expect(out.answerText).toMatch(/grounding unavailable/i);
+  });
+
+  it("passes basic queries through when transport is missing and no metrics", async () => {
+    const retrieve = createRetrieveSemantic();
+    const out = await retrieve(stateWith({ requestedMetrics: [] }, "q"), fakeRuntime());
+    expect(out).toEqual({});
+  });
+
+  it("fails closed on empty retrieval for a metric question (0 SQL)", async () => {
+    const retrieve = createRetrieveSemantic({ search: async () => [] });
+    const out = await retrieve(
+      stateWith({ requestedMetrics: ["NPS"] }, "Chỉ số NPS là bao nhiêu?"),
+      fakeRuntime(),
+    );
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toMatch(/NPS/);
+  });
+
+  it("grounds Vietnamese diacritics against ASCII retrieval text via overlap", () => {
+    // Multi-term query: diacritic needle must overlap ASCII haystack on >=2 tokens.
+    const chunks: GroundingChunk[] = [
+      {
+        chunkId: "metric:net_revenue",
+        docType: "metric",
+        aliasMatched: true,
+        denseScore: 0.9,
+        metricName: "net_revenue",
+        content: "Metric net_revenue (Doanh thu thuan) is total merchandise revenue in VND",
+      },
+    ];
+    const all = ["doanh thu thuần", "NPS"];
+    // "doanh thu thuần" shares doanh + thu with the ASCII haystack.
+    expect(isMetricGrounded("doanh thu thuần", chunks, 0.6, all)).toBe(true);
+    expect(isMetricGrounded("NPS", chunks, 0.6, all)).toBe(false);
+  });
 });

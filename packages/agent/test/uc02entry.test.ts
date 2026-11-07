@@ -187,4 +187,78 @@ describe("UC-02 text-to-SQL entry", () => {
     });
     expect(checked.ok).toBe(true);
   });
+
+  it("fails closed to cannot_answer when metrics present but no chunks retrieved", async () => {
+    let executorCalls = 0;
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async () => {
+          executorCalls += 1;
+          throw new Error("executor must not run without grounding");
+        },
+      },
+    });
+    const state = stateWith({
+      question: "doanh số ròng tháng 8?",
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: ["doanh số ròng"],
+        schemaEntities: ["orders"],
+        queryMode: "standard_query",
+      },
+      semanticChunks: [],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toMatch(/doanh số ròng/);
+    expect(executorCalls).toBe(0);
+  });
+
+  it("fails closed to cannot_answer on column-only retrieval for a metric query", async () => {
+    let executorCalls = 0;
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async () => {
+          executorCalls += 1;
+          return {
+            status: "ok",
+            sql: "SELECT SUM(oi.price_vnd) AS net_revenue_vnd FROM public.order_items oi",
+            tablesUsed: ["order_items"],
+            columns: ["net_revenue_vnd"],
+            rows: [{ net_revenue_vnd: 100 }],
+            maskedColumns: [],
+            attempts: 1,
+          };
+        },
+      },
+    });
+    const state = stateWith({
+      question: "doanh số ròng tháng 8?",
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: ["doanh số ròng"],
+        schemaEntities: ["orders", "order_items"],
+        queryMode: "standard_query",
+      },
+      semanticChunks: [
+        {
+          chunkId: "column:orders.status",
+          text: "orders status column",
+          aliasMatched: true,
+          denseScore: 0.9,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    // Executor runs (column-grounded) but K7 fails closed: no metric:* citation.
+    expect(executorCalls).toBe(1);
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toMatch(/Citation check failed/);
+  });
 });

@@ -5,9 +5,9 @@
 //
 // Reports the three UC-02 acceptance gates:
 // - Recall@5 >= 0.85 on definition/metric queries (3-way proxy: BM25 + alias RRF).
-// - EX lift (ON vs OFF) >= +15pp on metric-dependent questions, where ON is
-//   grounded SQL from the retrieved metric template and OFF is the naive
-//   no-semantic guess (documented proxy for the live EX run).
+// - Grounding lift (proxy, not live EX) ON vs OFF >= +15pp on metric-dependent
+//   questions, where ON is grounded SQL from the retrieved metric template and
+//   OFF is the naive no-semantic guess.
 // - 100% citation validity on delivered SQL answers.
 
 import { readFileSync } from "node:fs";
@@ -20,7 +20,6 @@ import {
   closestMetrics,
 } from "../../packages/agent/src/semantic/retrieveSemantic.js";
 import {
-  ensureCitationHeader,
   parseCitationHeader,
   repairCitations,
   validateCitations,
@@ -75,6 +74,9 @@ function loadCorpus(repoRoot: string): CorpusRow[] {
     const text = readFileSync(path.join(repoRoot, "semantic", file), "utf8");
     const parsed = chunkYaml(file, text, "metric");
     for (const entry of parsed) {
+      // Recall@5 denominator is the retrievable corpus: restricted_pii
+      // entries are excluded because the gateway never surfaces them to the
+      // agent (RBAC), so grading retrieval against them would be ungrounded.
       if (entry.sensitivity === "restricted_pii") continue;
       rows.push({
         chunk_id: entry.chunkId,
@@ -116,6 +118,9 @@ export interface Uc02Summary {
   recallTotal: number;
   recallHits: number;
   bm25OnlyRecall: number;
+  /** Grounding lift proxy (not live EX): ON = grounded retrieval hit rate, OFF = naive no-semantic baseline. */
+  groundingLiftPp: number;
+  /** @deprecated alias for groundingLiftPp (kept for result-reader compat). */
   exLiftPp: number;
   citationValidity: number;
   meanLatencyMs: number;
@@ -171,12 +176,14 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
 
   const recallAt5 = benchmark.length > 0 ? recallHits / benchmark.length : 1;
   const bm25Recall = benchmark.length > 0 ? bm25Hits / benchmark.length : 1;
-  // EX proxy: ON = grounded SQL from the retrieved metric template (correct
-  // when recall hits); OFF = naive no-semantic guess (correct ~0 on alias
-  // paraphrases requiring the dictionary). Lift in percentage points.
-  const exOn = recallAt5;
-  const exOff = 0;
-  const exLiftPp = (exOn - exOff) * 100;
+  // Grounding-lift proxy (NOT live EX): ON = grounded SQL from the retrieved
+  // metric template (correct when recall hits); OFF = naive no-semantic guess
+  // (correct ~0 on alias paraphrases requiring the dictionary). Reported as a
+  // lift in percentage points. A live run_query EX comparison would replace
+  // this proxy when the DB-backed EX harness is wired for UC-02.
+  const groundingOn = recallAt5;
+  const groundingOff = 0;
+  const groundingLiftPp = (groundingOn - groundingOff) * 100;
 
   // Acceptance cases: gate + fast-path + citation validity (fixture-driven,
   // deterministic — no model, no gateway).
@@ -253,7 +260,6 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
       sqlTemplate.toLowerCase().includes(token.toLowerCase()) ||
       (item.expectJoinRule ? /with|pre-aggregate|join/i.test(sqlTemplate) : true),
     );
-    void containsOk;
     const retrievedIds = fused.slice(0, 5);
     let citations = retrievedIds.filter((id) => id.startsWith("metric:")).slice(0, 3);
     if (citations.length === 0) citations = retrievedIds.slice(0, 1);
@@ -272,9 +278,8 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
     citationChecked += 1;
     if (repaired.ok) citationPassed += 1;
     const headerOk = repaired.ok && repaired.sql !== null && parseCitationHeader(repaired.sql).length > 0;
-    void ensureCitationHeader;
     const pass =
-      repaired.ok && headerOk && joinOk && (item.expectedChunkId ? fused.includes(item.expectedChunkId) || citations.length > 0 : true);
+      repaired.ok && headerOk && joinOk && containsOk && (item.expectedChunkId ? fused.includes(item.expectedChunkId) || citations.length > 0 : true);
     cases.push({
       id: item.id,
       status: "ok",
@@ -296,7 +301,8 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
       recallTotal: benchmark.length,
       recallHits,
       bm25OnlyRecall: bm25Recall,
-      exLiftPp,
+      groundingLiftPp,
+      exLiftPp: groundingLiftPp,
       citationValidity: citationChecked > 0 ? citationPassed / citationChecked : 1,
       meanLatencyMs: benchmark.length > 0 ? latencyTotal / benchmark.length : 0,
     },
@@ -309,7 +315,7 @@ export function printUc02Report(results: Uc02Results): void {
     `eval uc02: ${passed}/${results.cases.length} pass ` +
       `(Recall@5 ${(results.summary.recallAt5 * 100).toFixed(1)}% on ${results.summary.recallTotal} queries, ` +
       `BM25-only ${(results.summary.bm25OnlyRecall * 100).toFixed(1)}%, ` +
-      `EX lift +${results.summary.exLiftPp.toFixed(1)}pp ON vs OFF, ` +
+      `grounding lift (proxy, not live EX) +${results.summary.groundingLiftPp.toFixed(1)}pp ON vs OFF, ` +
       `citation validity ${(results.summary.citationValidity * 100).toFixed(1)}%, ` +
       `mean retrieval latency ${results.summary.meanLatencyMs.toFixed(1)}ms)`,
   );

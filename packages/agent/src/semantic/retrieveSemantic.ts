@@ -264,7 +264,17 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
       chunks = await deps.search(state.question, topK);
     } else {
       const transport = readTransport(rt);
-      if (!transport) return {};
+      if (!transport) {
+        // Fail closed: metrics present (or a definition lookup) but no MCP
+        // transport means we cannot ground them — never skip the gate with {}.
+        // Basic UC-01 queries (no metrics, no definition) still pass through.
+        if (metrics.length === 0 && !isDefinition) return {};
+        return {
+          status: "error",
+          answerText:
+            "Semantic grounding unavailable (MCP transport identity is incomplete); cannot verify requested metrics without speculating.",
+        };
+      }
       const raw = await callMcpTool(transport, "search_semantic_layer", {
         query: state.question,
         topK,

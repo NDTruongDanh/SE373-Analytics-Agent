@@ -26,7 +26,7 @@ import {
 import { checkUnknownTerms, buildCannotAnswer } from "../semantic/retrieveSemantic.js";
 import {
   deriveCitations,
-  ensureCitationHeader,
+  repairCitations,
   validateCitations,
 } from "../validators/citationValidator.js";
 import { registerUC } from "./registry.js";
@@ -205,7 +205,18 @@ function updateFromExecutor(result: ExecutorResult, state: AgentState): AgentUpd
   ) => AgentUpdate;
   const update = handler(result);
   if ((result.status === "ok" || result.status === "no_data") && typeof update.sql === "string") {
-    return { ...update, sql: withCitationHeader(state, update.sql) };
+    const headed = withCitationHeader(state, update.sql);
+    if (headed === null) {
+      // Persistent K7 failure (e.g. citation_missing_metric): fail closed
+      // rather than shipping an unverified header.
+      return {
+        status: "cannot_answer",
+        sql: result.sql,
+        answerText:
+          "Citation check failed (metric queries must cite at least one retrieved metric:* chunk); cannot answer without verified citations.",
+      };
+    }
+    return { ...update, sql: headed };
   }
   return update;
 }
@@ -266,7 +277,10 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
 function handleUnknownTerm(state: AgentState): AgentUpdate | null {
   const metrics = state.intent.requestedMetrics;
   const chunks = state.semanticChunks;
-  if (metrics.length === 0 || chunks.length === 0) return null;
+  if (metrics.length === 0) return null;
+  // Fail closed: metrics present but no retrieved chunks means nothing is
+  // grounded — never let the executor run ungrounded.
+  if (chunks.length === 0) return buildCannotAnswer(metrics, []);
   const { ungrounded } = checkUnknownTerms(metrics, chunks);
   if (ungrounded.length === 0) return null;
   return buildCannotAnswer(ungrounded, chunks);
@@ -275,8 +289,15 @@ function handleUnknownTerm(state: AgentState): AgentUpdate | null {
 /**
  * K7 citation header (UC-02): derive citations from the retrieved turn
  * context and prepend `-- @citations: ...` to executor SQL. Never changes
- * status — the unknown-term gate owns cannot_answer; this seam only
- * guarantees dual (JSON + SQL header) citation formatting.
+ * status on success — the unknown-term gate owns cannot_answer; this seam
+ * only guarantees dual (JSON + SQL header) citation formatting. Returns
+ * null on persistent K7 failure so the caller can fail closed to
+ * cannot_answer instead of shipping an unverified header.
+ *
+ * No fake catalog: the runtime turn has only retrieved IDs, so catalog
+ * membership is enforced in eval/grader (full catalog) and validator unit
+ * tests — here we enforce retrieved-this-turn + metric:* coverage, with a
+ * <= 2 repair loop before failing.
  */
 function withCitationHeader(state: AgentState, sql: string | null): string | null {
   if (sql === null || sql === undefined) return sql;
@@ -284,17 +305,19 @@ function withCitationHeader(state: AgentState, sql: string | null): string | nul
   if (retrievedIds.length === 0) return sql;
   const citations = deriveCitations(retrievedIds);
   if (citations.length === 0) return sql;
-  const checked = validateCitations({
+  const input = {
     citations,
     sql,
     requestedMetrics: state.intent.requestedMetrics,
     retrievedChunkIds: retrievedIds,
-    catalogIds: retrievedIds,
-  });
+  };
+  const checked = validateCitations(input);
   if (checked.ok) return checked.sql;
-  // Relaxed fallback (column-grounded metric with no metric:* retrieved):
-  // still ship dual citations rather than blocking the answer.
-  return ensureCitationHeader(sql, citations);
+  const repaired = repairCitations(input, 2);
+  if (repaired.ok) return repaired.sql;
+  // Persistent failure (e.g. citation_missing_metric for column-only
+  // retrieval on a metric query): signal the caller to fail closed.
+  return null;
 }
 
 /** MCP tool names the executor reports via span payloads. */
