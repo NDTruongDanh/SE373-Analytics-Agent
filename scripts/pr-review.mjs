@@ -9,8 +9,8 @@
 //
 // Usage:
 //   node scripts/pr-review.mjs [--dry-run] [--base origin/main]
-//     [--max-diff-chars 90000] [--model muse-spark-1.3-contributor]
-//     [--effort xhigh] [--pr 123]
+//     [--max-diff-chars 90000] [--max-output-tokens 16000]
+//     [--model muse-spark-1.3-contributor] [--effort xhigh] [--pr 123]
 //
 // Advisory only: missing key, fork PRs, or API failures exit 0 with a skip
 // notice so this never blocks the `gate` branch-protection context.
@@ -46,6 +46,7 @@ function parseArgs(argv) {
     dryRun: false,
     base: process.env.PR_REVIEW_BASE || "origin/main",
     maxDiffChars: Number(process.env.PR_REVIEW_MAX_DIFF_CHARS || "90000"),
+    maxOutputTokens: Number(process.env.PR_REVIEW_MAX_OUTPUT_TOKENS || "16000"),
     model: process.env.PR_REVIEW_MODEL || DEFAULT_MODEL,
     effort: process.env.PR_REVIEW_EFFORT || DEFAULT_EFFORT,
     pr: process.env.PR_NUMBER || "",
@@ -56,6 +57,8 @@ function parseArgs(argv) {
     else if (a === "--base") out.base = argv[(i += 1)] || out.base;
     else if (a === "--max-diff-chars")
       out.maxDiffChars = Number(argv[(i += 1)] || out.maxDiffChars);
+    else if (a === "--max-output-tokens")
+      out.maxOutputTokens = Number(argv[(i += 1)] || out.maxOutputTokens);
     else if (a === "--model") out.model = argv[(i += 1)] || out.model;
     else if (a === "--effort") out.effort = argv[(i += 1)] || out.effort;
     else if (a === "--pr") out.pr = argv[(i += 1)] || out.pr;
@@ -150,10 +153,44 @@ function buildInstructions() {
   ].join("\n");
 }
 
+function unwrapResponse(data) {
+  if (!data || typeof data !== "object") return data;
+  // Some gateways nest the Responses payload one level deep.
+  if (data.response && typeof data.response === "object") return data.response;
+  if (data.data && typeof data.data === "object" && !Array.isArray(data.data))
+    return data.data;
+  return data;
+}
+
+function describeResponse(data) {
+  // Small, PII-free shape summary for logs (status, item types, usage only).
+  try {
+    const r = unwrapResponse(data);
+    const output = Array.isArray(r?.output) ? r.output : [];
+    const types = output.map((it) => it?.type).filter(Boolean);
+    const usage = r?.usage;
+    const usageStr =
+      usage && typeof usage === "object"
+        ? ` input=${usage.input_tokens ?? usage.prompt_tokens ?? "?"} output=${usage.output_tokens ?? usage.completion_tokens ?? "?"} reasoning=${usage.output_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens ?? "?"}`
+        : "";
+    const reason =
+      r?.incomplete_details?.reason || r?.incomplete_reason || "";
+    return `status=${r?.status || "?"} outputItems=${output.length} types=[${types.join(",")}]${reason ? ` incompleteReason=${reason}` : ""}${usageStr}`;
+  } catch {
+    return "status=? (undescribable)";
+  }
+}
+
 function extractResponseText(data) {
-  if (!data || typeof data !== "object") return "";
-  if (typeof data.output_text === "string" && data.output_text.trim())
-    return data.output_text;
+  const r = unwrapResponse(data);
+  if (!r || typeof r !== "object") return "";
+  if (typeof r.output_text === "string" && r.output_text.trim())
+    return r.output_text;
+  if (
+    Array.isArray(r.output_text) &&
+    r.output_text.some((s) => typeof s === "string" && s.trim())
+  )
+    return r.output_text.filter((s) => typeof s === "string").join("\n\n");
   const out = [];
   const walk = (node) => {
     if (!node || typeof node !== "object") return;
@@ -174,12 +211,53 @@ function extractResponseText(data) {
     }
     for (const v of Object.values(node)) walk(v);
   };
-  walk(data.output ?? data.content ?? data.outputs ?? []);
+  walk(r.output ?? r.content ?? r.outputs ?? []);
   if (out.length > 0) return out.join("\n\n");
-  const choice = data.choices?.[0]?.message?.content;
+  const choice = r.choices?.[0]?.message?.content;
   if (typeof choice === "string" && choice.trim()) return choice;
-  if (typeof data.message?.content === "string") return data.message.content;
+  if (typeof r.message?.content === "string") return r.message.content;
   return "";
+}
+
+function isTokenBudgetExhausted(data) {
+  const r = unwrapResponse(data);
+  if (!r || typeof r !== "object") return false;
+  const reason = r.incomplete_details?.reason || r.incomplete_reason || "";
+  return (
+    r.status === "incomplete" &&
+    String(reason).toLowerCase().includes("max_output_tokens")
+  );
+}
+
+async function requestReview({ baseUrl, apiKey, sessionId, model, effort, instructions, input, maxOutputTokens }) {
+  const res = await fetch(`${baseUrl}/responses`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "x-opencode-session": sessionId,
+    },
+    body: JSON.stringify({
+      model,
+      instructions,
+      input,
+      reasoning: { effort },
+      max_output_tokens: maxOutputTokens,
+      store: false,
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
+  }
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`non-JSON response (${text.slice(0, 200)})`);
+  }
+  console.error(`[pr-review] ${describeResponse(data)} (budget=${maxOutputTokens})`);
+  return data;
 }
 
 async function main() {
@@ -342,28 +420,37 @@ async function main() {
   );
   let review = "";
   try {
-    const res = await fetch(`${baseUrl}/responses`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "x-opencode-session": sessionId,
-      },
-      body: JSON.stringify({
+    // xhigh reasoning on a ~130k-char input can burn the whole output budget
+    // on reasoning tokens, returning status=incomplete with no message item.
+    // Retry once with a doubled budget (capped) before giving up.
+    let budget = opts.maxOutputTokens;
+    let data = await requestReview({
+      baseUrl,
+      apiKey,
+      sessionId,
+      model: opts.model,
+      effort: opts.effort,
+      instructions: buildInstructions(),
+      input,
+      maxOutputTokens: budget,
+    });
+    if (isTokenBudgetExhausted(data) && budget < 64000) {
+      budget = Math.min(budget * 2, 64000);
+      console.error(`[pr-review] output budget exhausted, retrying once with ${budget}`);
+      data = await requestReview({
+        baseUrl,
+        apiKey,
+        sessionId,
         model: opts.model,
+        effort: opts.effort,
         instructions: buildInstructions(),
         input,
-        reasoning: { effort: opts.effort },
-        max_output_tokens: 8000,
-        store: false,
-      }),
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
+        maxOutputTokens: budget,
+      });
     }
-    review = extractResponseText(JSON.parse(text));
-    if (!review.trim()) throw new Error("empty model response");
+    review = extractResponseText(data);
+    if (!review.trim())
+      throw new Error(`empty model response (${describeResponse(data)})`);
   } catch (err) {
     const body = [
       "<!-- opencode-pr-review -->",
