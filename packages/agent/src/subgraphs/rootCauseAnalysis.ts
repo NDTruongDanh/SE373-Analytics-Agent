@@ -174,19 +174,7 @@ export function getMetricTargetTable(metricName?: string): string {
 }
 
 export function getDefaultAllowedQualifiers(targetTable: string = "orders"): Set<string> {
-  const tbl = targetTable.toLowerCase();
-  const s = new Set<string>([tbl]);
-  if (tbl === "orders") {
-    s.add("o");
-    s.add("ord");
-  } else if (tbl === "reviews") {
-    s.add("r");
-    s.add("rev");
-  } else if (tbl === "order_items") {
-    s.add("oi");
-    s.add("items");
-  }
-  return s;
+  return new Set<string>([targetTable.toLowerCase()]);
 }
 
 export function getMetricDateColumn(metricName?: string): string {
@@ -596,13 +584,6 @@ async function isSelectStmtBounded(
     for (const b of targetBindings) {
       if (b.relname) allowedQualifiers.add(b.relname);
       if (b.alias) allowedQualifiers.add(b.alias);
-    }
-    if (targetTable.toLowerCase() === "orders") {
-      allowedQualifiers.add("o");
-      allowedQualifiers.add("ord");
-    } else if (targetTable.toLowerCase() === "reviews") {
-      allowedQualifiers.add("r");
-      allowedQualifiers.add("rev");
     }
   }
 

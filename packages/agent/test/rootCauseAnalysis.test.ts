@@ -332,6 +332,14 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
     expect(callCount).toBe(1); // Call was blocked!
 
+    // 3d. run_query where alias o is assigned to joined table, not orders -> throws and blocks execution
+    await expect(
+      guardedCaller.call("run_query", {
+        sql: "SELECT SUM(ords.price_vnd) FROM orders ords JOIN customers o USING (customer_id) WHERE o.purchase_date >= '2026-08-01' AND o.purchase_date <= '2026-08-31'",
+      }),
+    ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
+    expect(callCount).toBe(1); // Call was blocked!
+
     // 4. run_query with valid date bounds -> passes through to baseCaller
     await guardedCaller.call("run_query", {
       sql: "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31'",
@@ -409,7 +417,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     // Valid: BETWEEN syntax
     expect(
       await verifySqlDateFilter(
-        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date BETWEEN '2026-08-01' AND '2026-08-31'",
+        "SELECT SUM(price_vnd) FROM orders o WHERE o.purchase_date BETWEEN '2026-08-01' AND '2026-08-31'",
         period,
       ),
     ).toBe(true);
@@ -417,7 +425,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     // Valid: date cast (::date)
     expect(
       await verifySqlDateFilter(
-        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01'::date AND o.purchase_date <= '2026-08-31'::date",
+        "SELECT SUM(price_vnd) FROM orders o WHERE o.purchase_date >= '2026-08-01'::date AND o.purchase_date <= '2026-08-31'::date",
         period,
       ),
     ).toBe(true);
@@ -425,7 +433,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     // Invalid: OR between date bounds instead of AND (tautology / unbounded period)
     expect(
       await verifySqlDateFilter(
-        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01' OR o.purchase_date <= '2026-08-31'",
+        "SELECT SUM(price_vnd) FROM orders o WHERE o.purchase_date >= '2026-08-01' OR o.purchase_date <= '2026-08-31'",
         period,
       ),
     ).toBe(false);
@@ -481,7 +489,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     // Valid: nested OR in unrelated parentheses while date bounds are conjoined with AND
     expect(
       await verifySqlDateFilter(
-        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01' AND (o.status = 'delivered' OR o.status = 'shipped') AND o.purchase_date <= '2026-08-31'",
+        "SELECT SUM(price_vnd) FROM orders o WHERE o.purchase_date >= '2026-08-01' AND (o.status = 'delivered' OR o.status = 'shipped') AND o.purchase_date <= '2026-08-31'",
         period,
       ),
     ).toBe(true);
@@ -565,6 +573,38 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
         period,
       ),
     ).toBe(true);
+
+    // Invalid: alias o used in WHERE but orders was not aliased as o in FROM
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01' AND o.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: alias o is assigned to joined table (customers), not the orders fact table
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(ords.price_vnd) FROM orders ords JOIN customers o USING (customer_id) WHERE o.purchase_date >= '2026-08-01' AND o.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: alias o is assigned to joined customers table while orders has no alias
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(orders.price_vnd) FROM orders JOIN customers o USING (customer_id) WHERE o.purchase_date >= '2026-08-01' AND o.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: alias ord is assigned to joined sellers table, not orders
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(orders.price_vnd) FROM orders JOIN sellers ord USING (seller_id) WHERE ord.purchase_date >= '2026-08-01' AND ord.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
 
     // Valid: orders fact table date column explicitly qualified
     expect(
