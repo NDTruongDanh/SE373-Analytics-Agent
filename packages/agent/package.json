@@ -18,6 +18,10 @@
     "./queryExecutor": {
       "types": "./dist/queryExecutor/index.d.ts",
       "default": "./dist/queryExecutor/index.js"
+    },
+    "./alerts": {
+      "types": "./dist/alerts/index.d.ts",
+      "default": "./dist/alerts/index.js"
     }
   },
   "files": ["dist"],
