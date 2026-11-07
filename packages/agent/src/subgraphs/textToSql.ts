@@ -23,6 +23,12 @@ import {
   type RootRuntime,
   type UcEntryHandler,
 } from "../state.js";
+import { checkUnknownTerms, buildCannotAnswer } from "../semantic/retrieveSemantic.js";
+import {
+  deriveCitations,
+  ensureCitationHeader,
+  validateCitations,
+} from "../validators/citationValidator.js";
 import { registerUC } from "./registry.js";
 import { TEXT_TO_SQL_UC_ID } from "../constants.js";
 
@@ -193,11 +199,15 @@ const EXECUTOR_UPDATE_MAP: {
   }),
 };
 
-function updateFromExecutor(result: ExecutorResult): AgentUpdate {
+function updateFromExecutor(result: ExecutorResult, state: AgentState): AgentUpdate {
   const handler = EXECUTOR_UPDATE_MAP[result.status] as (
     r: ExecutorResult,
   ) => AgentUpdate;
-  return handler(result);
+  const update = handler(result);
+  if ((result.status === "ok" || result.status === "no_data") && typeof update.sql === "string") {
+    return { ...update, sql: withCitationHeader(state, update.sql) };
+  }
+  return update;
 }
 
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -234,6 +244,12 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
     if (chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score})`;
     return `${chunk.chunkId}`;
   });
+  const citations = chunks
+    .filter((chunk) => chunk.chunkId.startsWith("metric:"))
+    .map((chunk) => chunk.chunkId)
+    .slice(0, 5);
+  const citationLine =
+    citations.length > 0 ? `\nCitations: ${citations.join(", ")}.` : "";
   const prefix =
     metrics.length > 0 ? `Definitions for ${metrics.join(", ")}:\n` : "Definitions:\n";
   return {
@@ -242,31 +258,43 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
     tablesUsed: [],
     columns: [],
     resultPreview: [],
-    answerText: `${prefix}${lines.map((line) => `- ${line}`).join("\n")}`,
+    answerText: `${prefix}${lines.map((line) => `- ${line}`).join("\n")}${citationLine}`,
   };
 }
 
-/** Unknown-term short-circuit: requested metrics match no retrieved chunk; fail before any MCP. */
+/** Unknown-term short-circuit (two-tier gate): fail before any MCP when retrieval ran but grounds nothing. */
 function handleUnknownTerm(state: AgentState): AgentUpdate | null {
   const metrics = state.intent.requestedMetrics;
   const chunks = state.semanticChunks;
   if (metrics.length === 0 || chunks.length === 0) return null;
-  const haystacks = chunks.map((chunk) => `${chunk.chunkId} ${chunk.text ?? ""}`.toLowerCase());
-  const matched = metrics.some((metric) => {
-    const needle = metric.toLowerCase();
-    return haystacks.some((haystack) => haystack.includes(needle));
+  const { ungrounded } = checkUnknownTerms(metrics, chunks);
+  if (ungrounded.length === 0) return null;
+  return buildCannotAnswer(ungrounded, chunks);
+}
+
+/**
+ * K7 citation header (UC-02): derive citations from the retrieved turn
+ * context and prepend `-- @citations: ...` to executor SQL. Never changes
+ * status — the unknown-term gate owns cannot_answer; this seam only
+ * guarantees dual (JSON + SQL header) citation formatting.
+ */
+function withCitationHeader(state: AgentState, sql: string | null): string | null {
+  if (sql === null || sql === undefined) return sql;
+  const retrievedIds = state.semanticChunks.map((chunk) => chunk.chunkId);
+  if (retrievedIds.length === 0) return sql;
+  const citations = deriveCitations(retrievedIds);
+  if (citations.length === 0) return sql;
+  const checked = validateCitations({
+    citations,
+    sql,
+    requestedMetrics: state.intent.requestedMetrics,
+    retrievedChunkIds: retrievedIds,
+    catalogIds: retrievedIds,
   });
-  if (matched) return null;
-  const available = chunks
-    .slice(0, 5)
-    .map((chunk) => chunk.chunkId)
-    .join(", ");
-  return {
-    status: "cannot_answer",
-    answerText:
-      `None of the requested metrics (${metrics.join(", ")}) were found in the retrieved ` +
-      `definitions (available: ${available}); cannot answer without speculating.`,
-  };
+  if (checked.ok) return checked.sql;
+  // Relaxed fallback (column-grounded metric with no metric:* retrieved):
+  // still ship dual citations rather than blocking the answer.
+  return ensureCitationHeader(sql, citations);
 }
 
 /** MCP tool names the executor reports via span payloads. */
@@ -409,7 +437,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       budget,
       callbacks: rt.config.callbacks,
     });
-    const update = updateFromExecutor(result);
+    const update = updateFromExecutor(result, state);
     const isOkLike = result.status === "ok" || result.status === "no_data";
     const observedTools =
       collectedTools.length > 0

@@ -6,10 +6,14 @@ packages/contracts/ @NDTruongDanh @HungPham-VNU # TODO(UC-01 owner): replace wit
 packages/mcp-server/ @HungPham-VNU @NDTruongDanh
 packages/access-policy/ @HungPham-VNU @NDTruongDanh
 packages/agent/src/validators/ @NDTruongDanh
+packages/agent/src/semantic/ @NDTruongDanh
 packages/agent/src/subgraphs/uc03* @NDTruongDanh
 packages/agent/test/uc03* @NDTruongDanh
+packages/agent/test/uc02* @NDTruongDanh
 evals/uc03/ @NDTruongDanh
+evals/uc02/ @NDTruongDanh
 traces/uc03/ @NDTruongDanh
+traces/uc02/ @NDTruongDanh
 apps/web/src/charts.tsx @NDTruongDanh
 apps/web/src/chartView.ts @NDTruongDanh
 apps/web/test/uc03* @NDTruongDanh

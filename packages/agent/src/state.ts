@@ -42,6 +42,8 @@ const SemanticChunkSchema = z.object({
   chunkId: z.string().min(1),
   score: z.number().optional(),
   text: z.string().optional(),
+  aliasMatched: z.boolean().optional(),
+  denseScore: z.number().optional(),
 });
 
 const BudgetStateSchema = z
