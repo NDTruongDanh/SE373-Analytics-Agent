@@ -6,6 +6,6 @@ export default defineConfig({
   build: { outDir: "dist/site" },
   server: {
     host: "127.0.0.1",
-    proxy: { "/api": { target: "http://127.0.0.1:3001" } },
+    proxy: { "/api": { target: `http://127.0.0.1:${process.env["API_PORT"] ?? "3001"}` } },
   },
 });

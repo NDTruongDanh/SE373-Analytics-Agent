@@ -71,6 +71,38 @@ describe("chat interface", () => {
     expect(screen.getByText("Đã hoàn tất câu trả lời.")).toBeTruthy();
   });
 
+  it.each(["completed", "failed", "interrupt_waiting"])("releases an open stream on %s before the next action", async (terminal) => {
+    let close!: () => void;
+    let signal!: AbortSignal;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        close = () => controller.close();
+        const data = terminal === "interrupt_waiting"
+          ? { pendingClarification: { question: "Chọn vùng?", options: ["Nam", "Bắc"] } }
+          : { answerText: "Xong", message: "Failed" };
+        controller.enqueue(new TextEncoder().encode(`event: ${terminal}\ndata: ${JSON.stringify({ event: terminal, runId: "run-1", threadId: "chat:sales_south:thread-1", data })}\n\n`));
+      },
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) => {
+      signal = init!.signal as AbortSignal;
+      signal.addEventListener("abort", close);
+      return new Response(body, { headers: { "content-type": "text/event-stream" } });
+    }).mockResolvedValueOnce(sse("completed", { answerText: "Next" }));
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Câu hỏi"), { target: { value: "First?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+    await waitFor(() => expect(signal.aborted).toBe(true));
+    if (terminal === "interrupt_waiting") {
+      fireEvent.click(await screen.findByRole("button", { name: "Nam" }));
+    } else {
+      fireEvent.change(screen.getByLabelText("Câu hỏi"), { target: { value: "Next?" } });
+      fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+    }
+    expect(await screen.findByText("Next")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    if (terminal !== "interrupt_waiting") expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).threadId).toBe("chat:sales_south:thread-1");
+  });
+
   it("shows API failures without inventing results", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("error", { status: 503 }));
     render(<App />);

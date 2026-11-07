@@ -79,6 +79,13 @@ export async function readEventStream(
     }
     parser.push(decoder.decode());
     parser.finish();
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // Keep the original parsing or callback error.
+    }
+    throw error;
   } finally {
     reader.releaseLock();
   }

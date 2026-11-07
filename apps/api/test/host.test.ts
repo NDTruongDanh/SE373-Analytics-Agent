@@ -210,6 +210,44 @@ describe("buildApp /api/ask", () => {
     }
   });
 
+  it("starts a fresh run on a reused thread after cannot_answer", async () => {
+    let calls = 0;
+    const app = buildApp({
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      ucHandlers: { tracer: async (state, rt) => {
+        calls++;
+        expect(state.answerText).toBe("");
+        expect(state.tablesUsed).toEqual([]);
+        expect(state.budget.llmCalls).toBe(0);
+        expect(state.telemetry.promptTokens).toBe(0);
+        rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: "SELECT 1", tablesUsed: ["unauthorized_table"] } });
+        return { status: "cannot_answer", answerText: "Stopped", tablesUsed: ["stale_table"], budget: { llmCalls: 20 }, telemetry: { promptTokens: 42 } };
+      } },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    const ask = async (threadId?: string) => {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "q", persona: "sales_south", ...(threadId ? { threadId } : {}) }),
+      });
+      return parseSse(await response.text());
+    };
+    try {
+      const first = await ask();
+      const proposal = first.find((block) => block.event === "sql_generated");
+      expect(proposal?.data["data"]).toEqual({ statementType: "SELECT", tablesUsed: [] });
+      const threadId = first[0]!.data["threadId"] as string;
+      const second = await ask(threadId);
+      expect(calls).toBe(2);
+      expect(second[0]!.data["threadId"]).toBe(threadId);
+      expect(second.some((block) => block.event === "completed")).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("withholds sensitive SQL even after a successful query", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });

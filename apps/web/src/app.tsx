@@ -41,6 +41,10 @@ export function App() {
         runId = event.runId;
         threadId = event.threadId;
         terminal = ["completed", "failed", "interrupt_waiting"].includes(event.event);
+        if (terminal) {
+          current.abort();
+          if (controller.current === current) controller.current = null;
+        }
         dispatch({ type: "event", event });
         if (event.event === "completed") {
           const data = event.data && typeof event.data === "object" ? event.data as Record<string, unknown> : null;
@@ -51,6 +55,7 @@ export function App() {
       });
       if (!terminal) throw new Error("Kết nối đã đóng trước khi yêu cầu hoàn tất.");
     } catch (error) {
+      if (controller.current === current) controller.current = null;
       if (!current.signal.aborted) dispatch({ type: "error", message: error instanceof Error ? error.message : "Không thể kết nối máy chủ." });
     } finally {
       if (controller.current === current) controller.current = null;

@@ -28,6 +28,21 @@ describe("SSE stream", () => {
     await expect(readEventStream(new Response("no"), () => {})).rejects.toThrow();
   });
 
+  it.each(["malformed", "identity"])("cancels on %s errors without masking them", async (kind) => {
+    const original = new Error("identity mismatch");
+    const cancel = vi.fn().mockRejectedValue(new Error("cancel failed"));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(kind === "malformed" ? "event: completed\ndata: {\n\n" : frame("completed")));
+      },
+      cancel,
+    });
+    await expect(readEventStream(new Response(body, { headers: { "content-type": "text/event-stream" } }),
+      () => { throw original; })).rejects.toThrow(kind === "malformed" ? "Phản hồi từ máy chủ không hợp lệ." : original);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
+  });
+
   it("posts JSON and delivers the stream", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(frame("completed"), {
       headers: { "content-type": "text/event-stream" },

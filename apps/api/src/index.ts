@@ -20,8 +20,9 @@ import express from "express";
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, readSync } from "node:fs";
-import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
+import { Command, Overwrite, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
+  BUDGET_DEFAULTS,
   buildRootGraph,
   previewCountTotal,
   runTracerGraph,
@@ -279,10 +280,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
       if (event.node === "understand" && event.type === "node_done" && typeof payload["sql"] === "string" && !sent.has("sql_generated")) {
         const sql = payload["sql"];
         proposedSql = sql;
-        const tables = Array.isArray(payload["tablesUsed"]) ? payload["tablesUsed"].filter(
-          (table): table is string => typeof table === "string" && /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(table),
-        ) : [];
-        emitSseEvent(res, "sql_generated", { ...envelope, node: "understand", data: sqlPayload(sql, tables) });
+        emitSseEvent(res, "sql_generated", { ...envelope, node: "understand", data: sqlPayload(sql, []) });
         sent.add("sql_generated");
       }
       if (event.node === "describe" && event.type === "tool_call" && payload["tool"] === "list_tables" && !sent.has("schema_retrieved")) {
@@ -417,7 +415,15 @@ export function buildApp(options: BuildAppOptions): express.Express {
           })
         : undefined;
       const out = (await graph.invoke(
-        { question, ucId: "", runId, threadId },
+        {
+          question, ucId: "", runId, threadId,
+          // A new question reuses the thread, but not the previous run's outputs or budgets.
+          status: "no_data", answerText: "", sql: null, tablesUsed: [],
+          semanticChunks: [], resultPreview: [], columns: [], toolsCalled: [],
+          vizSpec: null, pendingClarification: null, analysisPlan: null, rootCauseAnswer: null,
+          budget: new Overwrite({ llmCalls: 0, tokensUsed: 0, maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls, maxTokens: BUDGET_DEFAULTS.maxTokens, deadlineMs: 0 }),
+          telemetry: new Overwrite({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }),
+        },
         {
           runId,
           callbacks: ls?.callbacks,
