@@ -444,63 +444,6 @@ export async function validateBaseline(
     baselineVal = await deps.fetchBaseline(intent.metricName, intent.metricType, intent.baselinePeriod, principal);
     currentVal = await deps.fetchBaseline(intent.metricName, intent.metricType, intent.currentPeriod, principal);
     queriesExecuted = 2;
-  } else if (deps.mcpCaller) {
-    const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
-    const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
-
-    const baseRaw = (await deps.mcpCaller.call("run_query", { sql: baseSql, maxRows: 1 })) as {
-      rows?: Record<string, unknown>[];
-    };
-    queriesExecuted += 1;
-    actualToolsCalled.push("run_query");
-    if (!baseRaw.rows || baseRaw.rows.length === 0) {
-      return {
-        baselineVal: 0,
-        currentVal: 0,
-        absDelta: 0,
-        pctDelta: 0,
-        isValidBaseline: false,
-        isSignificant: false,
-        message: `Không tìm thấy dữ liệu cho ${intent.metricName} trong kỳ cơ sở (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}).`,
-        queriesExecuted,
-        lastSql: baseSql,
-        tablesUsed,
-        actualToolsCalled,
-        resolvedDirection: intent.direction,
-      };
-    }
-    baselineVal = Number(baseRaw.rows[0]["val"] ?? 0);
-    if (isNaN(baselineVal)) {
-      throw new Error(`Giá trị trả về của kỳ cơ sở không phải là số hợp lệ: ${String(baseRaw.rows[0]["val"])}`);
-    }
-
-    const currRaw = (await deps.mcpCaller.call("run_query", { sql: currSql, maxRows: 1 })) as {
-      rows?: Record<string, unknown>[];
-    };
-    queriesExecuted += 1;
-    actualToolsCalled.push("run_query");
-    if (!currRaw.rows || currRaw.rows.length === 0) {
-      return {
-        baselineVal,
-        currentVal: 0,
-        absDelta: 0,
-        pctDelta: 0,
-        isValidBaseline: false,
-        isSignificant: false,
-        message: `Không tìm thấy dữ liệu cho ${intent.metricName} trong kỳ phân tích (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}).`,
-        queriesExecuted,
-        lastSql: currSql,
-        tablesUsed,
-        actualToolsCalled,
-        resolvedDirection: intent.direction,
-      };
-    }
-    currentVal = Number(currRaw.rows[0]["val"] ?? 0);
-    if (isNaN(currentVal)) {
-      throw new Error(`Giá trị trả về của kỳ phân tích không phải là số hợp lệ: ${String(currRaw.rows[0]["val"])}`);
-    }
-
-    lastSql = currSql;
   } else if (deps.executor) {
     const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
     const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
@@ -619,7 +562,7 @@ export async function validateBaseline(
     queriesExecuted = 2;
   } else {
     throw new Error(
-      "RCA validateBaseline requires either fetchBaseline, executor, or mcpCaller dependency. " +
+      "RCA validateBaseline requires either fetchBaseline or executor dependency. " +
       "Inject deps via createRcaRuntime({executor: ...}) or provide valid MCP transport in runtime config.",
     );
   }
@@ -866,25 +809,27 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     const intent = parseRcaIntent(state.question);
 
     let effectiveDeps = deps;
-    if (!deps.executor && !deps.mcpCaller && !deps.fetchBaseline && transport) {
-      const mcpCaller = createRuntimeMcpCaller(transport);
-      const executor = new ValidatedQueryExecutor({
-        model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
-        mcp: mcpCaller,
-        emitSpan: (event) =>
-          rt.emit({
-            node: event.node,
-            type: event.type,
-            durationMs: event.durationMs ?? 0,
-            payload: event.payload,
-            attempt: event.attempt,
-          }),
-      });
-      effectiveDeps = {
-        ...deps,
-        mcpCaller,
-        executor,
-      };
+    if (!deps.executor && !deps.fetchBaseline) {
+      const mcpCaller = deps.mcpCaller ?? (transport ? createRuntimeMcpCaller(transport) : undefined);
+      if (mcpCaller) {
+        const executor = new ValidatedQueryExecutor({
+          model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
+          mcp: mcpCaller,
+          emitSpan: (event) =>
+            rt.emit({
+              node: event.node,
+              type: event.type,
+              durationMs: event.durationMs ?? 0,
+              payload: event.payload,
+              attempt: event.attempt,
+            }),
+        });
+        effectiveDeps = {
+          ...deps,
+          mcpCaller,
+          executor,
+        };
+      }
     }
 
     // 1. validate_baseline

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { MemorySaver, StateGraph, START, END } from "@langchain/langgraph";
 import {
+  buildBaselineQuery,
   createPlan,
   createRcaRuntime,
   parseRcaIntent,
   validateBaseline,
   RCA_UC_ID,
 } from "../src/subgraphs/rootCauseAnalysis.js";
+import { createChatModel } from "../src/models/factory.js";
 import { buildRootGraph } from "../src/graph.js";
 import { getUcEntry, isKnownUc } from "../src/subgraphs/registry.js";
 import { pauseForApproval, resumeDecision, makeThreadId } from "../src/hitl.js";
@@ -453,25 +455,58 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(update.answerText).toContain("thiếu bộ lọc ngày theo kỳ yêu cầu");
   });
 
-  it("T35-T_mcp_caller_direct_baseline: executes exact baseline queries via direct McpToolCaller", async () => {
+  it("T35-T_validated_query_executor_integration: wires ValidatedQueryExecutor and executes queries with safety gate", async () => {
     const executedSqls: string[] = [];
     const mockMcpCaller = {
-      call: async (_tool: string, args: Record<string, unknown>) => {
-        const sql = String(args["sql"] ?? "");
-        executedSqls.push(sql);
-        const val = sql.includes("2026-08") ? 2_500_000_000 : 2_040_000_000;
-        return {
-          columns: ["val"],
-          rows: [{ val }],
-          rowCount: 1,
-          truncated: false,
-        };
+      call: async (tool: string, args: Record<string, unknown>) => {
+        if (tool === "describe_table") {
+          return {
+            table: args["table"],
+            columns: [
+              { name: "order_id", type: "text", nullable: false, sensitive: false },
+              { name: "price_vnd", type: "numeric", nullable: false, sensitive: false },
+              { name: "status", type: "text", nullable: false, sensitive: false },
+              { name: "purchase_date", type: "date", nullable: false, sensitive: false },
+            ],
+            rowCount: 1000,
+          };
+        }
+        if (tool === "explain_query") {
+          return { estimatedCost: 10, estimatedRows: 1 };
+        }
+        if (tool === "run_query") {
+          const sql = String(args["sql"] ?? "");
+          executedSqls.push(sql);
+          const val = sql.includes("2026-08") ? 2_500_000_000 : 2_040_000_000;
+          return {
+            columns: ["val"],
+            rows: [{ val }],
+            rowCount: 1,
+            truncated: false,
+            maskedColumns: [],
+            durationMs: 4,
+          };
+        }
+        return {};
       },
     };
 
-    const runtime = createRcaRuntime({ mcpCaller: mockMcpCaller });
+    const q = "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?";
+    const intent = parseRcaIntent(q);
+    const sqlResponses = [intent.baselinePeriod, intent.currentPeriod].map((period) =>
+      JSON.stringify({
+        sql: buildBaselineQuery(intent.metricName, intent.metricType, period),
+        tablesUsed: ["orders", "order_items"],
+      }),
+    );
+    const sqlModel = createChatModel("sql", { fake: { responses: sqlResponses } });
+
+    const runtime = createRcaRuntime({
+      mcpCaller: mockMcpCaller,
+      sqlModel: sqlModel as never,
+    });
     const mockState = {
-      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      question: q,
       ucId: RCA_UC_ID,
       toolsCalled: [],
     } as unknown as AgentState;
