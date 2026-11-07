@@ -374,6 +374,38 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       ),
     ).toBe(false);
 
+    // Invalid: date string in status condition instead of date column (user review case)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND status = '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: date string inside SQL comment
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders -- filter from 2026-08-01 to 2026-08-31\nWHERE status = 'delivered'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Valid: BETWEEN syntax
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date BETWEEN '2026-08-01' AND '2026-08-31'",
+        period,
+      ),
+    ).toBe(true);
+
+    // Valid: date cast (::date)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01'::date AND o.purchase_date <= '2026-08-31'::date",
+        period,
+      ),
+    ).toBe(true);
+
     // Invalid: missing date column altogether
     expect(
       verifySqlDateFilter(
@@ -414,6 +446,36 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const update = await runtime.entry(mockState, mockRt);
     expect(update.status).toBe("error");
     expect(update.answerText).toContain("thiếu bộ lọc ngày theo kỳ yêu cầu");
+  });
+
+  it("T35-T5_finite_number_check: rejects Infinity as invalid baseline number", async () => {
+    const mockExecutor = {
+      run: async () => ({
+        status: "ok" as const,
+        sql: "SELECT 1/0 AS val FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31'",
+        tablesUsed: ["orders"],
+        columns: ["val"],
+        rows: [{ val: Infinity }],
+        maskedColumns: [],
+        attempts: 1,
+      }),
+    };
+
+    const runtime = createRcaRuntime({ executor: mockExecutor });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    const update = await runtime.entry(mockState, mockRt);
+    expect(update.status).toBe("error");
+    expect(update.answerText).toContain("không phải là số hợp lệ: Infinity");
   });
 
   it("T35-T5_insignificant: halts early when metric delta is negligible (< 1%)", async () => {

@@ -117,43 +117,104 @@ export function createDateGuardedMcpCaller(
   };
 }
 
+function stripSqlComments(sql: string): string {
+  return sql
+    .replace(/--.*$/gm, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ");
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function dateLiteralPattern(dateStr: string): string {
+  return String.raw`(?:\bdate\s+)?['"]${escapeRegex(dateStr)}['"](?:::date|::timestamp)?`;
+}
+
+const DATE_COL_PATTERN = String.raw`(?:\b[a-zA-Z0-9_.]*?\b)?(?:purchase_date|order_date|created_at|order_purchase_timestamp|date)\b`;
+
 export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
-  if (!sql) return false;
-  const s = sql.toLowerCase();
-  const hasDateCol =
-    s.includes("purchase_date") ||
-    s.includes("order_date") ||
-    s.includes("created_at") ||
-    s.includes("date");
-  if (!hasDateCol) return false;
+  if (!sql || !period || !period.start || !period.end) return false;
+  const s = stripSqlComments(sql);
 
-  const hasExactStart = s.includes(period.start);
-  let nextDay: string | null = null;
-  try {
-    const d = new Date(period.end);
-    if (!isNaN(d.getTime())) {
-      d.setUTCDate(d.getUTCDate() + 1);
-      nextDay = d.toISOString().slice(0, 10);
-    }
-  } catch {
-    // ignore
-  }
-
-  const hasExactEnd = s.includes(period.end) || (nextDay !== null && s.includes(nextDay));
-
-  // Range queries require BOTH start and end boundaries
-  if (hasExactStart && hasExactEnd) {
+  // 1. Structural BETWEEN check
+  const betweenPattern = new RegExp(
+    String.raw`${DATE_COL_PATTERN}\s+between\s+${dateLiteralPattern(period.start)}\s+and\s+${dateLiteralPattern(period.end)}`,
+    "i",
+  );
+  if (betweenPattern.test(s)) {
     return true;
   }
 
-  // Month truncation / to_char equality check (e.g. to_char(purchase_date, 'YYYY-MM') = '2026-08')
+  // 2. Structural lower-bound check for period.start:
+  // e.g. col >= '2026-08-01' OR '2026-08-01' <= col
+  const startLhsPattern = new RegExp(
+    String.raw`${DATE_COL_PATTERN}\s*(?:>=|>)\s*${dateLiteralPattern(period.start)}`,
+    "i",
+  );
+  const startRhsPattern = new RegExp(
+    String.raw`${dateLiteralPattern(period.start)}\s*(?:<=|<)\s*${DATE_COL_PATTERN}`,
+    "i",
+  );
+  const hasValidStart = startLhsPattern.test(s) || startRhsPattern.test(s);
+
+  // 3. Structural upper-bound check for period.end:
+  // e.g. col <= '2026-08-31' OR '2026-08-31' >= col
+  const endLhsPattern = new RegExp(
+    String.raw`${DATE_COL_PATTERN}\s*(?:<=)\s*${dateLiteralPattern(period.end)}`,
+    "i",
+  );
+  const endRhsPattern = new RegExp(
+    String.raw`${dateLiteralPattern(period.end)}\s*(?:>=)\s*${DATE_COL_PATTERN}`,
+    "i",
+  );
+  let hasValidEnd = endLhsPattern.test(s) || endRhsPattern.test(s);
+
+  // If not matched directly on period.end, check next-day boundary for `< nextDay`:
+  // e.g. col < '2026-09-01' for end='2026-08-31'
+  if (!hasValidEnd) {
+    try {
+      const d = new Date(period.end);
+      if (!isNaN(d.getTime())) {
+        d.setUTCDate(d.getUTCDate() + 1);
+        const nextDay = d.toISOString().slice(0, 10);
+        const nextDayLhs = new RegExp(
+          String.raw`${DATE_COL_PATTERN}\s*<\s*${dateLiteralPattern(nextDay)}`,
+          "i",
+        );
+        const nextDayRhs = new RegExp(
+          String.raw`${dateLiteralPattern(nextDay)}\s*>\s*${DATE_COL_PATTERN}`,
+          "i",
+        );
+        hasValidEnd = nextDayLhs.test(s) || nextDayRhs.test(s);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Range condition requires both valid start and valid end
+  if (hasValidStart && hasValidEnd) {
+    return true;
+  }
+
+  // 4. Month truncation / formatting equality check (e.g. to_char(col, 'YYYY-MM') = '2026-08')
   const monthStart = period.start.slice(0, 7);
   const monthEnd = period.end.slice(0, 7);
   if (monthStart === monthEnd) {
-    const hasMonthEquality =
-      (s.includes("to_char") || s.includes("date_trunc") || s.includes("strftime")) &&
-      s.includes(monthStart);
-    if (hasMonthEquality) {
+    const toCharPattern = new RegExp(
+      String.raw`to_char\s*\(\s*${DATE_COL_PATTERN}\s*,\s*['"](?:yyyy-mm|yyyy_mm)['"]\s*\)\s*=\s*['"]${escapeRegex(monthStart)}['"]`,
+      "i",
+    );
+    const dateTruncPattern = new RegExp(
+      String.raw`date_trunc\s*\(\s*['"]month['"]\s*,\s*${DATE_COL_PATTERN}\s*\)\s*=\s*${dateLiteralPattern(period.start)}`,
+      "i",
+    );
+    const strftimePattern = new RegExp(
+      String.raw`strftime\s*\(\s*['"]%Y-%m['"]\s*,\s*${DATE_COL_PATTERN}\s*\)\s*=\s*${dateLiteralPattern(monthStart)}`,
+      "i",
+    );
+    if (toCharPattern.test(s) || dateTruncPattern.test(s) || strftimePattern.test(s)) {
       return true;
     }
   }
@@ -551,7 +612,7 @@ export async function validateBaseline(
       throw new Error("Dữ liệu kỳ cơ sở không chứa giá trị số hợp lệ ('val')");
     }
     baselineVal = Number(baseRes.rows[0]["val"]);
-    if (isNaN(baselineVal)) {
+    if (!Number.isFinite(baselineVal)) {
       throw new Error(`Giá trị kỳ cơ sở không phải là số hợp lệ: ${String(baseRes.rows[0]["val"])}`);
     }
 
@@ -605,7 +666,7 @@ export async function validateBaseline(
       throw new Error("Dữ liệu kỳ phân tích không chứa giá trị số hợp lệ ('val')");
     }
     currentVal = Number(currRes.rows[0]["val"]);
-    if (isNaN(currentVal)) {
+    if (!Number.isFinite(currentVal)) {
       throw new Error(`Giá trị kỳ phân tích không phải là số hợp lệ: ${String(currRes.rows[0]["val"])}`);
     }
 
