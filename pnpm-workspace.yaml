@@ -7,12 +7,11 @@ allowBuilds:
   # (scripts/postinstall.js) only reads its parent package.json and prints
   # a version-scheme stderr warning; no network, writes, or codegen.
   "@launchql/protobufjs": true
-
-# Explicitly never run: @openuidev/lang-core postinstall is install-time
-# telemetry (its own source says "telemetry must never fail installation").
-# The library works without it; blocking keeps installs telemetry-free.
-neverBuiltDependencies:
-  - "@openuidev/lang-core"
+  # Explicitly never run: @openuidev/lang-core postinstall is install-time
+  # telemetry (its own source says "telemetry must never fail installation").
+  # The library works without it; false keeps installs telemetry-free.
+  # (pnpm v11: allowBuilds replaces neverBuiltDependencies.)
+  "@openuidev/lang-core": false
 
 packages:
   - "apps/*"
