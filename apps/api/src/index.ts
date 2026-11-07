@@ -21,7 +21,7 @@ import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync } from "node:fs";
 import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
-import { buildRootGraph, runTracerGraph, type AgentState, type UcEntryHandler } from "@shared/agent";
+import { buildRootGraph, routeQuestionToUc, runTracerGraph, type AgentState, type UcEntryHandler } from "@shared/agent";
 import { createSpanEmitter } from "@shared/agent/telemetry";
 import { dbToolError, type DbToolError } from "@shared/contracts";
 import { createHostPorts, type HostPorts } from "./ports.js";
@@ -297,17 +297,32 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
     try {
       const { graph, emit } = buildGraph(run, runId);
+      const reqUcId = typeof req.body?.["ucId"] === "string" ? req.body["ucId"] : undefined;
+      const effectiveUcId = routeQuestionToUc(question, reqUcId);
       const out = (await graph.invoke(
-        { question, ucId: "", runId, threadId },
+        { question, ucId: effectiveUcId, runId, threadId },
         { configurable: configurableFor(run, runId) },
       )) as AgentState;
-      if (interruptedOf(out)?.length) {
+      const interrupts = interruptedOf(out);
+      if (interrupts?.length) {
+        const rawInterrupt = interrupts[0] as { value?: unknown } | unknown;
+        const interruptValue =
+          rawInterrupt && typeof rawInterrupt === "object" && "value" in rawInterrupt
+            ? (rawInterrupt as { value: unknown }).value
+            : rawInterrupt;
+        const interruptData =
+          interruptValue && typeof interruptValue === "object"
+            ? (interruptValue as Record<string, unknown>)
+            : {};
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId,
-          node: "answer",
+          node: "ucEntry",
           data: interruptPayload({
-            pendingClarification: out.pendingClarification,
+            ...interruptData,
+            pendingClarification:
+              out.pendingClarification ??
+              (interruptData["pendingClarification"] as string[] | undefined),
           }),
         });
         return;
@@ -396,13 +411,26 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const out = (await graph.invoke(new Command({ resume: req.body["value"] }), {
         configurable: configurableFor(stored, runId),
       })) as AgentState;
-      if (interruptedOf(out)?.length) {
+      const resumeInterrupts = interruptedOf(out);
+      if (resumeInterrupts?.length) {
+        const rawInterrupt = resumeInterrupts[0] as { value?: unknown } | unknown;
+        const interruptValue =
+          rawInterrupt && typeof rawInterrupt === "object" && "value" in rawInterrupt
+            ? (rawInterrupt as { value: unknown }).value
+            : rawInterrupt;
+        const interruptData =
+          interruptValue && typeof interruptValue === "object"
+            ? (interruptValue as Record<string, unknown>)
+            : {};
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId: stored.threadId,
-          node: "answer",
+          node: "ucEntry",
           data: interruptPayload({
-            pendingClarification: out.pendingClarification,
+            ...interruptData,
+            pendingClarification:
+              out.pendingClarification ??
+              (interruptData["pendingClarification"] as string[] | undefined),
           }),
         });
         return;

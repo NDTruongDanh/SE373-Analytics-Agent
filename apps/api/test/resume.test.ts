@@ -4,7 +4,7 @@
 // injected UC handler (interrupt from @langchain/langgraph directly) so no
 // agent internals beyond the registry contract are touched.
 
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
@@ -193,5 +193,69 @@ describe("buildApp resume", () => {
     writeFileSync(`${tracesDir}/bad-run.jsonl`, "not json at all\n", "utf8");
     const out = await post("/api/runs/bad-run/resume", { value: "approve" });
     expect(out.status).toBe(404);
+  });
+
+  it("forwards plan payload in interrupt_waiting SSE event for UC-05 plan review", async () => {
+    const planReviewHandler: UcEntryHandler = async (state) => {
+      const mockPlan = {
+        question: state.question,
+        metricName: "net_revenue",
+        steps: [{ stepId: "s1", status: "todo" }],
+      };
+      const verdict = interrupt({
+        action: "review_analysis_plan",
+        plan: mockPlan,
+        currentPlan: mockPlan,
+      });
+      return {
+        answerText: `plan_reviewed:${JSON.stringify(verdict)}`,
+        status: "ok",
+      };
+    };
+
+    const localTraces = mkdtempSync(path.join(tmpdir(), "fullhost-plan-"));
+    const localApp = buildApp({
+      checkpointer: new MemorySaver(),
+      mcpUrl: "http://127.0.0.1:9",
+      tracesDir: localTraces,
+      env: stubEnv,
+      ucHandlers: {
+        "root-cause-analysis": planReviewHandler,
+      },
+    });
+
+    const server = localApp.listen(0);
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const asked = await fetch(`http://127.0.0.1:${port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: "Vì sao doanh thu tháng 9 giảm?",
+          persona: "sales_south",
+        }),
+      });
+      const text = await asked.text();
+      const blocks = parseSse(text);
+      expect(blocks.map((b) => b.event)).toEqual(["interrupt_waiting"]);
+
+      const eventData = blocks[0].data["data"] as Record<string, unknown>;
+      expect(eventData.action).toBe("review_analysis_plan");
+      expect(eventData.plan).toBeDefined();
+      expect(eventData.currentPlan).toBeDefined();
+
+      const runId = blocks[0].data["runId"] as string;
+      const resumed = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: { action: "APPROVE" } }),
+      });
+      const resText = await resumed.text();
+      const resBlocks = parseSse(resText);
+      expect(resBlocks.map((b) => b.event)).toContain("completed");
+    } finally {
+      server.close();
+      rmSync(localTraces, { recursive: true, force: true });
+    }
   });
 });

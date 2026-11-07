@@ -149,14 +149,22 @@ export function failedPayload(input: {
   };
 }
 
-/** interrupt_waiting payload: clarification options only, no prompts. */
+/** interrupt_waiting payload: clarification options and review plan for HITL. */
 export function interruptPayload(input: {
   reason?: string;
   pendingClarification?: string[] | null;
+  action?: string;
+  plan?: unknown;
+  currentPlan?: unknown;
+  current_plan?: unknown;
+  [key: string]: unknown;
 }): Record<string, unknown> {
+  const plan = input.currentPlan ?? input.plan ?? input.current_plan;
   return {
+    ...(input.action ? { action: input.action } : {}),
     ...(input.reason ? { reason: scrubMessage(input.reason) } : {}),
     ...(input.pendingClarification ? { pendingClarification: [...input.pendingClarification] } : {}),
+    ...(plan !== undefined ? { plan, currentPlan: plan } : {}),
   };
 }
 

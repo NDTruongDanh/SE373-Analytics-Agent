@@ -1569,6 +1569,11 @@ export function buildStepQuery(
   return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status IN ('delivered', 'returned') AND ${whereStr}`;
 }
 
+export const rcaExecutionCache = new Map<
+  string,
+  { baseline: BaselineCheckResult; plan: AnalysisPlan }
+>();
+
 export async function executeAnalysis(
   plan: AnalysisPlan,
   intent: RcaIntent,
@@ -1584,25 +1589,34 @@ export async function executeAnalysis(
   plan.maxDepthLimit = maxDepth;
   plan.drilldownThreshold = threshold;
 
+  const markAllRemainingSkipped = (reason: "MAX_QUERIES_REACHED" | "MAX_DEPTH_REACHED") => {
+    for (const s of plan.steps) {
+      if (s.status === "todo") {
+        s.status = "skipped";
+        plan.unexploredBranches.push({
+          axis: s.axis,
+          dimensionOrFactor: s.dimensionOrFactor,
+          dimensionValue: s.dimensionValue,
+          parentId: s.parentId,
+          reason,
+        });
+      }
+    }
+  };
+
   while (plan.steps.some((s) => s.status === "todo")) {
     if (plan.totalQueriesCount >= maxQueries) {
-      for (const s of plan.steps) {
-        if (s.status === "todo") {
-          s.status = "skipped";
-          plan.unexploredBranches.push({
-            axis: s.axis,
-            dimensionOrFactor: s.dimensionOrFactor,
-            dimensionValue: s.dimensionValue,
-            parentId: s.parentId,
-            reason: "MAX_QUERIES_REACHED",
-          });
-        }
-      }
+      markAllRemainingSkipped("MAX_QUERIES_REACHED");
       break;
     }
 
     const step = plan.steps.find((s) => s.status === "todo");
     if (!step) break;
+
+    // Skip already processed steps
+    if (step.status === "done" || step.status === "failed" || step.status === "skipped") {
+      continue;
+    }
 
     if (step.depth > maxDepth) {
       step.status = "skipped";
@@ -1626,8 +1640,34 @@ export async function executeAnalysis(
     let lastError: Error | null = null;
 
     while (attempt <= 2) {
+      // Check quota before each attempt
+      if (plan.totalQueriesCount >= maxQueries) {
+        step.status = "skipped";
+        plan.unexploredBranches.push({
+          axis: step.axis,
+          dimensionOrFactor: step.dimensionOrFactor,
+          dimensionValue: step.dimensionValue,
+          parentId: step.parentId,
+          reason: "MAX_QUERIES_REACHED",
+        });
+        markAllRemainingSkipped("MAX_QUERIES_REACHED");
+        break;
+      }
+
       try {
         if (deps.fetchStepMetrics) {
+          if (plan.totalQueriesCount + 2 > maxQueries) {
+            step.status = "skipped";
+            plan.unexploredBranches.push({
+              axis: step.axis,
+              dimensionOrFactor: step.dimensionOrFactor,
+              dimensionValue: step.dimensionValue,
+              parentId: step.parentId,
+              reason: "MAX_QUERIES_REACHED",
+            });
+            markAllRemainingSkipped("MAX_QUERIES_REACHED");
+            break;
+          }
           plan.totalQueriesCount += 2;
           const res = await deps.fetchStepMetrics(
             step,
@@ -1661,7 +1701,20 @@ export async function executeAnalysis(
           deps.setTargetTable?.(targetTable);
           deps.setAllowedDateColumns?.([expectedDateCol]);
 
-          // Run baseline query
+          // Run baseline query if quota permits
+          if (plan.totalQueriesCount >= maxQueries) {
+            step.status = "skipped";
+            plan.unexploredBranches.push({
+              axis: step.axis,
+              dimensionOrFactor: step.dimensionOrFactor,
+              dimensionValue: step.dimensionValue,
+              parentId: step.parentId,
+              reason: "MAX_QUERIES_REACHED",
+            });
+            markAllRemainingSkipped("MAX_QUERIES_REACHED");
+            break;
+          }
+
           deps.setActivePeriod?.(plan.baselinePeriod);
           plan.totalQueriesCount += 1;
           const baseRes = await deps.executor.run({
@@ -1670,7 +1723,30 @@ export async function executeAnalysis(
             principal,
           });
 
-          // Run current query
+          if (baseRes.status !== "ok") {
+            const err =
+              "error" in baseRes
+                ? baseRes.error.message
+                : "reason" in baseRes
+                  ? baseRes.reason
+                  : `Executor failed: ${baseRes.status}`;
+            throw new Error(`Baseline query failed: ${err}`);
+          }
+
+          // Run current query if quota permits
+          if (plan.totalQueriesCount >= maxQueries) {
+            step.status = "skipped";
+            plan.unexploredBranches.push({
+              axis: step.axis,
+              dimensionOrFactor: step.dimensionOrFactor,
+              dimensionValue: step.dimensionValue,
+              parentId: step.parentId,
+              reason: "MAX_QUERIES_REACHED",
+            });
+            markAllRemainingSkipped("MAX_QUERIES_REACHED");
+            break;
+          }
+
           deps.setActivePeriod?.(plan.currentPeriod);
           plan.totalQueriesCount += 1;
           const currRes = await deps.executor.run({
@@ -1683,8 +1759,17 @@ export async function executeAnalysis(
           deps.setAllowedDateColumns?.(null);
           deps.setTargetTable?.(null);
 
-          const extractVal = (res: ExecutorResult): number => {
-            if (res.status !== "ok") return 0;
+          if (currRes.status !== "ok") {
+            const err =
+              "error" in currRes
+                ? currRes.error.message
+                : "reason" in currRes
+                  ? currRes.reason
+                  : `Executor failed: ${currRes.status}`;
+            throw new Error(`Current query failed: ${err}`);
+          }
+
+          const extractVal = (res: Extract<ExecutorResult, { status: "ok" }>): number => {
             const row = res.rows?.[0] as Record<string, unknown> | undefined;
             if (!row) return 0;
             const raw = row["val"] ?? Object.values(row)[0];
@@ -1715,7 +1800,7 @@ export async function executeAnalysis(
       }
     }
 
-    if (step.status === "failed") {
+    if (step.status === "failed" || step.status === "skipped") {
       deps.onStepExecuted?.(step, plan);
       continue;
     }
@@ -1878,45 +1963,74 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       }
     }
 
-    // 1. validate_baseline
+    const cacheKey = `${principal.runId}:${principal.userId}:${principal.roleScope}:${state.question}`;
     let baseline: BaselineCheckResult;
-    try {
-      baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
-    } catch (err) {
-      return {
-        status: "error",
-        answerText: err instanceof Error ? err.message : String(err),
-      };
-    }
+    let plan: AnalysisPlan | null = null;
 
-    if (!baseline.isValidBaseline) {
-      const status = baseline.isSignificant === false ? "no_data" : "false_premise";
-      return {
-        status,
-        answerText: baseline.message,
-        sql: baseline.lastSql,
-        tablesUsed: baseline.tablesUsed,
-        resultPreview: [],
-        toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
-      };
-    }
-
-    // 2. create_plan
     const effectiveIntent: RcaIntent = {
       ...intent,
-      direction: baseline.resolvedDirection,
     };
-    let plan = createPlan(
-      state.question,
-      effectiveIntent,
-      baseline,
-      deps.candidateRegions ?? DEFAULT_CANDIDATE_REGIONS,
-    );
-    if (!plan) {
-      return {
-        status: "error",
-        answerText: "Không thể khởi tạo kế hoạch phân tích nguyên nhân gốc rễ.",
+
+    if (state.analysisPlan && state.analysisPlan.isValidBaseline) {
+      plan = state.analysisPlan;
+      effectiveIntent.direction = (plan.direction as "increase" | "decrease") ?? "decrease";
+      baseline = {
+        baselineVal: plan.baselineVal,
+        currentVal: plan.currentVal,
+        absDelta: plan.absDelta,
+        pctDelta: plan.pctDelta,
+        isValidBaseline: true,
+        isSignificant: true,
+        message: `Tiền đề hợp lệ: ${plan.metricName} thực tế biến động ${plan.pctDelta}%.`,
+        queriesExecuted: plan.totalQueriesCount,
+        lastSql: null,
+        tablesUsed: ["orders", "order_items"],
+        actualToolsCalled: [],
+        resolvedDirection: (plan.direction as "increase" | "decrease") ?? "decrease",
       };
+    } else if (rcaExecutionCache.has(cacheKey)) {
+      const cached = rcaExecutionCache.get(cacheKey)!;
+      baseline = cached.baseline;
+      plan = cached.plan;
+      effectiveIntent.direction = baseline.resolvedDirection;
+    } else {
+      // 1. validate_baseline
+      try {
+        baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
+      } catch (err) {
+        return {
+          status: "error",
+          answerText: err instanceof Error ? err.message : String(err),
+        };
+      }
+
+      if (!baseline.isValidBaseline) {
+        const status = baseline.isSignificant === false ? "no_data" : "false_premise";
+        return {
+          status,
+          answerText: baseline.message,
+          sql: baseline.lastSql,
+          tablesUsed: baseline.tablesUsed,
+          resultPreview: [],
+          toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
+        };
+      }
+
+      // 2. create_plan
+      effectiveIntent.direction = baseline.resolvedDirection;
+      plan = createPlan(
+        state.question,
+        effectiveIntent,
+        baseline,
+        deps.candidateRegions ?? DEFAULT_CANDIDATE_REGIONS,
+      );
+      if (!plan) {
+        return {
+          status: "error",
+          answerText: "Không thể khởi tạo kế hoạch phân tích nguyên nhân gốc rễ.",
+        };
+      }
+      rcaExecutionCache.set(cacheKey, { baseline, plan });
     }
 
     // 3. human_review (HITL Review Gate)
@@ -1931,8 +2045,9 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     if (hasExecutionBackend && !deps.skipHitlReview) {
       try {
         const feedback = pauseForApproval({
-          action: "review_plan",
+          action: "review_analysis_plan",
           plan,
+          currentPlan: plan,
           current_plan: plan,
         });
 
@@ -1945,6 +2060,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
             fb["action"] === "MODIFY" ||
             fb["action"] === "modify" ||
             fb["updated_plan"] ||
+            fb["currentPlan"] ||
             fb["steps"] ||
             fb["plan"]
           ) {
@@ -1952,11 +2068,14 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
               plan.steps = z.array(PlanStepSchema).parse(fb["steps"]);
             } else if (fb["updated_plan"]) {
               plan = AnalysisPlanSchema.parse(fb["updated_plan"]);
+            } else if (fb["currentPlan"] && typeof fb["currentPlan"] === "object") {
+              plan = AnalysisPlanSchema.parse(fb["currentPlan"]);
             } else if (fb["plan"] && typeof fb["plan"] === "object") {
               plan = AnalysisPlanSchema.parse(fb["plan"]);
             }
           }
         }
+        rcaExecutionCache.set(cacheKey, { baseline, plan });
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes("outside the context of a graph")) {
           // Called in raw unit test without LangGraph execution context and skipHitlReview was not set.
@@ -1984,7 +2103,13 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       executedPlan = await executeAnalysis(
         plan,
         effectiveIntent,
-        effectiveDeps,
+        {
+          ...effectiveDeps,
+          onStepExecuted: (step, p) => {
+            rcaExecutionCache.set(cacheKey, { baseline, plan: p });
+            effectiveDeps.onStepExecuted?.(step, p);
+          },
+        },
         principal,
         targetFactTable,
       );
@@ -1994,6 +2119,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         answerText: err instanceof Error ? err.message : String(err),
       };
     }
+    rcaExecutionCache.set(cacheKey, { baseline, plan: executedPlan });
 
     const doneCount = executedPlan.steps.filter((s) => s.status === "done").length;
     const prunedCount = executedPlan.unexploredBranches.filter(

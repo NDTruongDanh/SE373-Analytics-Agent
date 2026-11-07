@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { MemorySaver, StateGraph, START, END } from "@langchain/langgraph";
 import {
   buildBaselineQuery,
@@ -10,12 +10,14 @@ import {
   executeAnalysis,
   getNextDimension,
   parseRcaIntent,
+  rcaExecutionCache,
   slugify,
   toRegionGroup,
   validateBaseline,
   verifySqlDateFilter,
   RCA_UC_ID,
 } from "../src/subgraphs/rootCauseAnalysis.js";
+import { routeQuestionToUc } from "../src/router.js";
 import { createChatModel } from "../src/models/factory.js";
 import { buildRootGraph } from "../src/graph.js";
 import { getUcEntry, isKnownUc } from "../src/subgraphs/registry.js";
@@ -24,6 +26,10 @@ import { AgentStateSchema, type AgentState } from "../src/state.js";
 import type { AnalysisPlan, PlanStep } from "@shared/contracts";
 
 describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
+  beforeEach(() => {
+    rcaExecutionCache.clear();
+  });
+
   const mockPrincipal = {
     runId: "run_test_01",
     userId: "user_analyst",
@@ -1248,7 +1254,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(getNextDimension("product")).toBeNull();
   });
 
-  it("T36-T1: HITL interrupt fires and suspends graph with { action: 'review_plan', plan } on MemorySaver", async () => {
+  it("T36-T1: HITL interrupt fires and suspends graph with { action: 'review_analysis_plan', plan, currentPlan } on MemorySaver", async () => {
     const deps = {
       fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
         period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
@@ -1276,8 +1282,9 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(interrupts).toHaveLength(1);
 
     const interruptPayload = (interrupts![0] as { value: Record<string, unknown> }).value;
-    expect(interruptPayload.action).toBe("review_plan");
+    expect(interruptPayload.action).toBe("review_analysis_plan");
     expect(interruptPayload.plan).toBeDefined();
+    expect(interruptPayload.currentPlan).toBeDefined();
 
     const plan = interruptPayload.plan as AnalysisPlan;
     expect(plan.isValidBaseline).toBe(true);
@@ -1767,6 +1774,216 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     const isValid = await verifySqlDateFilter(sql, period, ["purchase_date"], "orders");
     expect(isValid).toBe(true);
+  });
+
+  it("T36-T10: Executor failure is not masked as 0 and triggers retry + failed status", async () => {
+    let runs = 0;
+    const failingExecutor = {
+      run: async () => {
+        runs++;
+        return {
+          status: "error" as const,
+          error: { code: "QUERY_TIMEOUT" as const, message: "statement_timeout" },
+          sql: null,
+          attempts: 1,
+        };
+      },
+    };
+
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "step_failing", name: "Miền Bắc" }],
+    )!;
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: failingExecutor },
+      mockPrincipal,
+    );
+
+    const step = executed.steps.find((s) => s.stepId === "step_failing")!;
+    expect(step.status).toBe("failed");
+    expect(step.retryCount).toBe(2);
+    expect(step.errorMessage).toContain("statement_timeout");
+    expect(runs).toBe(3); // 1 initial + 2 retries
+  });
+
+  it("T36-T11: Strictly enforces maxQueriesLimit and never exceeds quota during split queries or retries", async () => {
+    let queryCalls = 0;
+    const mockExecutor = {
+      run: async () => {
+        queryCalls++;
+        return {
+          status: "ok" as const,
+          sql: "SELECT 100 AS val",
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val: 100 }],
+          maskedColumns: [],
+          attempts: 1,
+        };
+      },
+    };
+
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2, // baseline check used 2
+      },
+      [
+        { id: "step_1", name: "Miền Bắc" },
+        { id: "step_2", name: "Miền Trung" },
+        { id: "step_3", name: "Miền Nam" },
+      ],
+    )!;
+
+    // Quota of 3: only 1 query can execute (step needs 2, so it stops after 1 query!)
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: mockExecutor, maxQueriesLimit: 3 },
+      mockPrincipal,
+    );
+
+    expect(executed.totalQueriesCount).toBeLessThanOrEqual(3);
+    expect(queryCalls).toBeLessThanOrEqual(1);
+    expect(executed.unexploredBranches.some((b) => b.reason === "MAX_QUERIES_REACHED")).toBe(true);
+  });
+
+  it("T36-T12: Resume does not re-run baseline queries or completed steps", async () => {
+    let baselineQueryCalls = 0;
+    const executedStepIds: string[] = [];
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) => {
+        baselineQueryCalls++;
+        return period.start.includes("08") ? 2_500_000_000 : 2_040_000_000;
+      },
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedStepIds.push(step.stepId);
+        return { baselineVal: 500_000_000, currentVal: 480_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const threadId = makeThreadId("u_t36", "s_persist");
+
+    // 1. First run: baseline runs, plan created, pauses at interrupt
+    await testGraph.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId, runId: "run_persist_1" } },
+    );
+
+    expect(baselineQueryCalls).toBe(2); // baseline + current
+
+    // 2. Second run (Resume): baseline MUST NOT re-run!
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "APPROVE" }),
+      { configurable: { thread_id: threadId, runId: "run_persist_1" } },
+    )) as AgentState;
+
+    expect(baselineQueryCalls).toBe(2); // Still 2, zero additional baseline queries!
+    expect(resumed.status).toBe("ok");
+    expect(executedStepIds.length).toBeGreaterThan(0);
+  });
+
+  it("T36-T13: routeQuestionToUc classifies Why/Variance questions and integrates with rootGraph without explicit ucId", async () => {
+    expect(routeQuestionToUc("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Tại sao giá trị đơn hàng trung bình (AOV) miền Nam tuần 39/2026 giảm?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Nguyên nhân sụt giảm doanh thu Shopee là gì?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Why did revenue decrease in September?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Root cause of return rate variance")).toBe(RCA_UC_ID);
+
+    // Standard queries route to default
+    expect(routeQuestionToUc("Top 5 sản phẩm bán chạy nhất tháng 8")).toBe("tracer");
+
+    // Root graph automatically routes question to RCA handler when ucId is empty
+    let rcaCalled = false;
+    const mockRcaEntry = async () => {
+      rcaCalled = true;
+      return { status: "ok" as const, answerText: "routed to rca" };
+    };
+
+    const rootGraph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      ucHandlers: {
+        [RCA_UC_ID]: mockRcaEntry,
+      },
+    });
+
+    const out = (await rootGraph.invoke(
+      {
+        question: "Vì sao doanh thu tháng 9 giảm so với tháng 8?",
+        ucId: "", // Not set by caller!
+      },
+      {
+        configurable: {
+          thread_id: makeThreadId("u_route", "s_1"),
+          runId: "run_route_test",
+          userId: "u_route",
+          roleScope: "sales_south",
+        },
+      },
+    )) as AgentState;
+
+    expect(rcaCalled).toBe(true);
+    expect(out.answerText).toBe("routed to rca");
   });
 });
 
