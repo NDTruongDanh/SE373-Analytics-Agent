@@ -13,6 +13,7 @@ import {
   registerUC,
 } from "../src/subgraphs/registry.js";
 import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "../src/constants.js";
+import { resumeDecision } from "../src/hitl.js";
 import type { ExecutorRunInput } from "../src/queryExecutor/executor.js";
 
 // AGENT-01 seam tests (01-10): FakeListChatModel doubles plus stubbed
@@ -27,6 +28,13 @@ const ProposalSchema = z.object({
 
 function invokeOptions(threadId: string) {
   return { configurable: { thread_id: threadId } };
+}
+
+function pendingFromInterrupt(output: unknown) {
+  const first = (output as { __interrupt__?: { value?: unknown }[] }).__interrupt__?.[0];
+  return (first?.value as { pendingClarification?: unknown } | undefined)?.pendingClarification as
+    | { field: string; options: string[]; attempts: number }
+    | undefined;
 }
 
 describe("root graph seam", () => {
@@ -293,6 +301,10 @@ describe("root graph seam", () => {
           }),
         },
         executor: {
+          timeRangeOptions: async () => [
+            "2026-04-01/2026-07-01",
+            "2026-07-01/2026-10-01",
+          ],
           run: async (input) => {
             runs.push(input);
             return {
@@ -336,6 +348,226 @@ describe("root graph seam", () => {
       }),
     ]);
     expect(spans).toContainEqual({ node: "skills", type: "skill_call" });
+  });
+
+  it("resumes a large-query clarification on the same thread without re-running understand", async () => {
+    let intentCalls = 0;
+    const questions: string[] = [];
+    const graph = buildRootGraph({
+      textToSql: {
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => {
+              intentCalls += 1;
+              return {
+                metric: "order_count",
+                dimensions: [],
+                filters: [],
+                timeRange: null,
+                requestedMetrics: ["order_count"],
+                schemaEntities: ["orders"],
+                queryMode: "standard_query" as const,
+              };
+            },
+          }),
+        },
+        executor: {
+          timeRangeOptions: async () => [
+            "2026-04-01/2026-07-01",
+            "2026-07-01/2026-10-01",
+          ],
+          run: async (input) => {
+            questions.push(input.question);
+            if (!input.question.includes("Clarification (timeRange)")) {
+              return {
+                status: "needs_clarification" as const,
+                reason: "orders needs an indexed time filter",
+                table: "orders",
+                sql: null,
+                attempts: 1,
+              };
+            }
+            return {
+              status: "ok" as const,
+              sql: "SELECT COUNT(*) AS n FROM public.orders WHERE purchase_date >= '2026-01-01'",
+              tablesUsed: ["orders"],
+              columns: ["n"],
+              rows: [{ n: 1 }],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+    const config = {
+      configurable: {
+        thread_id: "thread-clarify",
+        runId: "run-clarify",
+        userId: "user-clarify",
+        roleScope: "sales_south",
+      },
+    };
+
+    const paused = await graph.invoke(
+      { question: "Show orders", ucId: TEXT_TO_SQL_UC_ID },
+      config,
+    );
+    expect((paused as { __interrupt__?: unknown[] }).__interrupt__).toHaveLength(1);
+    const pending = pendingFromInterrupt(paused);
+    expect(pending).toMatchObject({
+      field: "timeRange",
+      attempts: 0,
+      options: expect.any(Array),
+    });
+
+    const selected = pending?.options[0];
+    if (!selected) throw new Error("missing clarification option");
+    const completed = await graph.invoke(resumeDecision(selected), config);
+    expect(completed.status).toBe("ok");
+    expect(completed.pendingClarification).toBeNull();
+    expect(completed.clarificationAttempts).toBe(1);
+    expect(completed.intent.timeRange).toBe(selected);
+    expect(intentCalls).toBe(1);
+    // LangGraph restarts the interrupted UC node on resume, so the guarded
+    // proposal runs once more; the intent extraction node is not re-run.
+    expect(questions).toHaveLength(3);
+    expect(questions[2]).toContain(`Clarification (timeRange): ${selected}`);
+  });
+
+  it("pauses before the executor when intent has multiple KPI candidates", async () => {
+    let executorCalled = false;
+    const graph = buildRootGraph({
+      textToSql: {
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => ({
+              metric: null,
+              dimensions: [],
+              filters: [],
+              timeRange: null,
+              requestedMetrics: ["net_revenue", "gross_revenue"],
+              schemaEntities: ["orders"],
+              queryMode: "standard_query" as const,
+            }),
+          }),
+        },
+        executor: {
+          run: async () => {
+            executorCalled = true;
+            return {
+              status: "no_data" as const,
+              sql: "SELECT 1 WHERE false",
+              tablesUsed: [],
+              columns: [],
+              rows: [],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+    const paused = await graph.invoke(
+      { question: "Doanh thu", ucId: TEXT_TO_SQL_UC_ID },
+      {
+        configurable: {
+          thread_id: "thread-metric",
+          runId: "run-metric",
+          userId: "user-metric",
+          roleScope: "sales_south",
+        },
+      },
+    );
+    expect(executorCalled).toBe(false);
+    expect(pendingFromInterrupt(paused)).toMatchObject({
+      field: "metric",
+      options: ["net_revenue", "gross_revenue"],
+    });
+    expect((paused as { __interrupt__?: unknown[] }).__interrupt__).toHaveLength(1);
+  });
+
+  it("does not run an ambiguous KPI query after the two-selection limit", async () => {
+    let executorCalled = false;
+    const graph = buildRootGraph({
+      textToSql: {
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => ({
+              metric: null,
+              dimensions: [],
+              filters: [],
+              timeRange: null,
+              requestedMetrics: ["net_revenue", "gross_revenue"],
+              schemaEntities: ["orders"],
+              queryMode: "standard_query" as const,
+            }),
+          }),
+        },
+        executor: {
+          run: async () => {
+            executorCalled = true;
+            throw new Error("executor must not run after clarification exhaustion");
+          },
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      {
+        question: "Doanh thu",
+        ucId: TEXT_TO_SQL_UC_ID,
+        clarificationAttempts: 2,
+      },
+      invokeOptions("thread-metric-exhausted"),
+    );
+
+    expect(out.status).toBe("needs_clarification");
+    expect(out.answerText).toContain("could not be disambiguated");
+    expect(executorCalled).toBe(false);
+  });
+
+  it("stops after two invalid clarification responses", async () => {
+    const graph = buildRootGraph({
+      textToSql: {
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => ({
+              metric: null,
+              dimensions: [],
+              filters: [],
+              timeRange: null,
+              requestedMetrics: ["net_revenue", "gross_revenue"],
+              schemaEntities: ["orders"],
+              queryMode: "standard_query" as const,
+            }),
+          }),
+        },
+        executor: {
+          run: async () => {
+            throw new Error("executor must not run for invalid clarification values");
+          },
+        },
+      },
+    });
+    const config = {
+      configurable: {
+        thread_id: "thread-invalid-clarification",
+        runId: "run-invalid-clarification",
+        userId: "user-invalid-clarification",
+        roleScope: "sales_south",
+      },
+    };
+    await graph.invoke({ question: "Doanh thu", ucId: TEXT_TO_SQL_UC_ID }, config);
+    const retry = await graph.invoke(resumeDecision("other"), config);
+    expect((retry as { __interrupt__?: unknown[] }).__interrupt__).toHaveLength(1);
+    expect(pendingFromInterrupt(retry)?.attempts).toBe(1);
+
+    const stopped = await graph.invoke(resumeDecision("still-other"), config);
+    expect((stopped as { __interrupt__?: unknown[] }).__interrupt__).toBeUndefined();
+    expect(stopped.status).toBe("needs_clarification");
+    expect(stopped.pendingClarification).toBeNull();
+    expect(stopped.answerText).toContain("two responses");
   });
 
   it("stops an exhausted text-to-SQL budget before the model or executor", async () => {

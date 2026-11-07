@@ -17,11 +17,17 @@ import {
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import { loadSkill } from "../skills/loader.js";
 import {
+  isClarificationOption,
+  pauseForClarification,
+  requestClarification,
+} from "../hitl.js";
+import {
   IntentSchema,
   type AgentState,
   type AgentUpdate,
   type RootRuntime,
   type UcEntryHandler,
+  type PendingClarification,
 } from "../state.js";
 import { registerUC } from "./registry.js";
 import { TEXT_TO_SQL_UC_ID } from "../constants.js";
@@ -45,6 +51,10 @@ export interface IntentModelLike {
 /** Narrow executor seam; text-to-SQL never opens a database connection directly. */
 export interface TextToSqlExecutorLike {
   run(input: ExecutorRunInput): Promise<ExecutorResult>;
+  timeRangeOptions?(input: {
+    principal: ExecutorRunInput["principal"];
+    budget: BudgetState;
+  }): Promise<string[]>;
 }
 
 export interface TextToSqlRuntimeDeps {
@@ -277,6 +287,85 @@ const KNOWN_TOOL_NAMES = new Set([
   "sample_rows",
 ]);
 
+function clarificationForLargeQuery(table: string | undefined, options: string[], attempts: number) {
+  return requestClarification({
+    field: "timeRange",
+    question:
+      `Truy vấn bảng lớn ${table ?? "này"} cần một khoảng thời gian theo orders.purchase_date. ` +
+      "Bạn muốn xem khoảng nào? Mỗi lựa chọn có dạng [bắt_đầu/kết_thúc).",
+    options,
+    attempts,
+    ...(table ? { table } : {}),
+  });
+}
+
+/** Ask only when intent extraction has identified multiple candidate KPIs. */
+function clarificationForAmbiguousMetric(
+  state: AgentState,
+): PendingClarification | "exhausted" | null {
+  if (state.intent.metric !== null || state.intent.queryMode !== "standard_query") return null;
+  const options = [...new Set(state.intent.requestedMetrics.map((metric) => metric.trim()))]
+    .filter((metric) => metric.length > 0);
+  if (options.length < 2 || options.length > 4) return null;
+  if (state.clarificationAttempts >= 2) {
+    return "exhausted";
+  }
+  const clarification = requestClarification({
+    field: "metric",
+    question: `Bạn muốn xem chỉ số nào: ${options.join(", ")}?`,
+    options,
+    attempts: state.clarificationAttempts,
+  });
+  return clarification.pendingClarification;
+}
+
+function clarificationSelection(
+  state: AgentState,
+  request: PendingClarification,
+): string | undefined {
+  for (let attempt = state.clarificationAttempts; attempt < 2; attempt += 1) {
+    const pending = { ...request, attempts: attempt };
+    const value = pauseForClarification(pending);
+    if (isClarificationOption(pending, value)) return value;
+  }
+  return undefined;
+}
+
+function applyClarification(
+  state: AgentState,
+  request: PendingClarification,
+  value: string,
+): { state: AgentState; update: AgentUpdate } {
+  const intent = { ...state.intent };
+  if (request.field === "metric") {
+    intent.metric = value;
+    intent.requestedMetrics = [value];
+  } else if (request.field === "timeRange") {
+    intent.timeRange = value;
+  } else if (request.field === "scope") {
+    intent.filters = [...intent.filters, { field: "scope", operator: "=", value }];
+  } else {
+    intent.filters = [...intent.filters, { field: "filterValue", operator: "=", value }];
+  }
+  const question = `${state.question}\nClarification (${request.field}): ${value}`;
+  const update: AgentUpdate = {
+    intent,
+    question,
+    pendingClarification: null,
+    clarificationAttempts: state.clarificationAttempts + 1,
+  };
+  return {
+    state: {
+      ...state,
+      intent,
+      question,
+      pendingClarification: null,
+      clarificationAttempts: state.clarificationAttempts + 1,
+    },
+    update,
+  };
+}
+
 /**
  * Builds the text-to-SQL understanding node and entry handler. The root graph owns
  * dispatch; this module owns model, skill, and executor wiring for the UC.
@@ -341,10 +430,33 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
-    const definition = handleDefinitionLookup(state);
+    let activeState = state;
+    let clarificationUpdate: AgentUpdate = {};
+    const definition = handleDefinitionLookup(activeState);
     if (definition) return definition;
-    const unknownTerm = handleUnknownTerm(state);
+    const unknownTerm = handleUnknownTerm(activeState);
     if (unknownTerm) return unknownTerm;
+    const ambiguousMetric = clarificationForAmbiguousMetric(activeState);
+    if (ambiguousMetric === "exhausted") {
+      return {
+        status: "needs_clarification",
+        pendingClarification: null,
+        answerText: "The requested KPI could not be disambiguated after two responses.",
+      };
+    }
+    if (ambiguousMetric) {
+      const selected = clarificationSelection(activeState, ambiguousMetric);
+      if (!selected) {
+        return {
+          status: "needs_clarification",
+          pendingClarification: null,
+          answerText: "The requested KPI could not be disambiguated after two responses.",
+        };
+      }
+      const applied = applyClarification(activeState, ambiguousMetric, selected);
+      activeState = applied.state;
+      clarificationUpdate = applied.update;
+    }
     const { identity, transport } = readRunContext(rt);
     if (!deps.executor && !transport) {
       return {
@@ -358,7 +470,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         answerText: "text-to-SQL run identity is incomplete.",
       };
     }
-    const candidateTables = normalizeCandidateTables(state.intent.schemaEntities);
+    const candidateTables = normalizeCandidateTables(activeState.intent.schemaEntities);
     if (candidateTables.length === 0) {
       return {
         status: "cannot_answer",
@@ -396,19 +508,63 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         },
       });
     const budget: BudgetState = {
-      llmCalls: state.budget.llmCalls,
-      tokensUsed: state.budget.tokensUsed,
-      deadlineMs: state.budget.deadlineMs,
-      maxLlmCalls: state.budget.maxLlmCalls,
-      maxTokens: state.budget.maxTokens,
+      llmCalls: activeState.budget.llmCalls,
+      tokensUsed: activeState.budget.tokensUsed,
+      deadlineMs: activeState.budget.deadlineMs,
+      maxLlmCalls: activeState.budget.maxLlmCalls,
+      maxTokens: activeState.budget.maxTokens,
     };
-    const result = await executor.run({
-      question: state.question,
+    let result = await executor.run({
+      question: activeState.question,
+      timeRange: activeState.intent.timeRange,
       candidateTables,
       principal: identity,
       budget,
       callbacks: rt.config.callbacks,
     });
+    if (result.status === "needs_clarification") {
+      if (activeState.intent.timeRange !== null || activeState.clarificationAttempts >= 2) {
+        return {
+          ...clarificationUpdate,
+          ...updateFromExecutor(result),
+          pendingClarification: null,
+          answerText: "The query still needs clarification after two responses.",
+        };
+      }
+      const options = await executor.timeRangeOptions?.({ principal: identity, budget });
+      if (!options || options.length < 2 || options.length > 4) {
+        return {
+          ...clarificationUpdate,
+          ...updateFromExecutor(result),
+          pendingClarification: null,
+          answerText: "A valid time range could not be derived from the available data.",
+        };
+      }
+      const clarification = clarificationForLargeQuery(
+        result.table,
+        options,
+        activeState.clarificationAttempts,
+      );
+      const selected = clarificationSelection(activeState, clarification.pendingClarification);
+      if (!selected) {
+        return {
+          status: "needs_clarification",
+          pendingClarification: null,
+          answerText: "The time range could not be resolved after two responses.",
+        };
+      }
+      const applied = applyClarification(activeState, clarification.pendingClarification, selected);
+      activeState = applied.state;
+      clarificationUpdate = { ...clarificationUpdate, ...applied.update };
+      result = await executor.run({
+        question: activeState.question,
+        timeRange: activeState.intent.timeRange,
+        candidateTables,
+        principal: identity,
+        budget,
+        callbacks: rt.config.callbacks,
+      });
+    }
     const update = updateFromExecutor(result);
     const isOkLike = result.status === "ok" || result.status === "no_data";
     const observedTools =
@@ -418,9 +574,10 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
           ? ["describe_table", "run_query"]
           : [];
     return {
+      ...clarificationUpdate,
       ...update,
       ...(isOkLike
-        ? { toolsCalled: [...state.toolsCalled, ...observedTools] }
+        ? { toolsCalled: [...activeState.toolsCalled, ...observedTools] }
         : {}),
       budget: {
         llmCalls: budget.llmCalls - state.budget.llmCalls,
