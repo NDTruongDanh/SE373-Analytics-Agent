@@ -5,6 +5,9 @@ Initial setup for main branch.
 **Start here:** [`docs/architecture.md`](docs/architecture.md) — harness
 architecture, package boundaries, shared contracts, and where each UC's code goes.
 
+For a step-by-step local startup guide, including Docker, MCP, API, web, and
+troubleshooting, see [`docs/local-setup.md`](docs/local-setup.md).
+
 ## Operator setup (harness)
 
 Prerequisites: Node `>= 24`, `pnpm >= 10` (repo pins `pnpm@11.25.0`;
@@ -83,3 +86,18 @@ read boundary is `.openwikiignore`.
   GitHub run (`repo|run_id|sha|job` hash), random per process locally, never
   overwriting an existing value, never containing PII. Same conversation →
   same value (cache reuse); different runs → different values.
+
+## PR architecture review (OpenCode Go, advisory)
+
+Every non-draft PR into `main` gets an architecture review from
+`muse-spark-1.3-contributor` @ `xhigh` (`.github/workflows/pr-review.yml`
+→ `scripts/pr-review.mjs`), judged against [`docs/architecture.md`](docs/architecture.md)
+as the source of truth. It reuses the OpenWiki secret — no new secret needed
+(`Settings → Secrets and variables → Actions → OPENCODE_GO_API_KEY`); fork PRs
+without secret access get a skip notice. Reviews post as a PR comment and are
+**advisory only** (never part of the `gate` branch-protection check).
+
+```sh
+node scripts/pr-review.mjs --dry-run        # print what would be sent (no API call)
+node scripts/pr-review.mjs --dry-run --base HEAD~1  # dry-run with a real diff
+```

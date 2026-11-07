@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // CONT-08 SchemaCatalog: array-of-tables shape shared by the MCP
 // describe_table tool, the access-policy guard, and the agent pre-check.

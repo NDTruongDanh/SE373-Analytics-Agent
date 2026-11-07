@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import * as z from "zod";
+import { z } from "zod";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { buildRootGraph } from "../src/graph.js";
 import {

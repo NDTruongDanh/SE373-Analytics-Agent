@@ -1,0 +1,425 @@
+// PR architecture review via OpenCode Go (OpenAI-compatible Responses API).
+// Reuses the OpenWiki key setup: OPENCODE_GO_API_KEY (CI secret) or
+// OPENAI_COMPATIBLE_API_KEY (local .env). No new secret needed.
+//
+// Model is Responses-only: POST {base}/responses with
+// { model, instructions, input, reasoning: { effort: "xhigh" }, store: false }.
+// The mandatory `x-opencode-session` header mirrors
+// scripts/openwiki-fetch-patch.mjs (deterministic per CI run, random locally).
+//
+// Usage:
+//   node scripts/pr-review.mjs [--dry-run] [--base origin/main]
+//     [--max-diff-chars 90000] [--model muse-spark-1.3-contributor]
+//     [--effort xhigh] [--pr 123]
+//
+// Advisory only: missing key, fork PRs, or API failures exit 0 with a skip
+// notice so this never blocks the `gate` branch-protection context.
+import { createHash, randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, "..");
+
+const DEFAULT_BASE_URL = "https://opencode.ai/inference/go/openai/v1";
+const DEFAULT_MODEL = "muse-spark-1.3-contributor";
+const DEFAULT_EFFORT = "xhigh";
+const SESSION_RE = /^ses_[0-9a-f]{32}$/;
+
+// Diff paths that waste review tokens; still listed as skipped.
+const EXCLUDED_DIFF = [
+  "pnpm-lock.yaml",
+  "package-lock.yaml",
+  "openwiki/",
+  "/dist/",
+  "/coverage/",
+  ".log",
+];
+
+function parseArgs(argv) {
+  const out = {
+    dryRun: false,
+    base: process.env.PR_REVIEW_BASE || "origin/main",
+    maxDiffChars: Number(process.env.PR_REVIEW_MAX_DIFF_CHARS || "90000"),
+    model: process.env.PR_REVIEW_MODEL || DEFAULT_MODEL,
+    effort: process.env.PR_REVIEW_EFFORT || DEFAULT_EFFORT,
+    pr: process.env.PR_NUMBER || "",
+  };
+  for (let i = 2; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === "--dry-run") out.dryRun = true;
+    else if (a === "--base") out.base = argv[(i += 1)] || out.base;
+    else if (a === "--max-diff-chars")
+      out.maxDiffChars = Number(argv[(i += 1)] || out.maxDiffChars);
+    else if (a === "--model") out.model = argv[(i += 1)] || out.model;
+    else if (a === "--effort") out.effort = argv[(i += 1)] || out.effort;
+    else if (a === "--pr") out.pr = argv[(i += 1)] || out.pr;
+  }
+  return out;
+}
+
+function isExcluded(path) {
+  return EXCLUDED_DIFF.some((pat) =>
+    pat.endsWith("/")
+      ? path.startsWith(pat) || path.includes(pat)
+      : path === pat ||
+        path.endsWith(pat) ||
+        path.endsWith(`/${pat}`) ||
+        path.includes(`/${pat}`),
+  );
+}
+
+async function git(args) {
+  const { stdout } = await execFileAsync("git", args, {
+    cwd: root,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return stdout.trim();
+}
+
+function resolveSessionId() {
+  const override = (process.env.OPENWIKI_OPENCODE_SESSION_ID || "").trim();
+  if (override) {
+    if (!SESSION_RE.test(override)) {
+      throw new Error(
+        "Invalid OPENWIKI_OPENCODE_SESSION_ID: expected ses_ + 32 lowercase hex.",
+      );
+    }
+    return override;
+  }
+  const runId = process.env.GITHUB_RUN_ID || "";
+  if (runId) {
+    const repo = process.env.GITHUB_REPOSITORY || "local";
+    const sha = process.env.GITHUB_SHA || "";
+    const pr =
+      process.env.PR_NUMBER ||
+      process.env.GITHUB_REF ||
+      "pr-review";
+    const digest = createHash("sha256")
+      .update(`pr-review|${repo}|${runId}|${sha}|${pr}`, "utf8")
+      .digest("hex")
+      .slice(0, 32);
+    return `ses_${digest}`;
+  }
+  return `ses_${randomBytes(16).toString("hex").slice(0, 32)}`;
+}
+
+function readEventPayload() {
+  try {
+    const p = process.env.GITHUB_EVENT_PATH;
+    if (p && existsSync(p)) return JSON.parse(readFileSync(p, "utf8"));
+  } catch {
+    // Fall through to gh-based metadata.
+  }
+  return null;
+}
+
+function buildInstructions() {
+  return [
+    "You are a senior staff reviewer for the SE373 Analytics Agent monorepo.",
+    "docs/architecture.md is the SOLE source of truth for structure, boundaries, and invariants.",
+    "Be direct and technical, no flattery. Cite file paths with line numbers.",
+    "",
+    "Enforce in order:",
+    "1. Five non-negotiable harness invariants (§1.2): single MCP data gateway (agent never imports pg/pg-cursor or mcp-server/src), 3-layer defense (sqlGuard + agent_ro read-only + AccessPolicy/PII), untrusted-data separation with zero-tools synthesis, K7 pre-response verification (citations/chart/numeric ≤1%/attribution ≤5%), contract-first camelCase Zod + runId/principal propagation.",
+    "2. Package boundaries (§5.2, enforced by eslint): agent/access-policy/api(non-store) never import pg/pg-cursor or mcp-server/src; web imports workspace types from @shared/contracts only; contracts imports zod only; access-policy is pure (no DB/network/fs).",
+    "3. Server order (§2.3/§3.10): auth → scope → zod → sqlGuard → AccessPolicy → executor (agent_ro, 30s timeout, cursor ≤1000) → PII scan → audit. Every agent SQL query must go through ValidatedQueryExecutor (selective describe → local pre-check → run_query → ≤3 repairs); synthesis nodes bind zero tools.",
+    "4. Contracts evolution (§5/§7.1): additive needs 1 owner review + regenerated docs/mcp_interface.md (never hand-edit); breaking renames/removals/type-tightening/error-code changes need a CONTRACTS_VERSION major bump + all affected UC owners.",
+    "5. Per-UC rules (§7): own files only, no cross-UC rewrites; ≥5 eval cases per UC (UC-01 ≥30 benchmark) + shared safety attacks + ≥1 redacted trace; traces/logs carry no raw PII or secrets.",
+    "",
+    "Output Markdown exactly:",
+    "## Verdict",
+    "One line: Approve | Request changes | Comment (advisory). Request changes ONLY for invariant/boundary violations, exploitable safety gaps, breaking contracts without a major bump, hand-edited docs/mcp_interface.md, or leaked secrets/PII.",
+    "## Summary",
+    "2-4 sentences on what the PR changes and whether it fits the harness.",
+    "## Architecture compliance",
+    "Table with one row per invariant/boundary checked: | Check (§ref) | Pass/Fail/N-A | Evidence |. Every Fail must point at diff lines.",
+    "## Issues",
+    "Numbered list, else 'None'. Each: `path:line` — severity (blocker/major/minor) — violated § — why — concrete fix. Never invent files or line numbers outside the diff.",
+    "## Minor nits (optional)",
+    "Style/tests/docs suggestions that are NOT merge-blocking.",
+    "## What looks good",
+    "1-3 bullets only for genuinely correct harness usage (e.g. proper ValidatedQueryExecutor path, correct error routing).",
+    "",
+    "Rules: review ONLY the diff below. Do not restate the diff. Keep the whole review under ~150 lines. Flag secret/PII additions as blockers.",
+  ].join("\n");
+}
+
+function extractResponseText(data) {
+  if (!data || typeof data !== "object") return "";
+  if (typeof data.output_text === "string" && data.output_text.trim())
+    return data.output_text;
+  const out = [];
+  const walk = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const v of node) walk(v);
+      return;
+    }
+    if (
+      (node.type === "output_text" || node.type === "text") &&
+      typeof node.text === "string"
+    ) {
+      out.push(node.text);
+      return;
+    }
+    if (typeof node.text === "string" && node.type?.includes("text")) {
+      out.push(node.text);
+      return;
+    }
+    for (const v of Object.values(node)) walk(v);
+  };
+  walk(data.output ?? data.content ?? data.outputs ?? []);
+  if (out.length > 0) return out.join("\n\n");
+  const choice = data.choices?.[0]?.message?.content;
+  if (typeof choice === "string" && choice.trim()) return choice;
+  if (typeof data.message?.content === "string") return data.message.content;
+  return "";
+}
+
+async function main() {
+  const opts = parseArgs(process.argv);
+  const archPath = join(root, "docs/architecture.md");
+  if (!existsSync(archPath)) {
+    console.error("FAIL: docs/architecture.md not found");
+    process.exit(1);
+  }
+  const architecture = readFileSync(archPath, "utf8");
+
+  // --- Collect diff (three-dot, fall back to two-dot) ---
+  let files = [];
+  let diff = "";
+  try {
+    let names = "";
+    try {
+      names = await git(["diff", "--name-only", `${opts.base}...HEAD`]);
+    } catch {
+      names = await git(["diff", "--name-only", `${opts.base}..HEAD`]);
+    }
+    files = names.split("\n").map((s) => s.trim()).filter(Boolean);
+  } catch (err) {
+    console.error(`FAIL: git diff --name-only failed: ${err.message}`);
+    process.exit(1);
+  }
+  const reviewFiles = files.filter((f) => !isExcluded(f));
+  const skipped = files.filter((f) => isExcluded(f));
+  if (reviewFiles.length > 0) {
+    const args = [
+      "diff",
+      "--unified=3",
+      "--no-color",
+      `${opts.base}...HEAD`,
+      "--",
+      ...reviewFiles,
+    ];
+    try {
+      diff = await git(args);
+    } catch {
+      diff = await git([
+        "diff",
+        "--unified=3",
+        "--no-color",
+        `${opts.base}..HEAD`,
+        "--",
+        ...reviewFiles,
+      ]);
+    }
+  }
+  let truncated = false;
+  if (diff.length > opts.maxDiffChars) {
+    diff = `${diff.slice(0, opts.maxDiffChars)}\n\n... [TRUNCATED: diff exceeded ${opts.maxDiffChars} chars; ${reviewFiles.length} files, showing the first ${opts.maxDiffChars} chars]`;
+    truncated = true;
+  }
+
+  // --- PR metadata (event payload preferred, gh best-effort) ---
+  const event = readEventPayload();
+  const prFromEvent =
+    event?.pull_request?.number || event?.number || opts.pr || "";
+  let prMeta = {
+    number: String(prFromEvent || ""),
+    title: event?.pull_request?.title || "",
+    body: (event?.pull_request?.body || "").slice(0, 4000),
+    base: event?.pull_request?.base?.ref || "main",
+    head: event?.pull_request?.head?.ref || "",
+  };
+  if (!prMeta.title && prMeta.number) {
+    try {
+      const { stdout } = await execFileAsync(
+        "gh",
+        ["pr", "view", String(prMeta.number), "--json", "title,body,baseRefName,headRefName"],
+        { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+      );
+      const j = JSON.parse(stdout);
+      prMeta = {
+        number: String(prMeta.number),
+        title: j.title || "",
+        body: String(j.body || "").slice(0, 4000),
+        base: j.baseRefName || "main",
+        head: j.headRefName || "",
+      };
+    } catch {
+      // Metadata is nice-to-have; the diff is the review target.
+    }
+  }
+  if (!opts.pr && prMeta.number) opts.pr = prMeta.number;
+
+  const header = [
+    `PR: #${prMeta.number || "?"} ${prMeta.title || "(title unavailable)"}`,
+    `Base → Head: ${prMeta.base} → ${prMeta.head || "HEAD"} (base ref ${opts.base})`,
+    `Files: ${reviewFiles.length} reviewed${skipped.length ? `, ${skipped.length} skipped (generated/vendor: ${skipped.slice(0, 10).join(", ")}${skipped.length > 10 ? ", …" : ""})` : ""}${truncated ? " — DIFF TRUNCATED" : ""}`,
+    prMeta.body ? `PR description (first 4k chars):\n${prMeta.body}` : "PR description: (unavailable)",
+  ].join("\n");
+
+  const input = [
+    "ARCHITECTURE (source of truth — docs/architecture.md):",
+    "```markdown",
+    architecture,
+    "```",
+    "",
+    header,
+    "",
+    reviewFiles.length === 0
+      ? "DIFF: (empty — no reviewable files changed; reply that there is nothing to review against the architecture.)"
+      : "DIFF (unified=3, excluded paths removed):",
+    reviewFiles.length === 0 ? "" : "```diff",
+    reviewFiles.length === 0 ? "" : diff,
+    reviewFiles.length === 0 ? "" : "```",
+    "",
+    "Review the diff against the architecture. Follow the output format exactly.",
+  ].join("\n");
+
+  if (opts.dryRun) {
+    console.log(
+      `[pr-review] dry-run: model=${opts.model} effort=${opts.effort} base=${opts.base}`,
+    );
+    console.log(
+      `[pr-review] files=${files.length} reviewed=${reviewFiles.length} skipped=${skipped.length} diffChars=${diff.length} archChars=${architecture.length} inputChars=${input.length}`,
+    );
+    console.log("---INPUT HEAD---");
+    console.log(input.slice(0, 3000));
+    return;
+  }
+
+  if (reviewFiles.length === 0) {
+    const body = [
+      "<!-- opencode-pr-review -->",
+      `## Opencode review (${opts.model} · ${opts.effort})`,
+      "",
+      "No reviewable files changed (only generated/vendor paths or an empty diff). Nothing to check against `docs/architecture.md`.",
+    ].join("\n");
+    await postComment(body, opts);
+    return;
+  }
+
+  const apiKey =
+    process.env.OPENCODE_GO_API_KEY ||
+    process.env.OPENAI_COMPATIBLE_API_KEY ||
+    "";
+  if (!apiKey) {
+    const body = [
+      "<!-- opencode-pr-review -->",
+      `## Opencode review (${opts.model} · ${opts.effort}) — skipped`,
+      "",
+      "No `OPENCODE_GO_API_KEY` available in this run (expected for fork PRs or local runs without `.env`).",
+      "Add the same secret used by OpenWiki (`Settings → Secrets and variables → Actions → OPENCODE_GO_API_KEY`) to enable architecture reviews.",
+    ].join("\n");
+    console.error("[pr-review] missing OPENCODE_GO_API_KEY — posting skip notice");
+    await postComment(body, opts);
+    return;
+  }
+
+  const baseUrl = (
+    process.env.OPENAI_COMPATIBLE_BASE_URL || DEFAULT_BASE_URL
+  ).replace(/\/+$/, "");
+  const sessionId = resolveSessionId();
+  console.error(
+    `[pr-review] requesting ${opts.model} effort=${opts.effort} (session ${sessionId.slice(0, 12)}…)`,
+  );
+  let review = "";
+  try {
+    const res = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "x-opencode-session": sessionId,
+      },
+      body: JSON.stringify({
+        model: opts.model,
+        instructions: buildInstructions(),
+        input,
+        reasoning: { effort: opts.effort },
+        max_output_tokens: 8000,
+        store: false,
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    review = extractResponseText(JSON.parse(text));
+    if (!review.trim()) throw new Error("empty model response");
+  } catch (err) {
+    const body = [
+      "<!-- opencode-pr-review -->",
+      `## Opencode review (${opts.model} · ${opts.effort}) — error`,
+      "",
+      `The reviewer call failed and is advisory only (never blocks \`gate\`): \`${String(err?.message || err).slice(0, 300)}\`.`,
+      "Re-run the workflow or push a new commit to retry.",
+    ].join("\n");
+    console.error(`[pr-review] API call failed: ${err?.message || err}`);
+    await postComment(body, opts);
+    return;
+  }
+
+  const body = [
+    "<!-- opencode-pr-review -->",
+    `## Opencode review (\`${opts.model}\` · ${opts.effort} · vs \`docs/architecture.md\`)`,
+    "",
+    review.trim(),
+    "",
+    "---",
+    "_Advisory architecture review — non-blocking. Source of truth: `docs/architecture.md`. Model: `muse-spark-1.3-contributor` @ `xhigh` via OpenCode Go Responses API._",
+  ].join("\n");
+  await postComment(body, opts);
+}
+
+async function postComment(body, opts) {
+  const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+  if (summaryFile) {
+    try {
+      writeFileSync(summaryFile, `${body.slice(0, 20000)}\n`, { flag: "a" });
+    } catch {
+      // Summary is best-effort.
+    }
+  }
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
+  const pr = opts.pr || process.env.PR_NUMBER || "";
+  if (!pr || !token) {
+    console.log("---REVIEW BODY (no PR token/number; not posting)---");
+    console.log(body);
+    return;
+  }
+  const dir = mkdtempSync(join(tmpdir(), "opencode-pr-review-"));
+  const file = join(dir, "review.md");
+  writeFileSync(file, body);
+  try {
+    await execFileAsync("gh", ["pr", "comment", String(pr), "--body-file", file], {
+      cwd: root,
+      env: { ...process.env, GH_TOKEN: token, GITHUB_TOKEN: token },
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    console.error(`[pr-review] posted review to PR #${pr}`);
+  } catch (err) {
+    console.error(`[pr-review] gh comment failed (advisory): ${err.message}`);
+    console.log("---REVIEW BODY (post failed)---");
+    console.log(body);
+  }
+}
+
+await main();

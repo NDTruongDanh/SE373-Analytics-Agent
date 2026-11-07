@@ -11,7 +11,7 @@ import {
   DEFAULT_MANIFEST_PATH,
   SMALL_MANIFEST_PATH,
 } from "./constants.js";
-import * as z from "zod";
+import { z } from "zod";
 
 export { DATASET_VERSION, DEFAULT_MANIFEST_PATH, SMALL_MANIFEST_PATH };
 
