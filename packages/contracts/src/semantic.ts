@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // Chunk metadata for the semantic layer corpus (UC-02 section 1.2).
 // Sensitivity values align with policies/sensitive_columns.yaml.

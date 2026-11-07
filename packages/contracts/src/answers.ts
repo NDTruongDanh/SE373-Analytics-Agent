@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 import { AnalysisPlanSchema, RootCauseAnswerSchema } from "./rca.js";
 import {
   CHART_TYPE_TO_COMPONENT,

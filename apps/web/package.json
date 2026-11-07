@@ -2,6 +2,16 @@
   "name": "@shared/web",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    "./charts": {
+      "types": "./dist/charts.d.ts",
+      "default": "./dist/charts.js"
+    },
+    "./chartView": {
+      "types": "./dist/chartView.d.ts",
+      "default": "./dist/chartView.js"
+    }
+  },
   "scripts": {
     "dev": "tsc -b ../../packages/contracts && vite",
     "build": "tsc -b && vite build",
@@ -10,6 +20,8 @@
     "test": "tsc -b && vitest run"
   },
   "dependencies": {
+    "@openuidev/react-lang": "catalog:",
+    "@openuidev/react-ui": "catalog:",
     "@shared/contracts": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"
@@ -17,6 +29,7 @@
   "devDependencies": {
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",

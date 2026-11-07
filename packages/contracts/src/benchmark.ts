@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // One row of the benchmark question set (PRD 2.2).
 // The full 30-question set is authored by UC-01 in a later phase; this

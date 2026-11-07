@@ -7,6 +7,11 @@ allowBuilds:
   # (scripts/postinstall.js) only reads its parent package.json and prints
   # a version-scheme stderr warning; no network, writes, or codegen.
   "@launchql/protobufjs": true
+  # Explicitly never run: @openuidev/lang-core postinstall is install-time
+  # telemetry (its own source says "telemetry must never fail installation").
+  # The library works without it; false keeps installs telemetry-free.
+  # (pnpm v11: allowBuilds replaces neverBuiltDependencies.)
+  "@openuidev/lang-core": false
 
 packages:
   - "apps/*"
@@ -19,6 +24,8 @@ catalog:
   "@langchain/langgraph": ^1.5.2
   "@langchain/langgraph-checkpoint-postgres": ^1.1.2
   "@modelcontextprotocol/sdk": ^1.32.2
+  "@openuidev/react-lang": ^1.1.0
+  "@openuidev/react-ui": ^0.18.5
   "@types/express": ^5.0.6
   "@types/node": ^26.6.5
   "@types/pg": ^8.23.1
@@ -36,3 +43,6 @@ catalog:
   vite: ^8.3.6
   yaml: ^2.9.1
   zod: ^4.6.7
+
+minimumReleaseAgeExclude:
+  - '@openuidev/react-ui@0.18.5'

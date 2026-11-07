@@ -8,7 +8,7 @@ import {
   RootCauseAnswerSchema,
   SQLAnswerStatusSchema,
 } from "@shared/contracts";
-import * as z from "zod";
+import { z } from "zod";
 import { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
 
 export { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";

@@ -29,7 +29,9 @@ import {
   type AgentState,
   type SpanEvent,
   type UcEntryHandler,
+  type VizFn,
 } from "@shared/agent";
+import { createUc03Viz } from "@shared/agent/uc03";
 import {
   buildLangSmithRunConfig,
   createLangSmithTracer,
@@ -88,6 +90,13 @@ export interface BuildAppOptions {
   store?: AppStateStore;
   /** Test seam: merged OVER the registry table (mirrors RootGraphDeps). */
   ucHandlers?: Record<string, UcEntryHandler>;
+  /**
+   * UC-03 VIZ seam (insight_report verification for every ok/no_data
+   * answer). Defaults to createUc03Viz(): deterministic chart validation
+   * with zero LLM calls when no model key is configured, Profile-3
+   * tool-free synthesis otherwise. Override with a scripted seam in tests.
+   */
+  viz?: VizFn;
   /** Optional semantic re-index handler (defaults to calling the MCP gateway /reindex endpoint). */
   reindex?: (ctx: { token: string; mcpUrl: string }) => Promise<ReindexResult>;
 }
@@ -303,6 +312,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         checkpointer: options.checkpointer,
         emitSpan: progress,
         ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
+        viz: options.viz ?? createUc03Viz(),
       }),
       emit,
     };

@@ -1,5 +1,5 @@
 import { dbToolError, type DbToolError } from "@shared/contracts";
-import * as z from "zod";
+import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createChatModel } from "../models/factory.js";
 import {

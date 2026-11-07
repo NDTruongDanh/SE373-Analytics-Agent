@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import * as z from "zod";
+import { z } from "zod";
 
 export const ModelPricingSchema = z.strictObject({
   version: z.literal(1),
