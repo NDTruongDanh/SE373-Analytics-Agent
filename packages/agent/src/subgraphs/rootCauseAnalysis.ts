@@ -28,6 +28,7 @@ import {
   type ChatModelLike,
   type McpToolCaller,
 } from "../queryExecutor/index.js";
+import { deparse, parse } from "@shared/access-policy";
 import { createChatModel } from "../models/factory.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 
@@ -105,7 +106,7 @@ export function createDateGuardedMcpCaller(
     async call(tool: string, args: Record<string, unknown>): Promise<unknown> {
       if ((tool === "explain_query" || tool === "run_query") && typeof args["sql"] === "string") {
         const expectedPeriod = getActivePeriod();
-        if (expectedPeriod && !verifySqlDateFilter(args["sql"], expectedPeriod)) {
+        if (expectedPeriod && !(await verifySqlDateFilter(args["sql"], expectedPeriod))) {
           throw dbToolError(
             "INVALID_SQL",
             `Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ (${expectedPeriod.start} đến ${expectedPeriod.end}): ${args["sql"]}`,
@@ -226,30 +227,6 @@ function splitByTopLevelOr(text: string): string[] {
   return branches;
 }
 
-function extractWhereClauses(sql: string): string[] {
-  const s = stripSqlComments(sql);
-  const whereRegex = /\bwhere\b\s+([\s\S]+?)(?=\b(?:group\s+by|order\s+by|limit|offset|having|window|union)\b|;|$)/gi;
-  const clauses: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = whereRegex.exec(s)) !== null) {
-    let raw = m[1]?.trim() ?? "";
-    let openCount = 0;
-    let closeCount = 0;
-    for (const c of raw) {
-      if (c === "(") openCount++;
-      if (c === ")") closeCount++;
-    }
-    while (closeCount > openCount && raw.endsWith(")")) {
-      raw = raw.slice(0, -1).trim();
-      closeCount--;
-    }
-    if (raw) {
-      clauses.push(raw);
-    }
-  }
-  return clauses;
-}
-
 function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
   // 1. Structural BETWEEN check
   const betweenPattern = new RegExp(
@@ -340,21 +317,170 @@ function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
   return false;
 }
 
-export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
-  if (!sql || !period || !period.start || !period.end) return false;
-  const s = stripSqlComments(sql);
-
-  const whereClauses = extractWhereClauses(s);
-  if (whereClauses.length > 0) {
-    return whereClauses.some((clause) => {
-      const branches = splitByTopLevelOr(clause);
-      return branches.length > 0 && branches.every((b) => verifyBranchDateFilter(b, period));
-    });
-  }
-
-  // Fallback if no explicit WHERE clause was extracted (e.g. bare condition passed in unit tests)
+export function verifyWhereClauseText(whereText: string, period: TimePeriod): boolean {
+  const s = stripSqlComments(whereText);
   const branches = splitByTopLevelOr(s);
   return branches.length > 0 && branches.every((b) => verifyBranchDateFilter(b, period));
+}
+
+function asSelectStmt(node: unknown): Record<string, unknown> | undefined {
+  if (!node || typeof node !== "object") return undefined;
+  const rec = node as Record<string, unknown>;
+  if ("SelectStmt" in rec) return asSelectStmt(rec["SelectStmt"]);
+  return rec;
+}
+
+function collectUnionBranches(selectStmt: Record<string, unknown>): Record<string, unknown>[] {
+  const op = selectStmt["op"];
+  const isSetOp = (op && op !== "SETOP_NONE") || selectStmt["larg"] || selectStmt["rarg"];
+  if (isSetOp) {
+    const branches: Record<string, unknown>[] = [];
+    const larg = asSelectStmt(selectStmt["larg"]);
+    const rarg = asSelectStmt(selectStmt["rarg"]);
+    if (larg) branches.push(...collectUnionBranches(larg));
+    if (rarg) branches.push(...collectUnionBranches(rarg));
+    return branches;
+  }
+  return [selectStmt];
+}
+
+function extractDataSources(
+  fromItem: unknown,
+): Array<{ rangeVar?: Record<string, unknown>; subselect?: Record<string, unknown> }> {
+  if (!fromItem || typeof fromItem !== "object") return [];
+  const rec = fromItem as Record<string, unknown>;
+  if (rec["RangeVar"]) {
+    return [{ rangeVar: rec["RangeVar"] as Record<string, unknown> }];
+  }
+  if (rec["RangeSubselect"]) {
+    return [{ subselect: rec["RangeSubselect"] as Record<string, unknown> }];
+  }
+  if (rec["JoinExpr"]) {
+    const join = rec["JoinExpr"] as Record<string, unknown>;
+    return [
+      ...extractDataSources(join["larg"]),
+      ...extractDataSources(join["rarg"]),
+    ];
+  }
+  return [];
+}
+
+async function isSelectStmtBounded(
+  stmt: Record<string, unknown>,
+  period: TimePeriod,
+  cteMap: Map<string, Record<string, unknown>>,
+): Promise<boolean> {
+  // 1. Direct WHERE filter on this SelectStmt
+  if (stmt["whereClause"]) {
+    const whereSql = await deparse(stmt["whereClause"]);
+    if (verifyWhereClauseText(whereSql, period)) {
+      return true;
+    }
+  }
+
+  // 2. If no direct valid WHERE filter, check if all data sources in FROM are themselves bounded
+  const fromClause = stmt["fromClause"];
+  if (Array.isArray(fromClause) && fromClause.length > 0) {
+    let allSourcesBounded = true;
+    for (const item of fromClause) {
+      const sources = extractDataSources(item);
+      if (sources.length === 0) {
+        allSourcesBounded = false;
+        break;
+      }
+      for (const src of sources) {
+        if (src.rangeVar) {
+          const relname = typeof src.rangeVar["relname"] === "string" ? src.rangeVar["relname"] : "";
+          const cteQuery = cteMap.get(relname);
+          if (cteQuery) {
+            const cteBranches = collectUnionBranches(cteQuery);
+            const cteBounded = (
+              await Promise.all(cteBranches.map((b) => isSelectStmtBounded(b, period, cteMap)))
+            ).every(Boolean);
+            if (!cteBounded) {
+              allSourcesBounded = false;
+              break;
+            }
+          } else {
+            allSourcesBounded = false;
+            break;
+          }
+        } else if (src.subselect) {
+          const subquery = asSelectStmt(src.subselect["subquery"]);
+          if (!subquery) {
+            allSourcesBounded = false;
+            break;
+          }
+          const subBranches = collectUnionBranches(subquery);
+          const subBounded = (
+            await Promise.all(subBranches.map((b) => isSelectStmtBounded(b, period, cteMap)))
+          ).every(Boolean);
+          if (!subBounded) {
+            allSourcesBounded = false;
+            break;
+          }
+        } else {
+          allSourcesBounded = false;
+          break;
+        }
+      }
+      if (!allSourcesBounded) break;
+    }
+    if (allSourcesBounded) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export async function verifySqlDateFilter(sql: string, period: TimePeriod): Promise<boolean> {
+  if (!sql || !sql.trim() || !period || !period.start || !period.end) return false;
+
+  let ast: unknown;
+  try {
+    ast = await parse(sql);
+  } catch {
+    // If not valid full SQL statement (e.g. bare WHERE condition in a legacy unit test),
+    // fall back to checking the bare expression text
+    return verifyWhereClauseText(sql, period);
+  }
+
+  const rootRecord = ast as Record<string, unknown>;
+  const stmts = rootRecord?.["stmts"];
+  if (!Array.isArray(stmts) || stmts.length !== 1) {
+    return false;
+  }
+
+  const stmtWrapper = (stmts[0] as Record<string, unknown>)?.["stmt"];
+  const rootSelect = asSelectStmt(stmtWrapper);
+  if (!rootSelect) {
+    return false;
+  }
+
+  // Collect CTEs if present
+  const cteMap = new Map<string, Record<string, unknown>>();
+  const withClause = rootSelect["withClause"] as Record<string, unknown> | undefined;
+  if (withClause && Array.isArray(withClause["ctes"])) {
+    for (const entry of withClause["ctes"]) {
+      const cte = (entry as Record<string, unknown>)?.["CommonTableExpr"] as Record<string, unknown> | undefined;
+      const ctename = cte?.["ctename"];
+      const ctequery = asSelectStmt(cte?.["ctequery"]);
+      if (typeof ctename === "string" && ctequery) {
+        cteMap.set(ctename, ctequery);
+      }
+    }
+  }
+
+  // Collect all branches in case of set operations (UNION, UNION ALL, INTERSECT, EXCEPT)
+  const branches = collectUnionBranches(rootSelect);
+  if (branches.length === 0) return false;
+
+  // EVERY branch in a set operation must be bounded!
+  const results = await Promise.all(
+    branches.map((branch) => isSelectStmtBounded(branch, period, cteMap)),
+  );
+  return results.every(Boolean);
 }
 
 function asMcpFailure(tool: string, text: string): DbToolError {
@@ -737,7 +863,7 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán baseline: ${errMsg}`);
     }
 
-    if (!baseRes.sql || !verifySqlDateFilter(baseRes.sql, intent.baselinePeriod)) {
+    if (!baseRes.sql || !(await verifySqlDateFilter(baseRes.sql, intent.baselinePeriod))) {
       throw new Error(
         `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}): ${baseRes.sql ?? "(empty)"}`,
       );
@@ -791,7 +917,7 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán current value: ${errMsg}`);
     }
 
-    if (!currRes.sql || !verifySqlDateFilter(currRes.sql, intent.currentPeriod)) {
+    if (!currRes.sql || !(await verifySqlDateFilter(currRes.sql, intent.currentPeriod))) {
       throw new Error(
         `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}): ${currRes.sql ?? "(empty)"}`,
       );

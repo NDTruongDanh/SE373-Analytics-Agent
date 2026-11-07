@@ -323,12 +323,12 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(callCount).toBe(2);
   });
 
-  it("T35-T5_verifySqlDateFilter: enforces both start and end boundaries strictly", () => {
+  it("T35-T5_verifySqlDateFilter: enforces both start and end boundaries strictly", async () => {
     const period = { start: "2026-08-01", end: "2026-08-31" };
 
     // Valid: both bounds present with <= end
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31'",
         period,
       ),
@@ -336,7 +336,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Valid: both bounds present with < nextDay (2026-09-01)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date < '2026-09-01'",
         period,
       ),
@@ -344,7 +344,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Valid: month truncation / to_char
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE to_char(purchase_date, 'YYYY-MM') = '2026-08'",
         period,
       ),
@@ -352,7 +352,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: missing end date (only >= start)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND status = 'delivered'",
         period,
       ),
@@ -360,7 +360,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: missing start date (only <= end)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE purchase_date <= '2026-08-31' AND status = 'delivered'",
         period,
       ),
@@ -368,7 +368,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: missing start date (only < nextDay)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE purchase_date < '2026-09-01' AND status = 'delivered'",
         period,
       ),
@@ -376,7 +376,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: date string in status condition instead of date column (user review case)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND status = '2026-08-31'",
         period,
       ),
@@ -384,7 +384,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: date string inside SQL comment
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders -- filter from 2026-08-01 to 2026-08-31\nWHERE status = 'delivered'",
         period,
       ),
@@ -392,7 +392,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Valid: BETWEEN syntax
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date BETWEEN '2026-08-01' AND '2026-08-31'",
         period,
       ),
@@ -400,7 +400,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Valid: date cast (::date)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01'::date AND o.purchase_date <= '2026-08-31'::date",
         period,
       ),
@@ -408,7 +408,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: OR between date bounds instead of AND (tautology / unbounded period)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01' OR o.purchase_date <= '2026-08-31'",
         period,
       ),
@@ -416,7 +416,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: bounds on two different date columns (e.g. orders.purchase_date vs reviews.created_at)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders o JOIN reviews r USING(order_id) WHERE o.purchase_date >= '2026-08-01' AND r.created_at <= '2026-08-31'",
         period,
       ),
@@ -424,7 +424,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: bounds with conflicting aliases (e.g. o1.purchase_date vs o2.purchase_date)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders o1 JOIN orders o2 USING(order_id) WHERE o1.purchase_date >= '2026-08-01' AND o2.purchase_date <= '2026-08-31'",
         period,
       ),
@@ -432,7 +432,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: bounds in separate disjunctive branches of an OR clause
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE (purchase_date >= '2026-08-01' AND status = 'delivered') OR (purchase_date <= '2026-08-31' AND status = 'returned')",
         period,
       ),
@@ -440,7 +440,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: top-level OR before date bounds (unbounded branch leaks rows)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE status = 'returned' OR (purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31')",
         period,
       ),
@@ -448,7 +448,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: top-level OR after date bounds (unbounded branch leaks rows)
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE (purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31') OR status = 'delivered'",
         period,
       ),
@@ -456,7 +456,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Valid: disjunctive branches where ALL branches are individually bounded by period
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE (region = 'North' AND purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31') OR (region = 'South' AND purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31')",
         period,
       ),
@@ -464,7 +464,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Valid: nested OR in unrelated parentheses while date bounds are conjoined with AND
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01' AND (o.status = 'delivered' OR o.status = 'shipped') AND o.purchase_date <= '2026-08-31'",
         period,
       ),
@@ -472,14 +472,62 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     // Invalid: missing date column altogether
     expect(
-      verifySqlDateFilter(
+      await verifySqlDateFilter(
         "SELECT SUM(price_vnd) FROM orders WHERE status = 'delivered'",
         period,
       ),
     ).toBe(false);
 
+    // Valid: UNION ALL where every branch is date-bounded
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31' UNION ALL SELECT SUM(price_vnd) FROM orders WHERE purchase_date BETWEEN '2026-08-01' AND '2026-08-31'",
+        period,
+      ),
+    ).toBe(true);
+
+    // Invalid: UNION ALL where one branch has date filter but another branch has NO WHERE clause
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31' UNION ALL SELECT SUM(price_vnd) FROM orders",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: UNION ALL where one branch has date filter but another branch filters status without date
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31' UNION ALL SELECT SUM(price_vnd) FROM orders WHERE status = 'delivered'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: 3-way UNION where 2 branches are bounded but 1 branch is unbounded
+    expect(
+      await verifySqlDateFilter(
+        "SELECT 1 FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31' UNION ALL SELECT 2 FROM orders WHERE status = 'delivered' UNION ALL SELECT 3 FROM orders WHERE purchase_date BETWEEN '2026-08-01' AND '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Valid: CTE with date bounds used in main query
+    expect(
+      await verifySqlDateFilter(
+        "WITH b AS (SELECT * FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31') SELECT SUM(price_vnd) FROM b",
+        period,
+      ),
+    ).toBe(true);
+
+    // Invalid: CTE without date bounds used in main query without WHERE
+    expect(
+      await verifySqlDateFilter(
+        "WITH b AS (SELECT * FROM orders WHERE status = 'delivered') SELECT SUM(price_vnd) FROM b",
+        period,
+      ),
+    ).toBe(false);
+
     // Invalid: empty SQL
-    expect(verifySqlDateFilter("", period)).toBe(false);
+    expect(await verifySqlDateFilter("", period)).toBe(false);
   });
 
   it("T35-T5_date_filter_rejection: throws error and refuses to use rows when SQL lacks end date", async () => {
