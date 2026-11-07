@@ -1695,10 +1695,11 @@ export async function executeAnalysis(
             candidateTables: intent.candidateTables,
             principal,
             budget: createBudgetState({ maxLlmCalls: remainingForBaseline }),
+            maxAttempts: remainingForBaseline,
           });
 
           const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
-          plan.totalQueriesCount = Math.min(maxQueries, plan.totalQueriesCount + baseAttempts);
+          plan.totalQueriesCount += baseAttempts;
 
           // Verify baseline executor result status: MUST be 'ok' before running current query
           if (baseRes.status !== "ok") {
@@ -1732,10 +1733,11 @@ export async function executeAnalysis(
             candidateTables: intent.candidateTables,
             principal,
             budget: createBudgetState({ maxLlmCalls: remainingForCurrent }),
+            maxAttempts: remainingForCurrent,
           });
 
           const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
-          plan.totalQueriesCount = Math.min(maxQueries, plan.totalQueriesCount + currAttempts);
+          plan.totalQueriesCount += currAttempts;
 
           deps.setActivePeriod?.(null);
           deps.setAllowedDateColumns?.(null);
@@ -2236,8 +2238,9 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
                   `step_${step.stepId}`,
                 );
               }
-            } catch {
-              // Ignore checkpoint write failures on non-supporting savers
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              throw new Error(`Lỗi lưu checkpoint tiến độ bước ${step.stepId}: ${msg}`);
             }
           }
           await effectiveDeps.onStepExecuted?.(step, p);

@@ -23,9 +23,45 @@ import { makeThreadId, resumeDecision } from "../src/hitl.js";
 import { AgentStateSchema, type AgentState } from "../src/state.js";
 import { createRcaRuntime } from "../src/subgraphs/rootCauseAnalysis.js";
 import type { PlanStep } from "@shared/contracts";
+import net from "node:net";
+
+if (!process.env["HARNESS_STATE_DATABASE_URL"]) {
+  try {
+    process.loadEnvFile?.();
+  } catch {
+    // .env absent or unreadable, continue
+  }
+}
+
+async function isDbReachable(urlStr: string | undefined): Promise<boolean> {
+  if (!urlStr) return false;
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname || "127.0.0.1";
+    const port = Number(parsed.port) || 5432;
+    return await new Promise<boolean>((resolve) => {
+      const socket = net.createConnection({ host, port, timeout: 500 });
+      socket.on("connect", () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.on("error", () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.on("timeout", () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+  } catch {
+    return false;
+  }
+}
 
 const LIVE_URL = process.env["HARNESS_STATE_DATABASE_URL"];
-const describeLive = describe.skipIf(!LIVE_URL);
+const isReachable = await isDbReachable(LIVE_URL);
+const describeLive = describe.skipIf(!isReachable);
 
 const EXPECTED_TABLES = [
   "checkpoint_blobs",
@@ -217,6 +253,84 @@ describeLive("ports live (requires HARNESS_STATE_DATABASE_URL)", () => {
       // Steps executed successfully
       expect(executedStepIds.length).toBeGreaterThan(0);
       expect(resumed.answerText).toContain("Đã hoàn thành phân tích bóc tách");
+    } finally {
+      await saver2.end();
+    }
+  }, 30000);
+
+  it("UC-05 step progress checkpoints to PostgresSaver and survives crash mid-execution", async () => {
+    let baselineQueryCalls = 0;
+    const executedStepIds: string[] = [];
+    let shouldCrashAfterStep1 = true;
+
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) => {
+        baselineQueryCalls++;
+        return period.start.includes("08") ? 2_500_000_000 : 2_040_000_000;
+      },
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedStepIds.push(step.stepId);
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+      onStepExecuted: async (step: PlanStep) => {
+        if (shouldCrashAfterStep1 && step.stepId.includes("north")) {
+          throw new Error("Simulated host process crash after step 1 checkpoint to Postgres");
+        }
+      },
+    };
+
+    const threadId = makeThreadId("u_rca_live_step", `s_${Date.now()}`);
+
+    // Build graph 1 with saver1
+    const saver1 = await createCheckpointer(LIVE_URL as string);
+    const rcaRuntime1 = createRcaRuntime(deps);
+    const graph1 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime1.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: saver1 as unknown as BaseCheckpointSaver });
+
+    // 1. Initial run: runs baseline, pauses at interrupt
+    await graph1.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // 2. Resume graph 1: step 1 completes, checkpoints to Postgres, then crashes
+    await expect(
+      graph1.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      ),
+    ).rejects.toThrow("Simulated host process crash after step 1 checkpoint to Postgres");
+
+    // Simulate process shutdown
+    await saver1.end();
+
+    // 3. Process restarts: fresh PostgresSaver connects to real Postgres tables
+    const saver2 = await createCheckpointer(LIVE_URL as string);
+    try {
+      shouldCrashAfterStep1 = false;
+      const rcaRuntime2 = createRcaRuntime(deps);
+      const graph2 = new StateGraph(AgentStateSchema)
+        .addNode("rca", rcaRuntime2.entry)
+        .addEdge(START, "rca")
+        .addEdge("rca", END)
+        .compile({ checkpointer: saver2 as unknown as BaseCheckpointSaver });
+
+      const step1CallsBeforeRestart = executedStepIds.filter((id) => id.includes("north")).length;
+      expect(step1CallsBeforeRestart).toBe(1);
+
+      const resumed = (await graph2.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      )) as AgentState;
+
+      expect(resumed.status).toBe("ok");
+      // Step 1 was checkpointed in Postgres, so on restart it was skipped and NOT re-executed!
+      const step1CallsAfterRestart = executedStepIds.filter((id) => id.includes("north")).length;
+      expect(step1CallsAfterRestart).toBe(1); // Exactly 1 call across entire process lifecycle!
+      expect(baselineQueryCalls).toBe(2); // Baseline was NOT re-run!
     } finally {
       await saver2.end();
     }

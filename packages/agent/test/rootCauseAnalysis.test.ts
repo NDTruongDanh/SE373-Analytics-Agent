@@ -2263,17 +2263,24 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
   it("T36-T18: Quota edge case: strictly enforces quota when remaining quota is 1 or executor attempts 3 repairs", async () => {
     let executorCalls = 0;
+    const receivedMaxAttempts: (number | undefined)[] = [];
     const mockExecutor = {
-      run: async () => {
+      run: async (input?: { maxAttempts?: number; question?: string }) => {
         executorCalls++;
+        receivedMaxAttempts.push(input?.maxAttempts);
+        const attempts =
+          typeof input?.maxAttempts === "number" && input.maxAttempts > 0
+            ? Math.min(input.maxAttempts, 3)
+            : 3;
+        const val = input?.question?.includes("baseline") ? 500_000_000 : 400_000_000;
         return {
           status: "ok" as const,
           sql: "SELECT 1",
           tablesUsed: ["orders"],
           columns: ["val"],
-          rows: [{ val: 500_000_000 }],
+          rows: [{ val }],
           maskedColumns: [],
-          attempts: 3, // 3 attempts taken by internal repair loop!
+          attempts,
         };
       },
     };
@@ -2323,7 +2330,8 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(executedA.unexploredBranches[0].reason).toBe("MAX_QUERIES_REACHED");
 
     // Case B: Remaining quota is 2 (maxQueriesLimit: 4, baseline check = 2).
-    // Baseline query runs and uses 3 attempts. Quota must clamp to 4 and NOT run current query!
+    // Both baseline and current queries are allocated exactly 1 attempt (maxAttempts: 1).
+    // Both queries execute within their 1-attempt quota without exceeding maxQueriesLimit 4.
     const planB = createPlan(
       "Vì sao doanh thu giảm?",
       {
@@ -2361,9 +2369,10 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       mockPrincipal,
     );
 
-    expect(executedB.totalQueriesCount).toBe(4); // Clamped strictly to maxQueriesLimit 4!
-    expect(executorCalls).toBe(1); // Only baseline ran, current was aborted due to quota!
-    expect(executedB.steps[0].status).toBe("skipped");
+    expect(receivedMaxAttempts).toEqual([1, 1]); // Each query bounded strictly to remaining quota (1 attempt each)
+    expect(executedB.totalQueriesCount).toBe(4); // Bounded strictly by maxAttempts without over-running
+    expect(executorCalls).toBe(2); // Both baseline and current ran within 1 attempt
+    expect(executedB.steps[0].status).toBe("done");
   });
 
   it("T36-T19: Step-by-step checkpoint persistence: step progress is saved into checkpointer and survives crash", async () => {
@@ -2437,6 +2446,45 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     // Step 1 was checkpointed, so on restart it was skipped and NOT re-executed!
     const step1CallsAfterRestart = executedSteps.filter((id) => id.includes("north")).length;
     expect(step1CallsAfterRestart).toBe(1); // Still 1! Never called again!
+  });
+
+  it("T36-T20: Fail-fast on step checkpoint error: throws explicit error and aborts if putWrites fails during step execution", async () => {
+    const memory = new MemorySaver();
+    const threadId = makeThreadId("u_putwrites_fail", "s_step_fail");
+
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => ({ baselineVal: 500_000_000, currentVal: 400_000_000 }),
+    };
+
+    const originalPutWrites = memory.putWrites.bind(memory);
+    memory.putWrites = async (config, writes, taskId) => {
+      if (typeof taskId === "string" && taskId.startsWith("step_")) {
+        throw new Error("Disk full or connection closed during putWrites");
+      }
+      return originalPutWrites(config, writes, taskId);
+    };
+
+    const rcaRuntime = createRcaRuntime(deps);
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // Resuming will run step 1 and attempt to checkpoint it with putWrites, which must throw
+    await expect(
+      testGraph.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      ),
+    ).rejects.toThrow("Lỗi lưu checkpoint tiến độ bước");
   });
 });
 

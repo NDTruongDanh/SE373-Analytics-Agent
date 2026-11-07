@@ -105,6 +105,11 @@ export interface ExecutorRunInput {
   catalog?: SchemaCatalog;
   /** Reused across calls to share one run budget; created when absent. */
   budget?: BudgetState;
+  /**
+   * Bounded attempt limit for this run (e.g. capped by remaining query quota).
+   * Overrides this.maxAttempts if lower, preventing over-execution during repair loops.
+   */
+  maxAttempts?: number;
 }
 
 export interface PartialFindings {
@@ -360,6 +365,10 @@ export class ValidatedQueryExecutor {
     // 2-5. Bounded repair loop (D-02): at most maxAttempts total including
     // the first try. Only REPAIRABLE_CODES retry; hard security codes abort on
     // attempt 1; TIMEOUT gets exactly one simplification rewrite.
+    const effectiveMaxAttempts =
+      typeof input.maxAttempts === "number" && input.maxAttempts > 0
+        ? Math.min(input.maxAttempts, this.maxAttempts)
+        : this.maxAttempts;
     let attemptNo = 0;
     let lastError: DbToolError | null = null;
     let repairFeedback: string | null = null;
@@ -367,7 +376,7 @@ export class ValidatedQueryExecutor {
     let lastTablesUsed: string[] = [];
     let timeoutSimplified = false;
 
-    while (attemptNo < this.maxAttempts) {
+    while (attemptNo < effectiveMaxAttempts) {
       attemptNo += 1;
       const attempt = attemptNo;
 
@@ -423,7 +432,7 @@ export class ValidatedQueryExecutor {
       const guard = await sqlGuard(sql, catalog);
       if (!guard.ok) {
         lastError = guard.error;
-        if (isRepairable(guard.error.code) && attempt < this.maxAttempts) {
+        if (isRepairable(guard.error.code) && attempt < effectiveMaxAttempts) {
           repairFeedback = feedbackFor(lastError);
           this.span({
             node: "repair",
@@ -443,7 +452,7 @@ export class ValidatedQueryExecutor {
       const gate = localQuerySafetyGate(sql, guard, catalog);
       if (gate.verdict === "deny") {
         lastError = gate.error;
-        if (isRepairable(gate.error.code) && attempt < this.maxAttempts) {
+        if (isRepairable(gate.error.code) && attempt < effectiveMaxAttempts) {
           repairFeedback = feedbackFor(lastError);
           this.span({
             node: "repair",
@@ -505,6 +514,7 @@ export class ValidatedQueryExecutor {
           attempt,
           sql: finalSql,
           timeoutSimplified,
+          maxAttempts: effectiveMaxAttempts,
         });
         if (routed.retry) {
           lastError = error;
@@ -565,6 +575,7 @@ export class ValidatedQueryExecutor {
           attempt,
           sql: finalSql,
           timeoutSimplified,
+          maxAttempts: effectiveMaxAttempts,
         });
         if (routed.retry) {
           lastError = error;
@@ -647,14 +658,15 @@ export class ValidatedQueryExecutor {
    */
   private routeMcpError(
     error: DbToolError,
-    ctx: { attempt: number; sql: string; timeoutSimplified: boolean },
+    ctx: { attempt: number; sql: string; timeoutSimplified: boolean; maxAttempts?: number },
   ): {
     retry: true;
     forcedSql: string | null;
     feedback: string | null;
     timeoutSimplified: boolean;
   } | { retry: false } {
-    if (error.code === "TIMEOUT" && !ctx.timeoutSimplified) {
+    const maxAttempts = ctx.maxAttempts ?? this.maxAttempts;
+    if (error.code === "TIMEOUT" && !ctx.timeoutSimplified && ctx.attempt < maxAttempts) {
       this.span({
         node: "repair",
         type: "node_done",
@@ -668,7 +680,7 @@ export class ValidatedQueryExecutor {
         timeoutSimplified: true,
       };
     }
-    if (isRepairable(error.code) && ctx.attempt < this.maxAttempts) {
+    if (isRepairable(error.code) && ctx.attempt < maxAttempts) {
       this.span({
         node: "repair",
         type: "node_done",
