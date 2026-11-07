@@ -324,6 +324,14 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
     expect(callCount).toBe(1); // Call was blocked!
 
+    // 3c. run_query with x.purchase_date where x is another table -> throws and blocks execution
+    await expect(
+      guardedCaller.call("run_query", {
+        sql: "SELECT SUM(price_vnd) FROM orders o JOIN external_events x USING(order_id) WHERE x.purchase_date >= '2026-08-01' AND x.purchase_date <= '2026-08-31'",
+      }),
+    ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
+    expect(callCount).toBe(1); // Call was blocked!
+
     // 4. run_query with valid date bounds -> passes through to baseCaller
     await guardedCaller.call("run_query", {
       sql: "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31'",
@@ -517,6 +525,46 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
         period,
       ),
     ).toBe(false);
+
+    // Invalid: unknown qualifier x.purchase_date on joined non-orders table
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o JOIN external_events x USING(order_id) WHERE x.purchase_date >= '2026-08-01' AND x.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: unknown qualifier x.purchase_date without orders in FROM
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM external_events x WHERE x.purchase_date >= '2026-08-01' AND x.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: unknown qualifier x.purchase_date when orders is aliased as o
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o WHERE x.purchase_date >= '2026-08-01' AND x.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Valid: orders explicitly aliased as x matches x.purchase_date
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders x WHERE x.purchase_date >= '2026-08-01' AND x.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(true);
+
+    // Valid: orders explicitly aliased as ord matches ord.purchase_date
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders ord WHERE ord.purchase_date >= '2026-08-01' AND ord.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(true);
 
     // Valid: orders fact table date column explicitly qualified
     expect(

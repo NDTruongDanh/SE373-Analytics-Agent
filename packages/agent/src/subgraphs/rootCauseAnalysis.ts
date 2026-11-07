@@ -91,6 +91,7 @@ export interface RcaRuntimeDeps {
   sqlModel?: ChatModelLike;
   setActivePeriod?: (period: TimePeriod | null) => void;
   setAllowedDateColumns?: (cols: string[] | null) => void;
+  setTargetTable?: (targetTable: string | null) => void;
   fetchBaseline?: (
     metricName: string,
     metricType: MetricType,
@@ -103,6 +104,7 @@ export function createDateGuardedMcpCaller(
   baseCaller: McpToolCaller,
   getActivePeriod: () => TimePeriod | null,
   getAllowedDateColumns?: () => string[] | null,
+  getTargetTable?: () => string | null,
 ): McpToolCaller {
   return {
     async call(tool: string, args: Record<string, unknown>): Promise<unknown> {
@@ -110,10 +112,11 @@ export function createDateGuardedMcpCaller(
         const expectedPeriod = getActivePeriod();
         if (expectedPeriod) {
           const allowedCols = getAllowedDateColumns?.() ?? DEFAULT_ALLOWED_DATE_COLS;
-          if (!(await verifySqlDateFilter(args["sql"], expectedPeriod, allowedCols))) {
+          const targetTable = getTargetTable?.() ?? "orders";
+          if (!(await verifySqlDateFilter(args["sql"], expectedPeriod, allowedCols, targetTable))) {
             throw dbToolError(
               "INVALID_SQL",
-              `Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ (${expectedPeriod.start} đến ${expectedPeriod.end}) trên cột ngày phù hợp (${allowedCols.join(", ")}): ${args["sql"]}`,
+              `Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ (${expectedPeriod.start} đến ${expectedPeriod.end}) trên cột ngày phù hợp (${allowedCols.join(", ")}) của bảng ${targetTable}: ${args["sql"]}`,
             );
           }
         }
@@ -163,6 +166,29 @@ export const DISALLOWED_TABLE_QUALIFIERS = new Set([
   "promo",
 ]);
 
+export function getMetricTargetTable(metricName?: string): string {
+  if (metricName && metricName.includes("review")) {
+    return "reviews";
+  }
+  return "orders";
+}
+
+export function getDefaultAllowedQualifiers(targetTable: string = "orders"): Set<string> {
+  const tbl = targetTable.toLowerCase();
+  const s = new Set<string>([tbl]);
+  if (tbl === "orders") {
+    s.add("o");
+    s.add("ord");
+  } else if (tbl === "reviews") {
+    s.add("r");
+    s.add("rev");
+  } else if (tbl === "order_items") {
+    s.add("oi");
+    s.add("items");
+  }
+  return s;
+}
+
 export function getMetricDateColumn(metricName?: string): string {
   // All order / revenue / customer diagnostic metrics in UC-05 (net_revenue, aov, return_rate, etc.)
   // are anchored on the orders fact table event date: orders.purchase_date.
@@ -185,16 +211,29 @@ interface DateBoundMatch {
   endIdx: number;
 }
 
-function findMatches(pattern: RegExp, text: string): DateBoundMatch[] {
+function findMatches(
+  pattern: RegExp,
+  text: string,
+  allowedQualifiers?: Set<string>,
+  allowUnqualified: boolean = true,
+): DateBoundMatch[] {
   const matches: DateBoundMatch[] = [];
   pattern.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = pattern.exec(text)) !== null) {
     const qualifier = m.groups?.["qualifier"]?.toLowerCase();
     const colName = (m.groups?.["colName"] ?? "").toLowerCase();
-    if (qualifier && DISALLOWED_TABLE_QUALIFIERS.has(qualifier)) {
-      continue;
+
+    if (qualifier) {
+      if (allowedQualifiers && !allowedQualifiers.has(qualifier)) {
+        continue;
+      }
+    } else {
+      if (!allowUnqualified) {
+        continue;
+      }
     }
+
     const fullCol = qualifier ? `${qualifier}.${colName}` : colName;
     matches.push({
       fullCol,
@@ -275,8 +314,18 @@ function verifyBranchDateFilter(
   branch: string,
   period: TimePeriod,
   allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
+  allowedQualifiers?: Set<string>,
+  allowUnqualified: boolean = true,
 ): boolean {
   const dateColPattern = buildDateColPattern(allowedCols);
+  const effectiveQualifiers = allowedQualifiers ?? getDefaultAllowedQualifiers();
+
+  const isQualifierValid = (qualifier?: string): boolean => {
+    if (qualifier) {
+      return effectiveQualifiers.has(qualifier.toLowerCase());
+    }
+    return allowUnqualified;
+  };
 
   // 1. Structural BETWEEN check
   const betweenPattern = new RegExp(
@@ -286,7 +335,7 @@ function verifyBranchDateFilter(
   let m: RegExpExecArray | null;
   while ((m = betweenPattern.exec(branch)) !== null) {
     const qualifier = m.groups?.["qualifier"]?.toLowerCase();
-    if (!qualifier || !DISALLOWED_TABLE_QUALIFIERS.has(qualifier)) {
+    if (isQualifierValid(qualifier)) {
       return true;
     }
   }
@@ -310,7 +359,7 @@ function verifyBranchDateFilter(
     for (const p of [toCharPattern, dateTruncPattern, strftimePattern]) {
       while ((m = p.exec(branch)) !== null) {
         const qualifier = m.groups?.["qualifier"]?.toLowerCase();
-        if (!qualifier || !DISALLOWED_TABLE_QUALIFIERS.has(qualifier)) {
+        if (isQualifierValid(qualifier)) {
           return true;
         }
       }
@@ -328,8 +377,8 @@ function verifyBranchDateFilter(
     "gi",
   );
   const startBounds = [
-    ...findMatches(startLhsPattern, branch),
-    ...findMatches(startRhsPattern, branch),
+    ...findMatches(startLhsPattern, branch, effectiveQualifiers, allowUnqualified),
+    ...findMatches(startRhsPattern, branch, effectiveQualifiers, allowUnqualified),
   ];
 
   const endLhsPattern = new RegExp(
@@ -341,8 +390,8 @@ function verifyBranchDateFilter(
     "gi",
   );
   const endBounds = [
-    ...findMatches(endLhsPattern, branch),
-    ...findMatches(endRhsPattern, branch),
+    ...findMatches(endLhsPattern, branch, effectiveQualifiers, allowUnqualified),
+    ...findMatches(endRhsPattern, branch, effectiveQualifiers, allowUnqualified),
   ];
 
   try {
@@ -358,7 +407,10 @@ function verifyBranchDateFilter(
         String.raw`${dateLiteralPattern(nextDay)}\s*>\s*${dateColPattern}`,
         "gi",
       );
-      endBounds.push(...findMatches(nextDayLhs, branch), ...findMatches(nextDayRhs, branch));
+      endBounds.push(
+        ...findMatches(nextDayLhs, branch, effectiveQualifiers, allowUnqualified),
+        ...findMatches(nextDayRhs, branch, effectiveQualifiers, allowUnqualified),
+      );
     }
   } catch {
     // ignore
@@ -380,10 +432,17 @@ export function verifyWhereClauseText(
   whereText: string,
   period: TimePeriod,
   allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
+  allowedQualifiers?: Set<string>,
+  allowUnqualified: boolean = true,
 ): boolean {
   const s = stripSqlComments(whereText);
   const branches = splitByTopLevelOr(s);
-  return branches.length > 0 && branches.every((b) => verifyBranchDateFilter(b, period, allowedCols));
+  return (
+    branches.length > 0 &&
+    branches.every((b) =>
+      verifyBranchDateFilter(b, period, allowedCols, allowedQualifiers, allowUnqualified),
+    )
+  );
 }
 
 function asSelectStmt(node: unknown): Record<string, unknown> | undefined {
@@ -428,23 +487,135 @@ function extractDataSources(
   return [];
 }
 
+interface TableBinding {
+  relname?: string;
+  alias?: string;
+  isSubselect?: boolean;
+}
+
+function extractBaseTableNames(fromItem: unknown): string[] {
+  if (!fromItem || typeof fromItem !== "object") return [];
+  const rec = fromItem as Record<string, unknown>;
+  if (rec["RangeVar"]) {
+    const rv = rec["RangeVar"] as Record<string, unknown>;
+    return typeof rv["relname"] === "string" ? [rv["relname"].toLowerCase()] : [];
+  }
+  if (rec["JoinExpr"]) {
+    const join = rec["JoinExpr"] as Record<string, unknown>;
+    return [
+      ...extractBaseTableNames(join["larg"]),
+      ...extractBaseTableNames(join["rarg"]),
+    ];
+  }
+  if (rec["RangeSubselect"]) {
+    const sub = rec["RangeSubselect"] as Record<string, unknown>;
+    const subquery = asSelectStmt(sub["subquery"]);
+    if (!subquery) return [];
+    const branches = collectUnionBranches(subquery);
+    return branches.flatMap((b) =>
+      Array.isArray(b["fromClause"]) ? b["fromClause"].flatMap(extractBaseTableNames) : [],
+    );
+  }
+  return [];
+}
+
+function doesQueryReferenceTarget(
+  query: Record<string, unknown>,
+  targetTable: string,
+  resolvedCtesQueryingTarget: Set<string>,
+): boolean {
+  const branches = collectUnionBranches(query);
+  return branches.some((branch) => {
+    const fromClause = Array.isArray(branch["fromClause"]) ? branch["fromClause"] : [];
+    const tableNames = fromClause.flatMap(extractBaseTableNames);
+    return tableNames.some(
+      (tbl) => tbl === targetTable.toLowerCase() || resolvedCtesQueryingTarget.has(tbl),
+    );
+  });
+}
+
+function extractFromTableBindings(
+  fromItem: unknown,
+  targetTable: string,
+  resolvedCtesQueryingTarget: Set<string>,
+): TableBinding[] {
+  if (!fromItem || typeof fromItem !== "object") return [];
+  const rec = fromItem as Record<string, unknown>;
+
+  if (rec["RangeVar"]) {
+    const rv = rec["RangeVar"] as Record<string, unknown>;
+    const relname = typeof rv["relname"] === "string" ? rv["relname"].toLowerCase() : undefined;
+    const aliasObj = rv["alias"] as Record<string, unknown> | undefined;
+    const alias = typeof aliasObj?.["aliasname"] === "string" ? aliasObj["aliasname"].toLowerCase() : undefined;
+    return [{ relname, alias }];
+  }
+
+  if (rec["JoinExpr"]) {
+    const join = rec["JoinExpr"] as Record<string, unknown>;
+    return [
+      ...extractFromTableBindings(join["larg"], targetTable, resolvedCtesQueryingTarget),
+      ...extractFromTableBindings(join["rarg"], targetTable, resolvedCtesQueryingTarget),
+    ];
+  }
+
+  if (rec["RangeSubselect"]) {
+    const sub = rec["RangeSubselect"] as Record<string, unknown>;
+    const aliasObj = sub["alias"] as Record<string, unknown> | undefined;
+    const alias = typeof aliasObj?.["aliasname"] === "string" ? aliasObj["aliasname"].toLowerCase() : undefined;
+    const subquery = asSelectStmt(sub["subquery"]);
+    const queriesTarget = subquery ? doesQueryReferenceTarget(subquery, targetTable, resolvedCtesQueryingTarget) : false;
+    return [{ relname: queriesTarget ? targetTable.toLowerCase() : undefined, alias, isSubselect: true }];
+  }
+
+  return [];
+}
+
 async function isSelectStmtBounded(
   stmt: Record<string, unknown>,
   period: TimePeriod,
   cteMap: Map<string, Record<string, unknown>>,
+  resolvedCtesQueryingTarget: Set<string>,
   allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
+  targetTable: string = "orders",
 ): Promise<boolean> {
+  const fromClause = Array.isArray(stmt["fromClause"]) ? stmt["fromClause"] : [];
+  const fromBindings = fromClause.flatMap((item) =>
+    extractFromTableBindings(item, targetTable, resolvedCtesQueryingTarget),
+  );
+
+  const targetBindings = fromBindings.filter(
+    (b) =>
+      b.relname === targetTable.toLowerCase() ||
+      (b.relname && resolvedCtesQueryingTarget.has(b.relname)),
+  );
+  const hasTargetTable = targetBindings.length > 0;
+
+  const allowedQualifiers = new Set<string>();
+  if (hasTargetTable) {
+    allowedQualifiers.add(targetTable.toLowerCase());
+    for (const b of targetBindings) {
+      if (b.relname) allowedQualifiers.add(b.relname);
+      if (b.alias) allowedQualifiers.add(b.alias);
+    }
+    if (targetTable.toLowerCase() === "orders") {
+      allowedQualifiers.add("o");
+      allowedQualifiers.add("ord");
+    } else if (targetTable.toLowerCase() === "reviews") {
+      allowedQualifiers.add("r");
+      allowedQualifiers.add("rev");
+    }
+  }
+
   // 1. Direct WHERE filter on this SelectStmt
   if (stmt["whereClause"]) {
     const whereSql = await deparse(stmt["whereClause"]);
-    if (verifyWhereClauseText(whereSql, period, allowedCols)) {
+    if (verifyWhereClauseText(whereSql, period, allowedCols, allowedQualifiers, hasTargetTable)) {
       return true;
     }
   }
 
   // 2. If no direct valid WHERE filter, check if all data sources in FROM are themselves bounded
-  const fromClause = stmt["fromClause"];
-  if (Array.isArray(fromClause) && fromClause.length > 0) {
+  if (fromClause.length > 0) {
     let allSourcesBounded = true;
     for (const item of fromClause) {
       const sources = extractDataSources(item);
@@ -454,12 +625,16 @@ async function isSelectStmtBounded(
       }
       for (const src of sources) {
         if (src.rangeVar) {
-          const relname = typeof src.rangeVar["relname"] === "string" ? src.rangeVar["relname"] : "";
+          const relname = typeof src.rangeVar["relname"] === "string" ? src.rangeVar["relname"].toLowerCase() : "";
           const cteQuery = cteMap.get(relname);
           if (cteQuery) {
             const cteBranches = collectUnionBranches(cteQuery);
             const cteBounded = (
-              await Promise.all(cteBranches.map((b) => isSelectStmtBounded(b, period, cteMap, allowedCols)))
+              await Promise.all(
+                cteBranches.map((b) =>
+                  isSelectStmtBounded(b, period, cteMap, resolvedCtesQueryingTarget, allowedCols, targetTable),
+                ),
+              )
             ).every(Boolean);
             if (!cteBounded) {
               allSourcesBounded = false;
@@ -477,7 +652,11 @@ async function isSelectStmtBounded(
           }
           const subBranches = collectUnionBranches(subquery);
           const subBounded = (
-            await Promise.all(subBranches.map((b) => isSelectStmtBounded(b, period, cteMap, allowedCols)))
+            await Promise.all(
+              subBranches.map((b) =>
+                isSelectStmtBounded(b, period, cteMap, resolvedCtesQueryingTarget, allowedCols, targetTable),
+              ),
+            )
           ).every(Boolean);
           if (!subBounded) {
             allSourcesBounded = false;
@@ -502,6 +681,7 @@ export async function verifySqlDateFilter(
   sql: string,
   period: TimePeriod,
   allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
+  targetTable: string = "orders",
 ): Promise<boolean> {
   if (!sql || !sql.trim() || !period || !period.start || !period.end) return false;
 
@@ -511,7 +691,8 @@ export async function verifySqlDateFilter(
   } catch {
     // If not valid full SQL statement (e.g. bare WHERE condition in a legacy unit test),
     // fall back to checking the bare expression text
-    return verifyWhereClauseText(sql, period, allowedCols);
+    const defaultQualifiers = getDefaultAllowedQualifiers(targetTable);
+    return verifyWhereClauseText(sql, period, allowedCols, defaultQualifiers, true);
   }
 
   const rootRecord = ast as Record<string, unknown>;
@@ -528,14 +709,18 @@ export async function verifySqlDateFilter(
 
   // Collect CTEs if present
   const cteMap = new Map<string, Record<string, unknown>>();
+  const resolvedCtesQueryingTarget = new Set<string>();
   const withClause = rootSelect["withClause"] as Record<string, unknown> | undefined;
   if (withClause && Array.isArray(withClause["ctes"])) {
     for (const entry of withClause["ctes"]) {
       const cte = (entry as Record<string, unknown>)?.["CommonTableExpr"] as Record<string, unknown> | undefined;
-      const ctename = cte?.["ctename"];
+      const ctename = typeof cte?.["ctename"] === "string" ? cte["ctename"].toLowerCase() : undefined;
       const ctequery = asSelectStmt(cte?.["ctequery"]);
-      if (typeof ctename === "string" && ctequery) {
+      if (ctename && ctequery) {
         cteMap.set(ctename, ctequery);
+        if (doesQueryReferenceTarget(ctequery, targetTable, resolvedCtesQueryingTarget)) {
+          resolvedCtesQueryingTarget.add(ctename);
+        }
       }
     }
   }
@@ -546,7 +731,9 @@ export async function verifySqlDateFilter(
 
   // EVERY branch in a set operation must be bounded!
   const results = await Promise.all(
-    branches.map((branch) => isSelectStmtBounded(branch, period, cteMap, allowedCols)),
+    branches.map((branch) =>
+      isSelectStmtBounded(branch, period, cteMap, resolvedCtesQueryingTarget, allowedCols, targetTable),
+    ),
   );
   return results.every(Boolean);
 }
@@ -891,7 +1078,9 @@ export async function validateBaseline(
     const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
     const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
 
+    const targetFactTable = getMetricTargetTable(intent.metricName);
     const expectedDateCol = getMetricDateColumn(intent.metricName);
+    deps.setTargetTable?.(targetFactTable);
     deps.setAllowedDateColumns?.([expectedDateCol]);
     deps.setActivePeriod?.(intent.baselinePeriod);
     let baseRes: ExecutorResult;
@@ -904,6 +1093,7 @@ export async function validateBaseline(
     } finally {
       deps.setActivePeriod?.(null);
       deps.setAllowedDateColumns?.(null);
+      deps.setTargetTable?.(null);
     }
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
@@ -934,9 +1124,9 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán baseline: ${errMsg}`);
     }
 
-    if (!baseRes.sql || !(await verifySqlDateFilter(baseRes.sql, intent.baselinePeriod, [expectedDateCol]))) {
+    if (!baseRes.sql || !(await verifySqlDateFilter(baseRes.sql, intent.baselinePeriod, [expectedDateCol], targetFactTable))) {
       throw new Error(
-        `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}) trên cột ${expectedDateCol}: ${baseRes.sql ?? "(empty)"}`,
+        `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}) trên cột ${expectedDateCol} của bảng ${targetFactTable}: ${baseRes.sql ?? "(empty)"}`,
       );
     }
 
@@ -948,6 +1138,7 @@ export async function validateBaseline(
       throw new Error(`Giá trị kỳ cơ sở không phải là số hợp lệ: ${String(baseRes.rows[0]["val"])}`);
     }
 
+    deps.setTargetTable?.(targetFactTable);
     deps.setAllowedDateColumns?.([expectedDateCol]);
     deps.setActivePeriod?.(intent.currentPeriod);
     let currRes: ExecutorResult;
@@ -960,6 +1151,7 @@ export async function validateBaseline(
     } finally {
       deps.setActivePeriod?.(null);
       deps.setAllowedDateColumns?.(null);
+      deps.setTargetTable?.(null);
     }
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
@@ -990,9 +1182,9 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán current value: ${errMsg}`);
     }
 
-    if (!currRes.sql || !(await verifySqlDateFilter(currRes.sql, intent.currentPeriod, [expectedDateCol]))) {
+    if (!currRes.sql || !(await verifySqlDateFilter(currRes.sql, intent.currentPeriod, [expectedDateCol], targetFactTable))) {
       throw new Error(
-        `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}) trên cột ${expectedDateCol}: ${currRes.sql ?? "(empty)"}`,
+        `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}) trên cột ${expectedDateCol} của bảng ${targetFactTable}: ${currRes.sql ?? "(empty)"}`,
       );
     }
 
@@ -1270,17 +1462,22 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
 
     let activePeriod: TimePeriod | null = null;
     let activeAllowedCols: string[] | null = null;
+    let activeTargetTable: string | null = null;
     const setActivePeriod = (p: TimePeriod | null) => {
       activePeriod = p;
     };
     const setAllowedDateColumns = (cols: string[] | null) => {
       activeAllowedCols = cols;
     };
+    const setTargetTable = (table: string | null) => {
+      activeTargetTable = table;
+    };
 
     let effectiveDeps: RcaRuntimeDeps = {
       ...deps,
       setActivePeriod: deps.setActivePeriod ?? setActivePeriod,
       setAllowedDateColumns: deps.setAllowedDateColumns ?? setAllowedDateColumns,
+      setTargetTable: deps.setTargetTable ?? setTargetTable,
     };
 
     if (!deps.executor && !deps.fetchBaseline) {
@@ -1290,6 +1487,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           rawMcp,
           () => activePeriod,
           () => activeAllowedCols,
+          () => activeTargetTable,
         );
         const executor = new ValidatedQueryExecutor({
           model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
