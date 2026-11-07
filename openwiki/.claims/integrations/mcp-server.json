@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4d4e6249cf71c7eca9f373bdbbef19852388a287e38eb24bfee956f60eb0a916",
+  "pageVersion": "sha256:042ea427da966e1e11b338db95e4e6ec93721257d35667f24e6e9b1322497914",
   "claims": [
     {
       "id": "claim_9c1fc350f353418b8d9d22eb711ef8c4",
@@ -178,23 +178,31 @@
     },
     {
       "id": "claim_f741f31122de42cdb326881902afbc5c",
-      "statement": "Operator surfaces are split: apps/api is an implemented Express SSE host with persona-to-principal mapping and resume on the same thread, while apps/web remains a shell marker forbidden from importing DB, agent, policy, or MCP server code.",
+      "statement": "Operator surfaces are both implemented: apps/api is an Express SSE host with server-side persona-to-principal mapping and resume on the same thread, while apps/web is a Vite plus React chat UI posting to POST /api/ask and POST /api/runs/:runId/resume with runId/threadId validation that imports workspace types only from @shared/contracts and is lint-forbidden from importing DB, agent, policy, MCP server, API, or data code.",
       "evidence": [
+        {
+          "resource": "repo://apps/api/src/constants.ts#L9-L15",
+          "version": "repo-lines-v1:sha256:e0caa44aba60c90d49d868491bcd01acae8e69cb42e9946a7b24bdd9925a0edf:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDZlMmMyYmE5YjA3MjkxZDk3MmZlODc1M2ZhYjRmMmRiMThjZjdkNjFiN2MyNzZiOTdiY2VkODVmYmZiODczYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWExZDFhNjMzOTAyMjljNzk4MzQ3ZTgzYTA0MDU0NDFjOTQwMDAzNTI4NGFkMTY4YzFiZjZjZGYxZDcwYTM3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTRmNGMzYjk5NjliZGQ0NDI2ZDE5YWRjODFmYmMyYzE5ZTRmZWVkMmJkMmNkYWYwNTVlMzA5YWJiNDNjZjNmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjc0ZDRlZWJiOTAwYmE4ZGQwNjg0ZTUyZmI3YTQwM2JhZjI0NGM4MTg5ZTU5NzAxNDhlOWI1MTdmZWMyOTFkMSJ9"
+        },
         {
           "resource": "repo://apps/api/src/index.ts#L1-L17",
           "version": "repo-lines-v1:sha256:e30b9baa47e61d621bfaf0f2451e5292ddd5bc2fab8ad44ec1e82002c098235e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxZWJhYjZiMjMyN2YxMDhhNGFlZGEyNjRhOWViN2NhMzhhM2VjYzczNzAwYzA1Mzc5ZWRjNDc3NWU4NDA5OWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwMDM4OWIzMzQ3ZWY4YzRiNjU3ZTg3MWI5Y2IyNjM4MGY2MjcyNzE1OTVkZThiNWFjZmU0NTlhNjZhYzMyZTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3ZjQ3YTcwY2E1MDMwYmFmNjAzMTNmZTBlMDA3YjllNjBiMGMyMGYyZWZmMWRlMDE0NGY0MzA0OWY4Y2E5ZWMifQ"
         },
         {
-          "resource": "repo://apps/web/src/constants.ts#L1-L1",
-          "version": "repo-lines-v1:sha256:63dc0acd5e86840c687438b4cd8ec7615b790adf8cacee7d3e07fcc4ace3d69f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjNkYzBhY2Q1ZTg2ODQwYzY4NzQzOGI0Y2Q4ZWM3NjE1Yjc5MGFkZjhjYWNlZTdkM2UwN2ZjYzRhY2UzZDY5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjNkYzBhY2Q1ZTg2ODQwYzY4NzQzOGI0Y2Q4ZWM3NjE1Yjc5MGFkZjhjYWNlZTdkM2UwN2ZjYzRhY2UzZDY5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "resource": "repo://apps/web/src/app.tsx#L14-L19",
+          "version": "repo-lines-v1:sha256:730db1dde4e75fb153fb0d957f9590be2d43750e708e19c0d24f9e9371855da9:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTcxZmI0MTc5YTc2ZjMyMDk1Y2M1NmZmMDY0Y2M4NGFlMTQ0ZWY3MTQzN2ZhMGNjY2VjYmUyM2I4ZmE5ZmZhZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTU5OTMxOWQyMWE0MjVjM2M5YjE1YjMwZjU4Y2VmYzg2ODlkMDIxNTE1MTFiODNhNDI2Y2M1N2FkNWU2MDZiYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGVhOGJmZjgxMjk2ZDYyZDE0YWNmNzEzNjJjNWRjYjE1OWViYjRhNTJjMTQ2MDNlMThhZjJmN2ZjMDVjMDkzMyJ9"
         },
         {
-          "resource": "repo://apps/web/src/index.ts#L1-L6",
-          "version": "repo-lines-v1:sha256:d25efec3476beed029d3a1fbba63a2dc3af6c6c32ff127f4ed1442dade1f60eb:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjY5Y2I2MzcwYjBmNjA2ZjQxZjE5NmJjZmVmNDZiMjlmNDc5ZTNjYmY5ZDhmZDUyYWU3YTEzNDRmZjhiYTdmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzJjZWNiNTU0OTBjZjQzNTdhYmJkN2I1ZGY2ZDZjNTQ4OWQ0YmRmNWJhN2UzYTk3NDdjMTFjY2I0OTRjZDgzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "resource": "repo://apps/web/src/chat.ts#L43-L69",
+          "version": "repo-lines-v1:sha256:302606f5eaa7402d923f70c6d118c11f6a32f1066b4cde742968b760e6bcc32f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlYWJkMDhlMTYxYTlmZDc2MGQxZThmOWFmNTZlMzYwOTM5NTYxMTNmYzA5ZmYyNWE0NzRjZGU0MTJkNWY1ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzYTY5YzEyMThhYjMwZjJiZjBhNWExNzEzYTQzYTE4YjJiMzgyZjRjNjBjODUzNzJmNTQ5ZTA2NWQyZTUzYTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://eslint.config.mjs#L68-L99",
-          "version": "repo-lines-v1:sha256:1e4bc04f1e9e5090fbbf02e380e6c7e84ac0d680b0b634150eaedba5f2b736ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmOTdjNmE2YjUwNmI4MDQ1MGJhMWNmOTQ2NTk4NDkxNzUyOTJhZTRmMjEwNGNmZGFlYjk0MTY2ZjFjMjc4NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwZWY0ZDE1ODU3OTc0MDc4Y2YzYTBhNDY4M2M4N2Y1ZDMzZjc5YmMyYThjYWViZjk4NTg4NTM1NDJiMmJkNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1YWEzM2U0M2U5OWExOTYyZjBkMDA2YWE0ZDA5MzYxYzY2NjA1ZDUwNzIxNmNjZGU5NTBhYzU2Yzk5NGQ2ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlNmYzNmQ3NDc3MzY3NWQ5N2FkNTE3YTc1YmIwYzBhYmQ1MWYxOTIyZDM4YmFiNjFmNTZlYzhkYzVlN2VkMTkifQ"
+          "resource": "repo://apps/web/src/stream.ts#L63-L107",
+          "version": "repo-lines-v1:sha256:652911924469c79f76c5496aa8924d38bffdee68c48b970cdef4d3d312a31d83:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1MWU3NTg4OTc5ZWM4YzRiZDg1NDVmYWQzMmZhY2ExZjQ4MTYxYTQ0NjcwMTE4ZDhlNWYzZmFjNDc1NjMwYzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://eslint.config.mjs#L68-L123",
+          "version": "repo-lines-v1:sha256:e7007982a3a3e4f3aa7cc89d7bf984ecb2f0bd620a06c48d7a01b22b4830c5e2:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliZmVkZDMyMTA0MjgxODIzYTk2NWU1ZWM3NTI3MWY3Nzc3YjYxOWZmZjQ4MTQwNjFkNzExOTk1MDU0YWIyNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMGNkYjk3MmE3YmZiN2VkMjQ2ZjlmZjY3MjM4NWU1NWY0OTY4ZmMxMTA0M2RjNWI2ODRkNTFkZmEzMWRiY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1YWEzM2U0M2U5OWExOTYyZjBkMDA2YWE0ZDA5MzYxYzY2NjA1ZDUwNzIxNmNjZGU5NTBhYzU2Yzk5NGQ2ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlNTExMWJmYjQyN2ZiOGUxY2E2MTg5MzU0NTJlNTE5NWVmYzc4ODg0YmIxN2I3MTk1MWM2YTgxNjNjYWNhYWMifQ"
         }
       ]
     },
@@ -335,6 +343,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-06T15:32:05.739Z"
+    "at": "2026-11-07T14:35:23.411Z"
   }
 }
