@@ -4,7 +4,7 @@
 // return (FakeListChatModel ignores the includeRaw config, so the result
 // IS the parsed value with zero usage). Missing or malformed usage never
 // throws — the caller falls back to estimateTokens.
-import * as z from "zod";
+import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { estimateCostUsd } from "./pricing.js";
 

@@ -18,7 +18,7 @@ Source and `eslint.config.mjs` stay authoritative; this file names the shape so 
 
 ## Zod — contracts owns shapes
 
-- Co-locate `XxxSchema` + `type Xxx = z.infer<typeof XxxSchema>`; open every contract file with `import * as z from "zod"`.
+- Co-locate `XxxSchema` + `type Xxx = z.infer<typeof XxxSchema>`; open every contract file with `import { z } from "zod"` (Zod v4 style).
 - Closed vocab `z.enum`, variants `z.discriminatedUnion("kind"|"event", …)` built via `.extend({ kind: z.literal(…) })`.
 - Default `z.object` strips unknown keys; the sole `z.strictObject` is empty `ListTablesInputSchema` (scope filtering is server-side).
 - Bound inputs: strings `.min(1).max(…)`, ints `.int().min().max()`, dates `z.iso.datetime()`; `z.unknown()` only for opaque `data`/`payload` hatches.

@@ -10,7 +10,7 @@
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ChatOpenAI } from "@langchain/openai";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
-import * as z from "zod";
+import { z } from "zod";
 import {
   invokeWithUsage,
   modelFromMessage,

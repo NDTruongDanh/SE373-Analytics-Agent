@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // RenderChart OpenUI-spec contract (CONT-03, UC-03 verification surface).
 // chartSpec mirrors the upstream @openuidev/react-ui genui-lib component
