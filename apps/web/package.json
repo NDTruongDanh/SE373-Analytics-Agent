@@ -2,12 +2,34 @@
   "name": "@shared/web",
   "version": "0.1.0",
   "type": "module",
-  "scripts": {
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./charts": {
+      "types": "./dist/charts.d.ts",
+      "default": "./dist/charts.js"
+    },
+    "./chartView": {
+      "types": "./dist/chartView.d.ts",
+      "default": "./dist/chartView.js"
+    }
+  },  "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "tsc -b && vitest run"
   },
   "dependencies": {
-    "@shared/contracts": "workspace:*"
+    "@openuidev/react-lang": "catalog:",
+    "@openuidev/react-ui": "catalog:",
+    "@shared/contracts": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:"
   }
 }
