@@ -60,6 +60,7 @@ export interface BaselineCheckResult {
   lastSql: string | null;
   tablesUsed: string[];
   actualToolsCalled: string[];
+  resolvedDirection: "increase" | "decrease";
 }
 
 export interface TextToSqlExecutorLike {
@@ -84,14 +85,17 @@ export interface RcaRuntimeDeps {
   ) => Promise<number>;
 }
 
-function parseMonth(monthStr: string, yearStr: string): { start: string; end: string } {
+function parseMonth(monthStr: string, yearStr?: string): { start: string; end: string } {
   const m = parseInt(monthStr, 10);
-  const y = parseInt(yearStr, 10);
-  const paddedMonth = m < 10 ? `0${m}` : `${m}`;
-  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const y = yearStr ? parseInt(yearStr, 10) : 2026;
+  const safeYear = isNaN(y) ? 2026 : y;
+  const safeMonth = isNaN(m) || m < 1 || m > 12 ? 9 : m;
+  const paddedMonth = safeMonth < 10 ? `0${safeMonth}` : `${safeMonth}`;
+  const lastDay = new Date(Date.UTC(safeYear, safeMonth, 0)).getUTCDate();
+  const paddedDay = lastDay < 10 ? `0${lastDay}` : `${lastDay}`;
   return {
-    start: `${y}-${paddedMonth}-01`,
-    end: `${y}-${paddedMonth}-${lastDay}`,
+    start: `${safeYear}-${paddedMonth}-01`,
+    end: `${safeYear}-${paddedMonth}-${paddedDay}`,
   };
 }
 
@@ -196,14 +200,58 @@ export function parseRcaIntent(question: string): RcaIntent {
     };
   }
 
-  // Pattern C: Month matching: "tháng MM/YYYY ... so với [tháng] MM/YYYY"
-  const monthMatch = /(?:tháng\s*)?(\d{1,2})\/(\d{4}).*?(?:so với|vs).*?(?:tháng\s*)?(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
+  // Pattern C1: Month YoY matching: "tháng MM/YYYY ... so với cùng kỳ năm trước / năm ngoái"
+  const yoyMatch = /tháng\s*(\d{1,2})\/(\d{4}).*?(?:so với\s*)?(?:cùng kỳ(?:\s*năm trước|\s*năm ngoái)?|năm ngoái)/i.exec(q);
+  if (yoyMatch) {
+    const m = parseInt(yoyMatch[1], 10);
+    const y = parseInt(yoyMatch[2], 10);
+    if (m >= 1 && m <= 12 && !isNaN(y)) {
+      const current = parseMonth(yoyMatch[1], yoyMatch[2]);
+      const baseline = parseMonth(yoyMatch[1], String(y - 1));
+      return {
+        metricName,
+        metricType,
+        direction,
+        isExplicitDirection,
+        currentPeriod: current,
+        baselinePeriod: baseline,
+        formulaComponents,
+        candidateTables: ["orders", "order_items", "customers", "channels", "categories", "products"],
+      };
+    }
+  }
+
+  // Pattern C2: Two explicit months: "tháng MM/YYYY ... so với [tháng] MM[/YYYY]"
+  const monthMatch = /tháng\s*(\d{1,2})(?:\/(\d{4}))?.*?(?:so với|vs).*?tháng\s*(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
   if (monthMatch) {
     const m1 = parseInt(monthMatch[1], 10);
     const m2 = parseInt(monthMatch[3], 10);
     if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12) {
-      const current = parseMonth(monthMatch[1], monthMatch[2]);
-      const baseline = parseMonth(monthMatch[3], monthMatch[4]);
+      const y1 = monthMatch[2] ?? monthMatch[4] ?? "2026";
+      const y2 = monthMatch[4] ?? monthMatch[2] ?? "2026";
+      const current = parseMonth(monthMatch[1], y1);
+      const baseline = parseMonth(monthMatch[3], y2);
+      return {
+        metricName,
+        metricType,
+        direction,
+        isExplicitDirection,
+        currentPeriod: current,
+        baselinePeriod: baseline,
+        formulaComponents,
+        candidateTables: ["orders", "order_items", "customers", "channels", "categories", "products"],
+      };
+    }
+  }
+
+  // Pattern C3: Explicit MM/YYYY on both sides: "MM/YYYY ... so với MM/YYYY"
+  const rawMonthMatch = /(\d{1,2})\/(\d{4}).*?(?:so với|vs).*?(\d{1,2})\/(\d{4})/i.exec(q);
+  if (rawMonthMatch) {
+    const m1 = parseInt(rawMonthMatch[1], 10);
+    const m2 = parseInt(rawMonthMatch[3], 10);
+    if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12) {
+      const current = parseMonth(rawMonthMatch[1], rawMonthMatch[2]);
+      const baseline = parseMonth(rawMonthMatch[3], rawMonthMatch[4]);
       return {
         metricName,
         metricType,
@@ -268,7 +316,7 @@ export async function validateBaseline(
   let currentVal = 0;
   let queriesExecuted = 0;
   let lastSql: string | null = null;
-  const tablesUsed: string[] = ["orders", "order_items"];
+  let tablesUsed: string[] = ["orders", "order_items"];
   const actualToolsCalled: string[] = [];
 
   if (deps.fetchBaseline) {
@@ -280,33 +328,48 @@ export async function validateBaseline(
     const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
 
     const baseRes = await deps.executor.run({
-      question: `Compute baseline for ${intent.metricName}`,
+      question: `Compute baseline for ${intent.metricName} from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}. Reference SQL: ${baseSql}`,
       candidateTables: intent.candidateTables,
       principal,
     });
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
-    lastSql = baseRes.sql ?? baseSql;
     if (baseRes.status === "ok" && baseRes.rows.length > 0) {
       baselineVal = Number(baseRes.rows[0]["val"] ?? 0);
     }
 
     const currRes = await deps.executor.run({
-      question: `Compute current value for ${intent.metricName}`,
+      question: `Compute current value for ${intent.metricName} from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}. Reference SQL: ${currSql}`,
       candidateTables: intent.candidateTables,
       principal,
     });
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
-    lastSql = currRes.sql ?? currSql;
     if (currRes.status === "ok" && currRes.rows.length > 0) {
       currentVal = Number(currRes.rows[0]["val"] ?? 0);
     }
-  } else {
-    // Default fallback when no DB/executor is wired (e.g. synthetic test)
+
+    lastSql = currRes.sql || baseRes.sql || null;
+    const distinctTables = new Set<string>();
+    if ("tablesUsed" in baseRes && Array.isArray(baseRes.tablesUsed)) {
+      for (const t of baseRes.tablesUsed) distinctTables.add(t);
+    }
+    if ("tablesUsed" in currRes && Array.isArray(currRes.tablesUsed)) {
+      for (const t of currRes.tablesUsed) distinctTables.add(t);
+    }
+    if (distinctTables.size > 0) {
+      tablesUsed = Array.from(distinctTables);
+    }
+  } else if (process.env.NODE_ENV === "test" && process.env.ALLOW_RCA_SYNTHETIC === "true") {
+    // Only when explicit synthetic flag is set in test environment
     baselineVal = 2_500_000_000;
     currentVal = 2_040_000_000;
     queriesExecuted = 2;
+  } else {
+    throw new Error(
+      "RCA validateBaseline requires either fetchBaseline or executor dependency. " +
+      "Inject deps via createRcaRuntime({executor: ...}) or createRcaRuntime({fetchBaseline: ...}).",
+    );
   }
 
   const absDelta = currentVal - baselineVal;
@@ -327,6 +390,7 @@ export async function validateBaseline(
       lastSql,
       tablesUsed,
       actualToolsCalled,
+      resolvedDirection: intent.direction,
     };
   }
 
@@ -346,6 +410,7 @@ export async function validateBaseline(
         lastSql,
         tablesUsed,
         actualToolsCalled,
+        resolvedDirection: "increase",
       };
     }
 
@@ -363,14 +428,19 @@ export async function validateBaseline(
         lastSql,
         tablesUsed,
         actualToolsCalled,
+        resolvedDirection: "decrease",
       };
     }
-  } else {
-    // If neutral/unspecified, adapt intent direction to actual reality
-    intent.direction = absDelta < 0 ? "decrease" : "increase";
   }
 
-  const changeVerb = intent.direction === "decrease" ? "giảm" : "tăng";
+  // Determine resolved direction without mutating the original intent
+  const resolvedDirection: "increase" | "decrease" = intent.isExplicitDirection
+    ? intent.direction
+    : absDelta < 0
+      ? "decrease"
+      : "increase";
+
+  const changeVerb = resolvedDirection === "decrease" ? "giảm" : "tăng";
   const pctStr = Math.abs(pctDelta).toFixed(1);
   return {
     baselineVal,
@@ -384,6 +454,7 @@ export async function validateBaseline(
     lastSql,
     tablesUsed,
     actualToolsCalled,
+    resolvedDirection,
   };
 }
 
@@ -394,7 +465,10 @@ export async function validateBaseline(
 export function createPlan(
   question: string,
   intent: RcaIntent,
-  baseline: BaselineCheckResult,
+  baseline: Pick<
+    BaselineCheckResult,
+    "isValidBaseline" | "baselineVal" | "currentVal" | "absDelta" | "pctDelta" | "queriesExecuted"
+  >,
 ): AnalysisPlan | null {
   if (!baseline.isValidBaseline) {
     return null;
@@ -528,7 +602,15 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     const intent = parseRcaIntent(state.question);
 
     // 1. validate_baseline
-    const baseline = await validateBaseline(state.question, intent, deps, principal);
+    let baseline: BaselineCheckResult;
+    try {
+      baseline = await validateBaseline(state.question, intent, deps, principal);
+    } catch (err) {
+      return {
+        status: "error",
+        answerText: err instanceof Error ? err.message : String(err),
+      };
+    }
 
     if (!baseline.isValidBaseline) {
       const status = baseline.isSignificant === false ? "no_data" : "false_premise";
@@ -543,7 +625,11 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     }
 
     // 2. create_plan
-    const plan = createPlan(state.question, intent, baseline);
+    const effectiveIntent: RcaIntent = {
+      ...intent,
+      direction: baseline.resolvedDirection,
+    };
+    const plan = createPlan(state.question, effectiveIntent, baseline);
     if (!plan) {
       return {
         status: "error",

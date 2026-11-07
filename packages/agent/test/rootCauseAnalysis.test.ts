@@ -207,13 +207,16 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
   it("T35-T5_tools: tracks actualToolsCalled when executor runs real queries", async () => {
     let call = 0;
+    const capturedInputs: Array<{ question: string; candidateTables: string[] }> = [];
     const mockExecutor = {
-      run: async () => {
+      run: async (input: { question: string; candidateTables: string[] }) => {
         call++;
+        capturedInputs.push(input);
         const val = call === 1 ? 2_500_000_000 : 2_040_000_000;
+        const periodDate = call === 1 ? "2026-08-31" : "2026-09-30";
         return {
           status: "ok" as const,
-          sql: `SELECT ${val} AS val`,
+          sql: `SELECT ${val} AS val WHERE purchase_date <= '${periodDate}'`,
           tablesUsed: ["orders", "order_items"],
           columns: ["val"],
           rows: [{ val }],
@@ -240,6 +243,18 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(update.analysisPlan).toBeDefined();
     expect(update.toolsCalled).toContain("run_query");
     expect(update.toolsCalled).toHaveLength(2);
+
+    // Verify Bug #1 fix: Executor received prompt containing period dates and sample SQL
+    expect(capturedInputs).toHaveLength(2);
+    expect(capturedInputs[0].question).toContain("2026-08-01");
+    expect(capturedInputs[0].question).toContain("2026-08-31");
+    expect(capturedInputs[0].question).toContain("Reference SQL:");
+    expect(capturedInputs[1].question).toContain("2026-09-01");
+    expect(capturedInputs[1].question).toContain("2026-09-30");
+    expect(capturedInputs[1].question).toContain("Reference SQL:");
+
+    // Verify lastSql contains actual executed SQL with date filter
+    expect(update.sql).toContain("2026-09-30");
   });
 
   it("T35-T5_insignificant: halts early when metric delta is negligible (< 1%)", async () => {
@@ -272,11 +287,12 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(update.answerText).toContain("Biến động không đáng kể");
   });
 
-  it("T35-T5_neutral: adapts direction for neutral queries without false premise", async () => {
+  it("T35-T5_neutral: adapts direction for neutral queries without mutating original intent", async () => {
     // Neutral question: "Tại sao doanh thu tháng 9/2026 khác tháng 8/2026?"
     const q = "Tại sao doanh thu thuần tháng 09/2026 lại khác so với tháng 08/2026?";
     const intent = parseRcaIntent(q);
     expect(intent.isExplicitDirection).toBe(false);
+    const originalDirection = intent.direction;
 
     // Actual DB shows revenue dropped 18.4%
     const deps = {
@@ -291,8 +307,58 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     const res = await validateBaseline(q, intent, deps, mockPrincipal);
     expect(res.isValidBaseline).toBe(true);
-    expect(intent.direction).toBe("decrease");
+    expect(res.resolvedDirection).toBe("decrease");
+    // Original intent must NOT be mutated in-place
+    expect(intent.direction).toBe(originalDirection);
     expect(res.message).toContain("Tiền đề hợp lệ");
+  });
+
+  it("T35-T_no_deps_throws: throws explicit error when neither fetchBaseline nor executor is provided", async () => {
+    const q = "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?";
+    const intent = parseRcaIntent(q);
+
+    // Calling validateBaseline directly with empty deps throws error
+    await expect(validateBaseline(q, intent, {}, mockPrincipal)).rejects.toThrow(
+      "RCA validateBaseline requires either fetchBaseline or executor dependency",
+    );
+
+    // Calling createRcaRuntime({}).entry returns status: 'error'
+    const runtime = createRcaRuntime({});
+    const mockState = {
+      question: q,
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    const update = await runtime.entry(mockState, mockRt);
+    expect(update.status).toBe("error");
+    expect(update.answerText).toContain("RCA validateBaseline requires either fetchBaseline or executor dependency");
+  });
+
+  it("T35-T_regex_missing_year: parses dates reliably without NaN when second year or both are omitted", () => {
+    // Second year omitted: "tháng 9/2026 giảm so với tháng 8"
+    const q1 = "Vì sao doanh thu thuần tháng 9/2026 giảm so với tháng 8?";
+    const i1 = parseRcaIntent(q1);
+    expect(i1.currentPeriod).toEqual({ start: "2026-09-01", end: "2026-09-30" });
+    expect(i1.baselinePeriod).toEqual({ start: "2026-08-01", end: "2026-08-31" });
+    expect(i1.currentPeriod.start).not.toContain("NaN");
+    expect(i1.baselinePeriod.start).not.toContain("NaN");
+
+    // Both years omitted: "tháng 9 giảm so với tháng 8"
+    const q2 = "Vì sao doanh thu thuần tháng 9 giảm so với tháng 8?";
+    const i2 = parseRcaIntent(q2);
+    expect(i2.currentPeriod.start).not.toContain("NaN");
+    expect(i2.baselinePeriod.start).not.toContain("NaN");
+
+    // YoY phrasing: "tháng 9/2026 giảm so với cùng kỳ năm trước"
+    const q3 = "Vì sao doanh thu thuần tháng 9/2026 giảm so với cùng kỳ năm trước?";
+    const i3 = parseRcaIntent(q3);
+    expect(i3.currentPeriod).toEqual({ start: "2026-09-01", end: "2026-09-30" });
+    expect(i3.baselinePeriod).toEqual({ start: "2025-09-01", end: "2025-09-30" });
   });
 
   it("T35-T5b: createRcaRuntime halts immediately with false_premise when premise fails", async () => {
