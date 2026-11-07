@@ -133,11 +133,57 @@ function dateLiteralPattern(dateStr: string): string {
 
 const DATE_COL_PATTERN = String.raw`(?:\b[a-zA-Z0-9_.]*?\b)?(?:purchase_date|order_date|created_at|order_purchase_timestamp|date)\b`;
 
+function hasTopLevelOr(text: string): boolean {
+  // Strip balanced parentheses iteratively so nested ORs inside IN (...) or sub-clauses are ignored
+  let prev = text;
+  while (true) {
+    const stripped = prev.replace(/\([^()]*\)/g, " ");
+    if (stripped === prev) break;
+    prev = stripped;
+  }
+  return /\bor\b/i.test(prev);
+}
+
+function columnsMatch(c1: string, c2: string): boolean {
+  if (c1 === c2) return true;
+  const parts1 = c1.toLowerCase().split(".");
+  const parts2 = c2.toLowerCase().split(".");
+  const col1 = parts1[parts1.length - 1];
+  const col2 = parts2[parts2.length - 1];
+  if (col1 !== col2) return false;
+  // If both specify a table alias, they must match (e.g. o.purchase_date vs r.created_at)
+  if (parts1.length > 1 && parts2.length > 1) {
+    return parts1[parts1.length - 2] === parts2[parts2.length - 2];
+  }
+  return true;
+}
+
+interface DateBoundMatch {
+  col: string;
+  startIdx: number;
+  endIdx: number;
+}
+
+function findMatches(pattern: RegExp, text: string): DateBoundMatch[] {
+  const matches: DateBoundMatch[] = [];
+  pattern.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(text)) !== null) {
+    const col = m.groups?.["col"] ?? m[1] ?? "";
+    matches.push({
+      col: col.trim().toLowerCase(),
+      startIdx: m.index,
+      endIdx: m.index + m[0].length,
+    });
+  }
+  return matches;
+}
+
 export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
   if (!sql || !period || !period.start || !period.end) return false;
   const s = stripSqlComments(sql);
 
-  // 1. Structural BETWEEN check
+  // 1. Structural BETWEEN check (binds the exact same date column)
   const betweenPattern = new RegExp(
     String.raw`${DATE_COL_PATTERN}\s+between\s+${dateLiteralPattern(period.start)}\s+and\s+${dateLiteralPattern(period.end)}`,
     "i",
@@ -146,59 +192,7 @@ export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
     return true;
   }
 
-  // 2. Structural lower-bound check for period.start:
-  // e.g. col >= '2026-08-01' OR '2026-08-01' <= col
-  const startLhsPattern = new RegExp(
-    String.raw`${DATE_COL_PATTERN}\s*(?:>=|>)\s*${dateLiteralPattern(period.start)}`,
-    "i",
-  );
-  const startRhsPattern = new RegExp(
-    String.raw`${dateLiteralPattern(period.start)}\s*(?:<=|<)\s*${DATE_COL_PATTERN}`,
-    "i",
-  );
-  const hasValidStart = startLhsPattern.test(s) || startRhsPattern.test(s);
-
-  // 3. Structural upper-bound check for period.end:
-  // e.g. col <= '2026-08-31' OR '2026-08-31' >= col
-  const endLhsPattern = new RegExp(
-    String.raw`${DATE_COL_PATTERN}\s*(?:<=)\s*${dateLiteralPattern(period.end)}`,
-    "i",
-  );
-  const endRhsPattern = new RegExp(
-    String.raw`${dateLiteralPattern(period.end)}\s*(?:>=)\s*${DATE_COL_PATTERN}`,
-    "i",
-  );
-  let hasValidEnd = endLhsPattern.test(s) || endRhsPattern.test(s);
-
-  // If not matched directly on period.end, check next-day boundary for `< nextDay`:
-  // e.g. col < '2026-09-01' for end='2026-08-31'
-  if (!hasValidEnd) {
-    try {
-      const d = new Date(period.end);
-      if (!isNaN(d.getTime())) {
-        d.setUTCDate(d.getUTCDate() + 1);
-        const nextDay = d.toISOString().slice(0, 10);
-        const nextDayLhs = new RegExp(
-          String.raw`${DATE_COL_PATTERN}\s*<\s*${dateLiteralPattern(nextDay)}`,
-          "i",
-        );
-        const nextDayRhs = new RegExp(
-          String.raw`${dateLiteralPattern(nextDay)}\s*>\s*${DATE_COL_PATTERN}`,
-          "i",
-        );
-        hasValidEnd = nextDayLhs.test(s) || nextDayRhs.test(s);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // Range condition requires both valid start and valid end
-  if (hasValidStart && hasValidEnd) {
-    return true;
-  }
-
-  // 4. Month truncation / formatting equality check (e.g. to_char(col, 'YYYY-MM') = '2026-08')
+  // 2. Month truncation / formatting equality check (e.g. to_char(col, 'YYYY-MM') = '2026-08')
   const monthStart = period.start.slice(0, 7);
   const monthEnd = period.end.slice(0, 7);
   if (monthStart === monthEnd) {
@@ -216,6 +210,73 @@ export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
     );
     if (toCharPattern.test(s) || dateTruncPattern.test(s) || strftimePattern.test(s)) {
       return true;
+    }
+  }
+
+  // 3. Structural range conjunction check:
+  // Must bind the SAME date column on both lower bound and upper bound,
+  // joined strictly by AND with no top-level OR separating them.
+  const startLhsPattern = new RegExp(
+    String.raw`(?<col>${DATE_COL_PATTERN})\s*(?:>=|>)\s*${dateLiteralPattern(period.start)}`,
+    "gi",
+  );
+  const startRhsPattern = new RegExp(
+    String.raw`${dateLiteralPattern(period.start)}\s*(?:<=|<)\s*(?<col>${DATE_COL_PATTERN})`,
+    "gi",
+  );
+  const startBounds = [
+    ...findMatches(startLhsPattern, s),
+    ...findMatches(startRhsPattern, s),
+  ];
+
+  const endLhsPattern = new RegExp(
+    String.raw`(?<col>${DATE_COL_PATTERN})\s*(?:<=)\s*${dateLiteralPattern(period.end)}`,
+    "gi",
+  );
+  const endRhsPattern = new RegExp(
+    String.raw`${dateLiteralPattern(period.end)}\s*(?:>=)\s*(?<col>${DATE_COL_PATTERN})`,
+    "gi",
+  );
+  const endBounds = [
+    ...findMatches(endLhsPattern, s),
+    ...findMatches(endRhsPattern, s),
+  ];
+
+  // Also support next-day boundary for `< nextDay` (e.g. `< '2026-09-01'`)
+  try {
+    const d = new Date(period.end);
+    if (!isNaN(d.getTime())) {
+      d.setUTCDate(d.getUTCDate() + 1);
+      const nextDay = d.toISOString().slice(0, 10);
+      const nextDayLhs = new RegExp(
+        String.raw`(?<col>${DATE_COL_PATTERN})\s*<\s*${dateLiteralPattern(nextDay)}`,
+        "gi",
+      );
+      const nextDayRhs = new RegExp(
+        String.raw`${dateLiteralPattern(nextDay)}\s*>\s*(?<col>${DATE_COL_PATTERN})`,
+        "gi",
+      );
+      endBounds.push(...findMatches(nextDayLhs, s), ...findMatches(nextDayRhs, s));
+    }
+  } catch {
+    // ignore
+  }
+
+  // Verify that at least one pair of (startBound, endBound) targets the same column
+  // and is conjoined by AND without a top-level OR separating them
+  for (const startBound of startBounds) {
+    for (const endBound of endBounds) {
+      if (!columnsMatch(startBound.col, endBound.col)) {
+        continue;
+      }
+      const firstEnd = Math.min(startBound.endIdx, endBound.endIdx);
+      const secondStart = Math.max(startBound.startIdx, endBound.startIdx);
+      if (firstEnd <= secondStart) {
+        const betweenText = s.slice(firstEnd, secondStart);
+        if (!hasTopLevelOr(betweenText) && /\band\b/i.test(betweenText)) {
+          return true;
+        }
+      }
     }
   }
 

@@ -406,6 +406,46 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       ),
     ).toBe(true);
 
+    // Invalid: OR between date bounds instead of AND (tautology / unbounded period)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01' OR o.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: bounds on two different date columns (e.g. orders.purchase_date vs reviews.created_at)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o JOIN reviews r USING(order_id) WHERE o.purchase_date >= '2026-08-01' AND r.created_at <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: bounds with conflicting aliases (e.g. o1.purchase_date vs o2.purchase_date)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o1 JOIN orders o2 USING(order_id) WHERE o1.purchase_date >= '2026-08-01' AND o2.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: bounds in separate disjunctive branches of an OR clause
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE (purchase_date >= '2026-08-01' AND status = 'delivered') OR (purchase_date <= '2026-08-31' AND status = 'returned')",
+        period,
+      ),
+    ).toBe(false);
+
+    // Valid: nested OR in unrelated parentheses while date bounds are conjoined with AND
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE o.purchase_date >= '2026-08-01' AND (o.status = 'delivered' OR o.status = 'shipped') AND o.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(true);
+
     // Invalid: missing date column altogether
     expect(
       verifySqlDateFilter(
