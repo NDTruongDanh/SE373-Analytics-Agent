@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AnomalyAlertSchema } from "./alert.js";
 import { AnalysisPlanSchema, RootCauseAnswerSchema } from "./rca.js";
 import {
   CHART_TYPE_TO_COMPONENT,
@@ -164,6 +165,7 @@ export type RootCauseResponse = z.infer<typeof RootCauseResponseSchema>;
 
 export const AnomalyAlertResponseSchema = AgentEnvelopeBaseSchema.extend({
   kind: z.literal("anomaly_alert"),
+  data: AnomalyAlertSchema, // <--- Bổ sung dòng này để siết chặt validation
 });
 
 export type AnomalyAlertResponse = z.infer<typeof AnomalyAlertResponseSchema>;

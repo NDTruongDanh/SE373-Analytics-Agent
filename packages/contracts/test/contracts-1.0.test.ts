@@ -160,10 +160,33 @@ describe("contracts 1.1.0", () => {
 
   it("discriminates all five AgentResponse variants", () => {
     expect(AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer() }).kind).toBe("sql_answer");
-
-    // anomaly_alert still accepts loose data (z.unknown)
-    const parsedAlert = AgentResponseSchema.parse({ kind: "anomaly_alert", status: "ok", summary: "Noted.", data: { n: 1 } });
-    expect(parsedAlert.kind).toBe("anomaly_alert");
+    // anomaly_alert requires strict AnomalyAlertSchema data (UC-10)
+    const validAlertData = {
+      metric: "metric:return_rate",
+      currentValue: 0.185,
+      expectedValue: 0.042,
+      deviation: "z=+17.8",
+      drilldownSegment: "regions.province = 'Đà Nẵng'",
+      evidenceSql: "SELECT 1",
+      recipientId: "ops_lead",
+      severity: "critical" as const,
+    };
+    expect(
+      AgentResponseSchema.parse({
+        kind: "anomaly_alert",
+        status: "ok",
+        summary: "Alert.",
+        data: validAlertData,
+      }).kind,
+    ).toBe("anomaly_alert");
+    expect(() =>
+      AgentResponseSchema.parse({
+        kind: "anomaly_alert",
+        status: "ok",
+        summary: "Noted.",
+        data: { n: 1 },
+      }),
+    ).toThrow();
 
     // analysis_plan requires strict AnalysisPlanSchema data
     const validPlanData = {
@@ -235,7 +258,6 @@ describe("contracts 1.1.0", () => {
     expect(() =>
       AgentResponseSchema.parse({ kind: "insight_report", status: "ok", summary: "Noted.", data: { n: 1 } }),
     ).toThrow();
-
     expect(() => AgentResponseSchema.parse({ kind: "nope", status: "ok", summary: "x", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "insight_report", status: "ok", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer("bogus") })).toThrow();
