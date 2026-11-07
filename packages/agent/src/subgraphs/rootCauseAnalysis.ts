@@ -104,9 +104,40 @@ export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
     s.includes("order_date") ||
     s.includes("created_at") ||
     s.includes("date");
-  const hasStart = s.includes(period.start) || s.includes(period.start.slice(0, 7));
-  const hasEnd = s.includes(period.end) || s.includes(period.end.slice(0, 7));
-  return hasDateCol && (hasStart || hasEnd);
+  if (!hasDateCol) return false;
+
+  const hasExactStart = s.includes(period.start);
+  let nextDay: string | null = null;
+  try {
+    const d = new Date(period.end);
+    if (!isNaN(d.getTime())) {
+      d.setUTCDate(d.getUTCDate() + 1);
+      nextDay = d.toISOString().slice(0, 10);
+    }
+  } catch {
+    // ignore
+  }
+
+  const hasExactEnd = s.includes(period.end) || (nextDay !== null && s.includes(nextDay));
+
+  // Range queries require BOTH start and end boundaries
+  if (hasExactStart && hasExactEnd) {
+    return true;
+  }
+
+  // Month truncation / to_char equality check (e.g. to_char(purchase_date, 'YYYY-MM') = '2026-08')
+  const monthStart = period.start.slice(0, 7);
+  const monthEnd = period.end.slice(0, 7);
+  if (monthStart === monthEnd) {
+    const hasMonthEquality =
+      (s.includes("to_char") || s.includes("date_trunc") || s.includes("strftime")) &&
+      s.includes(monthStart);
+    if (hasMonthEquality) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function asMcpFailure(tool: string, text: string): DbToolError {
@@ -411,13 +442,13 @@ function formatVnd(val: number): string {
 
 export function buildBaselineQuery(metricName: string, metricType: MetricType, period: TimePeriod): string {
   if (metricType === "ratio" && metricName === "aov") {
-    return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status = 'delivered' AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
+    return `SELECT (COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float / NULLIF(COUNT(DISTINCT CASE WHEN o.status = 'delivered' THEN o.order_id END), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned') AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
   }
   if (metricType === "ratio" && metricName === "return_rate") {
     return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o WHERE o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
   }
-  // Default: net revenue (sum of delivered order items)
-  return `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status = 'delivered' AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
+  // Default: net revenue (delivered orders minus returned orders, excluding freight) per UC05.md:156
+  return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned') AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
 }
 
 /**
@@ -482,18 +513,18 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán baseline: ${errMsg}`);
     }
 
+    if (!baseRes.sql || !verifySqlDateFilter(baseRes.sql, intent.baselinePeriod)) {
+      throw new Error(
+        `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}): ${baseRes.sql ?? "(empty)"}`,
+      );
+    }
+
     if (!baseRes.rows || baseRes.rows.length === 0 || baseRes.rows[0]["val"] === undefined || baseRes.rows[0]["val"] === null) {
       throw new Error("Dữ liệu kỳ cơ sở không chứa giá trị số hợp lệ ('val')");
     }
     baselineVal = Number(baseRes.rows[0]["val"]);
     if (isNaN(baselineVal)) {
       throw new Error(`Giá trị kỳ cơ sở không phải là số hợp lệ: ${String(baseRes.rows[0]["val"])}`);
-    }
-
-    if (baseRes.sql && !verifySqlDateFilter(baseRes.sql, intent.baselinePeriod)) {
-      throw new Error(
-        `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}): ${baseRes.sql}`,
-      );
     }
 
     const currRes = await deps.executor.run({
@@ -530,18 +561,18 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán current value: ${errMsg}`);
     }
 
+    if (!currRes.sql || !verifySqlDateFilter(currRes.sql, intent.currentPeriod)) {
+      throw new Error(
+        `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}): ${currRes.sql ?? "(empty)"}`,
+      );
+    }
+
     if (!currRes.rows || currRes.rows.length === 0 || currRes.rows[0]["val"] === undefined || currRes.rows[0]["val"] === null) {
       throw new Error("Dữ liệu kỳ phân tích không chứa giá trị số hợp lệ ('val')");
     }
     currentVal = Number(currRes.rows[0]["val"]);
     if (isNaN(currentVal)) {
       throw new Error(`Giá trị kỳ phân tích không phải là số hợp lệ: ${String(currRes.rows[0]["val"])}`);
-    }
-
-    if (currRes.sql && !verifySqlDateFilter(currRes.sql, intent.currentPeriod)) {
-      throw new Error(
-        `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}): ${currRes.sql}`,
-      );
     }
 
     lastSql = currRes.sql || baseRes.sql || null;

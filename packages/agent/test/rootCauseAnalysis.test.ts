@@ -6,6 +6,7 @@ import {
   createRcaRuntime,
   parseRcaIntent,
   validateBaseline,
+  verifySqlDateFilter,
   RCA_UC_ID,
 } from "../src/subgraphs/rootCauseAnalysis.js";
 import { createChatModel } from "../src/models/factory.js";
@@ -259,6 +260,109 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     // Verify lastSql contains actual executed SQL with date filter
     expect(update.sql).toContain("2026-09-01");
     expect(update.sql).toContain("2026-09-30");
+  });
+
+  it("T35-T5_buildBaselineQuery: net_revenue deducts returned orders per UC05.md:156", () => {
+    const period = { start: "2026-08-01", end: "2026-08-31" };
+    const sql = buildBaselineQuery("net_revenue", "additive", period);
+    expect(sql).toContain("delivered");
+    expect(sql).toContain("returned");
+    expect(sql).toContain("-i.price_vnd");
+    expect(sql).toContain("2026-08-01");
+    expect(sql).toContain("2026-08-31");
+  });
+
+  it("T35-T5_verifySqlDateFilter: enforces both start and end boundaries strictly", () => {
+    const period = { start: "2026-08-01", end: "2026-08-31" };
+
+    // Valid: both bounds present with <= end
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(true);
+
+    // Valid: both bounds present with < nextDay (2026-09-01)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date < '2026-09-01'",
+        period,
+      ),
+    ).toBe(true);
+
+    // Valid: month truncation / to_char
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE to_char(purchase_date, 'YYYY-MM') = '2026-08'",
+        period,
+      ),
+    ).toBe(true);
+
+    // Invalid: missing end date (only >= start)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND status = 'delivered'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: missing start date (only <= end)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date <= '2026-08-31' AND status = 'delivered'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: missing start date (only < nextDay)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE purchase_date < '2026-09-01' AND status = 'delivered'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: missing date column altogether
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE status = 'delivered'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: empty SQL
+    expect(verifySqlDateFilter("", period)).toBe(false);
+  });
+
+  it("T35-T5_date_filter_rejection: throws error and refuses to use rows when SQL lacks end date", async () => {
+    const mockExecutor = {
+      run: async () => ({
+        status: "ok" as const,
+        sql: "SELECT 1000000000 AS val FROM orders WHERE purchase_date >= '2026-08-01' AND status = 'delivered'",
+        tablesUsed: ["orders"],
+        columns: ["val"],
+        rows: [{ val: 1000000000 }],
+        maskedColumns: [],
+        attempts: 1,
+      }),
+    };
+
+    const runtime = createRcaRuntime({ executor: mockExecutor });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    const update = await runtime.entry(mockState, mockRt);
+    expect(update.status).toBe("error");
+    expect(update.answerText).toContain("thiếu bộ lọc ngày theo kỳ yêu cầu");
   });
 
   it("T35-T5_insignificant: halts early when metric delta is negligible (< 1%)", async () => {
