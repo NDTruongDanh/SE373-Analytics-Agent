@@ -438,6 +438,30 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       ),
     ).toBe(false);
 
+    // Invalid: top-level OR before date bounds (unbounded branch leaks rows)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE status = 'returned' OR (purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31')",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: top-level OR after date bounds (unbounded branch leaks rows)
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE (purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31') OR status = 'delivered'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Valid: disjunctive branches where ALL branches are individually bounded by period
+    expect(
+      verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE (region = 'North' AND purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31') OR (region = 'South' AND purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31')",
+        period,
+      ),
+    ).toBe(true);
+
     // Valid: nested OR in unrelated parentheses while date bounds are conjoined with AND
     expect(
       verifySqlDateFilter(

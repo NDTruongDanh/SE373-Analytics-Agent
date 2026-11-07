@@ -133,17 +133,6 @@ function dateLiteralPattern(dateStr: string): string {
 
 const DATE_COL_PATTERN = String.raw`(?:\b[a-zA-Z0-9_.]*?\b)?(?:purchase_date|order_date|created_at|order_purchase_timestamp|date)\b`;
 
-function hasTopLevelOr(text: string): boolean {
-  // Strip balanced parentheses iteratively so nested ORs inside IN (...) or sub-clauses are ignored
-  let prev = text;
-  while (true) {
-    const stripped = prev.replace(/\([^()]*\)/g, " ");
-    if (stripped === prev) break;
-    prev = stripped;
-  }
-  return /\bor\b/i.test(prev);
-}
-
 function columnsMatch(c1: string, c2: string): boolean {
   if (c1 === c2) return true;
   const parts1 = c1.toLowerCase().split(".");
@@ -179,20 +168,99 @@ function findMatches(pattern: RegExp, text: string): DateBoundMatch[] {
   return matches;
 }
 
-export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
-  if (!sql || !period || !period.start || !period.end) return false;
-  const s = stripSqlComments(sql);
+/**
+ * Splits a SQL expression into top-level disjunctive branches (OR outside of parentheses).
+ * Any OR enclosed in parentheses (e.g. (status = 'a' OR status = 'b')) is kept intact inside its branch.
+ */
+function splitByTopLevelOr(text: string): string[] {
+  const branches: string[] = [];
+  let depth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let currentStart = 0;
 
-  // 1. Structural BETWEEN check (binds the exact same date column)
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const prevChar = i > 0 ? text[i - 1] : "";
+
+    if (char === "'" && !inDoubleQuote && prevChar !== "\\") {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (char === '"' && !inSingleQuote && prevChar !== "\\") {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote) {
+      continue;
+    }
+
+    if (char === "(") {
+      depth++;
+      continue;
+    }
+    if (char === ")") {
+      if (depth > 0) depth--;
+      continue;
+    }
+
+    if (depth === 0) {
+      const sub = text.slice(i);
+      const orMatch = /^or\b/i.exec(sub);
+      if (orMatch) {
+        const before = text.slice(currentStart, i).trim();
+        if (before) {
+          branches.push(before);
+        }
+        i += orMatch[0].length - 1;
+        currentStart = i + 1;
+      }
+    }
+  }
+
+  const remaining = text.slice(currentStart).trim();
+  if (remaining) {
+    branches.push(remaining);
+  }
+
+  return branches;
+}
+
+function extractWhereClauses(sql: string): string[] {
+  const s = stripSqlComments(sql);
+  const whereRegex = /\bwhere\b\s+([\s\S]+?)(?=\b(?:group\s+by|order\s+by|limit|offset|having|window|union)\b|;|$)/gi;
+  const clauses: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = whereRegex.exec(s)) !== null) {
+    let raw = m[1]?.trim() ?? "";
+    let openCount = 0;
+    let closeCount = 0;
+    for (const c of raw) {
+      if (c === "(") openCount++;
+      if (c === ")") closeCount++;
+    }
+    while (closeCount > openCount && raw.endsWith(")")) {
+      raw = raw.slice(0, -1).trim();
+      closeCount--;
+    }
+    if (raw) {
+      clauses.push(raw);
+    }
+  }
+  return clauses;
+}
+
+function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
+  // 1. Structural BETWEEN check
   const betweenPattern = new RegExp(
     String.raw`${DATE_COL_PATTERN}\s+between\s+${dateLiteralPattern(period.start)}\s+and\s+${dateLiteralPattern(period.end)}`,
     "i",
   );
-  if (betweenPattern.test(s)) {
+  if (betweenPattern.test(branch)) {
     return true;
   }
 
-  // 2. Month truncation / formatting equality check (e.g. to_char(col, 'YYYY-MM') = '2026-08')
+  // 2. Month truncation / formatting equality check
   const monthStart = period.start.slice(0, 7);
   const monthEnd = period.end.slice(0, 7);
   if (monthStart === monthEnd) {
@@ -208,14 +276,13 @@ export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
       String.raw`strftime\s*\(\s*['"]%Y-%m['"]\s*,\s*${DATE_COL_PATTERN}\s*\)\s*=\s*${dateLiteralPattern(monthStart)}`,
       "i",
     );
-    if (toCharPattern.test(s) || dateTruncPattern.test(s) || strftimePattern.test(s)) {
+    if (toCharPattern.test(branch) || dateTruncPattern.test(branch) || strftimePattern.test(branch)) {
       return true;
     }
   }
 
   // 3. Structural range conjunction check:
-  // Must bind the SAME date column on both lower bound and upper bound,
-  // joined strictly by AND with no top-level OR separating them.
+  // Must bind the SAME date column on both lower bound and upper bound
   const startLhsPattern = new RegExp(
     String.raw`(?<col>${DATE_COL_PATTERN})\s*(?:>=|>)\s*${dateLiteralPattern(period.start)}`,
     "gi",
@@ -225,8 +292,8 @@ export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
     "gi",
   );
   const startBounds = [
-    ...findMatches(startLhsPattern, s),
-    ...findMatches(startRhsPattern, s),
+    ...findMatches(startLhsPattern, branch),
+    ...findMatches(startRhsPattern, branch),
   ];
 
   const endLhsPattern = new RegExp(
@@ -238,11 +305,10 @@ export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
     "gi",
   );
   const endBounds = [
-    ...findMatches(endLhsPattern, s),
-    ...findMatches(endRhsPattern, s),
+    ...findMatches(endLhsPattern, branch),
+    ...findMatches(endRhsPattern, branch),
   ];
 
-  // Also support next-day boundary for `< nextDay` (e.g. `< '2026-09-01'`)
   try {
     const d = new Date(period.end);
     if (!isNaN(d.getTime())) {
@@ -256,31 +322,39 @@ export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
         String.raw`${dateLiteralPattern(nextDay)}\s*>\s*(?<col>${DATE_COL_PATTERN})`,
         "gi",
       );
-      endBounds.push(...findMatches(nextDayLhs, s), ...findMatches(nextDayRhs, s));
+      endBounds.push(...findMatches(nextDayLhs, branch), ...findMatches(nextDayRhs, branch));
     }
   } catch {
     // ignore
   }
 
-  // Verify that at least one pair of (startBound, endBound) targets the same column
-  // and is conjoined by AND without a top-level OR separating them
   for (const startBound of startBounds) {
     for (const endBound of endBounds) {
       if (!columnsMatch(startBound.col, endBound.col)) {
         continue;
       }
-      const firstEnd = Math.min(startBound.endIdx, endBound.endIdx);
-      const secondStart = Math.max(startBound.startIdx, endBound.startIdx);
-      if (firstEnd <= secondStart) {
-        const betweenText = s.slice(firstEnd, secondStart);
-        if (!hasTopLevelOr(betweenText) && /\band\b/i.test(betweenText)) {
-          return true;
-        }
-      }
+      return true;
     }
   }
 
   return false;
+}
+
+export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
+  if (!sql || !period || !period.start || !period.end) return false;
+  const s = stripSqlComments(sql);
+
+  const whereClauses = extractWhereClauses(s);
+  if (whereClauses.length > 0) {
+    return whereClauses.some((clause) => {
+      const branches = splitByTopLevelOr(clause);
+      return branches.length > 0 && branches.every((b) => verifyBranchDateFilter(b, period));
+    });
+  }
+
+  // Fallback if no explicit WHERE clause was extracted (e.g. bare condition passed in unit tests)
+  const branches = splitByTopLevelOr(s);
+  return branches.length > 0 && branches.every((b) => verifyBranchDateFilter(b, period));
 }
 
 function asMcpFailure(tool: string, text: string): DbToolError {
