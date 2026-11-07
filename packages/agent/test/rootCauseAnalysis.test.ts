@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MemorySaver, StateGraph, START, END } from "@langchain/langgraph";
 import {
   buildBaselineQuery,
+  createDateGuardedMcpCaller,
   createPlan,
   createRcaRuntime,
   parseRcaIntent,
@@ -270,6 +271,56 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(sql).toContain("-i.price_vnd");
     expect(sql).toContain("2026-08-01");
     expect(sql).toContain("2026-08-31");
+  });
+
+  it("T35-T5_buildBaselineQuery_aov: matches semantic/metrics.yaml (delivered orders for both numerator and denominator)", () => {
+    const period = { start: "2026-08-01", end: "2026-08-31" };
+    const sql = buildBaselineQuery("aov", "ratio", period);
+    expect(sql).toContain("o.status = 'delivered'");
+    expect(sql).not.toContain("returned");
+    expect(sql).toContain("SUM(i.price_vnd)");
+    expect(sql).toContain("COUNT(DISTINCT o.order_id)");
+    expect(sql).toContain("2026-08-01");
+    expect(sql).toContain("2026-08-31");
+  });
+
+  it("T35-T5_date_guarded_mcp_caller: blocks invalid query before sending to MCP/DB", async () => {
+    let callCount = 0;
+    const baseCaller = {
+      call: async () => {
+        callCount++;
+        return { rows: [] };
+      },
+    };
+
+    const activePeriod = { start: "2026-08-01", end: "2026-08-31" };
+    const guardedCaller = createDateGuardedMcpCaller(baseCaller, () => activePeriod);
+
+    // 1. describe_table should pass through without date filter checks
+    await guardedCaller.call("describe_table", { table: "orders" });
+    expect(callCount).toBe(1);
+
+    // 2. run_query missing end date -> throws and blocks execution (callCount stays 1)
+    await expect(
+      guardedCaller.call("run_query", {
+        sql: "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01'",
+      }),
+    ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
+    expect(callCount).toBe(1); // Call was blocked!
+
+    // 3. explain_query missing start date -> throws and blocks execution (callCount stays 1)
+    await expect(
+      guardedCaller.call("explain_query", {
+        sql: "SELECT SUM(price_vnd) FROM orders WHERE purchase_date <= '2026-08-31'",
+      }),
+    ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
+    expect(callCount).toBe(1); // Call was blocked!
+
+    // 4. run_query with valid date bounds -> passes through to baseCaller
+    await guardedCaller.call("run_query", {
+      sql: "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31'",
+    });
+    expect(callCount).toBe(2);
   });
 
   it("T35-T5_verifySqlDateFilter: enforces both start and end boundaries strictly", () => {

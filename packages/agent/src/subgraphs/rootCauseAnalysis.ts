@@ -88,12 +88,33 @@ export interface RcaRuntimeDeps {
   executor?: TextToSqlExecutorLike;
   mcpCaller?: McpToolCaller;
   sqlModel?: ChatModelLike;
+  setActivePeriod?: (period: TimePeriod | null) => void;
   fetchBaseline?: (
     metricName: string,
     metricType: MetricType,
     period: TimePeriod,
     principal: ExecutorPrincipal,
   ) => Promise<number>;
+}
+
+export function createDateGuardedMcpCaller(
+  baseCaller: McpToolCaller,
+  getActivePeriod: () => TimePeriod | null,
+): McpToolCaller {
+  return {
+    async call(tool: string, args: Record<string, unknown>): Promise<unknown> {
+      if ((tool === "explain_query" || tool === "run_query") && typeof args["sql"] === "string") {
+        const expectedPeriod = getActivePeriod();
+        if (expectedPeriod && !verifySqlDateFilter(args["sql"], expectedPeriod)) {
+          throw dbToolError(
+            "INVALID_SQL",
+            `Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ (${expectedPeriod.start} đến ${expectedPeriod.end}): ${args["sql"]}`,
+          );
+        }
+      }
+      return baseCaller.call(tool, args);
+    },
+  };
 }
 
 export function verifySqlDateFilter(sql: string, period: TimePeriod): boolean {
@@ -442,7 +463,8 @@ function formatVnd(val: number): string {
 
 export function buildBaselineQuery(metricName: string, metricType: MetricType, period: TimePeriod): string {
   if (metricType === "ratio" && metricName === "aov") {
-    return `SELECT (COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float / NULLIF(COUNT(DISTINCT CASE WHEN o.status = 'delivered' THEN o.order_id END), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned') AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
+    // AOV per semantic/metrics.yaml: merchandise revenue per delivered order (status = 'delivered' for both numerator and denominator)
+    return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status = 'delivered' AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
   }
   if (metricType === "ratio" && metricName === "return_rate") {
     return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o WHERE o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
@@ -479,11 +501,17 @@ export async function validateBaseline(
     const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
     const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
 
-    const baseRes = await deps.executor.run({
-      question: `Compute baseline for ${intent.metricName} from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}. Reference SQL: ${baseSql}`,
-      candidateTables: intent.candidateTables,
-      principal,
-    });
+    deps.setActivePeriod?.(intent.baselinePeriod);
+    let baseRes: ExecutorResult;
+    try {
+      baseRes = await deps.executor.run({
+        question: `Compute baseline for ${intent.metricName} strictly filtering by purchase_date from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}. Reference SQL: ${baseSql}`,
+        candidateTables: intent.candidateTables,
+        principal,
+      });
+    } finally {
+      deps.setActivePeriod?.(null);
+    }
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
 
@@ -527,11 +555,17 @@ export async function validateBaseline(
       throw new Error(`Giá trị kỳ cơ sở không phải là số hợp lệ: ${String(baseRes.rows[0]["val"])}`);
     }
 
-    const currRes = await deps.executor.run({
-      question: `Compute current value for ${intent.metricName} from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}. Reference SQL: ${currSql}`,
-      candidateTables: intent.candidateTables,
-      principal,
-    });
+    deps.setActivePeriod?.(intent.currentPeriod);
+    let currRes: ExecutorResult;
+    try {
+      currRes = await deps.executor.run({
+        question: `Compute current value for ${intent.metricName} strictly filtering by purchase_date from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}. Reference SQL: ${currSql}`,
+        candidateTables: intent.candidateTables,
+        principal,
+      });
+    } finally {
+      deps.setActivePeriod?.(null);
+    }
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
 
@@ -839,13 +873,23 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     const principal = identity;
     const intent = parseRcaIntent(state.question);
 
-    let effectiveDeps = deps;
+    let activePeriod: TimePeriod | null = null;
+    const setActivePeriod = (p: TimePeriod | null) => {
+      activePeriod = p;
+    };
+
+    let effectiveDeps: RcaRuntimeDeps = {
+      ...deps,
+      setActivePeriod: deps.setActivePeriod ?? setActivePeriod,
+    };
+
     if (!deps.executor && !deps.fetchBaseline) {
-      const mcpCaller = deps.mcpCaller ?? (transport ? createRuntimeMcpCaller(transport) : undefined);
-      if (mcpCaller) {
+      const rawMcp = deps.mcpCaller ?? (transport ? createRuntimeMcpCaller(transport) : undefined);
+      if (rawMcp) {
+        const guardedMcp = createDateGuardedMcpCaller(rawMcp, () => activePeriod);
         const executor = new ValidatedQueryExecutor({
           model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
-          mcp: mcpCaller,
+          mcp: guardedMcp,
           emitSpan: (event) =>
             rt.emit({
               node: event.node,
@@ -856,8 +900,8 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
             }),
         });
         effectiveDeps = {
-          ...deps,
-          mcpCaller,
+          ...effectiveDeps,
+          mcpCaller: guardedMcp,
           executor,
         };
       }
