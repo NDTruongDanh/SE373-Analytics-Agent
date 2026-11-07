@@ -3,9 +3,6 @@ type: business-database
 title: Business database and seeded scenarios
 description: Olist-VN PostgreSQL database, Vietnamesization transforms, loader and verifier pipeline, and hidden seeded scenarios for coding agents.
 tags: [database, seeding, vietnamesization, olist, pii, eval-fixtures]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-06T15:32:05.739Z
 sources:
   - id: openwiki-source-e119253b3c3737247dc63f2a
     resource: repo://.openwikiignore
@@ -42,6 +39,9 @@ sources:
   - id: openwiki-source-b7ac2104581a67282056d573
     resource: repo://policies/sensitive_columns.yaml
 generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-07T14:35:23.411Z
 ---
 
 # Business database and seeded scenarios
