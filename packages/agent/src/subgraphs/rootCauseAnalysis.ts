@@ -2,6 +2,7 @@ import {
   AnalysisPlanSchema,
   FormulaComponentsSchema,
   MetricTypeSchema,
+  PlanStepSchema,
   TimePeriodSchema,
   dbToolError,
   type AnalysisPlan,
@@ -9,6 +10,7 @@ import {
   type FormulaComponents,
   type MetricType,
   type PlanStep,
+  type PlanStepAxis,
   type TimePeriod,
 } from "@shared/contracts";
 import * as z from "zod";
@@ -31,6 +33,7 @@ import {
 import { deparse, parse } from "@shared/access-policy";
 import { createChatModel } from "../models/factory.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
+import { pauseForApproval } from "../hitl.js";
 
 export { RCA_UC_ID } from "../constants.js";
 
@@ -84,6 +87,31 @@ export interface IntentModelLike {
   ): { invoke(input: string): Promise<RcaIntent> };
 }
 
+export const DEFAULT_CANDIDATE_REGIONS = [
+  { id: "step_region_north", name: "Miền Bắc" },
+  { id: "step_region_central", name: "Miền Trung" },
+  { id: "step_region_south", name: "Miền Nam" },
+];
+
+export const DEFAULT_CANDIDATE_CHANNELS = [
+  "Shopee",
+  "TikTok Shop",
+  "Website",
+  "Lazada",
+];
+
+export const DEFAULT_CANDIDATE_CATEGORIES = [
+  "Đồ gia dụng",
+  "Thời trang nữ",
+  "Laptop & Thiết bị IT",
+  "Điện thoại & Phụ kiện",
+];
+
+export const DEFAULT_CANDIDATE_PRODUCTS = [
+  "Chảo chống dính Sunhouse",
+  "Nồi chiên không dầu Philips",
+];
+
 export interface RcaRuntimeDeps {
   intentModel?: IntentModelLike;
   executor?: TextToSqlExecutorLike;
@@ -98,6 +126,22 @@ export interface RcaRuntimeDeps {
     period: TimePeriod,
     principal: ExecutorPrincipal,
   ) => Promise<number>;
+  skipHitlReview?: boolean;
+  executeSteps?: boolean;
+  maxQueriesLimit?: number;
+  maxDepthLimit?: number;
+  drilldownThreshold?: number;
+  candidateRegions?: Array<{ id: string; name: string }>;
+  candidateChannels?: string[];
+  candidateCategories?: string[];
+  candidateProducts?: string[];
+  fetchStepMetrics?: (
+    step: PlanStep,
+    baselinePeriod: TimePeriod,
+    currentPeriod: TimePeriod,
+    inheritedFilters: Record<string, string>,
+  ) => Promise<{ baselineVal: number; currentVal: number; sql?: string }>;
+  onStepExecuted?: (step: PlanStep, plan: AnalysisPlan) => void;
 }
 
 export function createDateGuardedMcpCaller(
@@ -1297,22 +1341,21 @@ export function createPlan(
     BaselineCheckResult,
     "isValidBaseline" | "baselineVal" | "currentVal" | "absDelta" | "pctDelta" | "queriesExecuted"
   >,
+  candidateRegions: Array<{ id: string; name: string }> = DEFAULT_CANDIDATE_REGIONS,
 ): AnalysisPlan | null {
   if (!baseline.isValidBaseline) {
     return null;
   }
 
   const steps: PlanStep[] = [];
-
-  const candidateRegions = [
-    { id: "step_region_north", name: "Miền Bắc" },
-    { id: "step_region_central", name: "Miền Trung" },
-    { id: "step_region_south", name: "Miền Nam" },
-  ];
+  const regions =
+    candidateRegions && candidateRegions.length > 0
+      ? candidateRegions
+      : DEFAULT_CANDIDATE_REGIONS;
 
   if (intent.metricType === "additive") {
     // Horizontal business dimension decomposition: region -> channel -> category -> product
-    for (const r of candidateRegions) {
+    for (const r of regions) {
       steps.push({
         stepId: r.id,
         axis: "dimension",
@@ -1361,7 +1404,7 @@ export function createPlan(
       retryCount: 0,
       hypothesis: `Biến động của thành phần mẫu số (${intent.formulaComponents?.denominator ?? "mẫu số"})`,
     });
-    for (const r of candidateRegions) {
+    for (const r of regions) {
       steps.push({
         stepId: r.id,
         axis: "dimension",
@@ -1405,11 +1448,356 @@ export function createPlan(
   return AnalysisPlanSchema.parse(planPayload);
 }
 
-function readRunContext(rt: RootRuntime): {
+export function toRegionGroup(regionName: string): string {
+  if (regionName.includes("Bắc")) return "Bắc";
+  if (regionName.includes("Trung")) return "Trung";
+  if (regionName.includes("Nam")) return "Nam";
+  return regionName;
+}
+
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+export function collectInheritedFilters(
+  step: PlanStep,
+  allSteps: PlanStep[],
+): Record<string, string> {
+  const filters: Record<string, string> = {};
+  const visited = new Set<string>();
+  let curr: PlanStep | undefined = step;
+
+  while (curr) {
+    if (visited.has(curr.stepId)) break;
+    visited.add(curr.stepId);
+
+    if (curr.axis === "dimension" && curr.dimensionValue) {
+      if (!(curr.dimensionOrFactor in filters)) {
+        filters[curr.dimensionOrFactor] = curr.dimensionValue;
+      }
+    }
+
+    if (!curr.parentId) break;
+    curr = allSteps.find((s) => s.stepId === curr!.parentId);
+  }
+
+  return filters;
+}
+
+export function getNextDimension(
+  currentDim: string,
+): "channel" | "category" | "product" | null {
+  if (currentDim === "region") return "channel";
+  if (currentDim === "channel") return "category";
+  if (currentDim === "category") return "product";
+  return null;
+}
+
+export function buildStepQuery(
+  metricName: string,
+  metricType: MetricType,
+  period: TimePeriod,
+  filters: Record<string, string> = {},
+  axis?: PlanStepAxis,
+  factor?: string,
+): string {
+  const joins: string[] = [];
+  const whereClauses: string[] = [];
+
+  const isDenominatorOnly = axis === "formula" && factor === "denominator";
+  const isReturnRateOnly = metricType === "ratio" && metricName === "return_rate";
+  const baseTableIsOrdersOnly = isDenominatorOnly || isReturnRateOnly;
+
+  const needsProducts = Boolean(filters["category"] || filters["product"]);
+  if (baseTableIsOrdersOnly && needsProducts) {
+    joins.push("JOIN public.order_items i ON o.order_id = i.order_id");
+  }
+
+  if (filters["region"]) {
+    joins.push("JOIN public.customers c ON o.customer_id = c.customer_id");
+    const regGroup = toRegionGroup(filters["region"]);
+    whereClauses.push(`c.region_group = '${regGroup}'`);
+  }
+
+  if (filters["channel"]) {
+    joins.push("JOIN public.channels ch ON o.channel_id = ch.channel_id");
+    whereClauses.push(`ch.channel_name = '${filters["channel"]}'`);
+  }
+
+  if (needsProducts) {
+    joins.push("JOIN public.products p ON i.product_id = p.product_id");
+  }
+
+  if (filters["category"]) {
+    joins.push("JOIN public.categories cat ON p.category_id = cat.category_id");
+    whereClauses.push(`cat.name_vi = '${filters["category"]}'`);
+  }
+
+  if (filters["product"]) {
+    whereClauses.push(`p.name = '${filters["product"]}'`);
+  }
+
+  whereClauses.push(`o.purchase_date >= '${period.start}'`);
+  whereClauses.push(`o.purchase_date <= '${period.end}'`);
+
+  const joinsStr = joins.length > 0 ? " " + joins.join(" ") : "";
+  const whereStr = whereClauses.join(" AND ");
+
+  if (isDenominatorOnly) {
+    return `SELECT COUNT(DISTINCT o.order_id)::float AS val FROM public.orders o${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+  }
+
+  if (axis === "formula" && factor === "numerator") {
+    return `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+  }
+
+  if (metricType === "ratio" && metricName === "aov") {
+    return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+  }
+
+  if (isReturnRateOnly) {
+    return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o${joinsStr} WHERE ${whereStr}`;
+  }
+
+  // Default: Net Revenue
+  return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status IN ('delivered', 'returned') AND ${whereStr}`;
+}
+
+export async function executeAnalysis(
+  plan: AnalysisPlan,
+  intent: RcaIntent,
+  deps: RcaRuntimeDeps,
+  principal: ExecutorPrincipal,
+  targetTable: string = "orders",
+): Promise<AnalysisPlan> {
+  const maxQueries = deps.maxQueriesLimit ?? plan.maxQueriesLimit ?? 20;
+  const maxDepth = deps.maxDepthLimit ?? plan.maxDepthLimit ?? 4;
+  const threshold = deps.drilldownThreshold ?? plan.drilldownThreshold ?? 30.0;
+
+  plan.maxQueriesLimit = maxQueries;
+  plan.maxDepthLimit = maxDepth;
+  plan.drilldownThreshold = threshold;
+
+  while (plan.steps.some((s) => s.status === "todo")) {
+    if (plan.totalQueriesCount >= maxQueries) {
+      for (const s of plan.steps) {
+        if (s.status === "todo") {
+          s.status = "skipped";
+          plan.unexploredBranches.push({
+            axis: s.axis,
+            dimensionOrFactor: s.dimensionOrFactor,
+            dimensionValue: s.dimensionValue,
+            parentId: s.parentId,
+            reason: "MAX_QUERIES_REACHED",
+          });
+        }
+      }
+      break;
+    }
+
+    const step = plan.steps.find((s) => s.status === "todo");
+    if (!step) break;
+
+    if (step.depth > maxDepth) {
+      step.status = "skipped";
+      plan.unexploredBranches.push({
+        axis: step.axis,
+        dimensionOrFactor: step.dimensionOrFactor,
+        dimensionValue: step.dimensionValue,
+        parentId: step.parentId,
+        reason: "MAX_DEPTH_REACHED",
+      });
+      continue;
+    }
+
+    step.status = "doing";
+    const combinedFilters = collectInheritedFilters(step, plan.steps);
+
+    let baselineVal: number | null = null;
+    let currentVal: number | null = null;
+    let sqlExecuted: string | null = null;
+    let attempt = 0;
+    let lastError: Error | null = null;
+
+    while (attempt <= 2) {
+      try {
+        if (deps.fetchStepMetrics) {
+          plan.totalQueriesCount += 2;
+          const res = await deps.fetchStepMetrics(
+            step,
+            plan.baselinePeriod,
+            plan.currentPeriod,
+            combinedFilters,
+          );
+          baselineVal = res.baselineVal;
+          currentVal = res.currentVal;
+          sqlExecuted = res.sql ?? null;
+          break;
+        } else if (deps.executor) {
+          const expectedDateCol = getMetricDateColumn(plan.metricName);
+          const baseSql = buildStepQuery(
+            plan.metricName,
+            plan.metricType,
+            plan.baselinePeriod,
+            combinedFilters,
+            step.axis,
+            step.dimensionOrFactor,
+          );
+          const currSql = buildStepQuery(
+            plan.metricName,
+            plan.metricType,
+            plan.currentPeriod,
+            combinedFilters,
+            step.axis,
+            step.dimensionOrFactor,
+          );
+
+          deps.setTargetTable?.(targetTable);
+          deps.setAllowedDateColumns?.([expectedDateCol]);
+
+          // Run baseline query
+          deps.setActivePeriod?.(plan.baselinePeriod);
+          plan.totalQueriesCount += 1;
+          const baseRes = await deps.executor.run({
+            question: `Calculate baseline for step ${step.stepId} from ${plan.baselinePeriod.start} to ${plan.baselinePeriod.end}. Reference SQL: ${baseSql}`,
+            candidateTables: intent.candidateTables,
+            principal,
+          });
+
+          // Run current query
+          deps.setActivePeriod?.(plan.currentPeriod);
+          plan.totalQueriesCount += 1;
+          const currRes = await deps.executor.run({
+            question: `Calculate current for step ${step.stepId} from ${plan.currentPeriod.start} to ${plan.currentPeriod.end}. Reference SQL: ${currSql}`,
+            candidateTables: intent.candidateTables,
+            principal,
+          });
+
+          deps.setActivePeriod?.(null);
+          deps.setAllowedDateColumns?.(null);
+          deps.setTargetTable?.(null);
+
+          const extractVal = (res: ExecutorResult): number => {
+            if (res.status !== "ok") return 0;
+            const row = res.rows?.[0] as Record<string, unknown> | undefined;
+            if (!row) return 0;
+            const raw = row["val"] ?? Object.values(row)[0];
+            const num = Number(raw);
+            return Number.isFinite(num) ? num : 0;
+          };
+
+          baselineVal = extractVal(baseRes);
+          currentVal = extractVal(currRes);
+          sqlExecuted = currRes.sql ?? currSql;
+          break;
+        } else {
+          throw new Error("No executor or fetchStepMetrics configured for executeAnalysis");
+        }
+      } catch (err: unknown) {
+        attempt++;
+        step.retryCount = Math.min(2, attempt);
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt > 2) {
+          step.status = "failed";
+          step.errorMessage = lastError.message;
+          break;
+        }
+      } finally {
+        deps.setActivePeriod?.(null);
+        deps.setAllowedDateColumns?.(null);
+        deps.setTargetTable?.(null);
+      }
+    }
+
+    if (step.status === "failed") {
+      deps.onStepExecuted?.(step, plan);
+      continue;
+    }
+
+    const bVal = baselineVal ?? 0;
+    const cVal = currentVal ?? 0;
+    const delta = cVal - bVal;
+    step.delta = delta;
+    step.sql = sqlExecuted;
+
+    const contributionPct = plan.absDelta !== 0 ? (delta / plan.absDelta) * 100 : 0;
+    step.contributionPct = Number(contributionPct.toFixed(2));
+    step.status = "done";
+
+    const isSignificant = Math.abs(contributionPct) >= threshold;
+
+    if (isSignificant) {
+      if (step.depth >= maxDepth) {
+        plan.unexploredBranches.push({
+          axis: step.axis,
+          dimensionOrFactor: step.dimensionOrFactor,
+          dimensionValue: step.dimensionValue,
+          parentId: step.stepId,
+          reason: "MAX_DEPTH_REACHED",
+        });
+      } else {
+        const nextDim = getNextDimension(step.dimensionOrFactor);
+        if (nextDim) {
+          let candidates: string[] = [];
+          if (nextDim === "channel") {
+            candidates = deps.candidateChannels ?? DEFAULT_CANDIDATE_CHANNELS;
+          } else if (nextDim === "category") {
+            candidates = deps.candidateCategories ?? DEFAULT_CANDIDATE_CATEGORIES;
+          } else if (nextDim === "product") {
+            candidates = deps.candidateProducts ?? DEFAULT_CANDIDATE_PRODUCTS;
+          }
+
+          for (const cand of candidates) {
+            const childId = `step_${nextDim}_${slugify(cand)}_${step.stepId}`;
+            const childStep: PlanStep = {
+              stepId: childId,
+              axis: "dimension",
+              dimensionOrFactor: nextDim,
+              dimensionValue: cand,
+              dimensionPath: [...step.dimensionPath, cand],
+              parentId: step.stepId,
+              depth: step.depth + 1,
+              status: "todo",
+              delta: 0,
+              contributionPct: 0,
+              sql: null,
+              retryCount: 0,
+              hypothesis: `Phân rã tiếp theo chiều ${nextDim}: ${cand} (từ ${step.dimensionValue ?? step.dimensionOrFactor})`,
+            };
+            plan.steps.push(childStep);
+          }
+        }
+      }
+    } else {
+      // Pruned below threshold
+      plan.residualOtherAbs += Math.abs(delta);
+      plan.unexploredBranches.push({
+        axis: step.axis,
+        dimensionOrFactor: step.dimensionOrFactor,
+        dimensionValue: step.dimensionValue,
+        parentId: step.stepId,
+        reason: "PRUNED_BELOW_THRESHOLD",
+      });
+    }
+
+    deps.onStepExecuted?.(step, plan);
+  }
+
+  return AnalysisPlanSchema.parse(plan);
+}
+
+function readRunContext(rt?: RootRuntime): {
   identity: ExecutorPrincipal;
   transport: TracerRunConfig | null;
 } {
-  const cfg = (rt.config.configurable ?? {}) as Record<string, unknown>;
+  const raw = rt as unknown as Record<string, unknown> | undefined;
+  const cfg = ((rt?.config?.configurable ?? raw?.configurable ?? {}) as Record<string, unknown>);
   const pick = (k: string): string => (typeof cfg[k] === "string" ? (cfg[k] as string) : "");
   const runId = pick("runId") || "run_rca_default";
   const userId = pick("userId") || "user_default";
@@ -1518,7 +1906,12 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       ...intent,
       direction: baseline.resolvedDirection,
     };
-    const plan = createPlan(state.question, effectiveIntent, baseline);
+    let plan = createPlan(
+      state.question,
+      effectiveIntent,
+      baseline,
+      deps.candidateRegions ?? DEFAULT_CANDIDATE_REGIONS,
+    );
     if (!plan) {
       return {
         status: "error",
@@ -1526,11 +1919,91 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       };
     }
 
-    // Issue #35 scope: baseline validated + 2-axis MECE plan constructed with steps in 'todo'
+    // 3. human_review (HITL Review Gate)
+    const hasExecutionBackend = Boolean(
+      effectiveDeps.fetchStepMetrics ||
+      deps.executeSteps ||
+      (effectiveDeps.executor && (deps.skipHitlReview || deps.executeSteps || transport !== null)),
+    );
+
+    let shouldExecute = hasExecutionBackend && Boolean(deps.skipHitlReview);
+
+    if (hasExecutionBackend && !deps.skipHitlReview) {
+      try {
+        const feedback = pauseForApproval({
+          action: "review_plan",
+          plan,
+          current_plan: plan,
+        });
+
+        // Resumed via resumeDecision -> proceed to execute
+        shouldExecute = true;
+
+        if (feedback && typeof feedback === "object") {
+          const fb = feedback as Record<string, unknown>;
+          if (
+            fb["action"] === "MODIFY" ||
+            fb["action"] === "modify" ||
+            fb["updated_plan"] ||
+            fb["steps"] ||
+            fb["plan"]
+          ) {
+            if (Array.isArray(fb["steps"])) {
+              plan.steps = z.array(PlanStepSchema).parse(fb["steps"]);
+            } else if (fb["updated_plan"]) {
+              plan = AnalysisPlanSchema.parse(fb["updated_plan"]);
+            } else if (fb["plan"] && typeof fb["plan"] === "object") {
+              plan = AnalysisPlanSchema.parse(fb["plan"]);
+            }
+          }
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message.includes("outside the context of a graph")) {
+          // Called in raw unit test without LangGraph execution context and skipHitlReview was not set.
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!shouldExecute) {
+      return {
+        status: "ok",
+        analysisPlan: plan,
+        answerText: `${baseline.message} Đã lập kế hoạch phân rã 2 trục MECE với ${plan.steps.length} nhánh công việc sơ khởi.`,
+        sql: baseline.lastSql,
+        tablesUsed: baseline.tablesUsed,
+        toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
+      };
+    }
+
+    // 4. execute_step & evaluate_branch loop
+    const targetFactTable = getMetricTargetTable(plan.metricName);
+    let executedPlan: AnalysisPlan;
+    try {
+      executedPlan = await executeAnalysis(
+        plan,
+        effectiveIntent,
+        effectiveDeps,
+        principal,
+        targetFactTable,
+      );
+    } catch (err) {
+      return {
+        status: "error",
+        answerText: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    const doneCount = executedPlan.steps.filter((s) => s.status === "done").length;
+    const prunedCount = executedPlan.unexploredBranches.filter(
+      (b) => b.reason === "PRUNED_BELOW_THRESHOLD",
+    ).length;
+
     return {
       status: "ok",
-      analysisPlan: plan,
-      answerText: `${baseline.message} Đã lập kế hoạch phân rã 2 trục MECE với ${plan.steps.length} nhánh công việc sơ khởi.`,
+      analysisPlan: executedPlan,
+      answerText: `${baseline.message} Đã hoàn thành phân tích bóc tách cây nguyên nhân (${doneCount} bước hoàn thành, ${prunedCount} nhánh cắt tỉa).`,
       sql: baseline.lastSql,
       tablesUsed: baseline.tablesUsed,
       toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],

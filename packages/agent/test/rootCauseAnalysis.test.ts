@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 import { MemorySaver, StateGraph, START, END } from "@langchain/langgraph";
 import {
   buildBaselineQuery,
+  buildStepQuery,
+  collectInheritedFilters,
   createDateGuardedMcpCaller,
   createPlan,
   createRcaRuntime,
+  executeAnalysis,
+  getNextDimension,
   parseRcaIntent,
+  slugify,
+  toRegionGroup,
   validateBaseline,
   verifySqlDateFilter,
   RCA_UC_ID,
@@ -15,6 +21,7 @@ import { buildRootGraph } from "../src/graph.js";
 import { getUcEntry, isKnownUc } from "../src/subgraphs/registry.js";
 import { pauseForApproval, resumeDecision, makeThreadId } from "../src/hitl.js";
 import { AgentStateSchema, type AgentState } from "../src/state.js";
+import type { AnalysisPlan, PlanStep } from "@shared/contracts";
 
 describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
   const mockPrincipal = {
@@ -1224,6 +1231,542 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(out.analysisPlan).toBeDefined();
     expect(out.analysisPlan?.isValidBaseline).toBe(true);
     expect(out.analysisPlan?.absDelta).toBe(-460_000_000);
+  });
+
+  it("T36-T0: helper utilities: toRegionGroup, slugify, and getNextDimension behave correctly", () => {
+    expect(toRegionGroup("Miền Bắc")).toBe("Bắc");
+    expect(toRegionGroup("Miền Trung")).toBe("Trung");
+    expect(toRegionGroup("Miền Nam")).toBe("Nam");
+    expect(toRegionGroup("Khác")).toBe("Khác");
+
+    expect(slugify("Đồ gia dụng")).toBe("do_gia_dung");
+    expect(slugify("Shopee")).toBe("shopee");
+
+    expect(getNextDimension("region")).toBe("channel");
+    expect(getNextDimension("channel")).toBe("category");
+    expect(getNextDimension("category")).toBe("product");
+    expect(getNextDimension("product")).toBeNull();
+  });
+
+  it("T36-T1: HITL interrupt fires and suspends graph with { action: 'review_plan', plan } on MemorySaver", async () => {
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => ({ baselineVal: 100, currentVal: 100 }),
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const threadId = makeThreadId("u_t36", "s_1");
+    const result = await testGraph.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const interrupts = (result as { __interrupt__?: unknown[] }).__interrupt__;
+    expect(interrupts).toBeDefined();
+    expect(interrupts).toHaveLength(1);
+
+    const interruptPayload = (interrupts![0] as { value: Record<string, unknown> }).value;
+    expect(interruptPayload.action).toBe("review_plan");
+    expect(interruptPayload.plan).toBeDefined();
+
+    const plan = interruptPayload.plan as AnalysisPlan;
+    expect(plan.isValidBaseline).toBe(true);
+    expect(plan.absDelta).toBe(-460_000_000);
+    expect(plan.steps.length).toBe(3);
+    expect(plan.steps.every((s) => s.status === "todo")).toBe(true);
+  });
+
+  it("T36-T2: Resume with APPROVE continues execution and completes steps", async () => {
+    const executedSteps: string[] = [];
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedSteps.push(step.stepId);
+        if (step.dimensionValue === "Miền Trung") {
+          return { baselineVal: 1_000_000_000, currentVal: 605_000_000 };
+        }
+        return { baselineVal: 500_000_000, currentVal: 490_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const threadId = makeThreadId("u_t36", "s_2");
+    await testGraph.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "APPROVE" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    expect(resumed.analysisPlan).toBeDefined();
+    expect(resumed.analysisPlan?.steps.some((s) => s.status === "done")).toBe(true);
+    expect(executedSteps).toContain("step_region_central");
+    expect(resumed.answerText).toContain("Đã hoàn thành phân tích bóc tách");
+  });
+
+  it("T36-T3: Resume with MODIFY replaces steps with custom steps and executes them", async () => {
+    const executedSteps: string[] = [];
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedSteps.push(step.stepId);
+        return { baselineVal: 1_000_000_000, currentVal: 700_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const threadId = makeThreadId("u_t36", "s_3");
+    await testGraph.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const customSteps: PlanStep[] = [
+      {
+        stepId: "custom_step_shopee",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Shopee",
+        dimensionPath: ["Shopee"],
+        parentId: null,
+        depth: 0,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+        hypothesis: "Kiểm tra kênh Shopee do người dùng tùy biến",
+      },
+    ];
+
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "MODIFY", steps: customSteps }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    expect(resumed.analysisPlan?.steps.some((s) => s.stepId === "custom_step_shopee")).toBe(true);
+    expect(executedSteps).toContain("custom_step_shopee");
+  });
+
+  it("T36-T4: Pruning: Step with contribution < 30% stays leaf, no children generated, delta added to residualOtherAbs", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "step_north", name: "Miền Bắc" }],
+    )!;
+
+    const deps = {
+      fetchStepMetrics: async () => ({
+        baselineVal: 300_000_000,
+        currentVal: 280_000_000,
+      }),
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const step = executed.steps.find((s) => s.stepId === "step_north")!;
+    expect(step.status).toBe("done");
+    expect(step.contributionPct).toBe(10);
+    expect(executed.steps.length).toBe(1);
+    expect(executed.residualOtherAbs).toBe(20_000_000);
+    expect(executed.unexploredBranches).toHaveLength(1);
+    expect(executed.unexploredBranches[0].reason).toBe("PRUNED_BELOW_THRESHOLD");
+    expect(executed.unexploredBranches[0].dimensionValue).toBe("Miền Bắc");
+  });
+
+  it("T36-T5: Drill-down: Step with contribution >= 30% generates child steps at depth + 1", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 600_000_000,
+        absDelta: -400_000_000,
+        pctDelta: -40.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "step_central", name: "Miền Trung" }],
+    )!;
+
+    let callCount = 0;
+    const deps = {
+      candidateChannels: ["Shopee", "Website"],
+      fetchStepMetrics: async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { baselineVal: 500_000_000, currentVal: 180_000_000 };
+        }
+        return { baselineVal: 100_000_000, currentVal: 95_000_000 };
+      },
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const parentStep = executed.steps.find((s) => s.stepId === "step_central")!;
+    expect(parentStep.status).toBe("done");
+    expect(parentStep.contributionPct).toBe(80);
+
+    const childSteps = executed.steps.filter((s) => s.parentId === "step_central");
+    expect(childSteps.length).toBe(2);
+    expect(childSteps[0].depth).toBe(1);
+    expect(childSteps[0].dimensionOrFactor).toBe("channel");
+    expect(childSteps.map((c) => c.dimensionValue)).toEqual(["Shopee", "Website"]);
+  });
+
+  it("T36-T6: Fault isolation: Step with simulated SQL errors retries 2 times, marks status: 'failed' with errorMessage, and workflow continues", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [
+        { id: "step_failing", name: "Miền Bắc" },
+        { id: "step_healthy", name: "Miền Nam" },
+      ],
+    )!;
+
+    let failingAttempts = 0;
+    const deps = {
+      fetchStepMetrics: async (step: PlanStep) => {
+        if (step.stepId === "step_failing") {
+          failingAttempts++;
+          throw new Error("DB statement_timeout simulated");
+        }
+        return { baselineVal: 500_000_000, currentVal: 450_000_000 };
+      },
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const failingStep = executed.steps.find((s) => s.stepId === "step_failing")!;
+    expect(failingStep.status).toBe("failed");
+    expect(failingStep.retryCount).toBe(2);
+    expect(failingStep.errorMessage).toContain("DB statement_timeout");
+    expect(failingAttempts).toBe(3); // 1 initial + 2 retries
+
+    const healthyStep = executed.steps.find((s) => s.stepId === "step_healthy")!;
+    expect(healthyStep.status).toBe("done");
+  });
+
+  it("T36-T7: Max queries quota: Stops when totalQueriesCount >= maxQueriesLimit and marks remaining steps 'skipped' with 'MAX_QUERIES_REACHED'", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [
+        { id: "step_1", name: "Miền Bắc" },
+        { id: "step_2", name: "Miền Trung" },
+        { id: "step_3", name: "Miền Nam" },
+      ],
+    )!;
+
+    const deps = {
+      maxQueriesLimit: 4,
+      fetchStepMetrics: async () => ({ baselineVal: 100, currentVal: 90 }),
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    expect(executed.totalQueriesCount).toBe(4);
+    const doneSteps = executed.steps.filter((s) => s.status === "done");
+    const skippedSteps = executed.steps.filter((s) => s.status === "skipped");
+    expect(doneSteps.length).toBe(1);
+    expect(skippedSteps.length).toBe(2);
+
+    const quotaBranches = executed.unexploredBranches.filter(
+      (b) => b.reason === "MAX_QUERIES_REACHED",
+    );
+    expect(quotaBranches.length).toBe(2);
+  });
+
+  it("T36-T8: Max depth quota: Step at depth = 4 with contribution >= 30% is not expanded, pushed to unexploredBranches with 'MAX_DEPTH_REACHED'", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [],
+    )!;
+
+    plan.steps = [
+      {
+        stepId: "step_depth_4",
+        axis: "dimension",
+        dimensionOrFactor: "product",
+        dimensionValue: "Chảo chống dính Sunhouse",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng", "Chảo chống dính Sunhouse"],
+        parentId: "step_depth_3",
+        depth: 4,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+      },
+    ];
+
+    const deps = {
+      maxDepthLimit: 4,
+      fetchStepMetrics: async () => ({
+        baselineVal: 200_000_000,
+        currentVal: 100_000_000,
+      }),
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const step = executed.steps.find((s) => s.stepId === "step_depth_4")!;
+    expect(step.status).toBe("done");
+    expect(step.contributionPct).toBe(50);
+    expect(executed.steps.length).toBe(1);
+
+    const maxDepthBranch = executed.unexploredBranches.find(
+      (b) => b.reason === "MAX_DEPTH_REACHED",
+    );
+    expect(maxDepthBranch).toBeDefined();
+    expect(maxDepthBranch?.dimensionValue).toBe("Chảo chống dính Sunhouse");
+  });
+
+  it("T36-T9: Filter inheritance: Child step inherits parent filters (region + channel) and builds valid SQL", async () => {
+    const parentStep: PlanStep = {
+      stepId: "step_region_central",
+      axis: "dimension",
+      dimensionOrFactor: "region",
+      dimensionValue: "Miền Trung",
+      dimensionPath: ["Miền Trung"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: -395_000_000,
+      contributionPct: 85.87,
+      sql: null,
+      retryCount: 0,
+    };
+
+    const childStep: PlanStep = {
+      stepId: "step_channel_shopee",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Shopee",
+      dimensionPath: ["Miền Trung", "Shopee"],
+      parentId: "step_region_central",
+      depth: 1,
+      status: "todo",
+      delta: 0,
+      contributionPct: 0,
+      sql: null,
+      retryCount: 0,
+    };
+
+    const grandChildStep: PlanStep = {
+      stepId: "step_cat_do_gia_dung",
+      axis: "dimension",
+      dimensionOrFactor: "category",
+      dimensionValue: "Đồ gia dụng",
+      dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+      parentId: "step_channel_shopee",
+      depth: 2,
+      status: "todo",
+      delta: 0,
+      contributionPct: 0,
+      sql: null,
+      retryCount: 0,
+    };
+
+    const allSteps = [parentStep, childStep, grandChildStep];
+
+    const childFilters = collectInheritedFilters(childStep, allSteps);
+    expect(childFilters).toEqual({
+      channel: "Shopee",
+      region: "Miền Trung",
+    });
+
+    const grandChildFilters = collectInheritedFilters(grandChildStep, allSteps);
+    expect(grandChildFilters).toEqual({
+      category: "Đồ gia dụng",
+      channel: "Shopee",
+      region: "Miền Trung",
+    });
+
+    const period = { start: "2026-09-01", end: "2026-09-30" };
+    const sql = buildStepQuery("net_revenue", "additive", period, grandChildFilters);
+
+    expect(sql).toContain("c.region_group = 'Trung'");
+    expect(sql).toContain("ch.channel_name = 'Shopee'");
+    expect(sql).toContain("cat.name_vi = 'Đồ gia dụng'");
+    expect(sql).toContain("o.purchase_date >= '2026-09-01'");
+    expect(sql).toContain("o.purchase_date <= '2026-09-30'");
+
+    const isValid = await verifySqlDateFilter(sql, period, ["purchase_date"], "orders");
+    expect(isValid).toBe(true);
   });
 });
 
