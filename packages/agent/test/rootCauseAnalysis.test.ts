@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { MemorySaver, StateGraph, START, END } from "@langchain/langgraph";
+import { describe, expect, it } from "vitest";
+import { MemorySaver, StateGraph, START, END, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
   buildBaselineQuery,
   buildStepQuery,
@@ -10,7 +10,6 @@ import {
   executeAnalysis,
   getNextDimension,
   parseRcaIntent,
-  rcaExecutionCache,
   slugify,
   toRegionGroup,
   validateBaseline,
@@ -26,10 +25,6 @@ import { AgentStateSchema, type AgentState } from "../src/state.js";
 import type { AnalysisPlan, PlanStep } from "@shared/contracts";
 
 describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
-  beforeEach(() => {
-    rcaExecutionCache.clear();
-  });
-
   const mockPrincipal = {
     runId: "run_test_01",
     userId: "user_analyst",
@@ -1896,9 +1891,66 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(executed.totalQueriesCount).toBeLessThanOrEqual(3);
     expect(queryCalls).toBeLessThanOrEqual(1);
     expect(executed.unexploredBranches.some((b) => b.reason === "MAX_QUERIES_REACHED")).toBe(true);
+
+    // Verify that multi-attempt queries count all internal SQL executions against quota
+    let multiAttemptCalls = 0;
+    const repairingExecutor = {
+      run: async () => {
+        multiAttemptCalls++;
+        return {
+          status: "ok" as const,
+          sql: "SELECT 100 AS val",
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val: 100 }],
+          maskedColumns: [],
+          attempts: 2, // 2 SQL attempts inside executor repair loop
+        };
+      },
+    };
+    const plan2 = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [
+        { id: "s1", name: "Bắc" },
+        { id: "s2", name: "Trung" },
+      ],
+    )!;
+    const executed2 = await executeAnalysis(
+      plan2,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: repairingExecutor, maxQueriesLimit: 4 },
+      mockPrincipal,
+    );
+    expect(executed2.totalQueriesCount).toBe(4); // 2 baseline check + 2 from first query = 4 reached!
+    expect(multiAttemptCalls).toBe(1); // Second query skipped because quota (4) was reached after 1 call with 2 attempts
   });
 
-  it("T36-T12: Resume does not re-run baseline queries or completed steps", async () => {
+  it("T36-T12: Resume does not re-run baseline queries or completed steps across restart without RAM cache", async () => {
     let baselineQueryCalls = 0;
     const executedStepIds: string[] = [];
     const deps = {
@@ -1911,18 +1963,19 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
         return { baselineVal: 500_000_000, currentVal: 480_000_000 };
       },
     };
-    const rcaRuntime = createRcaRuntime(deps);
+    const rcaRuntime1 = createRcaRuntime(deps);
+    const sharedCheckpointer = new MemorySaver();
 
-    const testGraph = new StateGraph(AgentStateSchema)
-      .addNode("rca", rcaRuntime.entry)
+    const testGraph1 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime1.entry)
       .addEdge(START, "rca")
       .addEdge("rca", END)
-      .compile({ checkpointer: new MemorySaver() });
+      .compile({ checkpointer: sharedCheckpointer });
 
     const threadId = makeThreadId("u_t36", "s_persist");
 
     // 1. First run: baseline runs, plan created, pauses at interrupt
-    await testGraph.invoke(
+    await testGraph1.invoke(
       {
         question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
         ucId: RCA_UC_ID,
@@ -1932,8 +1985,16 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     expect(baselineQueryCalls).toBe(2); // baseline + current
 
-    // 2. Second run (Resume): baseline MUST NOT re-run!
-    const resumed = (await testGraph.invoke(
+    // 2. Simulate host process restart: completely new runtime & graph instances over the same checkpointer
+    const rcaRuntime2 = createRcaRuntime(deps);
+    const testGraph2 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime2.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: sharedCheckpointer });
+
+    // Second run (Resume): baseline MUST NOT re-run!
+    const resumed = (await testGraph2.invoke(
       resumeDecision({ action: "APPROVE" }),
       { configurable: { thread_id: threadId, runId: "run_persist_1" } },
     )) as AgentState;
@@ -1941,6 +2002,87 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(baselineQueryCalls).toBe(2); // Still 2, zero additional baseline queries!
     expect(resumed.status).toBe("ok");
     expect(executedStepIds.length).toBeGreaterThan(0);
+  });
+
+  it("T36-T14: Resume rehydrates plan from checkpointer pendingWrites without in-memory RAM cache", async () => {
+    let baselineQueryCalls = 0;
+    const deps = {
+      fetchBaseline: async () => {
+        baselineQueryCalls++;
+        return 1_000_000;
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    // Simulated checkpointer (as PostgresSaver returns from checkpoint_writes table)
+    const mockPlan: AnalysisPlan = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+      metricName: "net_revenue",
+      metricType: "additive",
+      direction: "decrease",
+      isExplicitDirection: true,
+      currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+      baselineVal: 2_500_000_000,
+      currentVal: 2_040_000_000,
+      absDelta: -460_000_000,
+      pctDelta: -18.4,
+      isValidBaseline: true,
+      steps: [],
+      unexploredBranches: [],
+      maxDepthLimit: 4,
+      maxQueriesLimit: 20,
+      totalQueriesCount: 2,
+      drilldownThreshold: 30,
+      residualOtherAbs: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    const mockCheckpointer = {
+      getTuple: async () => ({
+        checkpoint: { channel_values: {} },
+        pendingWrites: [
+          ["t1", "__interrupt__", { id: "int1", value: { action: "review_analysis_plan", currentPlan: mockPlan } }],
+        ],
+      }),
+    } as unknown as BaseCheckpointSaver;
+
+    const mockState: AgentState = {
+      runId: "run_dur_1",
+      threadId: "chat:u1:s1",
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      status: "ok",
+      answerText: "",
+      sql: null,
+      tablesUsed: [],
+      columns: [],
+      resultPreview: [],
+      toolsCalled: [],
+      intent: null,
+      budget: { llmCalls: 0, maxLlmCalls: 10, tokensUsed: 0, maxTokens: 100000, deadlineMs: 0 },
+      pendingClarification: null,
+      analysisPlan: null,
+    };
+
+    const mockRt: RootRuntime = {
+      emit: () => "",
+      config: {
+        configurable: {
+          thread_id: "chat:u1:s1",
+          runId: "run_dur_1",
+          userId: "u1",
+          roleScope: "sales_south",
+          __pregel_checkpointer: mockCheckpointer,
+        },
+      },
+    };
+
+    const out = await rcaRuntime.entry(mockState, mockRt);
+    expect(out.status).toBe("ok");
+    expect(out.analysisPlan?.metricName).toBe("net_revenue");
+    expect(out.analysisPlan?.absDelta).toBe(-460_000_000);
+    expect(baselineQueryCalls).toBe(0); // ZERO baseline calls! Restored completely from checkpointer!
   });
 
   it("T36-T13: routeQuestionToUc classifies Why/Variance questions and integrates with rootGraph without explicit ucId", async () => {

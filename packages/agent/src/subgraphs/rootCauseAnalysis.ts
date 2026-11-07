@@ -34,6 +34,7 @@ import { deparse, parse } from "@shared/access-policy";
 import { createChatModel } from "../models/factory.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import { pauseForApproval } from "../hitl.js";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 
 export { RCA_UC_ID } from "../constants.js";
 
@@ -1120,7 +1121,8 @@ export async function validateBaseline(
       deps.setAllowedDateColumns?.(null);
       deps.setTargetTable?.(null);
     }
-    queriesExecuted += 1;
+    const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
+    queriesExecuted += baseAttempts;
     actualToolsCalled.push("run_query");
 
     if (baseRes.status !== "ok") {
@@ -1178,7 +1180,8 @@ export async function validateBaseline(
       deps.setAllowedDateColumns?.(null);
       deps.setTargetTable?.(null);
     }
-    queriesExecuted += 1;
+    const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
+    queriesExecuted += currAttempts;
     actualToolsCalled.push("run_query");
 
     if (currRes.status !== "ok") {
@@ -1569,11 +1572,6 @@ export function buildStepQuery(
   return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status IN ('delivered', 'returned') AND ${whereStr}`;
 }
 
-export const rcaExecutionCache = new Map<
-  string,
-  { baseline: BaselineCheckResult; plan: AnalysisPlan }
->();
-
 export async function executeAnalysis(
   plan: AnalysisPlan,
   intent: RcaIntent,
@@ -1716,13 +1714,16 @@ export async function executeAnalysis(
           }
 
           deps.setActivePeriod?.(plan.baselinePeriod);
-          plan.totalQueriesCount += 1;
           const baseRes = await deps.executor.run({
             question: `Calculate baseline for step ${step.stepId} from ${plan.baselinePeriod.start} to ${plan.baselinePeriod.end}. Reference SQL: ${baseSql}`,
             candidateTables: intent.candidateTables,
             principal,
           });
 
+          const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
+          plan.totalQueriesCount += baseAttempts;
+
+          // Verify baseline executor result status: MUST be 'ok' before running current query
           if (baseRes.status !== "ok") {
             const err =
               "error" in baseRes
@@ -1748,17 +1749,20 @@ export async function executeAnalysis(
           }
 
           deps.setActivePeriod?.(plan.currentPeriod);
-          plan.totalQueriesCount += 1;
           const currRes = await deps.executor.run({
             question: `Calculate current for step ${step.stepId} from ${plan.currentPeriod.start} to ${plan.currentPeriod.end}. Reference SQL: ${currSql}`,
             candidateTables: intent.candidateTables,
             principal,
           });
 
+          const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
+          plan.totalQueriesCount += currAttempts;
+
           deps.setActivePeriod?.(null);
           deps.setAllowedDateColumns?.(null);
           deps.setTargetTable?.(null);
 
+          // Verify current executor result status: MUST be 'ok'
           if (currRes.status !== "ok") {
             const err =
               "error" in currRes
@@ -1963,8 +1967,12 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       }
     }
 
-    const cacheKey = `${principal.runId}:${principal.userId}:${principal.roleScope}:${state.question}`;
-    let baseline: BaselineCheckResult;
+    const rawRt = rt as unknown as Record<string, unknown> | undefined;
+    const conf = ((rt?.config?.configurable ?? rawRt?.configurable ?? {}) as Record<string, unknown>);
+    const checkpointer = conf["__pregel_checkpointer"] as BaseCheckpointSaver | undefined;
+    const threadId = (conf["thread_id"] ?? state.threadId) as string | undefined;
+
+    let baseline!: BaselineCheckResult;
     let plan: AnalysisPlan | null = null;
 
     const effectiveIntent: RcaIntent = {
@@ -1988,12 +1996,45 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         actualToolsCalled: [],
         resolvedDirection: (plan.direction as "increase" | "decrease") ?? "decrease",
       };
-    } else if (rcaExecutionCache.has(cacheKey)) {
-      const cached = rcaExecutionCache.get(cacheKey)!;
-      baseline = cached.baseline;
-      plan = cached.plan;
-      effectiveIntent.direction = baseline.resolvedDirection;
-    } else {
+    } else if (checkpointer && threadId) {
+      try {
+        const tuple = await checkpointer.getTuple({ configurable: { thread_id: threadId } });
+        const interruptWrite = tuple?.pendingWrites?.find(
+          (w: unknown[]) => Array.isArray(w) && w[1] === "__interrupt__",
+        );
+        if (interruptWrite) {
+          const raw = interruptWrite[2] as
+            | { value?: { plan?: unknown; currentPlan?: unknown; current_plan?: unknown } }
+            | undefined;
+          const p = raw?.value?.currentPlan ?? raw?.value?.plan ?? raw?.value?.current_plan;
+          if (p && typeof p === "object") {
+            const parsed = AnalysisPlanSchema.safeParse(p);
+            if (parsed.success) {
+              plan = parsed.data;
+              effectiveIntent.direction = (plan.direction as "increase" | "decrease") ?? "decrease";
+              baseline = {
+                baselineVal: plan.baselineVal,
+                currentVal: plan.currentVal,
+                absDelta: plan.absDelta,
+                pctDelta: plan.pctDelta,
+                isValidBaseline: true,
+                isSignificant: true,
+                message: `Tiền đề hợp lệ: ${plan.metricName} thực tế biến động ${plan.pctDelta}%.`,
+                queriesExecuted: plan.totalQueriesCount,
+                lastSql: null,
+                tablesUsed: ["orders", "order_items"],
+                actualToolsCalled: [],
+                resolvedDirection: (plan.direction as "increase" | "decrease") ?? "decrease",
+              };
+            }
+          }
+        }
+      } catch {
+        // Fall back to fresh baseline execution
+      }
+    }
+
+    if (!plan) {
       // 1. validate_baseline
       try {
         baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
@@ -2030,7 +2071,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           answerText: "Không thể khởi tạo kế hoạch phân tích nguyên nhân gốc rễ.",
         };
       }
-      rcaExecutionCache.set(cacheKey, { baseline, plan });
     }
 
     // 3. human_review (HITL Review Gate)
@@ -2075,7 +2115,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
             }
           }
         }
-        rcaExecutionCache.set(cacheKey, { baseline, plan });
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes("outside the context of a graph")) {
           // Called in raw unit test without LangGraph execution context and skipHitlReview was not set.
@@ -2106,7 +2145,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         {
           ...effectiveDeps,
           onStepExecuted: (step, p) => {
-            rcaExecutionCache.set(cacheKey, { baseline, plan: p });
             effectiveDeps.onStepExecuted?.(step, p);
           },
         },
@@ -2119,7 +2157,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         answerText: err instanceof Error ? err.message : String(err),
       };
     }
-    rcaExecutionCache.set(cacheKey, { baseline, plan: executedPlan });
 
     const doneCount = executedPlan.steps.filter((s) => s.status === "done").length;
     const prunedCount = executedPlan.unexploredBranches.filter(
