@@ -20,12 +20,14 @@ import express from "express";
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, readSync } from "node:fs";
-import { Command, type BaseCheckpointSaver } from "@langchain/langgraph";
+import { Command, Overwrite, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
+  BUDGET_DEFAULTS,
   buildRootGraph,
   previewCountTotal,
   runTracerGraph,
   type AgentState,
+  type SpanEvent,
   type UcEntryHandler,
 } from "@shared/agent";
 import {
@@ -49,11 +51,10 @@ import {
 } from "./principals.js";
 import {
   completedPayload,
+  displayableSql,
   emitSseEvent,
   failedPayload,
-  intentPayload,
   interruptPayload,
-  runningPayload,
   schemaPayload,
   sqlPayload,
 } from "./sse.js";
@@ -260,7 +261,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
     res.status(200).json({ ok: true });
   });
 
-  function buildGraph(run: StoredRun, runId: string) {
+  function buildGraph(run: StoredRun, runId: string, res: Response) {
     const emit = createSpanEmitter({
       runId,
       threadId: run.threadId,
@@ -268,10 +269,39 @@ export function buildApp(options: BuildAppOptions): express.Express {
       role: run.roleScope,
       tracesDir: run.tracesDir,
     });
+    const sent = new Set<string>();
+    let proposedSql: string | null = null;
+    function progress(event: SpanEvent): string {
+      const spanId = emit(event);
+      const payload = isRecord(event.payload) ? event.payload : {};
+      const envelope = { runId, threadId: run.threadId };
+      // Progress contains only allowlisted metadata, never model text, SQL,
+      // filter literals, result cells, or credentials.
+      if (event.node === "understand" && event.type === "node_done" && typeof payload["sql"] === "string" && !sent.has("sql_generated")) {
+        const sql = payload["sql"];
+        proposedSql = sql;
+        emitSseEvent(res, "sql_generated", { ...envelope, node: "understand", data: sqlPayload(sql, []) });
+        sent.add("sql_generated");
+      }
+      if (event.node === "describe" && event.type === "tool_call" && payload["tool"] === "list_tables" && !sent.has("schema_retrieved")) {
+        const tables = Array.isArray(payload["tables"]) ? payload["tables"].filter(
+          (table): table is string => typeof table === "string" && /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(table),
+        ) : [];
+        emitSseEvent(res, "schema_retrieved", { ...envelope, node: "describe", data: schemaPayload(tables) });
+        emitSseEvent(res, "query_running", { ...envelope, node: "run", data: { phase: "starting" } });
+        sent.add("schema_retrieved");
+      }
+      if (event.node === "run" && event.type === "tool_call" && payload["tool"] === "run_query" && payload["ok"] === true && proposedSql && !sent.has("sql_display")) {
+        const sql = displayableSql(proposedSql);
+        emitSseEvent(res, "sql_generated", { ...envelope, node: "run", data: { phase: "display", ...(sql ? { sql } : { withheld: true }) } });
+        sent.add("sql_display");
+      }
+      return spanId;
+    }
     return {
       graph: buildRootGraph({
         checkpointer: options.checkpointer,
-        emitSpan: emit,
+        emitSpan: progress,
         ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
       }),
       emit,
@@ -282,7 +312,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
     return configurableForRun(run, runId);
   }
 
-  /** Stream the five-event completion sequence for a finished run. */
+  /** Completion is separate from real-time progress; no fake stage events. */
   function streamCompletion(
     res: Response,
     runId: string,
@@ -290,36 +320,6 @@ export function buildApp(options: BuildAppOptions): express.Express {
     out: AgentState,
   ): void {
     const preview = (out.resultPreview ?? []) as Record<string, unknown>[];
-    const tablesUsed = (out.tablesUsed ?? []) as string[];
-    emitSseEvent(res, "intent_parsed", {
-      runId,
-      threadId,
-      node: "understand",
-      data: intentPayload({
-        metric: out.intent?.metric ?? null,
-        dimensions: [...(out.intent?.dimensions ?? [])],
-        filters: [...(out.intent?.filters ?? [])],
-        timeRange: out.intent?.timeRange ?? null,
-      }),
-    });
-    emitSseEvent(res, "schema_retrieved", {
-      runId,
-      threadId,
-      node: "describe",
-      data: schemaPayload(tablesUsed),
-    });
-    emitSseEvent(res, "sql_generated", {
-      runId,
-      threadId,
-      node: "run",
-      data: sqlPayload(out.sql ?? null, tablesUsed),
-    });
-    emitSseEvent(res, "query_running", {
-      runId,
-      threadId,
-      node: "run",
-      data: runningPayload(preview.length),
-    });
     emitSseEvent(res, "completed", {
       runId,
       threadId,
@@ -393,10 +393,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
     if (!runs.has(runId)) runs.set(runId, run);
 
     res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
+    emitSseEvent(res, "intent_parsed", { runId, threadId, node: "understand", data: { phase: "starting" } });
 
     let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
-      const built = buildGraph(run, runId);
+      const built = buildGraph(run, runId, res);
       emit = built.emit;
       const graph = built.graph;
       // Optional LangSmith export (Phase 3, D-04): the tracer exists only
@@ -414,7 +415,15 @@ export function buildApp(options: BuildAppOptions): express.Express {
           })
         : undefined;
       const out = (await graph.invoke(
-        { question, ucId: "", runId, threadId },
+        {
+          question, ucId: "", runId, threadId,
+          // A new question reuses the thread, but not the previous run's outputs or budgets.
+          status: "no_data", answerText: "", sql: null, tablesUsed: [],
+          semanticChunks: [], resultPreview: [], columns: [], toolsCalled: [],
+          vizSpec: null, pendingClarification: null, analysisPlan: null, rootCauseAnswer: null,
+          budget: new Overwrite({ llmCalls: 0, tokensUsed: 0, maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls, maxTokens: BUDGET_DEFAULTS.maxTokens, deadlineMs: 0 }),
+          telemetry: new Overwrite({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }),
+        },
         {
           runId,
           callbacks: ls?.callbacks,
@@ -528,10 +537,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
     if (!runs.has(runId)) runs.set(runId, stored);
 
     res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
+    emitSseEvent(res, "intent_parsed", { runId, threadId: stored.threadId, node: "understand", data: { phase: "resuming" } });
 
     let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
-      const built = buildGraph(stored, runId);
+      const built = buildGraph(stored, runId, res);
       emit = built.emit;
       const graph = built.graph;
       // Same LangSmith shape as ask (same runId + threadId metadata), so

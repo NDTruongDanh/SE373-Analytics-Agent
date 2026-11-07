@@ -65,7 +65,7 @@ export default tseslint.config(
     // When a new workspace package appears, add it to the paths list: the
     // rule is deny-by-default in intent, enumerated so a new package can
     // never slip through silently.
-    files: ["apps/web/**/*.ts"],
+    files: ["apps/web/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -108,6 +108,10 @@ export default tseslint.config(
             },
           ],
           patterns: [
+            {
+              group: ["@shared/agent/*", "@shared/mcp-server/*", "@shared/access-policy/*", "@shared/api/*", "@shared/data/*"],
+              message: "Web UI may import workspace types only from @shared/contracts.",
+            },
             {
               group: ["**/mcp-server/src/**"],
               message:
