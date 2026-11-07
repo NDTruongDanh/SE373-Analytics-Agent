@@ -90,6 +90,7 @@ export interface RcaRuntimeDeps {
   mcpCaller?: McpToolCaller;
   sqlModel?: ChatModelLike;
   setActivePeriod?: (period: TimePeriod | null) => void;
+  setAllowedDateColumns?: (cols: string[] | null) => void;
   fetchBaseline?: (
     metricName: string,
     metricType: MetricType,
@@ -101,16 +102,20 @@ export interface RcaRuntimeDeps {
 export function createDateGuardedMcpCaller(
   baseCaller: McpToolCaller,
   getActivePeriod: () => TimePeriod | null,
+  getAllowedDateColumns?: () => string[] | null,
 ): McpToolCaller {
   return {
     async call(tool: string, args: Record<string, unknown>): Promise<unknown> {
       if ((tool === "explain_query" || tool === "run_query") && typeof args["sql"] === "string") {
         const expectedPeriod = getActivePeriod();
-        if (expectedPeriod && !(await verifySqlDateFilter(args["sql"], expectedPeriod))) {
-          throw dbToolError(
-            "INVALID_SQL",
-            `Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ (${expectedPeriod.start} đến ${expectedPeriod.end}): ${args["sql"]}`,
-          );
+        if (expectedPeriod) {
+          const allowedCols = getAllowedDateColumns?.() ?? DEFAULT_ALLOWED_DATE_COLS;
+          if (!(await verifySqlDateFilter(args["sql"], expectedPeriod, allowedCols))) {
+            throw dbToolError(
+              "INVALID_SQL",
+              `Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ (${expectedPeriod.start} đến ${expectedPeriod.end}) trên cột ngày phù hợp (${allowedCols.join(", ")}): ${args["sql"]}`,
+            );
+          }
         }
       }
       return baseCaller.call(tool, args);
@@ -132,24 +137,50 @@ function dateLiteralPattern(dateStr: string): string {
   return String.raw`(?:\bdate\s+)?['"]${escapeRegex(dateStr)}['"](?:::date|::timestamp)?`;
 }
 
-const DATE_COL_PATTERN = String.raw`(?:\b[a-zA-Z0-9_.]*?\b)?(?:purchase_date|order_date|created_at|order_purchase_timestamp|date)\b`;
+export const DEFAULT_ALLOWED_DATE_COLS = ["purchase_date"];
 
-function columnsMatch(c1: string, c2: string): boolean {
-  if (c1 === c2) return true;
-  const parts1 = c1.toLowerCase().split(".");
-  const parts2 = c2.toLowerCase().split(".");
-  const col1 = parts1[parts1.length - 1];
-  const col2 = parts2[parts2.length - 1];
-  if (col1 !== col2) return false;
-  // If both specify a table alias, they must match (e.g. o.purchase_date vs r.created_at)
-  if (parts1.length > 1 && parts2.length > 1) {
-    return parts1[parts1.length - 2] === parts2[parts2.length - 2];
+export const DISALLOWED_TABLE_QUALIFIERS = new Set([
+  "customers",
+  "customer",
+  "c",
+  "reviews",
+  "review",
+  "r",
+  "sellers",
+  "seller",
+  "s",
+  "products",
+  "product",
+  "p",
+  "categories",
+  "category",
+  "cat",
+  "channels",
+  "channel",
+  "ch",
+  "promotions",
+  "promotion",
+  "promo",
+]);
+
+export function getMetricDateColumn(metricName?: string): string {
+  // All order / revenue / customer diagnostic metrics in UC-05 (net_revenue, aov, return_rate, etc.)
+  // are anchored on the orders fact table event date: orders.purchase_date.
+  if (metricName && metricName.includes("review")) {
+    return "review_creation_date";
   }
-  return true;
+  return "purchase_date";
+}
+
+function buildDateColPattern(allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS): string {
+  const colChoices = allowedCols.map(escapeRegex).join("|");
+  return String.raw`(?:\b(?<qualifier>[a-zA-Z0-9_]+)\.)?(?<colName>${colChoices})\b`;
 }
 
 interface DateBoundMatch {
-  col: string;
+  fullCol: string;
+  qualifier?: string;
+  colName: string;
   startIdx: number;
   endIdx: number;
 }
@@ -159,14 +190,27 @@ function findMatches(pattern: RegExp, text: string): DateBoundMatch[] {
   pattern.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = pattern.exec(text)) !== null) {
-    const col = m.groups?.["col"] ?? m[1] ?? "";
+    const qualifier = m.groups?.["qualifier"]?.toLowerCase();
+    const colName = (m.groups?.["colName"] ?? "").toLowerCase();
+    if (qualifier && DISALLOWED_TABLE_QUALIFIERS.has(qualifier)) {
+      continue;
+    }
+    const fullCol = qualifier ? `${qualifier}.${colName}` : colName;
     matches.push({
-      col: col.trim().toLowerCase(),
+      fullCol,
+      qualifier,
+      colName,
       startIdx: m.index,
       endIdx: m.index + m[0].length,
     });
   }
   return matches;
+}
+
+function columnsMatch(b1: DateBoundMatch, b2: DateBoundMatch): boolean {
+  if (b1.colName !== b2.colName) return false;
+  if (b1.qualifier && b2.qualifier && b1.qualifier !== b2.qualifier) return false;
+  return true;
 }
 
 /**
@@ -227,14 +271,24 @@ function splitByTopLevelOr(text: string): string[] {
   return branches;
 }
 
-function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
+function verifyBranchDateFilter(
+  branch: string,
+  period: TimePeriod,
+  allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
+): boolean {
+  const dateColPattern = buildDateColPattern(allowedCols);
+
   // 1. Structural BETWEEN check
   const betweenPattern = new RegExp(
-    String.raw`${DATE_COL_PATTERN}\s+between\s+${dateLiteralPattern(period.start)}\s+and\s+${dateLiteralPattern(period.end)}`,
-    "i",
+    String.raw`${dateColPattern}\s+between\s+${dateLiteralPattern(period.start)}\s+and\s+${dateLiteralPattern(period.end)}`,
+    "gi",
   );
-  if (betweenPattern.test(branch)) {
-    return true;
+  let m: RegExpExecArray | null;
+  while ((m = betweenPattern.exec(branch)) !== null) {
+    const qualifier = m.groups?.["qualifier"]?.toLowerCase();
+    if (!qualifier || !DISALLOWED_TABLE_QUALIFIERS.has(qualifier)) {
+      return true;
+    }
   }
 
   // 2. Month truncation / formatting equality check
@@ -242,30 +296,35 @@ function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
   const monthEnd = period.end.slice(0, 7);
   if (monthStart === monthEnd) {
     const toCharPattern = new RegExp(
-      String.raw`to_char\s*\(\s*${DATE_COL_PATTERN}\s*,\s*['"](?:yyyy-mm|yyyy_mm)['"]\s*\)\s*=\s*['"]${escapeRegex(monthStart)}['"]`,
-      "i",
+      String.raw`to_char\s*\(\s*${dateColPattern}\s*,\s*['"](?:yyyy-mm|yyyy_mm)['"]\s*\)\s*=\s*['"]${escapeRegex(monthStart)}['"]`,
+      "gi",
     );
     const dateTruncPattern = new RegExp(
-      String.raw`date_trunc\s*\(\s*['"]month['"]\s*,\s*${DATE_COL_PATTERN}\s*\)\s*=\s*${dateLiteralPattern(period.start)}`,
-      "i",
+      String.raw`date_trunc\s*\(\s*['"]month['"]\s*,\s*${dateColPattern}\s*\)\s*=\s*${dateLiteralPattern(period.start)}`,
+      "gi",
     );
     const strftimePattern = new RegExp(
-      String.raw`strftime\s*\(\s*['"]%Y-%m['"]\s*,\s*${DATE_COL_PATTERN}\s*\)\s*=\s*${dateLiteralPattern(monthStart)}`,
-      "i",
+      String.raw`strftime\s*\(\s*['"]%Y-%m['"]\s*,\s*${dateColPattern}\s*\)\s*=\s*${dateLiteralPattern(monthStart)}`,
+      "gi",
     );
-    if (toCharPattern.test(branch) || dateTruncPattern.test(branch) || strftimePattern.test(branch)) {
-      return true;
+    for (const p of [toCharPattern, dateTruncPattern, strftimePattern]) {
+      while ((m = p.exec(branch)) !== null) {
+        const qualifier = m.groups?.["qualifier"]?.toLowerCase();
+        if (!qualifier || !DISALLOWED_TABLE_QUALIFIERS.has(qualifier)) {
+          return true;
+        }
+      }
     }
   }
 
   // 3. Structural range conjunction check:
   // Must bind the SAME date column on both lower bound and upper bound
   const startLhsPattern = new RegExp(
-    String.raw`(?<col>${DATE_COL_PATTERN})\s*(?:>=|>)\s*${dateLiteralPattern(period.start)}`,
+    String.raw`${dateColPattern}\s*(?:>=|>)\s*${dateLiteralPattern(period.start)}`,
     "gi",
   );
   const startRhsPattern = new RegExp(
-    String.raw`${dateLiteralPattern(period.start)}\s*(?:<=|<)\s*(?<col>${DATE_COL_PATTERN})`,
+    String.raw`${dateLiteralPattern(period.start)}\s*(?:<=|<)\s*${dateColPattern}`,
     "gi",
   );
   const startBounds = [
@@ -274,11 +333,11 @@ function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
   ];
 
   const endLhsPattern = new RegExp(
-    String.raw`(?<col>${DATE_COL_PATTERN})\s*(?:<=)\s*${dateLiteralPattern(period.end)}`,
+    String.raw`${dateColPattern}\s*(?:<=)\s*${dateLiteralPattern(period.end)}`,
     "gi",
   );
   const endRhsPattern = new RegExp(
-    String.raw`${dateLiteralPattern(period.end)}\s*(?:>=)\s*(?<col>${DATE_COL_PATTERN})`,
+    String.raw`${dateLiteralPattern(period.end)}\s*(?:>=)\s*${dateColPattern}`,
     "gi",
   );
   const endBounds = [
@@ -292,11 +351,11 @@ function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
       d.setUTCDate(d.getUTCDate() + 1);
       const nextDay = d.toISOString().slice(0, 10);
       const nextDayLhs = new RegExp(
-        String.raw`(?<col>${DATE_COL_PATTERN})\s*<\s*${dateLiteralPattern(nextDay)}`,
+        String.raw`${dateColPattern}\s*<\s*${dateLiteralPattern(nextDay)}`,
         "gi",
       );
       const nextDayRhs = new RegExp(
-        String.raw`${dateLiteralPattern(nextDay)}\s*>\s*(?<col>${DATE_COL_PATTERN})`,
+        String.raw`${dateLiteralPattern(nextDay)}\s*>\s*${dateColPattern}`,
         "gi",
       );
       endBounds.push(...findMatches(nextDayLhs, branch), ...findMatches(nextDayRhs, branch));
@@ -307,7 +366,7 @@ function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
 
   for (const startBound of startBounds) {
     for (const endBound of endBounds) {
-      if (!columnsMatch(startBound.col, endBound.col)) {
+      if (!columnsMatch(startBound, endBound)) {
         continue;
       }
       return true;
@@ -317,10 +376,14 @@ function verifyBranchDateFilter(branch: string, period: TimePeriod): boolean {
   return false;
 }
 
-export function verifyWhereClauseText(whereText: string, period: TimePeriod): boolean {
+export function verifyWhereClauseText(
+  whereText: string,
+  period: TimePeriod,
+  allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
+): boolean {
   const s = stripSqlComments(whereText);
   const branches = splitByTopLevelOr(s);
-  return branches.length > 0 && branches.every((b) => verifyBranchDateFilter(b, period));
+  return branches.length > 0 && branches.every((b) => verifyBranchDateFilter(b, period, allowedCols));
 }
 
 function asSelectStmt(node: unknown): Record<string, unknown> | undefined {
@@ -369,11 +432,12 @@ async function isSelectStmtBounded(
   stmt: Record<string, unknown>,
   period: TimePeriod,
   cteMap: Map<string, Record<string, unknown>>,
+  allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
 ): Promise<boolean> {
   // 1. Direct WHERE filter on this SelectStmt
   if (stmt["whereClause"]) {
     const whereSql = await deparse(stmt["whereClause"]);
-    if (verifyWhereClauseText(whereSql, period)) {
+    if (verifyWhereClauseText(whereSql, period, allowedCols)) {
       return true;
     }
   }
@@ -395,7 +459,7 @@ async function isSelectStmtBounded(
           if (cteQuery) {
             const cteBranches = collectUnionBranches(cteQuery);
             const cteBounded = (
-              await Promise.all(cteBranches.map((b) => isSelectStmtBounded(b, period, cteMap)))
+              await Promise.all(cteBranches.map((b) => isSelectStmtBounded(b, period, cteMap, allowedCols)))
             ).every(Boolean);
             if (!cteBounded) {
               allSourcesBounded = false;
@@ -413,7 +477,7 @@ async function isSelectStmtBounded(
           }
           const subBranches = collectUnionBranches(subquery);
           const subBounded = (
-            await Promise.all(subBranches.map((b) => isSelectStmtBounded(b, period, cteMap)))
+            await Promise.all(subBranches.map((b) => isSelectStmtBounded(b, period, cteMap, allowedCols)))
           ).every(Boolean);
           if (!subBounded) {
             allSourcesBounded = false;
@@ -434,7 +498,11 @@ async function isSelectStmtBounded(
   return false;
 }
 
-export async function verifySqlDateFilter(sql: string, period: TimePeriod): Promise<boolean> {
+export async function verifySqlDateFilter(
+  sql: string,
+  period: TimePeriod,
+  allowedCols: string[] = DEFAULT_ALLOWED_DATE_COLS,
+): Promise<boolean> {
   if (!sql || !sql.trim() || !period || !period.start || !period.end) return false;
 
   let ast: unknown;
@@ -443,7 +511,7 @@ export async function verifySqlDateFilter(sql: string, period: TimePeriod): Prom
   } catch {
     // If not valid full SQL statement (e.g. bare WHERE condition in a legacy unit test),
     // fall back to checking the bare expression text
-    return verifyWhereClauseText(sql, period);
+    return verifyWhereClauseText(sql, period, allowedCols);
   }
 
   const rootRecord = ast as Record<string, unknown>;
@@ -478,7 +546,7 @@ export async function verifySqlDateFilter(sql: string, period: TimePeriod): Prom
 
   // EVERY branch in a set operation must be bounded!
   const results = await Promise.all(
-    branches.map((branch) => isSelectStmtBounded(branch, period, cteMap)),
+    branches.map((branch) => isSelectStmtBounded(branch, period, cteMap, allowedCols)),
   );
   return results.every(Boolean);
 }
@@ -823,16 +891,19 @@ export async function validateBaseline(
     const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
     const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
 
+    const expectedDateCol = getMetricDateColumn(intent.metricName);
+    deps.setAllowedDateColumns?.([expectedDateCol]);
     deps.setActivePeriod?.(intent.baselinePeriod);
     let baseRes: ExecutorResult;
     try {
       baseRes = await deps.executor.run({
-        question: `Compute baseline for ${intent.metricName} strictly filtering by purchase_date from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}. Reference SQL: ${baseSql}`,
+        question: `Compute baseline for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}. Reference SQL: ${baseSql}`,
         candidateTables: intent.candidateTables,
         principal,
       });
     } finally {
       deps.setActivePeriod?.(null);
+      deps.setAllowedDateColumns?.(null);
     }
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
@@ -863,9 +934,9 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán baseline: ${errMsg}`);
     }
 
-    if (!baseRes.sql || !(await verifySqlDateFilter(baseRes.sql, intent.baselinePeriod))) {
+    if (!baseRes.sql || !(await verifySqlDateFilter(baseRes.sql, intent.baselinePeriod, [expectedDateCol]))) {
       throw new Error(
-        `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}): ${baseRes.sql ?? "(empty)"}`,
+        `SQL được sinh cho kỳ cơ sở thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.baselinePeriod.start} đến ${intent.baselinePeriod.end}) trên cột ${expectedDateCol}: ${baseRes.sql ?? "(empty)"}`,
       );
     }
 
@@ -877,16 +948,18 @@ export async function validateBaseline(
       throw new Error(`Giá trị kỳ cơ sở không phải là số hợp lệ: ${String(baseRes.rows[0]["val"])}`);
     }
 
+    deps.setAllowedDateColumns?.([expectedDateCol]);
     deps.setActivePeriod?.(intent.currentPeriod);
     let currRes: ExecutorResult;
     try {
       currRes = await deps.executor.run({
-        question: `Compute current value for ${intent.metricName} strictly filtering by purchase_date from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}. Reference SQL: ${currSql}`,
+        question: `Compute current value for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}. Reference SQL: ${currSql}`,
         candidateTables: intent.candidateTables,
         principal,
       });
     } finally {
       deps.setActivePeriod?.(null);
+      deps.setAllowedDateColumns?.(null);
     }
     queriesExecuted += 1;
     actualToolsCalled.push("run_query");
@@ -917,9 +990,9 @@ export async function validateBaseline(
       throw new Error(`Lỗi tính toán current value: ${errMsg}`);
     }
 
-    if (!currRes.sql || !(await verifySqlDateFilter(currRes.sql, intent.currentPeriod))) {
+    if (!currRes.sql || !(await verifySqlDateFilter(currRes.sql, intent.currentPeriod, [expectedDateCol]))) {
       throw new Error(
-        `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}): ${currRes.sql ?? "(empty)"}`,
+        `SQL được sinh cho kỳ phân tích thiếu bộ lọc ngày theo kỳ yêu cầu (${intent.currentPeriod.start} đến ${intent.currentPeriod.end}) trên cột ${expectedDateCol}: ${currRes.sql ?? "(empty)"}`,
       );
     }
 
@@ -1196,19 +1269,28 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     const intent = parseRcaIntent(state.question);
 
     let activePeriod: TimePeriod | null = null;
+    let activeAllowedCols: string[] | null = null;
     const setActivePeriod = (p: TimePeriod | null) => {
       activePeriod = p;
+    };
+    const setAllowedDateColumns = (cols: string[] | null) => {
+      activeAllowedCols = cols;
     };
 
     let effectiveDeps: RcaRuntimeDeps = {
       ...deps,
       setActivePeriod: deps.setActivePeriod ?? setActivePeriod,
+      setAllowedDateColumns: deps.setAllowedDateColumns ?? setAllowedDateColumns,
     };
 
     if (!deps.executor && !deps.fetchBaseline) {
       const rawMcp = deps.mcpCaller ?? (transport ? createRuntimeMcpCaller(transport) : undefined);
       if (rawMcp) {
-        const guardedMcp = createDateGuardedMcpCaller(rawMcp, () => activePeriod);
+        const guardedMcp = createDateGuardedMcpCaller(
+          rawMcp,
+          () => activePeriod,
+          () => activeAllowedCols,
+        );
         const executor = new ValidatedQueryExecutor({
           model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
           mcp: guardedMcp,

@@ -316,6 +316,14 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
     expect(callCount).toBe(1); // Call was blocked!
 
+    // 3b. run_query with created_at on joined customers table -> throws and blocks execution
+    await expect(
+      guardedCaller.call("run_query", {
+        sql: "SELECT SUM(price_vnd) FROM orders o JOIN customers c USING(customer_id) WHERE c.created_at >= '2026-08-01' AND c.created_at <= '2026-08-31'",
+      }),
+    ).rejects.toThrow("Truy vấn SQL thiếu bộ lọc ngày bắt buộc cho kỳ");
+    expect(callCount).toBe(1); // Call was blocked!
+
     // 4. run_query with valid date bounds -> passes through to baseCaller
     await guardedCaller.call("run_query", {
       sql: "SELECT SUM(price_vnd) FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31'",
@@ -477,6 +485,46 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
         period,
       ),
     ).toBe(false);
+
+    // Invalid: generic created_at column on joined customers table instead of orders.purchase_date
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o JOIN customers c USING(customer_id) WHERE c.created_at >= '2026-08-01' AND c.created_at <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: bare created_at instead of purchase_date
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders WHERE created_at >= '2026-08-01' AND created_at <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: reviews.created_at instead of orders.purchase_date
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o JOIN reviews r USING(order_id) WHERE r.created_at >= '2026-08-01' AND r.created_at <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Invalid: disallowed qualifier c.purchase_date
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o JOIN customers c USING(customer_id) WHERE c.purchase_date >= '2026-08-01' AND c.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(false);
+
+    // Valid: orders fact table date column explicitly qualified
+    expect(
+      await verifySqlDateFilter(
+        "SELECT SUM(price_vnd) FROM orders o JOIN customers c USING(customer_id) WHERE o.purchase_date >= '2026-08-01' AND o.purchase_date <= '2026-08-31'",
+        period,
+      ),
+    ).toBe(true);
 
     // Valid: UNION ALL where every branch is date-bounded
     expect(
