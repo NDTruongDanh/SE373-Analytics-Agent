@@ -200,9 +200,12 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(runId).toMatch(/^[0-9a-f-]{36}$/);
 
     // Trace proof: full redacted event log with tool spans in call order.
+    // 8 base spans + 3 UC-03 VIZ spans (chart_selected, chart_validated,
+    // node_done in deterministic mode — no model key in CI, so no
+    // claim_stripped lines for this grounded bar chart).
     const tracePath = `${tracesDir}/${runId}.jsonl`;
     const lines = readFileSync(tracePath, "utf8").trim().split("\n");
-    expect(lines.length).toBe(8);
+    expect(lines.length).toBe(11);
     const tools: string[] = [];
     for (const line of lines) {
       const event = JSON.parse(line) as {
@@ -225,6 +228,13 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(tools[0]).toBe("list_tables");
     expect(tools).toContain("run_query");
     expect(completed.toolsCalled).toEqual(tools);
+    const vizTypes = lines
+      .map((line) => (JSON.parse(line) as { node?: string; type?: string }).type)
+      .filter((type) =>
+        ["chart_selected", "chart_validated", "node_done"].includes(type ?? ""),
+      );
+    expect(vizTypes).toContain("chart_selected");
+    expect(vizTypes).toContain("chart_validated");
 
     // SSE proof: no seed PII shapes, no live row cell value, no token.
     expect(/0\d{9}/.test(sseText)).toBe(false);
