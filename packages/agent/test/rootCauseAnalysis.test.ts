@@ -1431,7 +1431,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     );
 
     const step = executed.steps.find((s) => s.stepId === "step_north")!;
-    expect(step.status).toBe("done");
+    expect(step.status).toBe("skipped");
     expect(step.contributionPct).toBe(10);
     expect(executed.steps.length).toBe(1);
     expect(executed.residualOtherAbs).toBe(20_000_000);
@@ -1534,7 +1534,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
           failingAttempts++;
           throw new Error("DB statement_timeout simulated");
         }
-        return { baselineVal: 500_000_000, currentVal: 450_000_000 };
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
       },
     };
 
@@ -1589,10 +1589,14 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
         { id: "step_3", name: "Miền Nam" },
       ],
     )!;
+    plan.steps.forEach((s) => {
+      s.depth = 1;
+    });
 
     const deps = {
       maxQueriesLimit: 4,
-      fetchStepMetrics: async () => ({ baselineVal: 100, currentVal: 90 }),
+      maxDepthLimit: 1,
+      fetchStepMetrics: async () => ({ baselineVal: 100_000_000, currentVal: 40_000_000 }),
     };
 
     const executed = await executeAnalysis(
@@ -2126,6 +2130,313 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     expect(rcaCalled).toBe(true);
     expect(out.answerText).toBe("routed to rca");
+  });
+
+  it("T36-T15: Resume with REJECT decision stops execution without running steps", async () => {
+    let stepsExecuted = 0;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        stepsExecuted++;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+    const memory = new MemorySaver();
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    const threadId = makeThreadId("u_reject", "s_1");
+
+    // 1. Initial run suspends at HITL interrupt
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // 2. Resume with REJECT decision
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "REJECT" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    expect(resumed.answerText).toContain("Kế hoạch phân tích đã bị từ chối bởi người dùng");
+    expect(stepsExecuted).toBe(0); // 0 steps executed!
+    expect(resumed.analysisPlan?.steps.every((s) => s.status === "todo")).toBe(true);
+  });
+
+  it("T36-T16: Resume with invalid/unrecognized decision returns status: 'error' without executing", async () => {
+    let stepsExecuted = 0;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        stepsExecuted++;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+    const memory = new MemorySaver();
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    const threadId = makeThreadId("u_invalid_dec", "s_1");
+
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "UNKNOWN_ACTION" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("error");
+    expect(resumed.answerText).toContain("Quyết định duyệt kế hoạch không hợp lệ");
+    expect(stepsExecuted).toBe(0);
+  });
+
+  it("T36-T17: Resume fail-closed: fails with error and executes 0 baseline queries if checkpoint cannot recover plan", async () => {
+    let baselineQueryCalls = 0;
+    const deps = {
+      fetchBaseline: async () => {
+        baselineQueryCalls++;
+        return 2_000_000_000;
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    // Mock checkpointer that throws or returns no interrupt write
+    const faultyCheckpointer = {
+      getTuple: async () => ({
+        config: { configurable: { thread_id: "chat:u_fail:s_1" } },
+        pendingWrites: [],
+      }),
+    } as unknown as BaseCheckpointSaver;
+
+    const mockState: AgentState = {
+      runId: "run_fail_closed",
+      threadId: "chat:u_fail:s_1",
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm?",
+      ucId: RCA_UC_ID,
+      status: "ok",
+      answerText: "",
+      sql: null,
+      tablesUsed: [],
+      columns: [],
+      resultPreview: [],
+      toolsCalled: [],
+      intent: null,
+      budget: { llmCalls: 0, maxLlmCalls: 10, tokensUsed: 0, maxTokens: 100000, deadlineMs: 0 },
+      pendingClarification: null,
+      analysisPlan: null,
+    };
+
+    const mockRt: RootRuntime = {
+      emit: () => "",
+      config: {
+        configurable: {
+          thread_id: "chat:u_fail:s_1",
+          runId: "run_fail_closed",
+          userId: "u_fail",
+          roleScope: "sales_south",
+          __pregel_checkpointer: faultyCheckpointer,
+          __pregel_resuming: true, // Marked as resume!
+        },
+      },
+    };
+
+    const out = await rcaRuntime.entry(mockState, mockRt);
+    expect(out.status).toBe("error");
+    expect(out.answerText).toContain("Lỗi phục hồi state: Không thể khôi phục kế hoạch phân tích");
+    expect(baselineQueryCalls).toBe(0); // ZERO baseline queries executed!
+  });
+
+  it("T36-T18: Quota edge case: strictly enforces quota when remaining quota is 1 or executor attempts 3 repairs", async () => {
+    let executorCalls = 0;
+    const mockExecutor = {
+      run: async () => {
+        executorCalls++;
+        return {
+          status: "ok" as const,
+          sql: "SELECT 1",
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val: 500_000_000 }],
+          maskedColumns: [],
+          attempts: 3, // 3 attempts taken by internal repair loop!
+        };
+      },
+    };
+
+    // Case A: Remaining quota is 1 (maxQueriesLimit: 3, baseline check = 2)
+    // Step needs at least 2 queries. Since remaining is 1 (< 2), step should be skipped immediately.
+    const planA = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "s1", name: "Bắc" }],
+    )!;
+
+    const executedA = await executeAnalysis(
+      planA,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: mockExecutor, maxQueriesLimit: 3 },
+      mockPrincipal,
+    );
+
+    expect(executedA.totalQueriesCount).toBe(2); // Never started step, quota 3 not exceeded
+    expect(executorCalls).toBe(0); // Executor was NOT called!
+    expect(executedA.steps[0].status).toBe("skipped");
+    expect(executedA.unexploredBranches[0].reason).toBe("MAX_QUERIES_REACHED");
+
+    // Case B: Remaining quota is 2 (maxQueriesLimit: 4, baseline check = 2).
+    // Baseline query runs and uses 3 attempts. Quota must clamp to 4 and NOT run current query!
+    const planB = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "s1", name: "Bắc" }],
+    )!;
+
+    const executedB = await executeAnalysis(
+      planB,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: mockExecutor, maxQueriesLimit: 4 },
+      mockPrincipal,
+    );
+
+    expect(executedB.totalQueriesCount).toBe(4); // Clamped strictly to maxQueriesLimit 4!
+    expect(executorCalls).toBe(1); // Only baseline ran, current was aborted due to quota!
+    expect(executedB.steps[0].status).toBe("skipped");
+  });
+
+  it("T36-T19: Step-by-step checkpoint persistence: step progress is saved into checkpointer and survives crash", async () => {
+    const executedSteps: string[] = [];
+    const memory = new MemorySaver();
+    const threadId = makeThreadId("u_crash_test", "s_step_ckpt");
+
+    let shouldCrashAfterStep1 = true;
+
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedSteps.push(step.stepId);
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+      onStepExecuted: async (step: PlanStep) => {
+        if (shouldCrashAfterStep1 && step.stepId.includes("north")) {
+          throw new Error("Simulated host process crash after step 1 checkpoint");
+        }
+      },
+    };
+
+    const rcaRuntime1 = createRcaRuntime(deps);
+    const testGraph1 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime1.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    // 1. Initial run creates plan and pauses at review_analysis_plan interrupt
+    await testGraph1.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // 2. Resume graph: step 1 checkpoints, then process crashes
+    await expect(
+      testGraph1.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      ),
+    ).rejects.toThrow("Simulated host process crash after step 1 checkpoint");
+
+    // Verify intermediate step 1 write was persisted in checkpointer
+    const tuple = await memory.getTuple({ configurable: { thread_id: threadId } });
+    const stepInterruptWrites = tuple?.pendingWrites?.filter(
+      (w: unknown[]) => Array.isArray(w) && w[1] === "__interrupt__",
+    );
+    expect(stepInterruptWrites).toBeDefined();
+    expect(stepInterruptWrites!.length).toBeGreaterThan(0);
+
+    // 3. Process restarts: new graph instance recovers state from checkpointer
+    shouldCrashAfterStep1 = false;
+    const rcaRuntime2 = createRcaRuntime(deps);
+    const testGraph2 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime2.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    const step1CallsBeforeRestart = executedSteps.filter((id) => id.includes("north")).length;
+    expect(step1CallsBeforeRestart).toBe(1);
+
+    const resumed = (await testGraph2.invoke(
+      resumeDecision({ action: "APPROVE" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    // Step 1 was checkpointed, so on restart it was skipped and NOT re-executed!
+    const step1CallsAfterRestart = executedSteps.filter((id) => id.includes("north")).length;
+    expect(step1CallsAfterRestart).toBe(1); // Still 1! Never called again!
   });
 });
 

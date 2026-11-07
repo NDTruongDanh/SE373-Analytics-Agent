@@ -19,7 +19,10 @@ import {
 import * as z from "zod";
 import { createCheckpointer } from "../src/ports/index.js";
 import { CHECKPOINT_SCHEMA } from "../src/constants.js";
-import { makeThreadId } from "../src/hitl.js";
+import { makeThreadId, resumeDecision } from "../src/hitl.js";
+import { AgentStateSchema, type AgentState } from "../src/state.js";
+import { createRcaRuntime } from "../src/subgraphs/rootCauseAnalysis.js";
+import type { PlanStep } from "@shared/contracts";
 
 const LIVE_URL = process.env["HARNESS_STATE_DATABASE_URL"];
 const describeLive = describe.skipIf(!LIVE_URL);
@@ -150,6 +153,70 @@ describeLive("ports live (requires HARNESS_STATE_DATABASE_URL)", () => {
       expect(hasNoFunctions(resumed.values)).toBe(true);
       // Read-back ran no node.
       expect(counts).toEqual({ a: 1, b: 1 });
+    } finally {
+      await saver2.end();
+    }
+  }, 30000);
+
+  it("UC-05 pauses at HITL plan review and resumes on PostgresSaver across process restart", async () => {
+    let baselineQueryCalls = 0;
+    const executedStepIds: string[] = [];
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) => {
+        baselineQueryCalls++;
+        return period.start.includes("08") ? 2_500_000_000 : 2_040_000_000;
+      },
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedStepIds.push(step.stepId);
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+
+    const threadId = makeThreadId("u_rca_live", `s_${Date.now()}`);
+
+    // Build graph 1 with saver1
+    const saver1 = await createCheckpointer(LIVE_URL as string);
+    const rcaRuntime1 = createRcaRuntime(deps);
+    const graph1 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime1.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: saver1 as unknown as BaseCheckpointSaver });
+
+    // 1. Initial run: runs baseline, generates plan, pauses at interrupt
+    const initialRun = await graph1.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+    expect((initialRun as { __interrupt__?: unknown[] }).__interrupt__).toBeDefined();
+    expect(baselineQueryCalls).toBe(2);
+    expect(executedStepIds).toHaveLength(0);
+
+    // Simulate process shutdown
+    await saver1.end();
+
+    // 2. Simulate process restart: fresh saver, fresh runtime, fresh graph
+    const saver2 = await createCheckpointer(LIVE_URL as string);
+    try {
+      const rcaRuntime2 = createRcaRuntime(deps);
+      const graph2 = new StateGraph(AgentStateSchema)
+        .addNode("rca", rcaRuntime2.entry)
+        .addEdge(START, "rca")
+        .addEdge("rca", END)
+        .compile({ checkpointer: saver2 as unknown as BaseCheckpointSaver });
+
+      const resumed = (await graph2.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      )) as AgentState;
+
+      expect(resumed.status).toBe("ok");
+      expect(resumed.analysisPlan).not.toBeNull();
+      // Baseline was NOT re-run! Still exactly 2 calls from before shutdown
+      expect(baselineQueryCalls).toBe(2);
+      // Steps executed successfully
+      expect(executedStepIds.length).toBeGreaterThan(0);
+      expect(resumed.answerText).toContain("Đã hoàn thành phân tích bóc tách");
     } finally {
       await saver2.end();
     }

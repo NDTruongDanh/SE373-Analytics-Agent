@@ -31,6 +31,7 @@ import {
   type McpToolCaller,
 } from "../queryExecutor/index.js";
 import { deparse, parse } from "@shared/access-policy";
+import { createBudgetState } from "../queryExecutor/budgets.js";
 import { createChatModel } from "../models/factory.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import { pauseForApproval } from "../hitl.js";
@@ -142,7 +143,7 @@ export interface RcaRuntimeDeps {
     currentPeriod: TimePeriod,
     inheritedFilters: Record<string, string>,
   ) => Promise<{ baselineVal: number; currentVal: number; sql?: string }>;
-  onStepExecuted?: (step: PlanStep, plan: AnalysisPlan) => void;
+  onStepExecuted?: (step: PlanStep, plan: AnalysisPlan) => void | Promise<void>;
 }
 
 export function createDateGuardedMcpCaller(
@@ -1638,8 +1639,8 @@ export async function executeAnalysis(
     let lastError: Error | null = null;
 
     while (attempt <= 2) {
-      // Check quota before each attempt
-      if (plan.totalQueriesCount >= maxQueries) {
+      // Step needs at least 2 queries (baseline + current). Stop before starting if quota insufficient.
+      if (plan.totalQueriesCount + 2 > maxQueries) {
         step.status = "skipped";
         plan.unexploredBranches.push({
           axis: step.axis,
@@ -1654,18 +1655,6 @@ export async function executeAnalysis(
 
       try {
         if (deps.fetchStepMetrics) {
-          if (plan.totalQueriesCount + 2 > maxQueries) {
-            step.status = "skipped";
-            plan.unexploredBranches.push({
-              axis: step.axis,
-              dimensionOrFactor: step.dimensionOrFactor,
-              dimensionValue: step.dimensionValue,
-              parentId: step.parentId,
-              reason: "MAX_QUERIES_REACHED",
-            });
-            markAllRemainingSkipped("MAX_QUERIES_REACHED");
-            break;
-          }
           plan.totalQueriesCount += 2;
           const res = await deps.fetchStepMetrics(
             step,
@@ -1699,29 +1688,17 @@ export async function executeAnalysis(
           deps.setTargetTable?.(targetTable);
           deps.setAllowedDateColumns?.([expectedDateCol]);
 
-          // Run baseline query if quota permits
-          if (plan.totalQueriesCount >= maxQueries) {
-            step.status = "skipped";
-            plan.unexploredBranches.push({
-              axis: step.axis,
-              dimensionOrFactor: step.dimensionOrFactor,
-              dimensionValue: step.dimensionValue,
-              parentId: step.parentId,
-              reason: "MAX_QUERIES_REACHED",
-            });
-            markAllRemainingSkipped("MAX_QUERIES_REACHED");
-            break;
-          }
-
+          const remainingForBaseline = Math.max(1, maxQueries - plan.totalQueriesCount - 1);
           deps.setActivePeriod?.(plan.baselinePeriod);
           const baseRes = await deps.executor.run({
             question: `Calculate baseline for step ${step.stepId} from ${plan.baselinePeriod.start} to ${plan.baselinePeriod.end}. Reference SQL: ${baseSql}`,
             candidateTables: intent.candidateTables,
             principal,
+            budget: createBudgetState({ maxLlmCalls: remainingForBaseline }),
           });
 
           const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
-          plan.totalQueriesCount += baseAttempts;
+          plan.totalQueriesCount = Math.min(maxQueries, plan.totalQueriesCount + baseAttempts);
 
           // Verify baseline executor result status: MUST be 'ok' before running current query
           if (baseRes.status !== "ok") {
@@ -1734,7 +1711,7 @@ export async function executeAnalysis(
             throw new Error(`Baseline query failed: ${err}`);
           }
 
-          // Run current query if quota permits
+          // Run current query only if quota still permits
           if (plan.totalQueriesCount >= maxQueries) {
             step.status = "skipped";
             plan.unexploredBranches.push({
@@ -1748,15 +1725,17 @@ export async function executeAnalysis(
             break;
           }
 
+          const remainingForCurrent = Math.max(1, maxQueries - plan.totalQueriesCount);
           deps.setActivePeriod?.(plan.currentPeriod);
           const currRes = await deps.executor.run({
             question: `Calculate current for step ${step.stepId} from ${plan.currentPeriod.start} to ${plan.currentPeriod.end}. Reference SQL: ${currSql}`,
             candidateTables: intent.candidateTables,
             principal,
+            budget: createBudgetState({ maxLlmCalls: remainingForCurrent }),
           });
 
           const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
-          plan.totalQueriesCount += currAttempts;
+          plan.totalQueriesCount = Math.min(maxQueries, plan.totalQueriesCount + currAttempts);
 
           deps.setActivePeriod?.(null);
           deps.setAllowedDateColumns?.(null);
@@ -1805,7 +1784,7 @@ export async function executeAnalysis(
     }
 
     if (step.status === "failed" || step.status === "skipped") {
-      deps.onStepExecuted?.(step, plan);
+      await deps.onStepExecuted?.(step, plan);
       continue;
     }
 
@@ -1817,11 +1796,11 @@ export async function executeAnalysis(
 
     const contributionPct = plan.absDelta !== 0 ? (delta / plan.absDelta) * 100 : 0;
     step.contributionPct = Number(contributionPct.toFixed(2));
-    step.status = "done";
 
     const isSignificant = Math.abs(contributionPct) >= threshold;
 
     if (isSignificant) {
+      step.status = "done";
       if (step.depth >= maxDepth) {
         plan.unexploredBranches.push({
           axis: step.axis,
@@ -1864,7 +1843,8 @@ export async function executeAnalysis(
         }
       }
     } else {
-      // Pruned below threshold
+      // Weak branches (< 30%): marked as 'skipped' per issue requirements
+      step.status = "skipped";
       plan.residualOtherAbs += Math.abs(delta);
       plan.unexploredBranches.push({
         axis: step.axis,
@@ -1875,7 +1855,7 @@ export async function executeAnalysis(
       });
     }
 
-    deps.onStepExecuted?.(step, plan);
+    await deps.onStepExecuted?.(step, plan);
   }
 
   return AnalysisPlanSchema.parse(plan);
@@ -1972,6 +1952,11 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     const checkpointer = conf["__pregel_checkpointer"] as BaseCheckpointSaver | undefined;
     const threadId = (conf["thread_id"] ?? state.threadId) as string | undefined;
 
+    const isResume =
+      Boolean(conf["__pregel_resuming"]) ||
+      (conf["__pregel_scratchpad"] as Record<string, unknown> | undefined)?.nullResume !== undefined ||
+      (((conf["__pregel_scratchpad"] as Record<string, unknown> | undefined)?.resume as unknown[] | undefined)?.length ?? 0) > 0;
+
     let baseline!: BaselineCheckResult;
     let plan: AnalysisPlan | null = null;
 
@@ -1998,10 +1983,42 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       };
     } else if (checkpointer && threadId) {
       try {
-        const tuple = await checkpointer.getTuple({ configurable: { thread_id: threadId } });
-        const interruptWrite = tuple?.pendingWrites?.find(
+        let tuple = await checkpointer.getTuple({ configurable: { thread_id: threadId } });
+        let interruptWrites = tuple?.pendingWrites?.filter(
           (w: unknown[]) => Array.isArray(w) && w[1] === "__interrupt__",
         );
+        if ((!interruptWrites || interruptWrites.length === 0) && tuple?.parentConfig) {
+          const parentTuple = await checkpointer.getTuple(tuple.parentConfig);
+          const parentInterruptWrites = parentTuple?.pendingWrites?.filter(
+            (w: unknown[]) => Array.isArray(w) && w[1] === "__interrupt__",
+          );
+          if (parentInterruptWrites && parentInterruptWrites.length > 0) {
+            tuple = parentTuple;
+            interruptWrites = parentInterruptWrites;
+          }
+        }
+        let bestWrite: unknown[] | undefined;
+        let maxScore = -1;
+        for (const write of interruptWrites ?? []) {
+          const raw = (write as unknown[])[2] as
+            | { value?: { plan?: unknown; currentPlan?: unknown; current_plan?: unknown } }
+            | undefined;
+          const candidateP = raw?.value?.currentPlan ?? raw?.value?.plan ?? raw?.value?.current_plan;
+          if (candidateP && typeof candidateP === "object") {
+            const parsed = AnalysisPlanSchema.safeParse(candidateP);
+            if (parsed.success) {
+              const completedCount = parsed.data.steps.filter((s) => s.status !== "todo").length;
+              const score = completedCount * 1000 + parsed.data.totalQueriesCount;
+              if (score > maxScore) {
+                maxScore = score;
+                bestWrite = write as unknown[];
+              }
+            }
+          }
+        }
+        const interruptWrite = bestWrite ?? (interruptWrites && interruptWrites.length > 0
+          ? interruptWrites[interruptWrites.length - 1]
+          : undefined);
         if (interruptWrite) {
           const raw = interruptWrite[2] as
             | { value?: { plan?: unknown; currentPlan?: unknown; current_plan?: unknown } }
@@ -2030,8 +2047,16 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           }
         }
       } catch {
-        // Fall back to fresh baseline execution
+        // Fall back to clean baseline execution if not a resume
       }
+    }
+
+    // Fail closed: if this is a resume invocation and plan could not be restored, fail with explicit error
+    if (isResume && !plan) {
+      return {
+        status: "error",
+        answerText: "Lỗi phục hồi state: Không thể khôi phục kế hoạch phân tích từ checkpoint của thread.",
+      };
     }
 
     if (!plan) {
@@ -2091,29 +2116,74 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           current_plan: plan,
         });
 
-        // Resumed via resumeDecision -> proceed to execute
-        shouldExecute = true;
+        let decisionAction = "";
+        let feedbackObj: Record<string, unknown> | null = null;
 
-        if (feedback && typeof feedback === "object") {
-          const fb = feedback as Record<string, unknown>;
-          if (
-            fb["action"] === "MODIFY" ||
-            fb["action"] === "modify" ||
-            fb["updated_plan"] ||
-            fb["currentPlan"] ||
-            fb["steps"] ||
-            fb["plan"]
+        if (typeof feedback === "string") {
+          decisionAction = feedback.trim().toUpperCase();
+        } else if (feedback && typeof feedback === "object") {
+          feedbackObj = feedback as Record<string, unknown>;
+          if (typeof feedbackObj["action"] === "string") {
+            decisionAction = feedbackObj["action"].trim().toUpperCase();
+          } else if (
+            feedbackObj["steps"] ||
+            feedbackObj["updated_plan"] ||
+            feedbackObj["currentPlan"] ||
+            feedbackObj["plan"]
           ) {
-            if (Array.isArray(fb["steps"])) {
-              plan.steps = z.array(PlanStepSchema).parse(fb["steps"]);
-            } else if (fb["updated_plan"]) {
-              plan = AnalysisPlanSchema.parse(fb["updated_plan"]);
-            } else if (fb["currentPlan"] && typeof fb["currentPlan"] === "object") {
-              plan = AnalysisPlanSchema.parse(fb["currentPlan"]);
-            } else if (fb["plan"] && typeof fb["plan"] === "object") {
-              plan = AnalysisPlanSchema.parse(fb["plan"]);
+            decisionAction = "MODIFY";
+          }
+        } else if (feedback === true || feedback === undefined || feedback === null) {
+          decisionAction = "APPROVE";
+        }
+
+        if (decisionAction === "APPROVE" || decisionAction === "APPROVED") {
+          shouldExecute = true;
+        } else if (
+          decisionAction === "MODIFY" ||
+          Boolean(
+            feedbackObj &&
+              (feedbackObj["updated_plan"] ||
+                feedbackObj["currentPlan"] ||
+                feedbackObj["steps"] ||
+                feedbackObj["plan"]),
+          )
+        ) {
+          shouldExecute = true;
+          if (feedbackObj) {
+            if (Array.isArray(feedbackObj["steps"])) {
+              plan.steps = z.array(PlanStepSchema).parse(feedbackObj["steps"]);
+            } else if (feedbackObj["updated_plan"]) {
+              plan = AnalysisPlanSchema.parse(feedbackObj["updated_plan"]);
+            } else if (feedbackObj["currentPlan"] && typeof feedbackObj["currentPlan"] === "object") {
+              plan = AnalysisPlanSchema.parse(feedbackObj["currentPlan"]);
+            } else if (feedbackObj["plan"] && typeof feedbackObj["plan"] === "object") {
+              plan = AnalysisPlanSchema.parse(feedbackObj["plan"]);
             }
           }
+        } else if (
+          decisionAction === "REJECT" ||
+          decisionAction === "REJECTED" ||
+          decisionAction === "CANCEL" ||
+          decisionAction === "CANCELLED" ||
+          decisionAction === "DENY" ||
+          decisionAction === "DENIED"
+        ) {
+          shouldExecute = false;
+          return {
+            status: "ok",
+            analysisPlan: plan,
+            answerText:
+              "Kế hoạch phân tích đã bị từ chối bởi người dùng. Đã dừng thực thi phân tích nguyên nhân.",
+            sql: baseline.lastSql,
+            tablesUsed: baseline.tablesUsed,
+            toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
+          };
+        } else {
+          return {
+            status: "error",
+            answerText: `Quyết định duyệt kế hoạch không hợp lệ: '${decisionAction || JSON.stringify(feedback)}'. Chỉ chấp nhận 'approve', 'modify', hoặc 'reject'.`,
+          };
         }
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes("outside the context of a graph")) {
@@ -2137,26 +2207,45 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
 
     // 4. execute_step & evaluate_branch loop
     const targetFactTable = getMetricTargetTable(plan.metricName);
-    let executedPlan: AnalysisPlan;
-    try {
-      executedPlan = await executeAnalysis(
-        plan,
-        effectiveIntent,
-        {
-          ...effectiveDeps,
-          onStepExecuted: (step, p) => {
-            effectiveDeps.onStepExecuted?.(step, p);
-          },
+    const executedPlan = await executeAnalysis(
+      plan,
+      effectiveIntent,
+      {
+        ...effectiveDeps,
+        onStepExecuted: async (step, p) => {
+          if (checkpointer && threadId) {
+            try {
+              const currentTuple =
+                await checkpointer.getTuple({ configurable: { thread_id: threadId } });
+              if (currentTuple?.config) {
+                await checkpointer.putWrites(
+                  currentTuple.config,
+                  [
+                    [
+                      "__interrupt__",
+                      {
+                        id: `step_${step.stepId}`,
+                        value: {
+                          action: "review_analysis_plan",
+                          currentPlan: p,
+                          plan: p,
+                        },
+                      },
+                    ],
+                  ],
+                  `step_${step.stepId}`,
+                );
+              }
+            } catch {
+              // Ignore checkpoint write failures on non-supporting savers
+            }
+          }
+          await effectiveDeps.onStepExecuted?.(step, p);
         },
-        principal,
-        targetFactTable,
-      );
-    } catch (err) {
-      return {
-        status: "error",
-        answerText: err instanceof Error ? err.message : String(err),
-      };
-    }
+      },
+      principal,
+      targetFactTable,
+    );
 
     const doneCount = executedPlan.steps.filter((s) => s.status === "done").length;
     const prunedCount = executedPlan.unexploredBranches.filter(
