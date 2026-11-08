@@ -1915,6 +1915,8 @@ export function verifyWaterfallAttribution(
   const leafDeltaSum = leafNodes.reduce((sum, n) => sum + n.delta, 0);
 
   let signedResidual = 0;
+  let hasSignedResidualData = false;
+
   if (steps && steps.length > 0) {
     const disjointSkipped = getDisjointSkippedNodes(steps);
     const skippedSum = disjointSkipped.reduce((sum, s) => sum + s.delta, 0);
@@ -1940,8 +1942,12 @@ export function verifyWaterfallAttribution(
     }
 
     signedResidual = skippedSum + unanalyzedParentResidual;
+    hasSignedResidualData = disjointSkipped.length > 0 || unanalyzedParentResidual !== 0;
   }
-  if (signedResidual === 0 && residualOtherAbs !== 0) {
+
+  // Only fall back to inferring sign from absDeltaTotal * residualOtherAbs when no signed residual data was provided
+  // (e.g. steps was omitted). If skipped branches exist and cancel each other out to 0, keep signedResidual = 0.
+  if (!hasSignedResidualData && residualOtherAbs !== 0) {
     signedResidual = (absDeltaTotal < 0 ? -1 : 1) * Math.abs(residualOtherAbs);
   }
 

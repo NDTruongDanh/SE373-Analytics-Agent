@@ -2981,5 +2981,64 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(result.deltaExplained).toBe(-400_000_000);
     expect(result.mathDiffRatio).toBe(0);
   });
+
+  it("T37-T9: Preserves signedResidual = 0 when skipped branches cancel out, not falling back to residualOtherAbs", () => {
+    const leaf: PlanStep = {
+      stepId: "main_leaf",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Shopee",
+      dimensionPath: ["Shopee"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: -200_000_000,
+      contributionPct: 100.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const skipped1: PlanStep = {
+      stepId: "skipped_pos",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Website",
+      dimensionPath: ["Website"],
+      parentId: null,
+      depth: 0,
+      status: "skipped",
+      delta: 50_000_000, // +50M
+      contributionPct: -25.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const skipped2: PlanStep = {
+      stepId: "skipped_neg",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Tiki",
+      dimensionPath: ["Tiki"],
+      parentId: null,
+      depth: 0,
+      status: "skipped",
+      delta: -50_000_000, // -50M, cancels out skipped1 to 0 signed residual
+      contributionPct: 25.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const steps = [leaf, skipped1, skipped2];
+    const leaves = [leaf];
+    const residualOtherAbs = 100_000_000; // |50M| + |-50M| = 100M
+    const totalDelta = -200_000_000;
+
+    // Because signed residual data is present (+50M + -50M = 0), signedResidual must stay 0,
+    // not fall back to inferring -100M from residualOtherAbs.
+    const result = verifyWaterfallAttribution(leaves, residualOtherAbs, totalDelta, steps);
+    expect(result.mathVerified).toBe(true);
+    expect(result.deltaExplained).toBe(-200_000_000);
+    expect(result.mathDiffRatio).toBe(0);
+  });
 });
 
