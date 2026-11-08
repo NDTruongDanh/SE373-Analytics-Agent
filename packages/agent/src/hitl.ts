@@ -72,8 +72,8 @@ export interface ReviewPayload {
   sql?: string;
   reason?: string;
   plan?: unknown;
-  current_plan?: unknown;
-  [key: string]: unknown;
+  currentPlan?: unknown;
+  planId?: string;
 }
 
 /**

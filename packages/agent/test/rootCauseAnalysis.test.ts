@@ -2099,6 +2099,17 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     // Standard queries route to default
     expect(routeQuestionToUc("Top 5 sản phẩm bán chạy nhất tháng 8")).toBe("tracer");
 
+    // Regression tests for UC-01/UC-02 overlap: definition lookups and column-level reasons must route to default
+    expect(routeQuestionToUc("Giải thích định nghĩa doanh thu thuần")).toBe("tracer");
+    expect(routeQuestionToUc("Giải thích công thức tính AOV")).toBe("tracer");
+    expect(routeQuestionToUc("Khách hàng hoạt động nghĩa là gì?")).toBe("tracer");
+    expect(routeQuestionToUc("Khách hàng hoạt động được tính thế nào?")).toBe("tracer");
+    expect(routeQuestionToUc("Lý do hủy đơn hàng phổ biến nhất trong quý 3 là gì?")).toBe("tracer");
+    expect(routeQuestionToUc("Top 3 lý do khách hàng đổi trả hàng")).toBe("tracer");
+    expect(routeQuestionToUc("Explain net revenue definition")).toBe("tracer");
+    expect(routeQuestionToUc("Reason for cancelled orders in Q3")).toBe("tracer");
+    expect(routeQuestionToUc("What is the formula for customer lifetime value?")).toBe("tracer");
+
     // Root graph automatically routes question to RCA handler when ucId is empty
     let rcaCalled = false;
     const mockRcaEntry = async () => {

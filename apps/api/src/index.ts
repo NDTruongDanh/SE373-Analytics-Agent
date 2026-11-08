@@ -473,10 +473,13 @@ export function buildApp(options: BuildAppOptions): express.Express {
           threadId,
           node: "ucEntry",
           data: interruptPayload({
-            ...interruptData,
+            action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
+            reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
             pendingClarification:
               out.pendingClarification ??
               (interruptData["pendingClarification"] as string[] | undefined),
+            plan: interruptData["plan"],
+            currentPlan: interruptData["currentPlan"],
           }),
         });
         return;
@@ -634,10 +637,13 @@ export function buildApp(options: BuildAppOptions): express.Express {
           threadId: stored.threadId,
           node: "ucEntry",
           data: interruptPayload({
-            ...interruptData,
+            action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
+            reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
             pendingClarification:
               out.pendingClarification ??
               (interruptData["pendingClarification"] as string[] | undefined),
+            plan: interruptData["plan"],
+            currentPlan: interruptData["currentPlan"],
           }),
         });
         return;

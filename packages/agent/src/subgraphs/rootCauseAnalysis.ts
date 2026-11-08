@@ -2003,9 +2003,9 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         let maxScore = -1;
         for (const write of interruptWrites ?? []) {
           const raw = (write as unknown[])[2] as
-            | { value?: { plan?: unknown; currentPlan?: unknown; current_plan?: unknown } }
+            | { value?: { plan?: unknown; currentPlan?: unknown } }
             | undefined;
-          const candidateP = raw?.value?.currentPlan ?? raw?.value?.plan ?? raw?.value?.current_plan;
+          const candidateP = raw?.value?.currentPlan ?? raw?.value?.plan;
           if (candidateP && typeof candidateP === "object") {
             const parsed = AnalysisPlanSchema.safeParse(candidateP);
             if (parsed.success) {
@@ -2023,9 +2023,9 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           : undefined);
         if (interruptWrite) {
           const raw = interruptWrite[2] as
-            | { value?: { plan?: unknown; currentPlan?: unknown; current_plan?: unknown } }
+            | { value?: { plan?: unknown; currentPlan?: unknown } }
             | undefined;
-          const p = raw?.value?.currentPlan ?? raw?.value?.plan ?? raw?.value?.current_plan;
+          const p = raw?.value?.currentPlan ?? raw?.value?.plan;
           if (p && typeof p === "object") {
             const parsed = AnalysisPlanSchema.safeParse(p);
             if (parsed.success) {
@@ -2115,7 +2115,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           action: "review_analysis_plan",
           plan,
           currentPlan: plan,
-          current_plan: plan,
         });
 
         let decisionAction = "";

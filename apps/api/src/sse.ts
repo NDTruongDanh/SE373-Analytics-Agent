@@ -165,17 +165,17 @@ export function failedPayload(input: {
   };
 }
 
-/** interrupt_waiting payload: clarification options and review plan for HITL. */
-export function interruptPayload(input: {
+export interface InterruptPayloadInput {
+  action?: string;
   reason?: string;
   pendingClarification?: string[] | null;
-  action?: string;
   plan?: unknown;
   currentPlan?: unknown;
-  current_plan?: unknown;
-  [key: string]: unknown;
-}): Record<string, unknown> {
-  const plan = input.currentPlan ?? input.plan ?? input.current_plan;
+}
+
+/** interrupt_waiting payload: clarification options and review plan for HITL. */
+export function interruptPayload(input: InterruptPayloadInput): Record<string, unknown> {
+  const plan = input.currentPlan ?? input.plan;
   return {
     ...(input.action ? { action: input.action } : {}),
     ...(input.reason ? { reason: scrubMessage(input.reason) } : {}),
