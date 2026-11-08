@@ -2134,7 +2134,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           ) {
             decisionAction = "MODIFY";
           }
-        } else if (feedback === true || feedback === undefined || feedback === null) {
+        } else if (feedback === true) {
           decisionAction = "APPROVE";
         }
 

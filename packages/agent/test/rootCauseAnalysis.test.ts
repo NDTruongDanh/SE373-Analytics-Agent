@@ -2216,6 +2216,67 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(stepsExecuted).toBe(0);
   });
 
+  it("T36-T18: Resume with undefined, null, or empty object is rejected with error status and does not execute plan steps", async () => {
+    let stepsExecuted = 0;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        stepsExecuted++;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+    const memory = new MemorySaver();
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    // 1. undefined resume decision: LangGraph rejects empty resume input
+    const threadId1 = makeThreadId("u_undef_dec", "s_1");
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId1 } },
+    );
+    await expect(
+      testGraph.invoke(
+        resumeDecision(undefined),
+        { configurable: { thread_id: threadId1 } },
+      ),
+    ).rejects.toThrow();
+    expect(stepsExecuted).toBe(0);
+
+    // 2. null resume decision: LangGraph Command rejects null/empty resume input
+    const threadId2 = makeThreadId("u_null_dec", "s_2");
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId2 } },
+    );
+    await expect(
+      testGraph.invoke(
+        resumeDecision(null),
+        { configurable: { thread_id: threadId2 } },
+      ),
+    ).rejects.toThrow();
+    expect(stepsExecuted).toBe(0);
+
+    // 3. empty object {} resume decision
+    const threadId3 = makeThreadId("u_empty_dec", "s_3");
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId3 } },
+    );
+    const resumed3 = (await testGraph.invoke(
+      resumeDecision({}),
+      { configurable: { thread_id: threadId3 } },
+    )) as AgentState;
+    expect(resumed3.status).toBe("error");
+    expect(resumed3.answerText).toContain("Quyết định duyệt kế hoạch không hợp lệ");
+    expect(stepsExecuted).toBe(0);
+  });
+
   it("T36-T17: Resume fail-closed: fails with error and executes 0 baseline queries if checkpoint cannot recover plan", async () => {
     let baselineQueryCalls = 0;
     const deps = {

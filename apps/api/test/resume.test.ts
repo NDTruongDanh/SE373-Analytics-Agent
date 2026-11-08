@@ -121,6 +121,22 @@ describe("buildApp resume", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects a resume body missing value or carrying null with 400", async () => {
+    const resEmpty = await fetch(`${apiBase}/api/runs/x/resume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const resNull = await fetch(`${apiBase}/api/runs/x/resume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: null }),
+    });
+    expect(resNull.status).toBe(400);
+  });
+
   it("pauses on interrupt then resumes on the same thread without re-running", async () => {
     const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
     expect(asked.status).toBe(200);
@@ -259,6 +275,22 @@ describe("buildApp resume", () => {
       expect(eventData.currentPlan).toBeDefined();
 
       const runId = interruptBlock!.data["runId"] as string;
+
+      // Resuming with {} or { value: null } must be rejected with 400 and cannot execute plan
+      const resEmpty = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(resEmpty.status).toBe(400);
+
+      const resNull = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: null }),
+      });
+      expect(resNull.status).toBe(400);
+
       const resumed = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/resume`, {
         method: "POST",
         headers: { "content-type": "application/json" },

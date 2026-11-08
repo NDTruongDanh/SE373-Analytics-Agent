@@ -554,7 +554,12 @@ export function buildApp(options: BuildAppOptions): express.Express {
       res.status(404).json(dbToolError("INVALID_PARAMS", "unknown runId ''"));
       return;
     }
-    if (!isRecord(req.body)) {
+    if (
+      !isRecord(req.body) ||
+      !("value" in req.body) ||
+      req.body["value"] === undefined ||
+      req.body["value"] === null
+    ) {
       res.status(400).json(dbToolError("INVALID_PARAMS", "resume body must carry a value"));
       return;
     }
