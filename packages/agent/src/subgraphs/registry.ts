@@ -1,10 +1,14 @@
 import { createChatModel } from "../models/factory.js";
+import { estimateCostUsd } from "../telemetry/usage.js";
 import {
   callMcpTool,
   parseToolJson,
   type TracerRunConfig,
 } from "../mcpClient.js";
-import { writeTraceEvent } from "../traces/writer.js";
+import {
+  createSpanEmitter,
+  type AgentSpanEmitter,
+} from "../telemetry/spans.js";
 import {
   type AgentState,
   type AgentUpdate,
@@ -19,7 +23,7 @@ export { DEFAULT_ROUTE_ID } from "../constants.js";
 // for UC wiring. UC owners register handlers here — or in sibling files
 // beside this one that call registerUC() — and NEVER edit graph.ts.
 // The default route preserves the exact 01-01 tracer chain
-// (understand -> describe -> run -> answer, 7 trace events) so the 27/10
+// (understand -> describe -> run -> answer, 8 trace events incl. llm_call) so the 27/10
 // course-checkpoint demo keeps passing while real UC subgraphs land.
 
 // Default route id. Unknown ucIds fall through to this entry (see constants.ts).
@@ -45,10 +49,81 @@ export function listUcIds(): string[] {
   return [...entries.keys()];
 }
 
+/**
+ * Count column of the tracer preview. A live model picks its own alias
+ * (e.g. COUNT(*) AS order_count), so read the canned "n" when present, else
+ * the first count-named column with count-like values, else the first column
+ * whose values are all numbers or numeric strings. Booleans, nulls, and
+ * empty strings never count as numeric — Number(true), Number(null), and
+ * Number("") are all finite and once picked the wrong column — so an id
+ * column wins only as a last resort when every value is genuinely numeric.
+ */
+const COUNT_COLUMN_NAME = /^(n|count|total|.*_count|count_.*|num_.*)$/i;
+
+function isCountCell(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    /^-?\d+(\.\d+)?$/.test(value)
+  );
+}
+
+export function previewCountKey(
+  columns: readonly string[],
+  preview: readonly Record<string, unknown>[],
+): string {
+  if (columns.includes("n")) return "n";
+  const countLike = (column: string): boolean =>
+    COUNT_COLUMN_NAME.test(column) &&
+    preview.length > 0 &&
+    preview.every((row) => isCountCell(row[column]));
+  const named = columns.find(countLike);
+  if (named !== undefined) return named;
+  return (
+    columns.find(
+      (column) =>
+        preview.length > 0 &&
+        preview.every((row) => isCountCell(row[column])),
+    ) ?? "n"
+  );
+}
+
+/** Sum of the preview's count column (shared by the route and apps/api). */
+export function previewCountTotal(
+  columns: readonly string[],
+  preview: readonly Record<string, unknown>[],
+): number {
+  const key = previewCountKey(columns, preview);
+  return preview.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
+}
+
 /** Transport context the tracer default route reads from RunnableConfig. */
 export interface TracerDefaultContext extends TracerRunConfig {
   threadId: string;
   tracesDir: string;
+}
+
+/**
+ * Per-run emitter for the default route (Phase 3 G3). The frozen root
+ * builder (graph.ts) cannot import telemetry directly (UC-01 seam-only
+ * import boundary), so the factory lives here beside the entry that
+ * consumes it. Identity comes from the host context: the emitter stamps
+ * the real run principal on every event. Noted for UC-01 owner
+ * (nguyenhun11): registry entry events now flow through rt.emit instead
+ * of writing directly, so per-run totals accumulate; the on-disk event
+ * set is unchanged.
+ */
+export function createTracerRunEmitter(
+  ctx: TracerDefaultContext,
+): AgentSpanEmitter {
+  return createSpanEmitter({
+    runId: ctx.runId,
+    threadId: ctx.threadId,
+    userId: ctx.userId,
+    role: ctx.roleScope,
+    tracesDir: ctx.tracesDir,
+  });
 }
 
 interface ListTablesPayload {
@@ -91,7 +166,7 @@ function readTracerContext(rt: RootRuntime): TracerDefaultContext {
 /**
  * The tracer-compatible default entry, registered under DEFAULT_ROUTE_ID.
  * Runs the unchanged 01-01 chain — propose SQL, list_tables, run_query
- * (capped), deterministic answer — writing the same 7 trace events, so the
+ * (capped), deterministic answer — writing 8 trace events (incl. llm_call), so the
  * 27/10 demo path survives the skeleton expansion. Transport identity comes
  * from RunnableConfig.configurable (populated by the 01-14 host per D-11),
  * never from prompt text. No edits outside this file may change it.
@@ -99,25 +174,23 @@ function readTracerContext(rt: RootRuntime): TracerDefaultContext {
 export function createTracerDefaultEntry(): UcEntryHandler {
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     const ctx = readTracerContext(rt);
+    // All default-route events flow through the run emitter: identical
+    // on-disk shape to the former direct writes, but the real principal
+    // comes from the emitter context and every event feeds the G3 roll-up.
     const trace = (
       node: string,
       type: string,
       durationMs: number,
       extra: { payload?: unknown; parentSpanId?: string; attempt?: number } = {},
     ): string =>
-      writeTraceEvent(
-        {
-          runId: ctx.runId,
-          threadId: ctx.threadId,
-          userId: ctx.userId,
-          role: "sales_south",
-          node,
-          type,
-          durationMs,
-          ...extra,
-        },
-        ctx.tracesDir,
-      );
+      rt.emit({
+        node,
+        type,
+        durationMs,
+        payload: extra.payload,
+        parentSpanId: extra.parentSpanId,
+        attempt: extra.attempt,
+      });
 
     const toolConfig = {
       mcpUrl: ctx.mcpUrl,
@@ -129,7 +202,28 @@ export function createTracerDefaultEntry(): UcEntryHandler {
 
     const started = Date.now();
     const model = createChatModel();
-    const proposal = await model.proposeSql(state.question);
+    const out = await model.proposeSqlWithUsage(state.question, {
+      callbacks: rt.config.callbacks,
+    });
+    const proposal = out.parsed;
+    const llmDurationMs = Date.now() - started;
+    // G1: the demo route reports the same llm_call shape as the UC-01 path,
+    // so run_done totals carry real provider tokens; fakes record zeros.
+    const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
+      out.model,
+      out.inputTokens,
+      out.outputTokens,
+    );
+    trace("understand", "llm_call", llmDurationMs, {
+      payload: {
+        model: out.model ?? "unknown",
+        inputTokens: out.inputTokens,
+        outputTokens: out.outputTokens,
+        estimatedCostUsd,
+        pricingKnown,
+      },
+      attempt: 0,
+    });
     trace("understand", "node_done", Date.now() - started, {
       payload: { sql: proposal.sql, tablesUsed: proposal.tablesUsed },
       attempt: 0,
@@ -160,6 +254,7 @@ export function createTracerDefaultEntry(): UcEntryHandler {
     const runSpan = trace("run", "tool_call", Date.now() - runStarted, {
       payload: {
         tool: "run_query",
+        ok: true,
         rowCount: runPayload.rowCount,
         truncated: runPayload.truncated,
       },
@@ -169,15 +264,13 @@ export function createTracerDefaultEntry(): UcEntryHandler {
 
     const answerStarted = Date.now();
     const preview = runPayload.rows.slice(0, RESULT_PREVIEW_MAX);
-    const total = preview.reduce(
-      (sum, row) => sum + Number(row["n"] ?? 0),
-      0,
-    );
+    const countKey = previewCountKey(runPayload.columns, preview);
+    const total = previewCountTotal(runPayload.columns, preview);
     const status = preview.length > 0 ? "ok" : "no_data";
     const answerText =
       status === "ok"
         ? `${preview.length} status groups, ${total} orders: ` +
-          preview.map((row) => `${String(row["status"])}=${String(row["n"])}`).join(", ")
+          preview.map((row) => `${String(row["status"])}=${String(row[countKey])}`).join(", ")
         : "No orders found for the demo question.";
     trace("answer", "node_done", Date.now() - answerStarted, {
       payload: { status, total },

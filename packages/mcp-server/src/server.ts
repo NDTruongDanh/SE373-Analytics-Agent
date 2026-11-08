@@ -16,6 +16,8 @@ import express from "express";
 import type { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { dbToolError } from "@shared/contracts";
 import {
   ColumnScopePolicy,
@@ -46,6 +48,7 @@ import {
   type SessionFactory,
 } from "./executor.js";
 import { initAudit } from "./audit.js";
+import { sanitizeError } from "./errors.js";
 import { TOOL_SPECS } from "./tools.js";
 import { warmupSqlGuard } from "@shared/access-policy";
 import { hybridSearch, resetSemanticCache } from "./semantic/retriever.js";
@@ -97,6 +100,30 @@ function mcpErrorPayload(message: string, code: string): {
     content: [{ type: "text" as const, text: message }],
     isError: true as const,
     _gatewayErrorCode: code,
+  };
+}
+
+// The SDK validates tool arguments against the registered inputSchema before
+// the handler runs, so a strict schema there would reject malformed params
+// outside the pipeline: no audit line, and zod ahead of the scope check.
+// Register a pass-through schema so every call reaches executeToolCall,
+// where auth -> scope -> zod -> ... -> audit runs in order (UC09.md B.1).
+const PASS_THROUGH_INPUT = z.looseObject({});
+
+// tools/list still advertises the strict contract schemas: the pass-through
+// above is a dispatch detail, not the public tool interface.
+function listToolsResult(): {
+  tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+} {
+  return {
+    tools: TOOL_SPECS.map((spec) => ({
+      name: spec.name,
+      description: spec.description,
+      inputSchema: z.toJSONSchema(spec.inputSchema, {
+        target: "draft-7",
+        io: "input",
+      }) as Record<string, unknown>,
+    })),
   };
 }
 
@@ -170,7 +197,7 @@ export async function createGatewayApp(
         spec.name,
         {
           description: spec.description,
-          inputSchema: spec.inputSchema.shape,
+          inputSchema: PASS_THROUGH_INPUT,
         },
         async (
           args: Record<string, unknown>,
@@ -201,6 +228,9 @@ export async function createGatewayApp(
         },
       );
     }
+    // Replace the SDK's tools/list handler (which would describe the
+    // pass-through schema) with the strict contract schemas.
+    server.server.setRequestHandler(ListToolsRequestSchema, listToolsResult);
 
     const resourceEntries = [
       {
@@ -346,5 +376,17 @@ if (
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const port = Number(process.env.MCP_PORT ?? 8081);
-  await startGatewayServer(port);
+  try {
+    await startGatewayServer(port);
+  } catch (error) {
+    // Boot failures (wrong-password DSN, unreachable DB) must not echo raw
+    // driver output: sanitize through the same choke point as tool errors so
+    // role names, paths, and stack frames never reach stderr (B.1 error-leak
+    // row asserts sanitized output). Fail-closed: non-zero exit, no healthz.
+    const clean = sanitizeError(error);
+    console.error(
+      `[mcp-gateway] failed to start: ${clean.code}: ${clean.message}`,
+    );
+    process.exit(1);
+  }
 }

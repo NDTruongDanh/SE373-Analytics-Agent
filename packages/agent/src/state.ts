@@ -8,7 +8,7 @@ import {
   RootCauseAnswerSchema,
   SQLAnswerStatusSchema,
 } from "@shared/contracts";
-import * as z from "zod";
+import { z } from "zod";
 import { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
 
 export { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
@@ -42,6 +42,8 @@ const SemanticChunkSchema = z.object({
   chunkId: z.string().min(1),
   score: z.number().optional(),
   text: z.string().optional(),
+  aliasMatched: z.boolean().optional(),
+  denseScore: z.number().optional(),
 });
 
 const BudgetStateSchema = z

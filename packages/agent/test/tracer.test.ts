@@ -7,7 +7,11 @@ import { TraceEventSchema } from "@shared/contracts";
 import { runTracerGraph } from "../src/graph.js";
 import { createChatModel } from "../src/models/factory.js";
 import { TRACER_SQL_PROPOSAL } from "../src/constants.js";
+import { createTracerDefaultEntry } from "../src/subgraphs/registry.js";
+import { createSpanEmitter } from "../src/telemetry/spans.js";
+import type { AgentState, RootRuntime } from "../src/state.js";
 import { writeTraceEvent } from "../src/traces/writer.js";
+import { previewCountKey, previewCountTotal } from "../src/subgraphs/registry.js";
 
 // Tracer slice: fake model + stub MCP transport assert at least 2 tool calls
 // per run, per-call X-Run-Id propagation, resultPreview cap, and zero raw
@@ -95,12 +99,15 @@ describe("tracer agent", () => {
           runId: String(req.headers["x-run-id"] ?? ""),
           auth: String(req.headers["authorization"] ?? ""),
         });
+        const aliased = String(req.headers["x-run-id"]).includes("alias");
         const rows =
           tool === "list_tables"
             ? []
             : String(req.headers["x-run-id"]).includes("cap")
               ? sixtyRows()
-              : threeRows();
+              : aliased
+                ? threeRows().map(({ status, n }) => ({ status, order_count: n }))
+                : threeRows();
         const payload =
           tool === "list_tables"
             ? {
@@ -110,7 +117,7 @@ describe("tracer agent", () => {
                 ],
               }
             : {
-                columns: ["status", "n"],
+                columns: aliased ? ["status", "order_count"] : ["status", "n"],
                 rows,
                 rowCount: rows.length,
                 truncated: false,
@@ -193,15 +200,106 @@ describe("tracer agent", () => {
     expect((answerEvent.payload as { total: number }).total).toBe(50);
   });
 
-  it("writes a 7-event redacted trace validated by the contract", async () => {
+  it("totals a live-model count alias instead of only the canned n column", async () => {
+    const out = await runTracerGraph("How many orders do we have per status?", ctx("run-alias-1"));
+    expect(out.status).toBe("ok");
+    expect(out.answerText).toContain("3 status groups, 12 orders");
+    expect(out.answerText).toContain("completed=7");
+  });
+
+  it("previewCountTotal reads n, a live alias, or nothing numeric", () => {
+    const aliased = [
+      { status: "a", order_count: "10" },
+      { status: "b", order_count: "5" },
+    ];
+    expect(previewCountTotal(["status", "order_count"], aliased)).toBe(15);
+    expect(previewCountTotal(["status", "n"], threeRows())).toBe(12);
+    expect(previewCountTotal(["status"], [{ status: "a" }])).toBe(0);
+    expect(previewCountTotal(["status", "n"], [])).toBe(0);
+  });
+
+  it("previewCountKey ignores boolean, null, and empty columns", () => {
+    // Number(true), Number(null), and Number("") are all finite: the old
+    // Number.isFinite(Number(...)) probe picked these as count columns.
+    expect(
+      previewCountKey(
+        ["status", "active"],
+        [
+          { status: "a", active: true },
+          { status: "b", active: false },
+        ],
+      ),
+    ).toBe("n");
+    expect(
+      previewCountKey(["region", "x"], [{ region: "s", x: null }]),
+    ).toBe("n");
+    expect(previewCountKey(["region", "x"], [{ region: "s", x: "" }])).toBe(
+      "n",
+    );
+  });
+
+  it("previewCountKey prefers count names, then the first all-numeric column", () => {
+    expect(
+      previewCountKey(
+        ["id", "status", "order_count"],
+        [
+          { id: 1, status: "a", order_count: "10" },
+          { id: 2, status: "b", order_count: "5" },
+        ],
+      ),
+    ).toBe("order_count");
+    expect(
+      previewCountKey(["status", "total"], [{ status: "a", total: 7 }]),
+    ).toBe("total");
+    expect(
+      previewCountKey(
+        ["status", "num_orders"],
+        [{ status: "a", num_orders: "3" }],
+      ),
+    ).toBe("num_orders");
+    expect(
+      previewCountKey(["status", "count"], [{ status: "a", count: 4 }]),
+    ).toBe("count");
+    // An id column wins only as a last resort over genuinely numeric values.
+    expect(
+      previewCountKey(
+        ["id", "status"],
+        [
+          { id: 1, status: "a" },
+          { id: 2, status: "b" },
+        ],
+      ),
+    ).toBe("id");
+    // A count-named column with non-numeric values falls through to "n".
+    expect(
+      previewCountKey(["status", "total"], [{ status: "a", total: "high" }]),
+    ).toBe("n");
+  });
+
+  it("writes an 8-event redacted trace validated by the contract", async () => {
     await runTracerGraph("How many orders do we have per status?", ctx("run-trace-1"));
     const raw = readFileSync(`${tracesDir}/run-trace-1.jsonl`, "utf8").trim().split("\n");
-    expect(raw).toHaveLength(7);
+    expect(raw).toHaveLength(8);
     for (const line of raw) {
       const parsed = TraceEventSchema.parse(JSON.parse(line));
       expect(parsed.runId).toBe("run-trace-1");
       expect(parsed.spanId).toBeDefined();
     }
+    // G1: the demo route reports its single model call; the keyless fake
+    // carries no provider usage, so counts are zero and pricing unknown.
+    const events = raw.map((line) => TraceEventSchema.parse(JSON.parse(line)));
+    const llmCalls = events.filter((event) => event.type === "llm_call");
+    expect(llmCalls).toHaveLength(1);
+    expect(llmCalls[0].node).toBe("understand");
+    expect(llmCalls[0].payload).toEqual({
+      model: "unknown",
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+      pricingKnown: false,
+    });
+    const runDone = events.find((event) => event.type === "run_done");
+    expect((runDone?.payload as { llmCalls?: number } | undefined)?.llmCalls).toBe(1);
   });
 
   it("masks raw seed PII in writer output", () => {
@@ -226,5 +324,139 @@ describe("tracer agent", () => {
       expect(content).not.toContain(phone);
     }
     expect(content).not.toContain(SEED_EMAIL);
+  });
+
+  it("marks the demo run_query tool_call ok:true on success", async () => {
+    await runTracerGraph("How many orders do we have per status?", ctx("run-ok-1"));
+    const events = readFileSync(`${tracesDir}/run-ok-1.jsonl`, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const runCalls = events.filter(
+      (event) =>
+        event["type"] === "tool_call" &&
+        (event["payload"] as { tool?: unknown })?.tool === "run_query",
+    );
+    expect(runCalls).toHaveLength(1);
+    expect(runCalls[0]["payload"]).toMatchObject({ ok: true, rowCount: 3 });
+  });
+
+  it("leaves totals sane when the demo run_query throws (no partial span)", async () => {
+    // Stub MCP: list_tables succeeds, run_query answers with a contract
+    // error payload so parseToolJson throws before any run span is written.
+    const failing = createServer(async (req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      let data = "";
+      req.on("data", (chunk) => (data += chunk));
+      req.on("end", () => {
+        const body = JSON.parse(data) as {
+          id?: number;
+          method?: string;
+          params?: { name?: string };
+        };
+        const reply = (result: unknown): void => {
+          res.writeHead(200, { "content-type": "text/event-stream" });
+          res.end(
+            `event: message\ndata: ${JSON.stringify({ result, jsonrpc: "2.0", id: body.id ?? 0 })}\n\n`,
+          );
+        };
+        if (body.method === "initialize") {
+          reply({
+            protocolVersion: "2025-11-25",
+            capabilities: { tools: {} },
+            serverInfo: { name: "stub", version: "0" },
+          });
+          return;
+        }
+        if (body.method === "notifications/initialized") {
+          res.writeHead(202);
+          res.end();
+          return;
+        }
+        if (body.params?.name === "list_tables") {
+          reply({
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  tables: [{ name: "orders", schema: "public", columns: [] }],
+                }),
+              },
+            ],
+          });
+          return;
+        }
+        reply({
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ code: "TIMEOUT", message: "stub timeout" }),
+            },
+          ],
+        });
+      });
+    });
+    await new Promise<void>((resolve) => {
+      failing.listen(0, "127.0.0.1", () => resolve());
+    });
+    try {
+      const address = failing.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const failCtx = {
+        ...ctx("run-throw-1"),
+        mcpUrl: `http://127.0.0.1:${port}/mcp`,
+      };
+      const seen: { type?: unknown; payload?: unknown }[] = [];
+      const entry = createTracerDefaultEntry();
+      await expect(
+        entry(
+          { question: "How many?", toolsCalled: [] } as unknown as AgentState,
+          {
+            emit: (event) => {
+              seen.push(event);
+              return `span-${seen.length}`;
+            },
+            config: { configurable: { ...failCtx } } as RootRuntime["config"],
+          },
+        ),
+      ).rejects.toThrow(/TIMEOUT/);
+      // The throw happens before the run span: no run_query attempt exists
+      // to count, so the totals fold stays at zero instead of NaN/partial.
+      expect(
+        seen.filter(
+          (event) =>
+            event.type === "tool_call" &&
+            (event.payload as { tool?: unknown } | undefined)?.tool === "run_query",
+        ),
+      ).toHaveLength(0);
+      const replay = createSpanEmitter({
+        runId: "run-throw-1",
+        threadId: "thread-run-throw-1",
+        userId: "demo-user",
+        role: "sales_south",
+        tracesDir: failCtx.tracesDir,
+      });
+      for (const event of seen) {
+        replay({
+          node: "run",
+          type: String(event.type),
+          durationMs: 0,
+          payload: event.payload,
+        });
+      }
+      expect(replay.totals()).toMatchObject({
+        sqlAttempts: 0,
+        sqlFailures: 0,
+        repairs: 0,
+      });
+    } finally {
+      await new Promise<void>((resolve) => {
+        failing.close(() => resolve());
+      });
+    }
   });
 });

@@ -6,6 +6,8 @@ import {
   ErrorCodes,
   REPAIRABLE_CODES,
   RETRYABLE_CODES,
+  RowScopeAppliedSchema,
+  RunQueryOutputSchema,
   SchemaCatalogSchema,
   TraceEventSchema,
 } from "../src/index.js";
@@ -15,8 +17,8 @@ import {
 // 1.0.0 breaking release: version bumped, field renames applied.
 
 describe("tracer contracts delta", () => {
-  it("keeps CONTRACTS_VERSION at 1.0.0", () => {
-    expect(CONTRACTS_VERSION).toBe("1.0.0");
+  it("keeps CONTRACTS_VERSION at 1.1.0", () => {
+    expect(CONTRACTS_VERSION).toBe("1.1.0");
   });
 
   it("inserts SQL_EXECUTION_ERROR after SENSITIVE_COLUMN_DENIED", () => {
@@ -102,6 +104,30 @@ describe("tracer contracts delta", () => {
     expect(parsed.tables).toHaveLength(1);
     expect(parsed.tables[0].schema).toBe("public");
     expect(parsed.tables[0].columns[0].sensitive).toBe(true);
+  });
+
+  it("carries the additive 1.1.0 rowScopeApplied on run_query output", () => {
+    const base = {
+      columns: ["status", "n"],
+      rows: [{ status: "completed", n: 7 }],
+      rowCount: 1,
+      truncated: false,
+      durationMs: 2,
+    };
+    // Pre-1.1.0 payloads without the field still parse, defaulting to [].
+    expect(RunQueryOutputSchema.parse(base).rowScopeApplied).toEqual([]);
+    const scoped = RunQueryOutputSchema.parse({
+      ...base,
+      maskedColumns: ["customers.phone"],
+      rowScopeApplied: [{ table: "orders", column: "region" }],
+    });
+    expect(scoped.maskedColumns).toEqual(["customers.phone"]);
+    expect(scoped.rowScopeApplied).toEqual([{ table: "orders", column: "region" }]);
+    // Scope records are column names only: empty or extra keys fail closed.
+    expect(() => RowScopeAppliedSchema.parse({ table: "", column: "region" })).toThrow();
+    expect(() =>
+      RowScopeAppliedSchema.parse({ table: "orders", column: "region", value: "south" }),
+    ).toThrow();
   });
 });
 

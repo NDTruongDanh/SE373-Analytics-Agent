@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b534abc95fc8759dbed1eecb2e36ab081985836112a116271f1a448f62ae60a1",
+  "pageVersion": "sha256:8d99e1164acaa374f083f5678b79a679c4bdf5f78c36afc85b12263ca6077018",
   "claims": [
     {
       "id": "claim_67cb28f975154c3dab2eee2e110ffe62",
@@ -185,7 +185,7 @@
           "version": "repo-lines-v1:sha256:37c23437aeee091be3321035f0549766776864db3e309e77ddfaf4ea8a050636:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3OWE3NTRjNDFkOTAzMTYxODk0MTg2MTliZWE1NWEzZjVhM2VhMmZkYjY1ODVjZTc4YTQ5YWU1ODgzNjRmODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1ZmQ2NjM2ZWQxYzdiMWUzNzExNmM2MzBiOTBlMjE1YWFhNTA3Yzg4YTdlYWMxYmM4ODNhODVmODIxYzcyYmQifQ"
         },
         {
-          "resource": "repo://packages/mcp-server/src/server.ts#L74-L89",
+          "resource": "repo://packages/mcp-server/src/server.ts#L77-L92",
           "version": "repo-lines-v1:sha256:08efb9f191c3b6b40b45ca62b0c65896f03593736bc60c5a88e8f0fd10b5c0fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhZGY5YmVlNDg5ZWZiNWE5YjM1OTVlMTZiZGY3MmM2ODE3NDg1MTQwYjVlOWMzMmNmYzAxNjMyMDFlZTM4OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1Y2IzMGE1ZTIyNzcwNzcxMjAzODZkNzI0NGQ4Yzg0MDFlZDg1MDMxODJkMjI4MjUxYWM2NmM2MDFmMTZlZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNTFjMDZhMjQ2NTE0ZmZlZjM5Yzg2N2Q5YWE0ZGQyZDc1ZGVjOGM2NDAwMGZhZGQxNzUzMDM5ZWZjZTE4OWMifQ"
         },
         {
@@ -363,11 +363,19 @@
           "version": "repo-lines-v1:sha256:15b1662b4cd657f7c5ff5f5f68ef6ce31384d2453d0b6dcb23a7b4254f8580d7:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjExMWYyMzlhYzY1YzlmZWNkNGY3OTc1ZDRlZTBjNjc3YjU4YThlYTY3ODUyZWEyNWQyNzkyMzkyNTE4ZDJmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmFmZTY2YjI3MDgyOGYyZjdhMWI0OGUyNzBjMTY1MGYxNjEwOWJmODMzYjg4NTgxOTU4ZjFhNDI1ZWYyZDQwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSJ9"
         },
         {
-          "resource": "repo://packages/mcp-server/src/pipeline.ts#L155-L186",
-          "version": "repo-lines-v1:sha256:aed60fc4f7973c157094c9fed37ad5be17417108c0b250c30bb97b8044821482:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlOGFlNWIyYmY0ZDYyMzk1MzRhYzRhMDYwZWZmZDkxYzE0ZTBkOTVjNjZkYTY2MDJhZTNmN2IwYzlhOGVhODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNjcyNDVkYTc5MWFhNzM5MzE3NWEwYzk3NGVmYTc0YzViMzZkMjlhY2RlZTkzZmJkZWVjYWQ5YTAxNzJjZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2YjUwM2UyYmUzY2FkNDk1ZDljOTQzNDAzMzI2ZmU4NzhhNGFmZTE4NGM3OTAwYjdkZTZhOGYyM2NmOWQ3YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3MzM3Mjk2NDY4ODIzMjJkODgyNzhmOTk5MzIzZjkxZTk2MmFlYzM1YjgyZTdhNThmYjUzZjIxMDVjODBiOGYifQ"
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L1-L7",
+          "version": "repo-lines-v1:sha256:20fe8d122d479deb190ce133187cae37848b1d989189fd512f90d030fc1fcbec:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjQ0Y2I1YTZkZWI3YTcyMzYwZWRiODIzYmQwYzZjMmJmYTdiYzc3ZTk3NDBlNjk4MWRlNGJjZmFjYWMwYTU5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWUwZjYxZTM2MTBlMWRjMmM1NzZhNjIyY2RlNWJiMWRjZGVmYTkzY2I5Mzc2NzE3ODJlMGEyZTJkNDJmYjIxOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODk0YzhmYTE1M2U0MzUzODA1OTM0YTY4YjI4OTZlYjZlYjVhNmQzNTI1N2E5MTI0OGIwOTNkZjMyYjhhNjliYiJ9"
         },
         {
-          "resource": "repo://packages/mcp-server/src/pipeline.ts#L286-L302",
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L119-L158",
+          "version": "repo-lines-v1:sha256:6d4744f55e708c673b102ebf2178cb9f3d7cd5dcc90c5a2c7a627ca5ec9013a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmMzBhOWY1Nzk2Y2FhNTVlZjcwNTYxYmRlODM2NmM3MjA4NmMxMTAwMjk3YWM3NTRiZGU1NjQ3MGM4YzZlZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFiODBkYTE4NTQ4M2M0YTVhNGI3ZjYwNGJmODdkOGZkZTI0YmM5ZDk2N2IxZTNiNzIzMzJiZGJjOWNlYzhiNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1MjA1NTRjODYxNGNhNTQ2NTQ5NDA4MmFmODY0ZTlkMmUyMjNkMTljNzdhYjEwYzlmNmFmOGZjMGFhOTI2ZjEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L173-L210",
+          "version": "repo-lines-v1:sha256:a9604c75b3e7fb03d8329567442b30fb50e77992ec362b484c297b64afd33611:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlOGFlNWIyYmY0ZDYyMzk1MzRhYzRhMDYwZWZmZDkxYzE0ZTBkOTVjNjZkYTY2MDJhZTNmN2IwYzlhOGVhODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2YjUwM2UyYmUzY2FkNDk1ZDljOTQzNDAzMzI2ZmU4NzhhNGFmZTE4NGM3OTAwYjdkZTZhOGYyM2NmOWQ3YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiMTQwZmM0MWY2ZTRjNTVkMWM5MDJkNjEwMmYxYWYzNjdkNDA4ZDBkNzdkN2RjYWZmMjc1ZTU2ODg5ZGMyYmMifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L312-L328",
           "version": "repo-lines-v1:sha256:e0160dc6935487a924eecd13b0ec6dba7ca1ca584c2ed8c2fe10340fb0cb757e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhZDJiNDc1NDAxMzNmYmM1MTM1ZjQ3NTA2Y2UyZjQ5NTg1NGI0Yjc1MTlhNGRlZDU1YzgxOTNlNDQ4YzdjNGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwN2I4YjIwMmQ2MDQ4YjE5MGFiZDNlZTQ2YjQyNGNjODA3ZGFkNDRlOTY4MDg0MmVjYmNkYjE3ODU0YjBmYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmM2ZiOTliZjlkMWIyMjAwOTE5N2VjZjg1MjAwYzNkNWNiM2UwYWUyM2YyYWZjYTUxMjNmMzQ1OWIzNTExODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljYjkyZGM0NjY0YzA3YTVkMmMxOTMxODVlOTE5MWJmMGZjNjkxYjdiZThmMmYzNTFmZGNmZTZlMzE0MDBmNWUifQ"
         }
       ]
@@ -377,50 +385,42 @@
       "statement": "The gateway serves semantic://data-dictionary and semantic://metrics resources from checked-in Markdown under schema:read scope, withholding ## sections ending in [restricted_pii] without data:sensitive via filterResourceSections before PII redaction and audit.",
       "evidence": [
         {
-          "resource": "repo://packages/mcp-server/src/pipeline.ts#L369-L436",
-          "version": "repo-lines-v1:sha256:f3343cc13adf28517ed08fb78d77c04f27738cda4e6aaaae8c759dbf3564add5:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZjg0NzgwN2RhZWViN2Y5ZmZjNjhlNTcxZWYyZGUyYTZmN2Q1ZWU1OGFjNTYxZDYxNTRlNTRkY2E1ZmNkYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiNjYwMTE2NDFjMzg3YWZhZjFkNjQ4ZDNlODQyYWE1NTBhNmE2ZjdhNTQ2NGNlNzljYzEwZmM2NTRjYWRiZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L406-L476",
+          "version": "repo-lines-v1:sha256:14e0ea02a923a482c0a6cd688ce0fc3ec13ad008161327e37ed4ca0cbc6f89d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZjg0NzgwN2RhZWViN2Y5ZmZjNjhlNTcxZWYyZGUyYTZmN2Q1ZWU1OGFjNTYxZDYxNTRlNTRkY2E1ZmNkYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiNjYwMTE2NDFjMzg3YWZhZjFkNjQ4ZDNlODQyYWE1NTBhNmE2ZjdhNTQ2NGNlNzljYzEwZmM2NTRjYWRiZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         },
         {
-          "resource": "repo://packages/mcp-server/src/pipeline.ts#L62-L83",
-          "version": "repo-lines-v1:sha256:03ed3a5dc2fe19e67359d0aaf4574bc7ba4311ae5852c52e6f1dc0b4409f9d53:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4ODQzYTFmYTE3MDM4N2YwZDQzZDAwOTY1NmIxOGJhMDQyMDg0NThkYWEzYzA1NjkwYWM3NGRiOGY3YjE0MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3YmNlZGI0YTc1YmFiN2M3ZTY3OGJkYzVlMzk2ODRmZDkzMjAxNTI3ZDgwYWU1YTcyNGZiOGFkZTYxODM0ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MWVkZmJiOGM5YTVlNzUxYzZhM2U1ODQ3OWQ1M2VlYjJlY2YyZWFkMjQxZDAyZWY5MGQwMDNiYjUxOTkyZTUifQ"
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L66-L84",
+          "version": "repo-lines-v1:sha256:e7becc345530ef8039fee215459a81cddbb828e0b68812bba1e9fb9853d4d0d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMWYxZjQ0MjFjMDg3NDUzOTE2YTdmMzYyZTRkMzI5MjQzMmY5Y2FlN2YyNzBhYTI1MDQxZDhlM2NmMjdjMjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3MzFhZGNlNjY2NzhhYmJmNGIxNmJhNDI4MjQ0NmM4ZTdjNTExZTM1ODliZDk5NzIwYTA5ODA2MTkzZjE2ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0MWVkZmJiOGM5YTVlNzUxYzZhM2U1ODQ3OWQ1M2VlYjJlY2YyZWFkMjQxZDAyZWY5MGQwMDNiYjUxOTkyZTUifQ"
         },
         {
-          "resource": "repo://packages/mcp-server/src/server.ts#L74-L89",
+          "resource": "repo://packages/mcp-server/src/server.ts#L235-L246",
+          "version": "repo-lines-v1:sha256:b780950e19b4ceb473b758872b9fbd1e7e7ed0ddec12ecac4f8c591b481bed8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5OTE2MGY2ZWZkYTViNDk1NDFmNjUyZWZlNTNjYjZmMzIyMDY4ODYzMThkNGJhMDcyMDk1M2MwYzAzMGE5ODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NTkyODBmNjE1NmMxZjY1MWI1MjJiMWIxODYxNjNiNjZkYjQ1YWRiZmE5YmM2NzFiZWQwNzM1MjllZWMxZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhOGY0NTIyZDMwZDYzZTMwY2M2YTZmNDY3N2RlNzMzOGM4YWY3ZTNhNDIyMTBiOWJjZGM5YjY3MTM4ZDYyYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0ZTNkM2YwMTczNzNmYTAzNTM0MjIyY2UwZjU3Njk1ODZlNjNmZTU5ZWQxNjI5YjAyNmM1OGZlZmQ2NDRjYWQifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/server.ts#L77-L92",
           "version": "repo-lines-v1:sha256:08efb9f191c3b6b40b45ca62b0c65896f03593736bc60c5a88e8f0fd10b5c0fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhZGY5YmVlNDg5ZWZiNWE5YjM1OTVlMTZiZGY3MmM2ODE3NDg1MTQwYjVlOWMzMmNmYzAxNjMyMDFlZTM4OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1Y2IzMGE1ZTIyNzcwNzcxMjAzODZkNzI0NGQ4Yzg0MDFlZDg1MDMxODJkMjI4MjUxYWM2NmM2MDFmMTZlZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNTFjMDZhMjQ2NTE0ZmZlZjM5Yzg2N2Q5YWE0ZGQyZDc1ZGVjOGM2NDAwMGZhZGQxNzUzMDM5ZWZjZTE4OWMifQ"
         }
       ]
     },
     {
       "id": "claim_a7d1f16717cd4a1ab6eb9add00b38c5b",
-      "statement": "The UC-02 three-way BM25 plus alias matcher with weighted RRF and join-rule expansion, LangGraph retrieveSemantic node with two-tier requested_metrics versus schema_entities guardrail, deterministic dual JSON plus SQL-header citation validator, and recall/lift/citation/reindex acceptance gates remain plan in docs/UC-plan/UC02.md with no corresponding retrieve/citation implementation in packages/agent.",
+      "statement": "The LangGraph retrieveSemantic node with two-tier requestedMetrics versus schemaEntities guardrail and the deterministic dual JSON plus SQL-header citation validator are implemented in packages/agent, while recall and lift thresholds remain eval criteria rather than runtime checks.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC02.md#L100-L121",
-          "version": "repo-lines-v1:sha256:f414bb7a42f456a765a137826d5d4f6a9066ef9a72518973f61f15be883c9838:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0NTBjMzQ2YjU1MDA0NWM3MmE5NjgwYTEyOTFjZGRjNGJkZTZkZmNlZGQ4NGM0MzhjZWQwMjBjN2EzMTJiY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxNzM0NTA3YTM1ZGNlOThiNmNhYmVkOTBhYzJkYjMyNTE0NDQwYmQ3YmJhNmRiZjI1MzllOTM1ZjZmODRlOGYifQ"
+          "resource": "repo://packages/agent/src/graph.ts",
+          "version": "repo-file-v1:sha256:7634c7ba97ffc0694ce4a5e143589553d2bf7e0dbc079854b5fa0d722cbfa7de"
         },
         {
-          "resource": "repo://docs/UC-plan/UC02.md#L124-L141",
-          "version": "repo-lines-v1:sha256:fca77e97c41df4abafbea18914674f9540904302c388076c7d5ee2e3f1667bcf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNDRjYTlmMDBlNDE1ZDA5ZTAwMjczNTcxMzEyMTIxNTQ1Y2YyMjUyMTFhOTM0ZjFkYzZhNGE3ZTBkMTBjMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2YmQzZTZkYWM0ODVlMWQ2NTBkYTgzM2U5YWJiOGY2YTdmMDJhOWZkOGI1NTg3NmU4NzBkZWM5NGFhMGI2OWEifQ"
+          "resource": "repo://packages/agent/src/semantic/retrieveSemantic.ts",
+          "version": "repo-file-v1:sha256:ff5d6dac59385f8d8144e475e3c6680cbc6740c92fa0663665ad9d8d2a91ad45"
         },
         {
-          "resource": "repo://docs/UC-plan/UC02.md#L144-L181",
-          "version": "repo-lines-v1:sha256:6803505aa8cbd0a88412595bbc4fe18bedaa5004868d9ce6678ac63d2ae20b9e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5ZDI4NjA2NDJjNzM2MTYzYTU4YmI5MDY3NmE2MzdmNmZmNzRhNTRjZmY3ZWNhYTcwOTkyZjczMWQ2OTAzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzYjM2OGI2Y2Q3YmMyMTU1ZDRhZmIzNzg0MzM1ZDg3OWM5ZGEyOTNiZDQ5NzBkY2IzMDQzMzg1ZjZjMDJkODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+          "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
+          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
         },
         {
-          "resource": "repo://packages/agent/src/graph.ts#L152-L153",
-          "version": "repo-lines-v1:sha256:e8093df711772f9acddd38f6e9088e9e683f9c8f8d91ec943a8fbae759b59920:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmI0YzQyNTFlZTBjOWM4MmIyYTc3YTYzZWJjOTRkN2QwNjhhMTE0NWY1MzNlNmE0ODIyM2JiYWFkNWVkNjcyNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU0MDI3ZmQ3ZTc5NGNmNjYyYmQzNWRiNjg2ZjYyMzdlMzZjZGMzMzc0N2RhNGE0MjFiMmJlNzExOTY5M2E1MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGExN2NlZWY0Mzg3ODYxZTdkZGIzN2FhMjkyOWExNDZjNTJhMTdkZDVhMTI0ZmE2ODdjNjA2MWRmZmRkNmQzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDIwZTllMzUxYTdhNDI5MTI4N2U1MmQ1ODBhNmI4NjlhNzJkMDIyZjBmMDQwMjNjMTVlODYxNjI2MGQ2ZWY0NSJ9"
-        },
-        {
-          "resource": "repo://packages/agent/src/graph.ts#L34-L38",
-          "version": "repo-lines-v1:sha256:dc86c92418143bb9f4938f29e6ef681f2abf5a3783ad2ea76b2772b9bebd392c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2M1MmY2MGU0N2QyZWQ3YTQwMjU0MWNkNDBiOTk0NDRjYjk5MTVkODI2NzdhODZiNGU5NGVhM2NlZjFkNTAxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDY2NTdhNGFmMTc0YWJjMTU2YmY4ZWNmYjEzYzIyYWE0MzFjNTNiMjUwOTI2M2QyZDE1MGIyNmNiYzQzN2Q3MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2YyNzA2NDI5Yjc4OWI5NGIxZTY3NTJiMGUwMTIzNmM0MDdhNGI2ODBkNWYyYjg3ZjIyNmRiNTFiYzA1Y2FlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjc1YTM0Nzk4MGE5MmViMWMzMzMyMDYwMWU2ZTJlMjJhNWI5YmQ3MjA3NjU1ZGEyYTUxZjQ0MzBhNGJmMjgxNyJ9"
-        },
-        {
-          "resource": "repo://packages/agent/src/graph.ts#L72-L75",
-          "version": "repo-lines-v1:sha256:d63e379927e03c4b6145ec465a2e9fccece4bcec3542b995e90bc137af2aa4f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzJmOTRkM2IxN2U4YTRkMTExZjMxYzVlNDUzMDI3OGNlMTkwZjUzNTkwY2UxMTcxNDMyYjI2MWRhYjY2YTM4YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjFmNjU0MGVjZmZjYTQ0ZGU3YjI4MTJkM2VlMmE3YzVjMGNlZWVhYzdlMjdkZjM0N2MzOWE3OWYwOWJiMzlkNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTIwNDBlMDk1YTk0ZTJhZGE3NGU0MjFmMzcxODc1MWE5MWE4MTBiZmQ2NmY0OGY0ZTkzOWM3Yjc0ODBlYjY3MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzI3YTAxMTVjNGI4MDEwZDQwMzY2ZmY4ZTdiMWE1NDUwMjQyYjYzNTA0NWU5MWM5OTljZDE1ZDlhNTY3MTA3YyJ9"
-        },
-        {
-          "resource": "repo://packages/agent/src/state.ts#L37-L41",
-          "version": "repo-lines-v1:sha256:1ed1c1bae57161a05cb788c5bf278d23833ed2b1a6789f0a00828dff67254aa3:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWYwZTMxMzEwNWVmMTIzNjk5ZTNlM2U0MjYwZDNhZDBhODM0N2Q3ZmEwNzJhMzNjN2Q2MDVlODdjOWY4NmMyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTBiNzk3MzA3NTVjOGQ3MmM5MGFmOTk0MGE4Y2UyYWY4ZjYzMDA4ZTBjM2U4OTJjYWMzZjU5NjVkOGM4NTIyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDJjMGU4MGM2ZjMwZGU0MjNhZDQ3NzA1MjgyZGVhM2VlODljOWYzNzBmYmEzZmU4MDg4ZmY0OGM3MzNmN2U2MiJ9"
+          "resource": "repo://packages/agent/src/validators/citationValidator.ts",
+          "version": "repo-file-v1:sha256:4431d2b4668e3ad6a6b3b7b4aa6029b6377a11cc3c7271fe0f99c7043a0a573b"
         }
       ]
     },
@@ -441,10 +441,92 @@
           "version": "repo-lines-v1:sha256:9c136d15a915ae8fd1a3194365a60ba610524989b91452c902002dc3032d2396:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwNzlkZTk2YmY5MDYzMzZjNWMyYTg3MDA4MWNmZTVkNzYwMzdjZDVlN2UxM2MzMjhiNTljYzA5OGIzNmM3ZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlZTJmNWRmNmQxNjNlMzZkNGFlYTQwNzIwMzliODVlYjQyOGQwNDUxZjI4Yzk3Nzg5NDllZDBlZjg3YWRiNzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0NTFmM2Q2YTY0YTZkMTRjNThiYzBkODk3ZWRmNGQ2NDY2ZTU0NzJiN2VkMThmMDUzNDNjZTIxOGRmODIzN2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2MmU0MzBjNDMzODBkNDFjY2NhZWI3NzE3ZTM3MmZmNDUxZjhkN2I2ZWNhYTQzNmI1NzJiNDVjZTYzNWU4ZDUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b6e40137e41c48858d09756bd0806f53",
+      "statement": "createRetrieveSemantic defaults to topK 8 and dense threshold 0.6, passes through with no search for basic queries, fails closed on missing transport and empty retrieval, bypasses the gate on user formulas, and short-circuits ungrounded terms to cannot_answer with closest metrics and zero SQL.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/semantic/retrieveSemantic.ts",
+          "version": "repo-file-v1:sha256:ff5d6dac59385f8d8144e475e3c6680cbc6740c92fa0663665ad9d8d2a91ad45"
+        }
+      ]
+    },
+    {
+      "id": "claim_01c0f2183c9b41a0ab50c9e3fbaee7ee",
+      "statement": "Metric grounding requires a metric or column chunk trusted by aliasMatched or denseScore at threshold with per-term text overlap for multi-metric questions.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/semantic/retrieveSemantic.ts",
+          "version": "repo-file-v1:sha256:ff5d6dac59385f8d8144e475e3c6680cbc6740c92fa0663665ad9d8d2a91ad45"
+        }
+      ]
+    },
+    {
+      "id": "claim_accfdd012ed349a296d28521e58701f6",
+      "statement": "Checkpointed semanticChunks persist chunkId score text plus aliasMatched and denseScore trust signals used by the entry regate.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/semantic/retrieveSemantic.ts",
+          "version": "repo-file-v1:sha256:ff5d6dac59385f8d8144e475e3c6680cbc6740c92fa0663665ad9d8d2a91ad45"
+        },
+        {
+          "resource": "repo://packages/agent/src/state.ts",
+          "version": "repo-file-v1:sha256:ba3edb1efbe8a445c1be26693e0ae47f6bfe2cd19516a00375bf759c1a00659b"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
+          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b5b3774eaad48b9bf5ce4f51281ca31",
+      "statement": "Definition lookup searches and persists chunks in retrieve but synthesizes in the text-to-SQL entry with sql null and zero executor calls.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/semantic/retrieveSemantic.ts",
+          "version": "repo-file-v1:sha256:ff5d6dac59385f8d8144e475e3c6680cbc6740c92fa0663665ad9d8d2a91ad45"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
+          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
+        }
+      ]
+    },
+    {
+      "id": "claim_d186a9bc334d4b4c85879fe075a77132",
+      "statement": "Citation validation enforces catalog membership, retrieved-this-turn grounding with column and metric interop, and metric coverage, with sorted header injection, metric-preferring derivation, and repair limited to two retries for unknown or not-retrieved ids.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/validators/citationValidator.ts",
+          "version": "repo-file-v1:sha256:4431d2b4668e3ad6a6b3b7b4aa6029b6377a11cc3c7271fe0f99c7043a0a573b"
+        }
+      ]
+    },
+    {
+      "id": "claim_d318b34ebc0d4a35b7a0b70d91d14bb5",
+      "statement": "The text-to-SQL entry derives citations from retrieved ids and fails closed to cannot_answer on persistent citation failure instead of shipping unverified SQL.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
+          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
+        }
+      ]
+    },
+    {
+      "id": "claim_35a3987a9cc94855922c4c3147188056",
+      "statement": "Retrieved event chunks feed the UC-03 claim validator as eventIds to ground causal language.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/validators/claimValidator.ts",
+          "version": "repo-file-v1:sha256:53003af1925830e8508277e75827ea04e296fd5c96266e38046d44764bd040f1"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-03T15:42:11.322Z"
+    "at": "2026-11-07T14:35:23.411Z"
   }
 }

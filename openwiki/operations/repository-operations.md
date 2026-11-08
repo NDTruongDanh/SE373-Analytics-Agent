@@ -8,10 +8,14 @@ tags: [operations, repository, openwiki-automation, configuration, ci]
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
+  - id: openwiki-source-1307a98427393d045f958ba3
+    resource: repo://.github/CODEOWNERS
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
   - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
     resource: repo://.github/workflows/openwiki-update.yml
+  - id: openwiki-source-b2c87895529e27619164cb6f
+    resource: repo://.github/workflows/pr-review.yml
   - id: openwiki-source-ea70eb6c045047448e446296
     resource: repo://.gitignore
   - id: openwiki-source-e119253b3c3737247dc63f2a
@@ -56,8 +60,12 @@ sources:
     resource: repo://scripts/generate-interface.mjs
   - id: openwiki-source-a11884925ded039ec27120f5
     resource: repo://scripts/openwiki-fetch-patch.mjs
+  - id: openwiki-source-c34cd6c7e80ed77b473e30fa
+    resource: repo://scripts/pr-review.mjs
   - id: openwiki-source-e7483dfec98b06f6039f2f12
     resource: repo://scripts/skills-check.ts
+  - id: openwiki-source-8f237913979f09c8e64c25ba
+    resource: repo://scripts/trace-show.ts
   - id: openwiki-source-4fd3e19fe0c023887ba08260
     resource: repo://semantic/data_dictionary.md
   - id: openwiki-source-df1e4d0dc0a35c64fd0e652b
@@ -66,10 +74,10 @@ sources:
     resource: repo://tsconfig.json
   - id: openwiki-source-b6f224d26b4ec604e90101e3
     resource: repo://vitest.workspace.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-03T15:42:11.322Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-03T15:42:11.322Z
+    at: 2026-11-07T14:35:23.411Z
 ---
 
 # Repository operations
@@ -98,19 +106,22 @@ Start with [Quickstart](../quickstart.md) for the task-routing map.
   and then splits gates into `typecheck`, `lint`, `policy`, `test`, `docs`,
   `db`, and `secrets` jobs behind one required `gate` check
   (`.github/workflows/ci.yml:19-33`, `.github/workflows/ci.yml:177-195`).
-- `pnpm-workspace.yaml:11-13` defines the workspace globs `apps/*` and
+- `pnpm-workspace.yaml:16-18` defines the workspace globs `apps/*` and
   `packages/*`; it is not a second package definition. Build approvals live in
-  `allowBuilds` for `better-sqlite3`, `esbuild`, and `@launchql/protobufjs`
-  (`pnpm-workspace.yaml:1-9`). Shared dependency versions live in the `catalog:`
-  section so workspace packages reference them with `catalog:` instead of
-  repeating ranges (`pnpm-workspace.yaml:15-29`).
+  `allowBuilds`: `true` for `better-sqlite3`, `esbuild`, and
+  `@launchql/protobufjs`, and explicit `false` for `@openuidev/lang-core` so its
+  install-time telemetry never runs (`pnpm-workspace.yaml:1-14`). Shared
+  dependency versions live in the `catalog:` section so workspace packages
+  reference them with `catalog:` instead of repeating ranges, plus a
+  `minimumReleaseAgeExclude` pin for `@openuidev/react-ui`
+  (`pnpm-workspace.yaml:23-48`).
 
 ## 2. Build and runtime entrypoints
 
 ### 2.1 Harness operator scripts
 
 The canonical operator loop is defined in `README.md:13-27` and implemented in
-`package.json:14-21`:
+`package.json:14-22`:
 
 | Command | What it does |
 |---|---|
@@ -120,9 +131,10 @@ The canonical operator loop is defined in `README.md:13-27` and implemented in
 | `pnpm data:load --scale=small` | CI-speed seed with the same foreign-key graph and seed scenarios, smaller volumes (`packages/data/src/load.ts:21-27`, `.github/workflows/ci.yml:137-138`) |
 | `pnpm data:verify` | Pin the loaded volume to `data/seed_manifest.json`; with `--scale=small` pin to `data/seed_manifest.small.json` (`packages/data/src/verify.ts:1-7`, `packages/data/src/load.ts:25-27`) |
 | `pnpm demo:tracer` | End-to-end proof: gateway plus host, seven PII-clean trace events (`package.json:16`, `scripts/demo-tracer.ts:1-15`) |
+| `pnpm trace:show <runId>` | Offline G4 trace viewer over redacted `traces/<runId>.jsonl` plus `logs/mcp_audit.jsonl` with no DB or network I/O (`package.json:17`, `scripts/trace-show.ts:1-5`) |
 | `pnpm eval --uc uc09` or `--all` | Live harness evaluation; needs the database plus gateway environment (`README.md:25`) |
-| `pnpm skills:check` | Declarative-skills invariant: no runnable scripts, no credentials (`package.json:21`, `scripts/skills-check.ts:1-7`) |
-| `pnpm external-client` | External MCP client probe over Streamable HTTP (`package.json:17`) |
+| `pnpm skills:check` | Declarative-skills invariant: no runnable scripts, no credentials (`package.json:22`, `scripts/skills-check.ts:1-7`) |
+| `pnpm external-client` | External MCP client probe over Streamable HTTP (`package.json:18`) |
 
 The loader owns writes through owner transactions and `COPY`; the verifier
 connects as owner and runs `SELECT`/`COUNT` only with zero DDL. Schema DDL lives
@@ -205,7 +217,7 @@ workspace, skills, and secrets checks behind one `gate` status check
   `@shared/data`. The rule is intentionally enumerated deny-by-default so a new
   workspace package cannot slip through silently; adding a workspace package
   means extending the web `paths` list and the shared catalog
-  (`eslint.config.mjs:61-67`, `pnpm-workspace.yaml:15-29`).
+  (`eslint.config.mjs:61-67`, `pnpm-workspace.yaml:23-45`).
 - `scripts/check-workspace.mjs:34-71` enforces the pnpm linking contract: every
   intra-`@shared` dependency must be `workspace:*`, every `packages/*` library
   with `src/index.ts` must expose `exports["."].default` as `./dist/index.js`,
@@ -362,20 +374,53 @@ Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows
   merges immediately with `gh pr merge --merge --admin --delete-branch`;
   `--admin` is needed because the token identity is a ruleset bypass actor and
   `gh pr merge --auto` would wait on the one code-owner review forever
-  (`.github/workflows/openwiki-update.yml:116-128`). Use `--merge` because
-  the repository only allows merge commits and rebase merges; squash is
-  disabled, so `--squash` fails
-  (`.github/workflows/openwiki-update.yml:116-128`). The merge step validates
+  (`.github/workflows/openwiki-update.yml:116-128`). The workflow uses
+  `--merge`; branch protection itself lists `merge`, `squash`, and `rebase` as
+  allowed merge methods (`ruleset-main.json:31-33`,
+  `.github/workflows/openwiki-update.yml:116-128`). The merge step validates
   the PR number with `[[ "$PR_NUMBER" =~ ^[0-9]+$ ]]` before merging
   (`.github/workflows/openwiki-update.yml:116-128`). On failure it disables
   auto-merge with `gh pr merge --disable-auto`, annotates the PR URL with a
   `::notice`, and propagates the failure with `exit 1`
   (`.github/workflows/openwiki-update.yml:133-148`).
 - The default branch is protected and requires one code-owner review plus the
-  `gate` status check; the `OPENWIKI_PR_TOKEN` identity is a ruleset bypass
+  `gate` status check, dismisses stale reviews on push, and requires
+  conversation resolution; the `OPENWIKI_PR_TOKEN` identity is a ruleset bypass
   actor so the docs-only merge can use `--admin` without affecting human code
   PRs (`ruleset-main.json:31-47`,
   `.github/workflows/openwiki-update.yml:116-128`).
+- Code ownership lives in [`.github/CODEOWNERS`](../../.github/CODEOWNERS):
+  every change needs an owner from `@NDTruongDanh` or `@HungPham-VNU`, with
+  per-path owners for `packages/contracts/`, `packages/mcp-server/`,
+  `packages/access-policy/`, `packages/agent/`, `apps/api/`, `apps/web/`,
+  `policies/`, `packages/data/`, `docker/`, `semantic/`, `skills/`, `evals/`,
+  and `data/`, plus UC-scoped validators, subgraphs, and traces
+  (`.github/CODEOWNERS:1-29`).
+- Advisory PR review is separate from the required `gate`. Workflow file:
+  [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml).
+  It runs on `pull_request` into `main` for `opened`, `synchronize`,
+  `reopened`, and `ready_for_review` (skipping drafts), with `contents: read`
+  plus `pull-requests: write` and per-PR concurrency that cancels superseded
+  runs (`.github/workflows/pr-review.yml:20-37`). The review job reuses the
+  shared JS setup action, calls OpenCode Go with the same
+  `OPENCODE_GO_API_KEY` secret as OpenWiki (empty on fork PRs), and runs
+  [`scripts/pr-review.mjs`](../../scripts/pr-review.mjs) with the Responses
+  API at `POST {base}/responses`, model `muse-spark-1.3-contributor`, and
+  `reasoning.effort: xhigh` (`.github/workflows/pr-review.yml:44-56`,
+  `scripts/pr-review.mjs:30-33`, `scripts/pr-review.mjs:233-249`).
+  [`scripts/pr-review.mjs`](../../scripts/pr-review.mjs) diffs `base...HEAD`
+  against `docs/architecture.md` as the sole source of truth, excludes
+  generated or vendor paths (`pnpm-lock.yaml`, `openwiki/`, `/dist/`,
+  `/coverage/`, `.log`), truncates oversized diffs, and posts or updates one
+  living `<!-- opencode-pr-review -->` comment stamped with the reviewed commit
+  so the visible review always matches the newest push
+  (`scripts/pr-review.mjs:35-43`, `scripts/pr-review.mjs:126-155`,
+  `scripts/pr-review.mjs:273-316`, `scripts/pr-review.mjs:512-526`,
+  `scripts/pr-review.mjs:548-601`). Missing keys, fork PRs, empty diffs, and
+  API failures post a skip or error notice and exit zero, so the advisory
+  review never blocks `gate`
+  (`scripts/pr-review.mjs:16-17`, `scripts/pr-review.mjs:431-457`,
+  `scripts/pr-review.mjs:499-510`).
 
 ## 7. Configuration and security consequences
 
@@ -411,7 +456,7 @@ Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows
   `apps/*` or `packages/*` path if outside the current globs, reference shared
   dependencies through the pnpm `catalog:` instead of repeating ranges, and
   extend the ESLint `no-restricted-imports` guards so the new package cannot
-  silently bypass DB and contract boundaries (`pnpm-workspace.yaml:11-29`,
+  silently bypass DB and contract boundaries (`pnpm-workspace.yaml:16-45`,
   `eslint.config.mjs:61-67`, `scripts/check-workspace.mjs:34-71`).
 
 ## 8. Expected repository and submission layout

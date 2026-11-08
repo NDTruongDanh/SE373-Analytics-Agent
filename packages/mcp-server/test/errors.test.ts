@@ -4,6 +4,7 @@
 // DB-free: sanitizeError takes plain driver-shaped objects.
 import { describe, expect, it } from "vitest";
 import { sanitizeError } from "../src/errors.js";
+import { assertNoSecretsInMessage } from "../../../evals/gateway.js";
 
 function driverError(fields: Record<string, unknown>): unknown {
   return { ...fields };
@@ -156,5 +157,31 @@ describe("sanitizeError redaction", () => {
   it("never returns an empty message", () => {
     const err = sanitizeError(driverError({ code: "XX000", message: "" }));
     expect(err.message.length).toBeGreaterThan(0);
+  });
+});
+
+describe("sanitizeError error-leak legs (UC-09 D-05, issue #39)", () => {
+  it("maps 28P01 wrong-password to INTERNAL_ERROR without quoting the user", () => {
+    const err = sanitizeError(
+      driverError({
+        code: "28P01",
+        message: 'password authentication failed for user "agent_ro"',
+      }),
+    );
+    expect(err.code).toBe("INTERNAL_ERROR");
+    expect(err.message).not.toContain('user "agent_ro"');
+    expect(assertNoSecretsInMessage(err.message).pass).toBe(true);
+  });
+
+  it("maps ECONNREFUSED to INTERNAL_ERROR without leaking the IPv4", () => {
+    const err = sanitizeError(
+      driverError({
+        code: "ECONNREFUSED",
+        message: "connect ECONNREFUSED 127.0.0.1:5433",
+      }),
+    );
+    expect(err.code).toBe("INTERNAL_ERROR");
+    expect(err.message).not.toContain("127.0.0.1");
+    expect(assertNoSecretsInMessage(err.message).pass).toBe(true);
   });
 });

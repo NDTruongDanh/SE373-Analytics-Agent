@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // SearchSemanticLayer wire minimum (CONT-02, UC-02 retrieval surface).
 // Field names follow the camelCase metadata contract (chunkId, docType,

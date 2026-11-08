@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // Tracer slice of the db-tool contract surface: list_tables and
 // describe_table I/O schemas (UC-09 A.6/A.7, PRD 4.1 tool table).
@@ -75,12 +75,25 @@ export const RunQueryInputSchema = z.object({
 
 export type RunQueryInput = z.infer<typeof RunQueryInputSchema>;
 
+/**
+ * One server-minted row-scope record: scoped table plus scoped column.
+ * Column names only, never the scoped value (single authority for this
+ * shape; @shared/access-policy re-exports it — see policy.ts).
+ */
+export const RowScopeAppliedSchema = z.strictObject({
+  table: z.string().min(1),
+  column: z.string().min(1),
+});
+
+export type RowScopeApplied = z.infer<typeof RowScopeAppliedSchema>;
+
 export const RunQueryOutputSchema = z.object({
   columns: z.array(z.string()),
   rows: z.array(z.record(z.string(), z.unknown())),
   rowCount: z.number().int().nonnegative(),
   truncated: z.boolean(),
   maskedColumns: z.array(z.string()).default([]),
+  rowScopeApplied: z.array(RowScopeAppliedSchema).default([]),
   durationMs: z.number().nonnegative(),
 });
 

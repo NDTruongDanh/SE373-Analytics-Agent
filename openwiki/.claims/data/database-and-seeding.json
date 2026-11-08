@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:88e311a0c1299310b679577bf657b892dacbd460c9d3e30247c57f2be56be4ab",
+  "pageVersion": "sha256:9d8400514a43251f90be88459cd7ada030f0094fa3fe93d4e653c03acaae7c17",
   "claims": [
     {
       "id": "claim_7900d07fa59e42b2827a0c0d856025b0",
@@ -264,7 +264,7 @@
         },
         {
           "resource": "repo://packages/data/src/manifest.ts",
-          "version": "repo-file-v1:sha256:67296586ecaebfb46fae1d535ca90df84018ea7f5c4f9692b52537f28e1184fb"
+          "version": "repo-file-v1:sha256:e118647147be0be23ad461a0b732b7f4a338167a22f8f5c91c918e0ba1655ec6"
         }
       ]
     },
@@ -274,7 +274,7 @@
       "evidence": [
         {
           "resource": "repo://packages/data/src/seeds.ts",
-          "version": "repo-file-v1:sha256:9c5f86b0ce79ebeb14b51d918acbb6a75f1b9b8786f55613f2e320a3509a6897"
+          "version": "repo-file-v1:sha256:326aa7c0cc10a764567b97ad890e1e4b980cdbcc17e5afe0b77908737637240a"
         }
       ]
     },
@@ -290,15 +290,23 @@
     },
     {
       "id": "claim_0d098c12e51c4ae390396ad4ce963db6",
-      "statement": "Seed secrecy is enforced by a build-time scan that fails when any committed scenario id, injection payload, or manifest path pointer appears in agent, app, skills, evals, docs, policies, semantic, or script trees, complemented by the .openwikiignore read boundary",
+      "statement": "Seed secrecy is enforced by seedHiding.test.ts in three checks: no committed scenario id or injection payload in agent, apps, skills, evals, docs, policies, semantic, scripts plus root README/AGENTS (payload matching exempts only docs/prd.md and docs/architecture.md, id matching has no exemption); no seed or gold path pointer in code roots only so docs may reference the scenario file; and .openwikiignore still lists all four seed path fragments",
       "evidence": [
         {
           "resource": "repo://.openwikiignore",
-          "version": "repo-file-v1:sha256:8c967f469dc4887c8a056723825d40d0178b89b4bd566f09fe632cdc25d0eadc"
+          "version": "repo-file-v1:sha256:c942b4d24c42f8e20df94ef5e480b81bb993d8c3e9b9a411a1ff496a29e4fe15"
         },
         {
-          "resource": "repo://packages/data/test/seedHiding.test.ts",
-          "version": "repo-file-v1:sha256:9f90536bd87676d1f14727dc86b54e579b5a17d61566de5cf3a65604a79a7bae"
+          "resource": "repo://packages/data/test/seedHiding.test.ts#L11-L31",
+          "version": "repo-lines-v1:sha256:3c6698a02ecf427fdda71167c11ee02fa75d30943bd9aaa42b38cffb59b4a045:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNzBmNGVkZjlmMTBmZjg5MjMzNjFlNTkwNmRkZWJiOGYxZGQwMDJmOWI1NGU0NWY5YTMwOWFlZjAyZjE3MzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhMzUwMmY3OWUyYzYxOTY1NWY0ZmZlMWU3NGE1ZjZkM2M0ZWZjZWE5YTU5MmM4YzVjMjhhNzI1N2RlZjY2MTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmZWY3N2IxNDRlZmMzNGVhOWRjZjg5OTYyN2JiNjFmM2Q1OWFkODYzMWEzMGEyYmRhMmEzM2JkYzA5YWE4YmEifQ"
+        },
+        {
+          "resource": "repo://packages/data/test/seedHiding.test.ts#L59-L85",
+          "version": "repo-lines-v1:sha256:168d51bc5458e0c8d02edaba28197c6f9262bfc2a04ec7f69c8151e9cbdd58fc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZTBkNDAzZDFlMDJlNWJhMzUzYTRlOTBjNDE4M2VjZjM5ODg3ZWIxMGEyZmI5MGMzZjEwNTU1ZGM4MmJmMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3MjdkYWQ3NzE2MGVmNDg1ODExNTdlNDIyODc0MGM4YzhmNWUxODlhMTAzN2EzZjA2NGFhYTJjZDVhZDFjOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MDRiMzc2ZGE1YTJlNTA2NjU3NmNmNzc1YTQyMzE2OTdmZjY0ZmJhNzU2ZTUxMDdlMGE4MjA3MmYxOTA4YWIifQ"
+        },
+        {
+          "resource": "repo://packages/data/test/seedHiding.test.ts#L87-L160",
+          "version": "repo-lines-v1:sha256:e34ce98371bcd1e1d50c211e2dcd9c9a88100d94ce49835a1cc530fb7ac0af70:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYzVmZGRhNGU5NGViNThkY2IwZjEyYjk3YjQxZGQ1YTM5YzE4MmMwYWNmOTJlZmE3ZjVkMjhmODA3MTY5NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3OTUxYWNlNmU3NDgwNmViY2MzMzU1ODEyMTEzYTFjOTJjNjlmOWQzODZjNWQyZmJjNDVjNmQ0ZjczMTAyMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -319,6 +327,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-01T07:02:11.362Z"
+    "at": "2026-11-07T14:35:23.411Z"
   }
 }

@@ -38,6 +38,20 @@ function mean(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+/** Summary block for a graded case list: pass counts plus mean latency/tokens. */
+export function summarizeCases(
+  cases: EvalCaseResult[],
+): EvalResultsFile["summary"] {
+  const passed = cases.filter((c) => c.exPass).length;
+  return {
+    total: cases.length,
+    passed,
+    exRate: cases.length === 0 ? 0 : passed / cases.length,
+    avgMs: mean(cases.map((c) => c.ms)),
+    avgTokens: mean(cases.map((c) => c.tokens)),
+  };
+}
+
 export function compareRuns(
   before: EvalResultsFile,
   after: EvalResultsFile,

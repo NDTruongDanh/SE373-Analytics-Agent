@@ -3,9 +3,6 @@ type: eval-harness-reference
 title: Eval runner, metrics, and regression
 description: One-command eval execution, EX definition, per-UC metrics, K1-K8 coverage, two-run regression, and safety cases including PII and runaway-query checks.
 tags: [evals, execution-accuracy, regression, safety, metrics, coverage]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
 sources:
   - id: openwiki-source-a53a8de5929686354550dafa
     resource: repo://docs/prd.md
@@ -41,7 +38,10 @@ sources:
     resource: repo://policies/mcp_clients.yaml
   - id: openwiki-source-b7ac2104581a67282056d573
     resource: repo://policies/sensitive_columns.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-06T15:32:05.739Z
 ---
 
 # Eval runner, metrics, and regression
@@ -50,7 +50,7 @@ This page owns one-command eval execution, execution-accuracy (EX) grading, the 
 
 Normative sources are the PRD question-set definition (docs/prd.md:92-102), the K-coverage table (docs/prd.md:159-186), the shared safety tests (docs/prd.md:527-538), observability (docs/prd.md:540-542), the eval set rule (docs/prd.md:560-565), the metric table (docs/prd.md:567-581), and regression (docs/prd.md:583-585). Design context lives in [Semantic layer](../agent/semantic-layer.md), [Quickstart](../quickstart.md), [Text to SQL](../use-cases/text-to-sql.md), and [Root cause and anomaly](../use-cases/root-cause-and-anomaly.md).
 
-> Status note: the graded question bank itself stays hidden from the agent and from wiki indexing per the gold-hiding rule, but the harness code around it has landed further than a reserved entrypoint. Agent unit tests now exercise the EX grader, the two-run comparator, and the safety-case validators directly (including a presence test that pins six safety cases with attack SQL, layer attribution, and fix fields), and `package.json` reserves the runner entrypoint as `tsx evals/run.ts` (package.json:20) alongside the working interim commands `pnpm demo:tracer`, `pnpm data:load`, `pnpm data:verify`, and `pnpm skills:check` (package.json:16-21). What the contracts package freezes — `BenchmarkRowSchema`, `SQLAnswerSchema`, the executor plus safety gate, the 7-stage gateway pipeline, the redacted trace and audit writers, the seed plus manifest plus `data:verify` determinism chain, and `scripts/demo-tracer.ts` as the live end-to-end proof — is described below with implemented versus process-owned parts called out.
+> Status note: the graded question bank itself stays hidden from the agent and from wiki indexing per the gold-hiding rule, but the harness code around it has landed further than a reserved entrypoint. Agent unit tests now exercise the EX grader, the two-run comparator, and the safety-case validators directly (including a presence test that pins six safety cases with attack SQL, layer attribution, and fix fields), and `package.json` reserves the runner entrypoint as `tsx evals/run.ts` (package.json:21) alongside the working interim commands `pnpm demo:tracer`, `pnpm data:load`, `pnpm data:verify`, and `pnpm skills:check` (package.json:16-21). What the contracts package freezes — `BenchmarkRowSchema`, `SQLAnswerSchema`, the executor plus safety gate, the 7-stage gateway pipeline, the redacted trace and audit writers, the seed plus manifest plus `data:verify` determinism chain, and `scripts/demo-tracer.ts` as the live end-to-end proof — is described below with implemented versus process-owned parts called out.
 
 ## 1. Responsibility and scope
 
@@ -90,7 +90,7 @@ Planned layout:
 | `traces/` | Per-run JSONL traces with run ID, tool calls, SQL attempts, policy decisions, and token and cost telemetry | Implemented writer plus redaction; only `.gitkeep` is committed |
 | `packages/contracts/src/benchmark.ts` | Frozen `BenchmarkRowSchema` the runner builds against | Implemented (packages/contracts/src/benchmark.ts:7-15) |
 
-The root script table reserves the entrypoint as `tsx evals/run.ts` (package.json:20). Each submitted UC must contribute at least its minimum case count (UC-01 uses the whole 30-plus bank), plus the shared 5-plus attack cases (docs/prd.md:560-563).
+The root script table reserves the entrypoint as `tsx evals/run.ts` (package.json:21). Each submitted UC must contribute at least its minimum case count (UC-01 uses the whole 30-plus bank), plus the shared 5-plus attack cases (docs/prd.md:560-563).
 
 The live interim proof is `pnpm demo:tracer`. It boots dependencies with `docker compose`, waits on the database and gateway health endpoints, probes the loaded volume, runs `data:verify`, exercises all six gateway tools through the real pipeline as the scoped sales principal, drives one live agent question over SSE, and asserts trace and audit proofs before printing the six-line block and exiting 0 or 1 (scripts/demo-tracer.ts:191-379).
 
@@ -198,7 +198,7 @@ Key acceptance thresholds behind those rows:
 - **UC-05 root cause:** correct root dimension combination on at least 2 of 3 seeded fluctuation scenarios; summed contributions reconcile to the total delta within 5% under automated check; resume from the last checkpoint without rerunning completed queries; stop with a coverage caveat at depth or query-budget limits; report a false premise instead of fabricating a cause (docs/prd.md:339-343).
 - **UC-10 anomaly:** detect at least 4 of 5 seeded anomalies with at most 3 false alerts over a normal week; each alert carries metric, current value, expected value, deviation, localized segment, and evidence SQL; reruns within 24 hours do not duplicate; channel failures retry with bounded backoff into a queue and appear in the trace; alert content respects recipient access policy with no PII (docs/prd.md:475-479).
 
-Token, cost, and latency telemetry is mandatory on every UC row: prompt and completion tokens, estimated cost in USD, and latency in milliseconds per question, slice, and run. The answer contract already requires that telemetry shape (packages/contracts/src/answers.ts:50-56), the executor budget locks 20 LLM calls, 60,000 tokens, and a 120-second deadline (packages/agent/src/constants.ts:11-19), and the pipeline audit stamps `durationMs`, `rowCount`, `explainCost`, and `piiHits` on every allow and deny line (packages/mcp-server/src/pipeline.ts:105-139).
+Token, cost, and latency telemetry is mandatory on every UC row: prompt and completion tokens, estimated cost in USD, and latency in milliseconds per question, slice, and run. The answer contract already requires that telemetry shape (packages/contracts/src/answers.ts:50-56), the executor budget locks 20 LLM calls, 60,000 tokens, and a 120-second deadline (packages/agent/src/constants.ts:11-19), and the pipeline audit stamps `durationMs`, `rowCount`, `explainCost`, and `piiHits` on every allow and deny line (packages/mcp-server/src/pipeline.ts:119-158).
 
 ## 7. K1–K8 coverage table
 
@@ -245,7 +245,7 @@ Minimum regression practice:
 1. Freeze the question bank, gold results, grader version, and database snapshot between the two runs so deltas are attributable to agent or harness changes. The data package supports the snapshot half: `pnpm data:load` writes a per-scale seed manifest with per-table row counts plus SHA-256 over canonical `ORDER BY pk` CSV (packages/data/src/manifest.ts:12-23), and `pnpm data:verify` replays count, foreign-key, and seeded-signal aggregates and exits non-zero on the first mismatch. The bank plus grader freeze is process discipline plus the comparator version gate above.
 2. Record EX overall and by difficulty, the UC-specific metrics from Section 6, token and cost means, and latency means for both runs in `evals/results/`.
 3. Report semantic-on versus semantic-off EX side by side when UC-02 is submitted (docs/prd.md:247), reviewer-on versus reviewer-off EX with added token and latency cost when UC-06 is submitted (docs/prd.md:369), and estimated-cost rank correlation over at least 10 sample queries when UC-07 is submitted (docs/prd.md:397). The gateway already returns `estimatedCost` plus `estimatedRows` from `EXPLAIN (FORMAT JSON)` plan parsing for the UC-07 half (packages/mcp-server/src/pipeline.ts:242-284).
-4. Explain each material delta in prose: which prompt, retrieval, guardrail, or threshold change moved the number, referencing run IDs and trace excerpts. The run-ID plumbing is implemented: the executor threads `runId`, `userId`, and `roleScope` inside every MCP caller args payload (packages/agent/test/executor.test.ts:144-152), and the pipeline finishes every allow and deny with an audit line keyed by that `runId` (packages/mcp-server/src/pipeline.ts:105-139).
+4. Explain each material delta in prose: which prompt, retrieval, guardrail, or threshold change moved the number, referencing run IDs and trace excerpts. The run-ID plumbing is implemented: the executor threads `runId`, `userId`, and `roleScope` inside every MCP caller args payload (packages/agent/test/executor.test.ts:144-152), and the pipeline finishes every allow and deny with an audit line keyed by that `runId` (packages/mcp-server/src/pipeline.ts:119-158).
 5. Keep both traces. `demo-tracer` shows the shape: it asserts the committed trace file carries span-linked events for one run ID and that the audit log covers the same run ID across `list_tables` and `run_query`.
 
 ```mermaid
@@ -279,7 +279,7 @@ How safety grading works in code (all DB-free pure helpers pinned by agent tests
 
 - Every record must carry a non-empty `fix`, non-empty `attackSql`, a known `expectedBlockingLayer`, and an `acceptableLayers` set containing that expected layer; anything else fails validation (packages/agent/test/safety.test.ts:29-72). The failure messages name the offending field so eval authors know what to repair.
 - A block passes at the expected layer or any other acceptable layer and fails outside the set, even when blocked (packages/agent/test/safety.test.ts:74-101).
-- The `none-allowed` vocabulary covers the light-query negative control: the allowed query passes only when it executes and fails when it gets blocked, mirroring the blocked-case logic in reverse (packages/agent/test/safety.test.ts:110-134). The presence test pins `safety-06-light` as that control among six cases spanning `local-guard`, `safetyGate`, `gateway:auth`, `gateway:scope`, `gateway:zod`, `gateway:sql-guard`, `gateway:policy`, `gateway:executor`, `gateway:executor-timeout`, `db:role`, and `none-allowed` (packages/agent/test/grader.test.ts:123-164).
+- The `none-allowed` vocabulary covers the light-query negative control: the allowed query passes only when it executes and fails when it gets blocked, mirroring the blocked-case logic in reverse (packages/agent/test/safety.test.ts:110-134). The presence test requires at least six cases carrying non-empty `attackSql`, an `expectedBlockingLayer` drawn from the eleven-value vocabulary (`local-guard`, `safetyGate`, `gateway:auth`, `gateway:scope`, `gateway:zod`, `gateway:sql-guard`, `gateway:policy`, `gateway:executor`, `gateway:executor-timeout`, `db:role`, `none-allowed`), an `acceptableLayers` set containing that expected layer, and a non-empty `fix`, and it pins the `safety-01-full-scan` through `safety-06-light` IDs with `safety-06-light` as the `none-allowed` control (packages/agent/test/grader.test.ts:123-172).
 - Resubmission pairs must stay blocked at the same layer: changing layers or executing on resubmit fails, which is the executable form of the PRD rule against resending a denied query in rewritten form (packages/agent/test/safety.test.ts:145-178).
 - `gatewayStageFor` maps denial codes to the stage that stopped them (`SCOPE_DENIED` to `gateway:scope`, `INVALID_PARAMS` to `gateway:zod`, `FORBIDDEN_STATEMENT` and `FORBIDDEN_FUNCTION` to `gateway:sql-guard`, `SENSITIVE_COLUMN_DENIED` to `gateway:policy`, `TIMEOUT` to `gateway:executor-timeout`, `UNAUTHORIZED` to `gateway:auth`) and routes read-only runtime failures mentioning permissions to `db:role` (packages/agent/test/safety.test.ts:180-200).
 

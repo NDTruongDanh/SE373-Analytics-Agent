@@ -16,7 +16,7 @@ import {
   END,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
-import * as z from "zod";
+import { z } from "zod";
 import { createCheckpointer } from "../src/ports/index.js";
 import { CHECKPOINT_SCHEMA } from "../src/constants.js";
 import { makeThreadId, resumeDecision } from "../src/hitl.js";

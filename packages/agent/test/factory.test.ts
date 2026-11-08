@@ -13,6 +13,7 @@ import {
 import {
   buildSynthesisPrompt,
   createChatModel,
+  ProfileTracerModel,
   SqlProposalSchema as FactorySchema,
   synthesize,
   wrapUntrusted,
@@ -124,7 +125,12 @@ describe("chat-model factory", () => {
     const answer = await synthesize([{ status: "ok", n: 12 }], "How many?", {
       model,
     });
-    expect(answer).toBe("3 status groups, 12 orders");
+    expect(answer.text).toBe("3 status groups, 12 orders");
+    // The fake carries no provider usage: zero counts, no model, real timing.
+    expect(answer.inputTokens).toBe(0);
+    expect(answer.outputTokens).toBe(0);
+    expect(answer.model).toBeUndefined();
+    expect(typeof answer.durationMs).toBe("number");
     expect(bindSpy).not.toHaveBeenCalled();
   });
 
@@ -138,6 +144,25 @@ describe("chat-model factory", () => {
     expect(out).toEqual({ sql: "SELECT 1", tablesUsed: ["t"] });
   });
 
+  it("never forwards callbacks into the synthesis model invoke", async () => {
+    const model = createChatModel("synthesis", {
+      fake: { responses: ["3 status groups, 12 orders"] },
+    });
+    const invokeSpy = vi.spyOn(model, "invoke");
+    // Callers may still pass callbacks (e.g. a graph run tracer), but rows
+    // serialize into the prompt string, so any traced invoke would ship row
+    // values to LangSmith as one opaque prompt past the row-array drop.
+    // Synthesis stays untraced by construction: the invoke takes no config.
+    const answer = await synthesize([{ status: "ok", n: 12 }], "How many?", {
+      model,
+      callbacks: [],
+    });
+    expect(answer.text).toBe("3 status groups, 12 orders");
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
+    expect(invokeSpy.mock.calls[0]).toHaveLength(1);
+    expect(typeof invokeSpy.mock.calls[0]?.[0]).toBe("string");
+  });
+
   it("keeps the legacy zero-arg surface on the canned proposal (no key)", async () => {
     const model = createChatModel();
     const proposal = await model.proposeSql(
@@ -145,5 +170,18 @@ describe("chat-model factory", () => {
     );
     expect(proposal).toEqual(TRACER_SQL_PROPOSAL);
     expect(() => ExecutorSchema.parse(proposal)).not.toThrow();
+  });
+
+  it("asks the tracer model for a JSON SQL proposal instead of ordinary chat", async () => {
+    const model = createChatModel("sql", { fake: { responses: [JSON.stringify(TRACER_SQL_PROPOSAL)] } });
+    const invoke = vi.spyOn(model, "invoke");
+    const answer = await new ProfileTracerModel(model).proposeSql("How many orders?");
+    expect(answer).toEqual(TRACER_SQL_PROPOSAL);
+    expect(JSON.stringify(invoke.mock.calls)).toContain("Return only a JSON object");
+  });
+
+  it("withholds malformed model output from the tracer error", async () => {
+    const model = createChatModel("sql", { fake: { responses: ["Sensitive model output, not JSON"] } });
+    await expect(new ProfileTracerModel(model).proposeSql("q")).rejects.toThrow("đúng định dạng JSON");
   });
 });

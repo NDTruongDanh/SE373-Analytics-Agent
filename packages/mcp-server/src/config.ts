@@ -5,7 +5,7 @@
 // config means no boot (fail-closed). Tokens are resolved from process.env
 // at boot and never logged.
 import { parse as parseYaml } from "yaml";
-import * as z from "zod";
+import { z } from "zod";
 import {
   loadSensitiveColumns as loadAccessPolicySensitiveColumns,
   type SensitiveColumns,
@@ -28,6 +28,9 @@ const McpClientSchema = z.strictObject({
   tokenEnv: z.string().min(1).regex(/^[A-Z][A-Z0-9_]*$/),
   scopes: z.array(ScopeSchema).min(1),
   rowScope: RowScopeSchema.optional(),
+  // Eval-only clients (issue #39) load only when EVAL_CLIENTS_ENV is "1";
+  // otherwise they are dropped at boot, so their token cannot authenticate.
+  evalOnly: z.boolean().optional(),
 });
 
 export type McpClient = z.infer<typeof McpClientSchema>;
@@ -78,11 +81,23 @@ export function loadMcpClients(yamlText: string): McpClients {
   return McpClientsSchema.parse(parseYamlText(yamlText, "mcp_clients"));
 }
 
-// Token resolution: every tokenEnv must name a non-empty process.env entry.
-// Throws naming the variable (never its value).
-export function resolveClientTokens(clients: McpClients): ResolvedClient[] {
-  return clients.clients.map((client) => {
-    const token = process.env[client.tokenEnv];
+/** Env flag that opts eval-only clients in (set by the eval runner only). */
+export const EVAL_CLIENTS_ENV = "MCP_ENABLE_EVAL_CLIENTS";
+
+// Token resolution: every loaded tokenEnv must name a non-empty env entry.
+// Eval-only clients are skipped unless EVAL_CLIENTS_ENV is "1" — skipped
+// means not registered at all (fail-closed: their token gets 401), never
+// "registered without a token". Throws naming the variable, never its value.
+export function resolveClientTokens(
+  clients: McpClients,
+  env: NodeJS.ProcessEnv = process.env,
+): ResolvedClient[] {
+  const evalEnabled = env[EVAL_CLIENTS_ENV] === "1";
+  const loaded = clients.clients.filter(
+    (client) => client.evalOnly !== true || evalEnabled,
+  );
+  return loaded.map((client) => {
+    const token = env[client.tokenEnv];
     if (!token) {
       throw new Error(
         `MCP client '${client.clientId}': environment variable ${client.tokenEnv} is not set or empty`,

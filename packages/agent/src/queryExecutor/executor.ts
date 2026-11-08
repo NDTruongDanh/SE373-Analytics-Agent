@@ -18,10 +18,12 @@ import {
   dbToolError,
   type DbToolError,
   type ErrorCode,
+  type RowScopeApplied,
   type SchemaCatalog,
 } from "@shared/contracts";
 import { sqlGuard } from "@shared/access-policy";
-import * as z from "zod";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
+import { z } from "zod";
 import {
   checkBudget,
   createBudgetState,
@@ -30,6 +32,11 @@ import {
   type BudgetState,
   type BudgetTripReason,
 } from "./budgets.js";
+import {
+  estimateCostUsd,
+  invokeWithUsage,
+  type LlmUsage,
+} from "../telemetry/usage.js";
 import {
   clampLimit,
   hasWhereFilter,
@@ -54,9 +61,9 @@ export type SqlProposal = z.infer<typeof SqlProposalSchema>;
 export interface ChatModelLike {
   withStructuredOutput(
     schema: typeof SqlProposalSchema,
-    opts?: { name?: string },
+    opts?: { name?: string; includeRaw?: boolean },
   ): {
-    invoke(input: string): Promise<SqlProposal>;
+    invoke(input: string, config?: { callbacks?: Callbacks }): Promise<SqlProposal>;
   };
 }
 
@@ -97,6 +104,12 @@ export interface ExecutorRunInput {
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
   principal: ExecutorPrincipal;
+  /**
+   * LangSmith callbacks from the enclosing graph run (same tracer object
+   * the graph.invoke site passed). Optional: absent in unit/eval drivers,
+   * which stay untraced by construction.
+   */
+  callbacks?: Callbacks;
   /**
    * Authoritative catalog override for the pre-check (e.g. large flags the
    * describe output cannot carry). When absent, the catalog is built from
@@ -390,14 +403,20 @@ export class ValidatedQueryExecutor {
         if (check.tripped) return budgetTrip(check.reason, attempt);
         const proposalStarted = Date.now();
         let proposal: SqlProposal;
+        let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+        let usageModel: string | undefined;
         const prompt =
           repairFeedback === null
             ? input.question
             : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
         try {
-          proposal = await this.model
-            .withStructuredOutput(SqlProposalSchema, { name: "sql_proposal" })
-            .invoke(prompt);
+          const out = await invokeWithUsage(this.model, SqlProposalSchema, prompt, {
+            name: "sql_proposal",
+            callbacks: input.callbacks,
+          });
+          proposal = out.parsed;
+          usage = { inputTokens: out.inputTokens, outputTokens: out.outputTokens };
+          usageModel = out.model;
         } catch (thrown) {
           const message =
             thrown instanceof Error ? thrown.message : String(thrown);
@@ -411,10 +430,36 @@ export class ValidatedQueryExecutor {
             attempts: attempt,
           };
         }
-        // Structured-output adapters do not consistently expose provider usage.
-        // Charge a conservative local estimate so maxTokens remains a real
-        // circuit breaker instead of an inert counter.
-        recordLlmCall(budget, estimateTokens(prompt, JSON.stringify(proposal)));
+        // Real provider counts feed the budget when present; fakes and
+        // usage-less adapters fall back to the conservative local estimate
+        // so maxTokens remains a real circuit breaker instead of an inert
+        // counter.
+        const realTokens = usage.inputTokens + usage.outputTokens;
+        recordLlmCall(
+          budget,
+          realTokens > 0
+            ? realTokens
+            : estimateTokens(prompt, JSON.stringify(proposal)),
+        );
+        const proposalDurationMs = Date.now() - proposalStarted;
+        const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
+          usageModel,
+          usage.inputTokens,
+          usage.outputTokens,
+        );
+        this.span({
+          node: "propose",
+          type: "llm_call",
+          attempt,
+          durationMs: proposalDurationMs,
+          payload: {
+            model: usageModel ?? "unknown",
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            estimatedCostUsd,
+            pricingKnown,
+          },
+        });
         partials.lastSql = proposal.sql;
         sql = proposal.sql;
         lastTablesUsed = proposal.tablesUsed;
@@ -422,7 +467,7 @@ export class ValidatedQueryExecutor {
           node: "propose",
           type: "node_done",
           attempt,
-          durationMs: Date.now() - proposalStarted,
+          durationMs: proposalDurationMs,
           payload: { sql, tablesUsed: lastTablesUsed },
         });
       }
@@ -531,7 +576,10 @@ export class ValidatedQueryExecutor {
         };
       }
 
-      // run_query: rows pass through untouched (D-19).
+      // run_query: rows pass through untouched (D-19). Every attempt emits
+      // its own tool_call span: ok:true on success, ok:false plus the
+      // contract code (never message/PII) on any failure, so the run_done
+      // roll-up counts attempts and failures off the same span stream.
       {
         const check = checkBudget(budget);
         if (check.tripped) return budgetTrip(check.reason, attempt);
@@ -540,6 +588,7 @@ export class ValidatedQueryExecutor {
       let columns: string[];
       let rows: Record<string, unknown>[];
       let maskedColumns: string[];
+      let rowScopeApplied: RowScopeApplied[];
       try {
         const rawRun = await this.mcp.call("run_query", {
           ...identity,
@@ -548,6 +597,13 @@ export class ValidatedQueryExecutor {
         });
         const parsedRun = RunQueryOutputSchema.safeParse(rawRun);
         if (!parsedRun.success) {
+          this.span({
+            node: "run",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - runStarted,
+            payload: { tool: "run_query", ok: false, code: "INTERNAL_ERROR" },
+          });
           return {
             status: "error",
             error: dbToolError(
@@ -561,16 +617,30 @@ export class ValidatedQueryExecutor {
         columns = parsedRun.data.columns;
         rows = parsedRun.data.rows;
         maskedColumns = parsedRun.data.maskedColumns;
+        rowScopeApplied = parsedRun.data.rowScopeApplied;
         partials.rowsFetched = rows.length;
         this.span({
           node: "run",
           type: "tool_call",
           attempt,
           durationMs: Date.now() - runStarted,
-          payload: { tool: "run_query", rowCount: parsedRun.data.rowCount },
+          payload: {
+            tool: "run_query",
+            ok: true,
+            rowCount: parsedRun.data.rowCount,
+            maskedColumns,
+            rowScopeApplied,
+          },
         });
       } catch (thrown) {
         const error = asDbToolError("run_query", thrown);
+        this.span({
+          node: "run",
+          type: "tool_call",
+          attempt,
+          durationMs: Date.now() - runStarted,
+          payload: { tool: "run_query", ok: false, code: error.code },
+        });
         const routed = this.routeMcpError(error, {
           attempt,
           sql: finalSql,

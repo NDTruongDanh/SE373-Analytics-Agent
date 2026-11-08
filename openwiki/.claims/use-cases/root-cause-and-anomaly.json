@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:78c97f0d3aa41378ecc455f91dde3d85092969c1052d25ed6582a7af8d2676d5",
+  "pageVersion": "sha256:50a68451de8625dd1a552d5eef13a63c4dac43249722a9d247b2a4f4eb8c2196",
   "claims": [
     {
       "id": "claim_c092349b60ee43fdab0b26417119585d",
@@ -35,7 +35,7 @@
       "statement": "UC-05 attribution requires summed cause contributions to reconcile with the total delta within 5%, verified automatically.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC05.md#L201-L208",
+          "resource": "repo://docs/UC-plan/UC05.md#L221-L228",
           "version": "repo-lines-v1:sha256:e7e320da5a46017c6cbbfec38811ab26f6c962d4ce1fdb75b7889b88d45404ca:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTRjNjFkMzM3ZWRkNWIxYjkwNTdlMTkwN2Y3N2RlYWRjOTU1MDZmYmY0N2FhMzliNjIzYjYxMmY3N2FkYzI1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWU3YTUxOTMzMjhiYjc3YzYzZjMxNTIyZGFmYmVkMGFlZWMzZGM5MDhiZDllZGFkM2ZjMzBmOTM2NmVhMWQyYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDcwOTI3ZTMzZjljNjY5NThlMmUzYzgzN2UwYWVlNzY0ZWQzNjkyMGI3NjA0ZWZmZjM4NTNlMGZhNjIwNjIwMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmIxNGJlZDI1MjcwYWU2NzkzODI2MDgxYTg4YWU4NjhlNjgzMTcyOWNiODBlZTAxZDJjNTQ4YjAwNjI3NzM0OSJ9"
         },
         {
@@ -49,7 +49,7 @@
       "statement": "UC-05 validates the baseline phenomenon first and pauses at plan creation with a LangGraph interrupt so users can view and edit dimensions before heavy queries run.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC05.md#L159-L182",
+          "resource": "repo://docs/UC-plan/UC05.md#L179-L202",
           "version": "repo-lines-v1:sha256:f8db381a0a5cff543b2f50f208c639d9a1c9a475706de0eb704e8b63d6c5c096:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNTY3NjE3ODBkZmRlNDg3N2JhNTI4OTRiMzczYzEyNjBiMjgwNzIyMjc1NDllOWIwOGE1MzE4ZGEwMWI2ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTRmYTRlZDljMzc3M2UxYTlhZjg0MGViMWVjYTNjYjg4NzY5NWM2ZjYxM2IwZDcxNThlNmFjNDliNjMzMzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjOWU4NTM2YmY3M2RkYmUzOWM3MjdkMDVkZWU4OTk5OWY1NmE0MzA5ZTcyNjM2OTk2ZDY2MDE1MzUwNTcxZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhOGUxODNhOWQzOTRkYmI3NmJhMjQ2ODNkYjBkOGJkM2VjOTNhMGZiNDAyYmMwOTVjZDRiZjE1MWU4OTVkYjcifQ"
         },
         {
@@ -63,7 +63,7 @@
       "statement": "UC-05 checkpoints after each step so a restart after step 2 resumes from the last checkpoint without rerunning completed queries.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC05.md#L257-L260",
+          "resource": "repo://docs/UC-plan/UC05.md#L277-L280",
           "version": "repo-lines-v1:sha256:7b647d2d67ea8fa419023758c8585a8c4ac10e2b1f61aa2f586340383e76f165:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDQxYWE4ZGVjYzQ5N2IxZTY0MDkwYmRkYzA1ZjhmNTE4MTcyMGNhOTBiYzBmZjA1ZGI1M2VlMjBkNzk2YjlhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTEyMDA3NDRjMDkzN2Q0YjliZWYyMWEwYWU4NzEwMTZhOTdlYTMxYjA4OGIzNzMyNTVjNjNmODMxN2I4MTkxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGJjM2NhYmZiYjNkMTUyMDI1YWJmNjYxZjNlNGQ1ZWVlYWU3YmM4YzIyNjNjYWE1NGJhZTFhZWFiZTExZjk5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
@@ -77,7 +77,7 @@
       "statement": "A failed UC-05 query step retries with a bound and is then marked failed while analysis continues on other branches.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC05.md#L243-L248",
+          "resource": "repo://docs/UC-plan/UC05.md#L263-L268",
           "version": "repo-lines-v1:sha256:0ef8186ef0dd2abb263f36c105e6f8aad520504d97f99e8b39c8447ebb60bb9c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmUyZjFkMWJiNDA2OGM1MTRlMjA4NDcwMmM1ZTA0Y2FmOGNkMzVjN2YxMWYzNjA5ZDE4ZTkwZTcyNGQ3NDJkMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGMzNDcwMmI1YWNkYmY2OTMyYTIxMDY2ZjJhOGM2N2Q3ZTA4ZWQ3MGE5ZmQ5OWU0ZjhjN2ZiZDIzNDNiNjVjOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTIyYTk1NTUxMWM0MGM1YTAyZGViYzhjZmI4M2RjNjJiNmJjYTBiYjFiMzhmOTc4OGI5N2JmNTAyZGYxZmI3ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmQyZTIwZTliZjRjM2FmNzYzNjkxOThmYTU0NzRiYjIwNDc2ZjhjNzZkNjg5ZjA3MWVhMThiYTEzYjIzZGJhNCJ9"
         },
         {
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://docs/UC-plan/UC05.md",
-          "version": "repo-file-v1:sha256:359ea1c53d2feec9a8a547aad378bc7f0dcf534b24d33ab79eb7384eca3b7ea2"
+          "version": "repo-file-v1:sha256:5b6cbce7cbae73e29dc4b8472326d2061f3c33e7229f02d33aeaf4f1b784740c"
         },
         {
           "resource": "repo://docs/UC-plan/UC10.md",
@@ -236,7 +236,7 @@
       "evidence": [
         {
           "resource": "repo://docs/UC-plan/UC05.md",
-          "version": "repo-file-v1:sha256:359ea1c53d2feec9a8a547aad378bc7f0dcf534b24d33ab79eb7384eca3b7ea2"
+          "version": "repo-file-v1:sha256:5b6cbce7cbae73e29dc4b8472326d2061f3c33e7229f02d33aeaf4f1b784740c"
         },
         {
           "resource": "repo://docs/prd.md",
@@ -273,8 +273,12 @@
       "statement": "Durable checkpoint and host resume path has landed: createCheckpointer builds PostgresSaver on langgraph schema from HARNESS_STATE_DATABASE_URL with fail-fast setup and agent_ro rejection, createHostPorts injects it with AppStateStore, and POST /api/runs/:runId/resume resumes via Command on the same thread.",
       "evidence": [
         {
-          "resource": "repo://apps/api/src/index.ts#L375-L398",
-          "version": "repo-lines-v1:sha256:f436aad8b1b71dbc312cbc3225f8b781bae782b29f993e9f9dcc1415917e1590:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxY2EwYjQ0MzhlZWU5ZGExOWNjNmEyM2JiNTE5OGViYTc3NmNmYmJjM2M4OTE0ZmNhNzliZmM2ZWMwNGQyOWQifQ"
+          "resource": "repo://apps/api/src/index.ts#L532-L592",
+          "version": "repo-lines-v1:sha256:78a3f5e096c058bbe731a0f8a1857425ee19f632362a92acbf5551e15cf58cb7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyODNjNjdhY2QyNmI5Mzg1MDdlNDY4Y2NlNGY3ZTkzZDZkMWVmNGQxMjQ4ZTQzNDMzZGVjNWZmMmJjMGI3ODMifQ"
+        },
+        {
+          "resource": "repo://apps/api/src/index.ts#L705-L749",
+          "version": "repo-lines-v1:sha256:bb2a2e8e689399c809df64ce0a96e38b26a309545ff8f5296af592bc439a62fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1NDhhMzNmMTIxMzY2MGQxMTRjYmI1MjFmNjE3ODFkNDI1OTY3NDZkZGE3Nzg2YTFmZTQ3YmRhMjNhNWVjNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4NzRlMTAwYTEwODQ2M2YwZGVmZWM3N2JlYjZhZjljNmI3YjJmZjkwMmNiMjFkMmI4NzAyYjNkNjE1ZTliOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzZTIwM2FkNzc5M2I0ZDI4ZDg3NjU4NmU2MzI4MjA5ZmExOTllZmZjMjhlMmM0YTc3MGVkZTFhNTc3OTcxNjIifQ"
         },
         {
           "resource": "repo://apps/api/src/ports.ts#L29-L42",
@@ -381,7 +385,7 @@
           "version": "repo-lines-v1:sha256:c87783d92d6ec360d3c976259019a599440654adacf3c788174272333d379d78:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMjFlOTIxNzE3N2Y2NWZhN2JmOWQ3ZTAxMDdkNzE5MzhmM2VlZjllODQ2NTBkY2Y4NWM0Mzg4YTZjODU1MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1NWVjZGI1NjBhOWZkYjYyZmNiNTdkNjVjODAzMzg5N2VlYjc1YTlkNWViYjVhOTk5NjY0NDI1NTkwOGI2YmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyN2EwMTE1YzRiODAxMGQ0MDM2NmZmOGU3YjFhNTQ1MDI0MmI2MzUwNDVlOTFjOTk5Y2QxNWQ5YTU2NzEwN2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzZTJkYTU1ZTc1ZGQ2MzcwY2ViYWQ4ZmQ2OWIwM2Y3OGYwOGViNmVlMzdkMGMyMDZjNDUzYTYzMjliNzFkMTMifQ"
         },
         {
-          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L29-L46",
+          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L33-L50",
           "version": "repo-lines-v1:sha256:85d586dd12d5bf02682b3d731a80799bbc657af398a116be01be5d21ae013eba:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyZTRmMWJiOTNmN2UxNDQ0OTFiOTk4Y2I3MWQyMmY4MTM3ODExMGE4NDU1OTk5ODMwMGI5YTM4MmVjYzBmYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzNjZhZGM3ODZhNzAzNDZjNDQ5NGEwZjEyMTk2Mzc4N2EwY2NlYzZlOTMzMDMyNTljZGRmYjJjMWU0ZWU0YTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjNjliYzg0YzUwOGMxY2QyNDY3ZGFkZWQ2ZTg2MGRhZjkwNjU3MDk0MWY3ZDVlOGE5NzI3MjU4ODU2ZmFmOGEifQ"
         }
       ]
@@ -391,11 +395,11 @@
       "statement": "Registry transport identity comes from RunnableConfig.configurable populated by the host and readTracerContext fails closed when any of mcpUrl, token, runId, userId, roleScope, threadId, or tracesDir is missing.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/graph.ts#L220-L267",
-          "version": "repo-lines-v1:sha256:b0aebb9088fcd273669d434b0ebe7ebe84c2b40d12a7ecbf273b44c2c01c7c53:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmM0YzYzMWJlNTNjOTg5ZDVkMDhmNWNjNjFmZjMwNGNlMGMzMzA5OWNhMTllYzA3YmI5Yjk5Njk4OWY5YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkNjYyMzIzOTc0NDAwOGFiZjJhMjY3ODNiNWMyZTM0ZWI2NDAyZjZhZDdlNWI5ZTUyOWZmYmU1YmJlMWNjMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://packages/agent/src/graph.ts#L220-L261",
+          "version": "repo-lines-v1:sha256:28471766d94da7f04525986c8d7c731d5f0fca23b46dad9fd968439695d6952f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmM0YzYzMWJlNTNjOTg5ZDVkMDhmNWNjNjFmZjMwNGNlMGMzMzA5OWNhMTllYzA3YmI5Yjk5Njk4OWY5YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkNjYyMzIzOTc0NDAwOGFiZjJhMjY3ODNiNWMyZTM0ZWI2NDAyZjZhZDdlNWI5ZTUyOWZmYmU1YmJlMWNjMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L65-L89",
+          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L140-L164",
           "version": "repo-lines-v1:sha256:3991716eb69aff961fd464d69ecded916475a1603762b5e933db95d7a941910a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OWFmMjg4NGUyOTY2YjIyZTI0NDhhYTBhZjM1MmJiMDU2MWJiNGI0NDcwZjAyYzJlNDVjMWExMWJhMDUyYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExNTYyMDA3YzUzMjQ4NGUxYTBhMDQ0ZTcyYjRmN2UwZDg5OTJiOGMyNzE3NTVlMDU5NTQ2ZDZhYjQzM2UzYzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2YmY4NTljYzk5MWVmMTYyYjFkMWUwOTBmY2U3Y2MyMGFjNGNhNzM1MWIxZGE0MDgwNWUzMTk1Njk1MjNjZDcifQ"
         }
       ]
@@ -416,15 +420,15 @@
     },
     {
       "id": "claim_0f431ce8c4e540c6938ba915e80bd618",
-      "statement": "The hierarchical span emitter wraps work between start and end events with parentSpanId linkage and ok flag on both success and failure, and standardizes skill_call, llm_call, and tool_call helpers whose tool payloads carry only counts and column names, never cell values.",
+      "statement": "The hierarchical span emitter wraps work between start and end events with parentSpanId linkage and ok flag on both success and failure, and standardizes skill_call, llm_call, and tool_call helpers whose tool payloads carry counts, column names, masking and row-scope metadata, and outcome codes, never cell values.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/telemetry/spans.ts#L128-L175",
-          "version": "repo-lines-v1:sha256:b54c9f5c119f10e3c2b4820997d2052a99f17181e829e3f5112cba8db8b06526:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1YmU2ODBjOTIwYzk1OGY2Y2JmM2UyZWNiZTVkY2Y0NjA2ZjZjM2I0NjMxMzhjZmIxMDA3NWJkYmQzZWU1ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZTM3MjVkYTAwMmI0NmVkOGI0ZGU4ODAwM2FkOTcxMGRjYWYxOGQ1N2M0NzAxZGMzYmVmZjBiMmM1Y2IxM2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlYzBmOWI5YTY2ZDc0Y2VlYWJmNjFiNDAyMDExNDYzZjBkM2NmZmIyMDVjYzgyMWZkZmExYjE4ZjFlOGExZDcifQ"
+          "resource": "repo://packages/agent/src/telemetry/spans.ts#L215-L261",
+          "version": "repo-lines-v1:sha256:1bf9f9fc523196f9a06536575b2741985f05588dba0a74ca09ea87fefa1087af:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMjAzZTUzY2JlYWQ5MWQ3MzE5OTQ2YmQzNTM5ZDRlYzE0ZDllYjE2N2ZlMjA1ZmMxZmIxNWJkZTdkYjEwOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMWQ0ZTVkMDZkNzM0NzYzMDk1YzViNTBiNjM5ZDQzYWYzNDQyMzAwNzA2ZTg4NDM4MjJkZWNkYzAwZDExZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwYWRmOTE1ZjMwY2U5MzZlMDEyMGY4ODZiNjRiYTY3OTViMDcxZDYyMGUzYTc2N2ZkNWI3NDMyMWE0YzNkZTYifQ"
         },
         {
-          "resource": "repo://packages/agent/src/telemetry/spans.ts#L80-L126",
-          "version": "repo-lines-v1:sha256:1bf9f9fc523196f9a06536575b2741985f05588dba0a74ca09ea87fefa1087af:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMjAzZTUzY2JlYWQ5MWQ3MzE5OTQ2YmQzNTM5ZDRlYzE0ZDllYjE2N2ZlMjA1ZmMxZmIxNWJkZTdkYjEwOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMWQ0ZTVkMDZkNzM0NzYzMDk1YzViNTBiNjM5ZDQzYWYzNDQyMzAwNzA2ZTg4NDM4MjJkZWNkYzAwZDExZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwYWRmOTE1ZjMwY2U5MzZlMDEyMGY4ODZiNjRiYTY3OTViMDcxZDYyMGUzYTc2N2ZkNWI3NDMyMWE0YzNkZTYifQ"
+          "resource": "repo://packages/agent/src/telemetry/spans.ts#L263-L354",
+          "version": "repo-lines-v1:sha256:f4a49277b76aa22252388df558f230ab86bffe7f02bed45fa2271170f452f318:eyJzZWxlY3RlZExpbmVDb3VudCI6OTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1YmU2ODBjOTIwYzk1OGY2Y2JmM2UyZWNiZTVkY2Y0NjA2ZjZjM2I0NjMxMzhjZmIxMDA3NWJkYmQzZWU1ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZTM3MjVkYTAwMmI0NmVkOGI0ZGU4ODAwM2FkOTcxMGRjYWYxOGQ1N2M0NzAxZGMzYmVmZjBiMmM1Y2IxM2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlYzBmOWI5YTY2ZDc0Y2VlYWJmNjFiNDAyMDExNDYzZjBkM2NmZmIyMDVjYzgyMWZkZmExYjE4ZjFlOGExZDcifQ"
         }
       ]
     },
@@ -449,6 +453,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-01T07:02:11.362Z"
+    "at": "2026-11-07T14:35:23.411Z"
   }
 }
