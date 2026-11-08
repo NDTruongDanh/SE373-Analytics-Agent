@@ -3,6 +3,7 @@ import {
   FormulaComponentsSchema,
   MetricTypeSchema,
   PlanStepSchema,
+  RootCauseAnswerSchema,
   TimePeriodSchema,
   dbToolError,
   type AnalysisPlan,
@@ -11,6 +12,8 @@ import {
   type MetricType,
   type PlanStep,
   type PlanStepAxis,
+  type RootCauseAnswer,
+  type RootCauseItem,
   type TimePeriod,
 } from "@shared/contracts";
 import * as z from "zod";
@@ -1055,7 +1058,7 @@ export function parseRcaIntent(question: string): RcaIntent {
   };
 }
 
-function formatVnd(val: number): string {
+export function formatVnd(val: number): string {
   if (Math.abs(val) >= 1_000_000_000) {
     return `${(val / 1_000_000_000).toFixed(2)} tỷ VNĐ`;
   }
@@ -1863,6 +1866,278 @@ export async function executeAnalysis(
   return AnalysisPlanSchema.parse(plan);
 }
 
+/**
+ * Returns disjoint leaf steps from the hierarchical plan:
+ * steps that are marked "done" and have no child steps in the tree.
+ */
+export function getDisjointLeafNodes(steps: PlanStep[]): PlanStep[] {
+  const hasDoneDimension = steps.some((s) => s.axis === "dimension" && s.status === "done");
+  const candidates = hasDoneDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+
+  // Any step that acts as parentId for any step in candidates has children and is not a leaf
+  const parentIdsWithChildren = new Set(
+    candidates
+      .map((s) => s.parentId)
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  return candidates.filter(
+    (s) => s.status === "done" && !parentIdsWithChildren.has(s.stepId),
+  );
+}
+
+/**
+ * Returns disjoint skipped steps whose parents were not already skipped.
+ */
+export function getDisjointSkippedNodes(steps: PlanStep[]): PlanStep[] {
+  const hasDimension = steps.some((s) => s.axis === "dimension");
+  const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+  const skippedSteps = candidates.filter((s) => s.status === "skipped");
+  const skippedIds = new Set(skippedSteps.map((s) => s.stepId));
+  return skippedSteps.filter((s) => !s.parentId || !skippedIds.has(s.parentId));
+}
+
+/**
+ * Performs Waterfall Attribution Math Check (PRD §4.3, K7 Gate):
+ * Validates that sum(disjoint leaves) + residualOther balances the total delta within 5% tolerance.
+ * Enforces strictly signed delta comparison to prevent false positive attribution when signs diverge.
+ */
+export function verifyWaterfallAttribution(
+  leafNodes: PlanStep[],
+  residualOtherAbs: number,
+  absDeltaTotal: number,
+  steps?: PlanStep[],
+): {
+  deltaExplained: number;
+  mathDiffRatio: number;
+  mathVerified: boolean;
+} {
+  const leafDeltaSum = leafNodes.reduce((sum, n) => sum + n.delta, 0);
+
+  let signedResidual = 0;
+  if (steps && steps.length > 0) {
+    const disjointSkipped = getDisjointSkippedNodes(steps);
+    const skippedSum = disjointSkipped.reduce((sum, s) => sum + s.delta, 0);
+
+    // If a parent node was decomposed, any difference between parent.delta and the sum of all its children's deltas
+    // represents unanalyzed / unallocated residual from that parent.
+    const hasDimension = steps.some((s) => s.axis === "dimension");
+    const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+    const parentIds = new Set(
+      candidates
+        .map((s) => s.parentId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    let unanalyzedParentResidual = 0;
+    for (const parentId of parentIds) {
+      const parent = candidates.find((s) => s.stepId === parentId);
+      if (parent && parent.status === "done") {
+        const children = candidates.filter((s) => s.parentId === parentId);
+        const childrenDelta = children.reduce((acc, c) => acc + c.delta, 0);
+        unanalyzedParentResidual += (parent.delta - childrenDelta);
+      }
+    }
+
+    signedResidual = skippedSum + unanalyzedParentResidual;
+  }
+  if (signedResidual === 0 && residualOtherAbs !== 0) {
+    signedResidual = (absDeltaTotal < 0 ? -1 : 1) * Math.abs(residualOtherAbs);
+  }
+
+  const deltaExplained = leafDeltaSum + signedResidual;
+
+  let mathDiffRatio = 0;
+  if (absDeltaTotal === 0) {
+    mathDiffRatio = deltaExplained === 0 ? 0 : 1;
+  } else {
+    // K7 Gate: strictly signed difference. Never take absolute value before difference.
+    const diffSigned = Math.abs(deltaExplained - absDeltaTotal);
+    mathDiffRatio = Number((diffSigned / Math.abs(absDeltaTotal)).toFixed(4));
+  }
+
+  const mathVerified = mathDiffRatio <= 0.05;
+
+  return {
+    deltaExplained,
+    mathDiffRatio,
+    mathVerified,
+  };
+}
+
+/**
+ * Identifies primary root causes from disjoint leaf nodes:
+ * Selects nodes with |contributionPct| >= 50% or top 3 if none reach 50%, sorted by impact descending.
+ */
+export function identifyPrimaryRootCauses(leafNodes: PlanStep[]): RootCauseItem[] {
+  const sorted = [...leafNodes].sort((a, b) => Math.abs(b.contributionPct) - Math.abs(a.contributionPct));
+  const highImpact = sorted.filter((n) => Math.abs(n.contributionPct) >= 50);
+  const selected = highImpact.length > 0 ? highImpact : sorted.slice(0, 3);
+
+  return selected.map((leaf) => {
+    const pathStr =
+      leaf.dimensionPath.length > 0
+        ? leaf.dimensionPath.join(" > ")
+        : (leaf.dimensionValue ?? leaf.dimensionOrFactor);
+    const formattedDelta = formatVnd(leaf.delta);
+    const changeVerb = leaf.delta < 0 ? "giảm" : "tăng";
+    const summaryVi = `Tổ hợp [${pathStr}]: ${changeVerb} ${formattedDelta} (${Math.abs(leaf.contributionPct).toFixed(1)}% tổng biến động).`;
+
+    return {
+      stepId: leaf.stepId,
+      axis: leaf.axis,
+      dimensionOrFactor: leaf.dimensionOrFactor,
+      dimensionValue: leaf.dimensionValue,
+      dimensionPath: leaf.dimensionPath,
+      delta: leaf.delta,
+      contributionPct: leaf.contributionPct,
+      sql: leaf.sql,
+      hypothesis: leaf.hypothesis,
+      summaryVi,
+    };
+  });
+}
+
+/**
+ * Generates the full structured Markdown report for Root Cause Analysis.
+ */
+export function generateMarkdownReport(
+  plan: AnalysisPlan,
+  rca: Omit<RootCauseAnswer, "finalReportMarkdown">,
+): string {
+  const directionText = plan.absDelta < 0 ? "sụt giảm" : "tăng trưởng";
+  const pctStr = `${plan.pctDelta > 0 ? "+" : ""}${plan.pctDelta.toFixed(1)}%`;
+  const absStr = formatVnd(plan.absDelta);
+  const baselineStr = formatVnd(plan.baselineVal);
+  const currentStr = formatVnd(plan.currentVal);
+
+  const doneCount = plan.steps.filter((s) => s.status === "done").length;
+  const prunedCount = plan.unexploredBranches.filter(
+    (b) => b.reason === "PRUNED_BELOW_THRESHOLD",
+  ).length;
+
+  const sections: string[] = [];
+
+  // Section 1: Hiện tượng & Mức biến động
+  sections.push(`## 1. Hiện tượng & Mức biến động
+- **Chỉ số phân tích:** \`${plan.metricName}\` (${plan.metricType})
+- **Kỳ mốc (${plan.baselinePeriod.start} đến ${plan.baselinePeriod.end}):** ${baselineStr}
+- **Kỳ phân tích (${plan.currentPeriod.start} đến ${plan.currentPeriod.end}):** ${currentStr}
+- **Biến động tổng thể:** ${directionText} **${absStr}** (${pctStr})
+- **Trạng thái:** Đã hoàn thành phân tích bóc tách cây nguyên nhân (${doneCount} bước hoàn thành, ${prunedCount} nhánh cắt tỉa).`);
+
+  // Section 2: Cây phân rã nguyên nhân
+  const treeLines: string[] = ["## 2. Cây phân rã nguyên nhân"];
+  for (const step of plan.steps) {
+    const indent = "  ".repeat(step.depth);
+    const statusIcon =
+      step.status === "done"
+        ? "✅"
+        : step.status === "skipped"
+          ? "⏭️"
+          : step.status === "failed"
+            ? "❌"
+            : "⏳";
+    const deltaPart =
+      step.status === "done" ? `: ${formatVnd(step.delta)} (${step.contributionPct}%)` : "";
+    const dimName = step.dimensionValue
+      ? `${step.dimensionOrFactor}=${step.dimensionValue}`
+      : step.dimensionOrFactor;
+    treeLines.push(
+      `${indent}- ${statusIcon} **${dimName}** (depth ${step.depth}, ${step.status})${deltaPart}`,
+    );
+  }
+  sections.push(treeLines.join("\n"));
+
+  // Section 3: Nguyên nhân cốt lõi
+  const causeLines: string[] = ["## 3. Nguyên nhân cốt lõi (Primary Root Causes)"];
+  if (rca.primaryCauses.length === 0) {
+    causeLines.push("_Không xác định được nguyên nhân chính vượt ngưỡng ý nghĩa._");
+  } else {
+    for (let i = 0; i < rca.primaryCauses.length; i++) {
+      const cause = rca.primaryCauses[i];
+      const pathStr =
+        cause.dimensionPath.length > 0
+          ? cause.dimensionPath.join(" ➔ ")
+          : (cause.dimensionValue ?? cause.dimensionOrFactor);
+      causeLines.push(`### ${i + 1}. ${pathStr}`);
+      causeLines.push(`- **Mức độ đóng góp:** ${cause.contributionPct}% (${formatVnd(cause.delta)})`);
+      if (cause.summaryVi) {
+        causeLines.push(`- **Tóm tắt:** ${cause.summaryVi}`);
+      }
+      if (cause.sql) {
+        causeLines.push(`- **SQL bằng chứng:**\n\`\`\`sql\n${cause.sql}\n\`\`\``);
+      }
+    }
+  }
+  sections.push(causeLines.join("\n"));
+
+  // Section 4: Kiểm chứng số học Waterfall (K7 Gate)
+  const mathStatusBadge = rca.mathVerified ? "✅ ĐẠT (PASS)" : "⚠️ CẢNH BÁO (WARNING)";
+  const diffPct = (rca.mathDiffRatio * 100).toFixed(2);
+  sections.push(`## 4. Kiểm chứng số học Waterfall (K7 Tolerance ≤ 5%)
+- **Trạng thái kiểm chứng:** ${mathStatusBadge}
+- **Tổng biến động cần giải trình:** ${absStr}
+- **Sai số toán học:** ${diffPct}% (ngưỡng cho phép: ≤ 5.00%)
+- **Phần dư từ các nhánh cắt tỉa (Residual Other):** ${formatVnd(rca.residualOtherAbs)}`);
+
+  // Section 5: Phần dư & Các nhánh chưa phân tích
+  const unexploredLines: string[] = ["## 5. Nhánh chưa phân tích & Giới hạn"];
+  if (rca.unexploredBranches.length === 0) {
+    unexploredLines.push("_Tất cả các nhánh ứng viên đều đã được phân tích đầy đủ._");
+  } else {
+    for (const ub of rca.unexploredBranches) {
+      const valStr = ub.dimensionValue ? `=${ub.dimensionValue}` : "";
+      unexploredLines.push(`- \`${ub.dimensionOrFactor}${valStr}\`: lý do **${ub.reason}**`);
+    }
+  }
+  unexploredLines.push(`- **Tổng số truy vấn đã thực thi:** ${rca.totalQueriesCount}`);
+  sections.push(unexploredLines.join("\n"));
+
+  return sections.join("\n\n");
+}
+
+/**
+ * Node 5: synthesize_report
+ * Evaluates the executed plan, filters disjoint leaves, runs Waterfall verification,
+ * identifies primary causes, and returns a verified RootCauseAnswer.
+ */
+export function synthesizeReport(plan: AnalysisPlan): RootCauseAnswer {
+  const leafNodes = getDisjointLeafNodes(plan.steps);
+  const mathResult = verifyWaterfallAttribution(
+    leafNodes,
+    plan.residualOtherAbs,
+    plan.absDelta,
+    plan.steps,
+  );
+  const primaryCauses = identifyPrimaryRootCauses(leafNodes);
+
+  const partialAnswer = {
+    question: plan.question,
+    metricName: plan.metricName,
+    metricType: plan.metricType,
+    currentPeriod: plan.currentPeriod,
+    baselinePeriod: plan.baselinePeriod,
+    baselineVal: plan.baselineVal,
+    currentVal: plan.currentVal,
+    absDelta: plan.absDelta,
+    pctDelta: plan.pctDelta,
+    mathVerified: mathResult.mathVerified,
+    mathDiffRatio: mathResult.mathDiffRatio,
+    primaryCauses,
+    residualOtherAbs: plan.residualOtherAbs,
+    unexploredBranches: plan.unexploredBranches,
+    totalQueriesCount: plan.totalQueriesCount,
+  };
+
+  const finalReportMarkdown = generateMarkdownReport(plan, partialAnswer);
+
+  return RootCauseAnswerSchema.parse({
+    ...partialAnswer,
+    finalReportMarkdown,
+  });
+}
+
 function readRunContext(rt?: RootRuntime): {
   identity: ExecutorPrincipal;
   transport: TracerRunConfig | null;
@@ -2252,16 +2527,14 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       targetFactTable,
     );
 
-    const doneCount = executedPlan.steps.filter((s) => s.status === "done").length;
-    const prunedCount = executedPlan.unexploredBranches.filter(
-      (b) => b.reason === "PRUNED_BELOW_THRESHOLD",
-    ).length;
+    const rcaAnswer = synthesizeReport(executedPlan);
 
     return {
       status: "ok",
       analysisPlan: executedPlan,
-      answerText: `${baseline.message} Đã hoàn thành phân tích bóc tách cây nguyên nhân (${doneCount} bước hoàn thành, ${prunedCount} nhánh cắt tỉa).`,
-      sql: baseline.lastSql,
+      rootCauseAnswer: rcaAnswer,
+      answerText: rcaAnswer.finalReportMarkdown,
+      sql: rcaAnswer.primaryCauses[0]?.sql ?? baseline.lastSql,
       tablesUsed: baseline.tablesUsed,
       toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
     };
