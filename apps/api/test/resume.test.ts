@@ -165,8 +165,9 @@ describe("buildApp resume", () => {
   it("labels a direct UC clarification interrupt in its SSE and trace metadata", async () => {
     const asked = await post("/api/ask", { question: "please clarify", persona: "sales_south" });
     expect(asked.status).toBe(200);
-    const block = parseSse(asked.text)[0];
-    expect(block?.event).toBe("interrupt_waiting");
+    const blocks = parseSse(asked.text);
+    expect(blocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
+    const block = blocks.find((b) => b.event === "interrupt_waiting");
     expect(block?.data["data"]).toMatchObject({
       pendingClarification: {
         field: "timeRange",
