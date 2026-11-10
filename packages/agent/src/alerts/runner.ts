@@ -1,4 +1,3 @@
-import { sqlGuard } from "@shared/access-policy";
 import type { AlertSeverity, AnomalyAlert, SchemaCatalog, Subscription } from "@shared/contracts";
 import {
   detectAnomaly,
@@ -8,18 +7,23 @@ import {
 import { DEFAULT_ANOMALY_CATALOG } from "./catalog.js";
 import {
   dispatchAlert,
-  globalDigestQueue,
-  InMemoryAlertHistoryStore,
+  persistentDigestQueue,
   type AlertDispatcherOptions,
+  type AlertDigestQueue,
   type AlertHistoryStore,
   type DispatchAlertResult,
 } from "./dispatcher.js";
 import {
   runDrillDownAnalysis,
   type DrillDownResult,
-  type McpQueryExecutor,
 } from "./drillDown.js";
+import {
+  AlertDateSchema,
+  executeAlertQuery,
+  type AlertQueryExecutor,
+} from "./query.js";
 import { loadSubscriptionsConfigFile } from "./subscription.js";
+import type { ExecutorPrincipal } from "../queryExecutor/executor.js";
 
 export interface AnomalyRunnerSliceResult {
   subscriptionId: string;
@@ -58,8 +62,10 @@ export interface AnomalyRunnerOptions {
   manual?: boolean;
   flushDigest?: boolean;
   catalog?: SchemaCatalog;
-  mcpExecutor: McpQueryExecutor;
-  historyStore?: AlertHistoryStore;
+  queryExecutor: AlertQueryExecutor;
+  queryPrincipal: ExecutorPrincipal;
+  historyStore: AlertHistoryStore;
+  digestQueue?: AlertDigestQueue;
   dispatcherOptions?: Partial<AlertDispatcherOptions>;
   logger?: (msg: string, meta?: Record<string, unknown>) => void;
   mockSeriesProvider?: (subscription: Subscription, targetDate: string) => TimeSeriesPoint[];
@@ -69,9 +75,29 @@ export interface AnomalyRunnerOptions {
  * Computes date string minus N days: returns YYYY-MM-DD.
  */
 export function subtractDays(dateStr: string, days: number): string {
+  AlertDateSchema.parse(dateStr);
   const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+function seriesCandidateTables(
+  metricId: string,
+  recipientRole: string | undefined,
+): string[] {
+  if (metricId !== "metric:review_score_avg") {
+    return ["orders", "regions"];
+  }
+  if (!recipientRole) return ["reviews"];
+  const roleLower = recipientRole.toLowerCase();
+  const hasRegionScope =
+    roleLower.includes("south") ||
+    roleLower.includes("nam") ||
+    roleLower.includes("north") ||
+    roleLower.includes("bac") ||
+    roleLower.includes("central") ||
+    roleLower.includes("trung");
+  return hasRegionScope ? ["reviews", "orders", "regions"] : ["reviews"];
 }
 
 /**
@@ -85,6 +111,11 @@ export function buildTimeSeriesQuery(options: {
   recipientRole?: string;
 }): string {
   const { metricId, startDate, endDate, recipientRole } = options;
+  AlertDateSchema.parse(startDate);
+  AlertDateSchema.parse(endDate);
+  if (startDate > endDate) {
+    throw new Error("Time-series startDate must not be after endDate");
+  }
 
   const rbacClauses: string[] = [];
   if (recipientRole) {
@@ -127,12 +158,20 @@ export function buildTimeSeriesQuery(options: {
   }
 
   if (metricId === "metric:review_score_avg") {
+    const reviewRbacSql =
+      rbacClauses.length > 0
+        ? `JOIN orders ON reviews.order_id = orders.order_id ` +
+          `JOIN regions ON orders.province = regions.province `
+        : "";
+    const reviewWhereSql =
+      rbacClauses.length > 0 ? ` AND ${rbacClauses.join(" AND ")}` : "";
     return (
       `SELECT reviews.created_at::date::text AS date, ` +
       `COUNT(*) AS support_count, ` +
       `AVG(reviews.score) AS value ` +
       `FROM reviews ` +
-      `WHERE reviews.created_at::date >= '${startDate}' AND reviews.created_at::date <= '${endDate}' ` +
+      `${reviewRbacSql}` +
+      `WHERE reviews.created_at::date >= '${startDate}' AND reviews.created_at::date <= '${endDate}'${reviewWhereSql} ` +
       `GROUP BY reviews.created_at::date ` +
       `ORDER BY reviews.created_at::date ASC`
     );
@@ -177,17 +216,19 @@ export async function runAnomalyRunner(
     targetDate = new Date().toISOString().slice(0, 10),
     manual = true,
     flushDigest = false,
-    mcpExecutor,
     logger,
     mockSeriesProvider,
   } = options;
 
-  const historyStore = options.historyStore ?? new InMemoryAlertHistoryStore();
+  AlertDateSchema.parse(targetDate);
+  const historyStore = options.historyStore;
+  const digestQueue = options.digestQueue ?? persistentDigestQueue;
   const dispatcherOpts: AlertDispatcherOptions = {
+    ...options.dispatcherOptions,
     historyStore,
+    digestQueue,
     flushDigest,
     logger,
-    ...options.dispatcherOptions,
   };
 
   // 1. Load subscriptions
@@ -226,19 +267,22 @@ export async function runAnomalyRunner(
           recipientRole: subscription.recipientRole,
         });
 
-        // sqlGuard validation
         const catalog = options.catalog ?? DEFAULT_ANOMALY_CATALOG;
-        const guard = await sqlGuard(querySql, catalog);
-        if (!guard.ok) {
-          throw new Error(`Guard failed on series SQL: ${guard.error.message}`);
-        }
+        const queryRes = await executeAlertQuery({
+          queryExecutor: options.queryExecutor,
+          principal: options.queryPrincipal,
+          catalog,
+          question:
+            `Query the ${subscription.metricId} daily time series from ` +
+            `${startDate} through ${targetDate} using the supplied SQL.`,
+          sql: querySql,
+          candidateTables: seriesCandidateTables(
+            subscription.metricId,
+            subscription.recipientRole,
+          ),
+        });
 
-        const queryRes = await mcpExecutor(querySql);
-        if (queryRes.error) {
-          throw new Error(`Failed to query timeseries: ${queryRes.error}`);
-        }
-
-        series = (queryRes.rows || []).map((row) => ({
+        series = queryRes.rows.map((row) => ({
           date: String(row.date),
           value: Number(row.value ?? 0),
           supportCount:
@@ -296,7 +340,8 @@ export async function runAnomalyRunner(
         dimensionKey: current.date,
         date: targetDate,
         anomaly,
-        mcpExecutor,
+        queryExecutor: options.queryExecutor,
+        queryPrincipal: options.queryPrincipal,
         recipientRole: subscription.recipientRole,
       });
 
@@ -349,8 +394,24 @@ export async function runAnomalyRunner(
 
   // 6. Handle digest flushing if requested
   let flushedDigestCount = 0;
-  if (flushDigest && globalDigestQueue.size() > 0) {
-    const items = globalDigestQueue.clear();
+  if (flushDigest && digestQueue.size() > 0) {
+    const items = digestQueue.getAll();
+    for (const alert of items) {
+      const dispatchResult = await dispatchAlert(alert, {
+        ...dispatcherOpts,
+        flushDigest: true,
+      });
+      if (dispatchResult.sent) {
+        alertsSent++;
+      } else if (dispatchResult.skippedDuplicate) {
+        alertsSkippedDuplicate++;
+      } else if (dispatchResult.queued) {
+        alertsQueued++;
+      } else if (dispatchResult.blocked) {
+        alertsBlocked++;
+      }
+    }
+    digestQueue.clear();
     flushedDigestCount = items.length;
     logger?.(`Flushed ${flushedDigestCount} alerts from digest queue`);
   }
@@ -395,6 +456,8 @@ export function scheduleAnomalyCron(
     }
     const msUntilNext = next.getTime() - now.getTime();
 
+    // This wall-clock setTimeout loop avoids a cron dependency, but unlike
+    // node-cron it cannot recover a missed 07:00 run while the process is down.
     timer = setTimeout(async () => {
       if (stopped) return;
       try {

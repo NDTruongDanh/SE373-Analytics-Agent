@@ -1,4 +1,3 @@
-import { sqlGuard } from "@shared/access-policy";
 import {
   AnomalyAlertSchema,
   type AnomalyAlert,
@@ -8,21 +7,20 @@ import {
 import type { AnomalyDetectorOutput } from "./anomalyDetector.js";
 import { DEFAULT_ANOMALY_CATALOG } from "./catalog.js";
 import { calculateAlertFingerprint } from "./fingerprint.js";
-
-export interface McpQueryResult {
-  rows: Record<string, unknown>[];
-  rowCount?: number;
-  error?: string;
-}
-
-export type McpQueryExecutor = (sql: string) => Promise<McpQueryResult>;
+import {
+  AlertDateSchema,
+  executeAlertQuery,
+  type AlertQueryExecutor,
+} from "./query.js";
+import type { ExecutorPrincipal } from "../queryExecutor/executor.js";
 
 export interface DrillDownInput {
   subscription: Subscription;
   dimensionKey: string;
   date: string;
   anomaly: AnomalyDetectorOutput;
-  mcpExecutor: McpQueryExecutor;
+  queryExecutor: AlertQueryExecutor;
+  queryPrincipal: ExecutorPrincipal;
   recipientRole?: string;
   catalog?: SchemaCatalog;
   model?: unknown;
@@ -37,6 +35,60 @@ export interface DrillDownResult {
   explanation: string;
 }
 
+function drillDownCandidateTables(
+  metricId: string,
+  dimensions: string[],
+  recipientRole: string | undefined,
+): string[] {
+  const tables = new Set<string>(["orders"]);
+  if (
+    metricId === "metric:return_rate" ||
+    metricId === "metric:cancellation_rate"
+  ) {
+    tables.add("order_items");
+    tables.add("products");
+    tables.add("categories");
+  }
+  if (metricId === "metric:review_score_avg") {
+    tables.add("reviews");
+    tables.add("order_items");
+    tables.add("products");
+    tables.add("categories");
+  }
+  for (const dimension of dimensions) {
+    const [table] = dimension.split(".");
+    if (table) tables.add(table);
+    if (
+      table === "order_items" ||
+      table === "products" ||
+      table === "categories" ||
+      table === "sellers"
+    ) {
+      tables.add("order_items");
+    }
+    if (table === "products" || table === "categories") {
+      tables.add("products");
+    }
+    if (table === "categories") {
+      tables.add("categories");
+    }
+  }
+  if (recipientRole) {
+    const roleLower = recipientRole.toLowerCase();
+    if (
+      roleLower.includes("south") ||
+      roleLower.includes("nam") ||
+      roleLower.includes("north") ||
+      roleLower.includes("bac") ||
+      roleLower.includes("central") ||
+      roleLower.includes("trung")
+    ) {
+      tables.add("regions");
+    }
+  }
+  return [...tables];
+}
+
 /**
  * Builds candidate breakdown SQL query based on metric, target date,
  * selected secondary dimensions, and recipient RBAC filter.
@@ -47,10 +99,31 @@ export function buildDrillDownSql(options: {
   date: string;
   dimensionKey?: string;
   recipientRole?: string;
+  catalog?: SchemaCatalog;
 }): string {
   const { metricId, secondaryDimensions, date, recipientRole } = options;
+  AlertDateSchema.parse(date);
 
   // Selected 1 or 2 dimensions
+  for (const dimension of secondaryDimensions) {
+    const [tableName, columnName, extra] = dimension.split(".");
+    const table = DEFAULT_ANOMALY_CATALOG.tables.find(
+      (candidate) => candidate.name.toLowerCase() === tableName?.toLowerCase(),
+    );
+    const column = table?.columns.find(
+      (candidate) => candidate.name.toLowerCase() === columnName?.toLowerCase(),
+    );
+    if (
+      !table ||
+      !column ||
+      extra !== undefined ||
+      !tableName ||
+      !columnName ||
+      column.sensitive
+    ) {
+      throw new Error(`Unsupported drill-down dimension: ${dimension}`);
+    }
+  }
   const dims = secondaryDimensions.slice(0, 2);
   const primaryDim = dims[0] || "regions.province";
   const secondaryDim = dims[1];
@@ -147,15 +220,42 @@ export function buildDrillDownSql(options: {
   }
 
   if (metricId === "metric:review_score_avg") {
+    const reviewJoins = [
+      "JOIN orders ON reviews.order_id = orders.order_id",
+      "JOIN order_items ON orders.order_id = order_items.order_id",
+      "JOIN products ON order_items.product_id = products.product_id",
+      "JOIN categories ON products.category_id = categories.category_id",
+    ];
+    if (queryRefText.includes("regions.") || rbacClauses.length > 0) {
+      reviewJoins.push(
+        "JOIN regions ON orders.province = regions.province",
+      );
+    }
+    if (queryRefText.includes("customers.")) {
+      reviewJoins.push(
+        "JOIN customers ON orders.customer_id = customers.customer_id",
+      );
+    }
+    if (queryRefText.includes("channels.")) {
+      reviewJoins.push(
+        "JOIN channels ON orders.channel_id = channels.channel_id",
+      );
+    }
+    if (queryRefText.includes("sellers.")) {
+      reviewJoins.push(
+        "JOIN sellers ON order_items.seller_id = sellers.seller_id",
+      );
+    }
+    const reviewWhere = [
+      `reviews.created_at::date = '${date}'`,
+      ...rbacClauses,
+    ].join(" AND ");
     return (
       `SELECT ${selectCols}, COUNT(*) AS total_reviews, ` +
       `AVG(reviews.score) AS avg_score ` +
       `FROM reviews ` +
-      `JOIN orders ON reviews.order_id = orders.order_id ` +
-      `JOIN order_items ON orders.order_id = order_items.order_id ` +
-      `JOIN products ON order_items.product_id = products.product_id ` +
-      `JOIN categories ON products.category_id = categories.category_id ` +
-      `WHERE reviews.created_at::date = '${date}' ` +
+      `${reviewJoins.join(" ")} ` +
+      `WHERE ${reviewWhere} ` +
       `GROUP BY ${groupByCols} ` +
       `ORDER BY avg_score ASC ` +
       `LIMIT 10`
@@ -198,15 +298,22 @@ export function formatDrilldownSegment(
  *
  * - Inputs anomalous slice + candidate dimensions from subscriptions.yaml
  * - Formulates SQL breakdown query with RBAC injected
- * - Validates query via sqlGuard (@shared/access-policy)
- * - Executes query via MCP
+ * - Executes query through ValidatedQueryExecutor
  * - Identifies highest-impact segment
  * - Composes strict 6-field AnomalyAlert (PRD UC-10 acceptance criterion #2)
  */
 export async function runDrillDownAnalysis(
   input: DrillDownInput,
 ): Promise<DrillDownResult> {
-  const { subscription, dimensionKey, date, anomaly, mcpExecutor } = input;
+  const {
+    subscription,
+    dimensionKey,
+    date,
+    anomaly,
+    queryExecutor,
+    queryPrincipal,
+  } = input;
+  AlertDateSchema.parse(date);
   const recipientRole = input.recipientRole ?? subscription.recipientRole;
 
   // 1. Select 1-2 secondary dimensions
@@ -217,30 +324,34 @@ export async function runDrillDownAnalysis(
       : ["regions.province"];
 
   // 2. Build candidate breakdown SQL
-  const evidenceSql = buildDrillDownSql({
+  const catalog = input.catalog ?? DEFAULT_ANOMALY_CATALOG;
+  const initialSql = buildDrillDownSql({
     metricId: subscription.metricId,
     secondaryDimensions: selectedDimensions,
     date,
     dimensionKey,
     recipientRole,
+    catalog,
   });
 
-  // 3. Validate SQL with sqlGuard (TypeScript pgsql-parser)
-  const catalog = input.catalog ?? DEFAULT_ANOMALY_CATALOG;
-  const guardResult = await sqlGuard(evidenceSql, catalog);
-  if (!guardResult.ok) {
-    throw new Error(
-      `Drill-down SQL validation failed: ${guardResult.error.code} - ${guardResult.error.message}`,
-    );
-  }
-
-  // 4. Execute query via MCP client/executor
-  const queryResult = await mcpExecutor(evidenceSql);
-  if (queryResult.error) {
-    throw new Error(`Drill-down execution failed: ${queryResult.error}`);
-  }
-
-  const rows = queryResult.rows || [];
+  // The SQL is only a deterministic starting proposal; VQE still runs its
+  // selective describe, local policy gate, MCP explain/run, and repair loop.
+  const queryResult = await executeAlertQuery({
+    queryExecutor,
+    principal: queryPrincipal,
+    catalog,
+    question:
+      `Break down ${subscription.metricId} for ${date} by ` +
+      `${selectedDimensions.join(" and ")}. Preserve the supplied query semantics.`,
+    sql: initialSql,
+    candidateTables: drillDownCandidateTables(
+      subscription.metricId,
+      selectedDimensions,
+      recipientRole,
+    ),
+  });
+  const evidenceSql = queryResult.sql;
+  const rows = queryResult.rows;
   const topSegmentRow = rows.length > 0 ? rows[0] : undefined;
 
   // 5. Extract drilldown segment string

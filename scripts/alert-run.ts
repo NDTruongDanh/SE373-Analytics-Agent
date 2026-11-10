@@ -1,7 +1,8 @@
 import {
+  InMemoryAlertHistoryStore,
   runAnomalyRunner,
   loadSubscriptionsConfigFile,
-  type McpQueryResult,
+  type AlertQueryExecutor,
 } from "@shared/agent";
 
 function parseArgs(): {
@@ -67,22 +68,23 @@ async function main(): Promise<void> {
     console.warn(`Could not load subscriptions file: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Mock executor fallback when running standalone without live MCP server
-  const mockExecutor = async (): Promise<McpQueryResult> => {
-    // If running in live environment, MCP client would be called here.
-    return {
-      rows: [
-        {
-          date: targetDate,
-          province: "Đà Nẵng",
-          region: "Trung",
-          total_orders: 45,
-          return_rate: 0.185,
-          revenue: 150000000,
-        },
-      ],
-      rowCount: 1,
-    };
+  // This standalone demo has no MCP connection; production callers inject
+  // their configured ValidatedQueryExecutor and durable AppStateStore.
+  const mockQueryExecutor: AlertQueryExecutor = {
+    run: async (input) => {
+      if (!input.initialSql) {
+        throw new Error("alert demo expected a deterministic SQL proposal");
+      }
+      return {
+        status: "no_data",
+        sql: input.initialSql,
+        tablesUsed: input.candidateTables,
+        columns: [],
+        rows: [],
+        maskedColumns: [],
+        attempts: 1,
+      };
+    },
   };
 
   const result = await runAnomalyRunner({
@@ -90,7 +92,13 @@ async function main(): Promise<void> {
     manual,
     flushDigest,
     subscriptionId,
-    mcpExecutor: mockExecutor,
+    queryExecutor: mockQueryExecutor,
+    queryPrincipal: {
+      runId: "alert-demo",
+      userId: "demo-user",
+      roleScope: "demo",
+    },
+    historyStore: new InMemoryAlertHistoryStore(),
     logger: (msg, meta) => console.log(`[ALERT] ${msg}`, meta ?? ""),
   });
 

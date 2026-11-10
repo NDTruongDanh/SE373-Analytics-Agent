@@ -4,10 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AnomalyAlert } from "@shared/contracts";
 import {
-  dispatchAlert,
+  dispatchAlert as dispatchAlertRaw,
   flushFailedAlertsQueue,
-  globalDigestQueue,
+  InMemoryDigestQueue,
   InMemoryAlertHistoryStore,
+  JsonlDigestQueue,
   type SendAlertTransport,
 } from "../src/alerts/dispatcher.js";
 
@@ -15,6 +16,14 @@ describe("Resilient send_alert Dispatcher (UC-10 §7, F10.4, F10.5)", () => {
   let tempDir: string;
   let queueFile: string;
   let historyStore: InMemoryAlertHistoryStore;
+  let digestQueue: InMemoryDigestQueue;
+
+  function dispatchAlert(
+    alert: AnomalyAlert,
+    options: Parameters<typeof dispatchAlertRaw>[1],
+  ) {
+    return dispatchAlertRaw(alert, { ...options, digestQueue });
+  }
 
   const validAlert: AnomalyAlert = {
     metric: "metric:return_rate",
@@ -35,7 +44,7 @@ describe("Resilient send_alert Dispatcher (UC-10 §7, F10.4, F10.5)", () => {
     tempDir = mkdtempSync(path.join(tmpdir(), "alert-dispatcher-test-"));
     queueFile = path.join(tempDir, "failed_alerts_queue.jsonl");
     historyStore = new InMemoryAlertHistoryStore();
-    globalDigestQueue.clear();
+    digestQueue = new InMemoryDigestQueue();
   });
 
   afterEach(() => {
@@ -246,7 +255,7 @@ describe("Resilient send_alert Dispatcher (UC-10 §7, F10.4, F10.5)", () => {
     expect(res1.queued).toBe(true);
     expect(res1.isDigest).toBe(true);
     expect(callCount).toBe(0);
-    expect(globalDigestQueue.size()).toBe(1);
+    expect(digestQueue.size()).toBe(1);
 
     // 2. With flushDigest -> sent immediately
     const res2 = await dispatchAlert(warningAlert, {
@@ -297,5 +306,17 @@ describe("Resilient send_alert Dispatcher (UC-10 §7, F10.4, F10.5)", () => {
 
     // Now recorded in history
     expect(await historyStore.hasFingerprint(failRes.fingerprint)).toBe(true);
+  });
+
+  it("persists digest entries across queue instances", () => {
+    const digestFile = path.join(tempDir, "pending_alert_digests.jsonl");
+    const first = new JsonlDigestQueue(digestFile);
+    first.enqueue(validAlert);
+
+    const restarted = new JsonlDigestQueue(digestFile);
+    expect(restarted.getAll()).toEqual([validAlert]);
+    expect(restarted.size()).toBe(1);
+    expect(restarted.clear()).toEqual([validAlert]);
+    expect(new JsonlDigestQueue(digestFile).size()).toBe(0);
   });
 });

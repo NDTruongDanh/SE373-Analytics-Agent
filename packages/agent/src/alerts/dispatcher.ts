@@ -1,7 +1,10 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { redactPII } from "@shared/access-policy";
-import type { AnomalyAlert } from "@shared/contracts";
+import {
+  AnomalyAlertSchema,
+  type AnomalyAlert,
+} from "@shared/contracts";
 import {
   calculateAlertFingerprint,
   type AlertFingerprintInput,
@@ -19,7 +22,8 @@ export interface AlertHistoryStore {
 }
 
 /**
- * In-memory implementation of AlertHistoryStore for tests and standalone mode.
+ * In-memory implementation for tests and the explicitly mocked CLI demo.
+ * Production runners must inject the AppStateStore-backed implementation.
  */
 export class InMemoryAlertHistoryStore implements AlertHistoryStore {
   private readonly records = new Map<string, AlertRecord>();
@@ -57,6 +61,7 @@ export type SendAlertTransport = (
 
 export interface AlertDispatcherOptions {
   historyStore: AlertHistoryStore;
+  digestQueue?: AlertDigestQueue;
   queueFilePath?: string;
   allowlist?: string[];
   transport?: SendAlertTransport;
@@ -118,10 +123,16 @@ export function isRetryableError(status?: number, err?: unknown): boolean {
   return true;
 }
 
-/**
- * In-memory digest queue holding non-critical alerts (warning/info).
- */
-export class DigestQueue {
+/** Queue contract for deferred non-critical alerts. */
+export interface AlertDigestQueue {
+  enqueue(alert: AnomalyAlert): void;
+  getAll(): AnomalyAlert[];
+  clear(): AnomalyAlert[];
+  size(): number;
+}
+
+/** Volatile queue for tests. Production defaults to JsonlDigestQueue. */
+export class InMemoryDigestQueue implements AlertDigestQueue {
   private readonly items: AnomalyAlert[] = [];
 
   enqueue(alert: AnomalyAlert): void {
@@ -141,7 +152,50 @@ export class DigestQueue {
   }
 }
 
-export const globalDigestQueue = new DigestQueue();
+const DEFAULT_DIGEST_QUEUE_FILE = path.resolve(
+  process.cwd(),
+  "pending_alert_digests.jsonl",
+);
+
+/** Durable pending-alert queue; queued entries survive runner restarts. */
+export class JsonlDigestQueue implements AlertDigestQueue {
+  constructor(
+    private readonly filePath: string = DEFAULT_DIGEST_QUEUE_FILE,
+  ) {}
+
+  enqueue(alert: AnomalyAlert): void {
+    appendFileSync(this.filePath, `${JSON.stringify(alert)}\n`, "utf8");
+  }
+
+  getAll(): AnomalyAlert[] {
+    if (!existsSync(this.filePath)) return [];
+    const lines = readFileSync(this.filePath, "utf8")
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+    return lines.map((line, index) => {
+      try {
+        return AnomalyAlertSchema.parse(JSON.parse(line) as unknown);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Invalid digest queue entry at line ${index + 1}: ${detail}`,
+        );
+      }
+    });
+  }
+
+  clear(): AnomalyAlert[] {
+    const alerts = this.getAll();
+    writeFileSync(this.filePath, "", "utf8");
+    return alerts;
+  }
+
+  size(): number {
+    return this.getAll().length;
+  }
+}
+
+export const persistentDigestQueue: AlertDigestQueue = new JsonlDigestQueue();
 
 /**
  * Resilient send_alert Dispatcher (UC-10 §7, F10.4, F10.5)
@@ -163,6 +217,7 @@ export async function dispatchAlert(
 ): Promise<DispatchAlertResult> {
   const {
     historyStore,
+    digestQueue = persistentDigestQueue,
     queueFilePath = DEFAULT_FAILED_QUEUE_FILE,
     allowlist,
     transport = defaultMockTransport,
@@ -232,7 +287,7 @@ export async function dispatchAlert(
 
   if (!isCritical && !flushDigest) {
     // Non-critical alert -> queue to digest
-    globalDigestQueue.enqueue(alert);
+    digestQueue.enqueue(alert);
     return {
       sent: false,
       queued: true,

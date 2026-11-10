@@ -8,6 +8,35 @@ import {
   runDrillDownAnalysis,
 } from "../src/alerts/drillDown.js";
 import type { AnomalyDetectorOutput } from "../src/alerts/anomalyDetector.js";
+import type { AlertQueryExecutor } from "../src/alerts/query.js";
+import type { ExecutorPrincipal } from "../src/queryExecutor/executor.js";
+
+const QUERY_PRINCIPAL: ExecutorPrincipal = {
+  runId: "alert-test-run",
+  userId: "ops_lead",
+  roleScope: "operations_south",
+};
+
+function fakeQueryExecutor(
+  rows: Record<string, unknown>[],
+  onRun?: (input: Parameters<AlertQueryExecutor["run"]>[0]) => void,
+): AlertQueryExecutor {
+  return {
+    run: async (input) => {
+      if (!input.initialSql) throw new Error("expected deterministic SQL");
+      onRun?.(input);
+      return {
+        status: "ok",
+        sql: input.initialSql,
+        tablesUsed: input.candidateTables,
+        columns: [],
+        rows,
+        maskedColumns: [],
+        attempts: 1,
+      };
+    },
+  };
+}
 
 describe("1–2 Dim Drill-Down Analyzer (UC-10 §5, F10.3)", () => {
   const sampleSubscription: Subscription = {
@@ -73,34 +102,70 @@ describe("1–2 Dim Drill-Down Analyzer (UC-10 §5, F10.3)", () => {
     );
   });
 
+  it("rejects malformed dates and dimensions before building SQL", () => {
+    expect(() =>
+      buildDrillDownSql({
+        metricId: "metric:return_rate",
+        secondaryDimensions: ["regions.province; DROP TABLE orders"],
+        date: "2026-09-12",
+      }),
+    ).toThrow(/Unsupported drill-down dimension/);
+
+    expect(() =>
+      buildDrillDownSql({
+        metricId: "metric:return_rate",
+        secondaryDimensions: ["regions.province"],
+        date: "2026-02-31",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      buildDrillDownSql({
+        metricId: "metric:return_rate",
+        secondaryDimensions: ["customers.phone"],
+        date: "2026-09-12",
+      }),
+    ).toThrow(/Unsupported drill-down dimension/);
+  });
+
   it("executes drill-down and composes strict 6-field alert", async () => {
-    const mockExecutor = async (sql: string) => {
-      expect(sql).toContain("return_rate");
-      return {
-        rows: [
-          {
-            province: "Đà Nẵng",
-            name_vi: "Thực phẩm tươi sống",
-            total_orders: 50,
-            return_rate: 0.185,
-          },
-        ],
-        rowCount: 1,
-      };
-    };
+    let candidateTables: string[] = [];
+    const queryExecutor = fakeQueryExecutor(
+      [
+        {
+          province: "Đà Nẵng",
+          name_vi: "Thực phẩm tươi sống",
+          total_orders: 50,
+          return_rate: 0.185,
+        },
+      ],
+      (input) => {
+        candidateTables = input.candidateTables;
+      },
+    );
 
     const result = await runDrillDownAnalysis({
       subscription: sampleSubscription,
       dimensionKey: "2026-09-12",
       date: "2026-09-12",
       anomaly: sampleAnomaly,
-      mcpExecutor: mockExecutor,
+      queryExecutor,
+      queryPrincipal: QUERY_PRINCIPAL,
     });
 
     expect(result.selectedDimensions).toEqual([
       "regions.province",
       "categories.name_vi",
     ]);
+    expect(candidateTables).toEqual(
+      expect.arrayContaining([
+        "orders",
+        "regions",
+        "order_items",
+        "products",
+        "categories",
+      ]),
+    );
     expect(result.drilldownSegment).toContain("regions.province = 'Đà Nẵng'");
     expect(result.drilldownSegment).toContain("categories.name_vi = 'Thực phẩm tươi sống'");
 

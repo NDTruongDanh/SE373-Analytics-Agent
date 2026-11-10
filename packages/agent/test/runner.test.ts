@@ -1,11 +1,42 @@
 import { describe, expect, it } from "vitest";
-import type { Subscription } from "@shared/contracts";
+import type { AnomalyAlert, Subscription } from "@shared/contracts";
 import {
+  buildTimeSeriesQuery,
   runAnomalyRunner,
   scheduleAnomalyCron,
 } from "../src/alerts/runner.js";
-import { InMemoryAlertHistoryStore } from "../src/alerts/dispatcher.js";
+import {
+  InMemoryAlertHistoryStore,
+  InMemoryDigestQueue,
+} from "../src/alerts/dispatcher.js";
 import type { TimeSeriesPoint } from "../src/alerts/anomalyDetector.js";
+import type { AlertQueryExecutor } from "../src/alerts/query.js";
+import type { ExecutorPrincipal } from "../src/queryExecutor/executor.js";
+
+const QUERY_PRINCIPAL: ExecutorPrincipal = {
+  runId: "runner-test-run",
+  userId: "ops_lead",
+  roleScope: "operations",
+};
+
+function fakeQueryExecutor(
+  rows: Record<string, unknown>[],
+): AlertQueryExecutor {
+  return {
+    run: async (input) => {
+      if (!input.initialSql) throw new Error("expected deterministic SQL");
+      return {
+        status: "ok",
+        sql: input.initialSql,
+        tablesUsed: input.candidateTables,
+        columns: [],
+        rows,
+        maskedColumns: [],
+        attempts: 1,
+      };
+    },
+  };
+}
 
 describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () => {
   const subReturnRate: Subscription = {
@@ -44,7 +75,10 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       subscriptions: [subReturnRate],
       targetDate: "2026-08-29",
       manual: true,
-      mcpExecutor: async () => ({ rows: [] }),
+      queryExecutor: fakeQueryExecutor([]),
+      queryPrincipal: QUERY_PRINCIPAL,
+      historyStore: new InMemoryAlertHistoryStore(),
+      digestQueue: new InMemoryDigestQueue(),
       mockSeriesProvider: () => normalSeries,
     });
 
@@ -69,19 +103,14 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       supportCount: 50,
     });
 
-    const mockMcpExecutor = async () => {
-      return {
-        rows: [
-          {
-            province: "Đà Nẵng",
-            name_vi: "Thực phẩm tươi sống",
-            total_orders: 50,
-            return_rate: 0.185,
-          },
-        ],
-        rowCount: 1,
-      };
-    };
+    const queryExecutor = fakeQueryExecutor([
+      {
+        province: "Đà Nẵng",
+        name_vi: "Thực phẩm tươi sống",
+        total_orders: 50,
+        return_rate: 0.185,
+      },
+    ]);
 
     const historyStore = new InMemoryAlertHistoryStore();
 
@@ -90,7 +119,9 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       targetDate: "2026-08-29",
       manual: true,
       historyStore,
-      mcpExecutor: mockMcpExecutor,
+      queryExecutor,
+      queryPrincipal: QUERY_PRINCIPAL,
+      digestQueue: new InMemoryDigestQueue(),
       mockSeriesProvider: () => spikeSeries,
       dispatcherOptions: {
         transport: async () => ({ ok: true, status: 200 }),
@@ -111,7 +142,9 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       targetDate: "2026-08-29",
       manual: true,
       historyStore,
-      mcpExecutor: mockMcpExecutor,
+      queryExecutor,
+      queryPrincipal: QUERY_PRINCIPAL,
+      digestQueue: new InMemoryDigestQueue(),
       mockSeriesProvider: () => spikeSeries,
     });
 
@@ -138,7 +171,10 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       subscriptions: [subReturnRate, subRevenue],
       targetDate: "2026-08-29",
       manual: true,
-      mcpExecutor: async () => ({ rows: [] }),
+      queryExecutor: fakeQueryExecutor([]),
+      queryPrincipal: QUERY_PRINCIPAL,
+      historyStore: new InMemoryAlertHistoryStore(),
+      digestQueue: new InMemoryDigestQueue(),
       mockSeriesProvider,
     });
 
@@ -159,11 +195,76 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       subscriptions: [subReturnRate],
       hour: 7,
       minute: 0,
-      mcpExecutor: async () => ({ rows: [] }),
+      queryExecutor: fakeQueryExecutor([]),
+      queryPrincipal: QUERY_PRINCIPAL,
+      historyStore: new InMemoryAlertHistoryStore(),
+      digestQueue: new InMemoryDigestQueue(),
       mockSeriesProvider: () => [],
     });
 
     expect(typeof cron.stop).toBe("function");
     cron.stop();
+  });
+
+  it("flushes persisted warning alerts through send_alert before clearing the queue", async () => {
+    const alert: AnomalyAlert = {
+      metric: "metric:return_rate",
+      currentValue: 0.1,
+      expectedValue: 0.04,
+      deviation: "z=3.0",
+      drilldownSegment: "regions.province = 'Đà Nẵng'",
+      evidenceSql: "SELECT 1",
+      recipientId: "ops_lead",
+      severity: "warning",
+      direction: "spike",
+      date: "2026-08-29",
+    };
+    const digestQueue = new InMemoryDigestQueue();
+    digestQueue.enqueue(alert);
+    const historyStore = new InMemoryAlertHistoryStore();
+    let deliveryCount = 0;
+
+    const result = await runAnomalyRunner({
+      subscriptions: [],
+      targetDate: "2026-08-29",
+      manual: true,
+      flushDigest: true,
+      queryExecutor: fakeQueryExecutor([]),
+      queryPrincipal: QUERY_PRINCIPAL,
+      historyStore,
+      digestQueue,
+      dispatcherOptions: {
+        transport: async () => {
+          deliveryCount++;
+          return { ok: true, status: 200 };
+        },
+      },
+    });
+
+    expect(result.flushedDigestCount).toBe(1);
+    expect(result.alertsSent).toBe(1);
+    expect(deliveryCount).toBe(1);
+    expect(digestQueue.size()).toBe(0);
+    expect(historyStore.getAll()).toHaveLength(1);
+    expect(historyStore.getAll()[0]?.recipientId).toBe(alert.recipientId);
+  });
+
+  it("validates date inputs and retains regional scoping for review series", () => {
+    expect(() =>
+      buildTimeSeriesQuery({
+        metricId: "metric:return_rate",
+        startDate: "2026-02-31",
+        endDate: "2026-03-01",
+      }),
+    ).toThrow();
+
+    const sql = buildTimeSeriesQuery({
+      metricId: "metric:review_score_avg",
+      startDate: "2026-09-01",
+      endDate: "2026-09-30",
+      recipientRole: "operations_south",
+    });
+    expect(sql).toContain("JOIN regions");
+    expect(sql).toContain("regions.region = 'Nam'");
   });
 });
