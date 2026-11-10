@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { AnomalyAlertSchema } from "./alert.js";
 import { AnalysisPlanSchema, RootCauseAnswerSchema } from "./rca.js";
 
 // Single answer contract shared by UC-01 and UC-02 (UC-01 section 3.1/3.2,
@@ -100,7 +99,6 @@ export type RootCauseResponse = z.infer<typeof RootCauseResponseSchema>;
 
 export const AnomalyAlertResponseSchema = AgentEnvelopeBaseSchema.extend({
   kind: z.literal("anomaly_alert"),
-  data: AnomalyAlertSchema, // <--- Bổ sung dòng này để siết chặt validation
 });
 
 export type AnomalyAlertResponse = z.infer<typeof AnomalyAlertResponseSchema>;
