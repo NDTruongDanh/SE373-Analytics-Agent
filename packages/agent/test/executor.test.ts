@@ -156,6 +156,41 @@ describe("ValidatedQueryExecutor core path", () => {
     }
   });
 
+  it("requests and retains at most a 1,000-row transient validation buffer", async () => {
+    const rows = Array.from({ length: 1001 }, (_, index) => ({
+      id: index + 1,
+      status: "completed",
+    }));
+    const model = new FakeChatModel([
+      proposalFor("SELECT id, status FROM orders LIMIT 1000", ["orders"]),
+    ]);
+    const mcp = new StubMcpCaller({
+      describe_table: describeHandler,
+      explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 1001 }),
+      run_query: () => ({
+        columns: ["id", "status"],
+        rows,
+        rowCount: rows.length,
+        truncated: true,
+        maskedColumns: [],
+        durationMs: 4,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+
+    const result = await executor.run({
+      question: "show orders",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.rows).toHaveLength(1000);
+    const runCall = mcp.calls.find((call) => call.tool === "run_query");
+    expect(runCall?.args["maxRows"]).toBe(1000);
+  });
+
   it("makes zero MCP run calls when the pre-check denies the proposal", async () => {
     const model = new FakeChatModel([
       proposalFor("SELECT * FROM orders, customers", ["orders", "customers"]),
