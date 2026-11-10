@@ -147,6 +147,24 @@ function interruptedOf(output: unknown): unknown[] | undefined {
   return (output as { __interrupt__?: unknown[] }).__interrupt__;
 }
 
+/** Read clarification metadata from either checkpoint state or LangGraph's interrupt payload. */
+function pendingClarificationOf(output: unknown): AgentState["pendingClarification"] {
+  const direct = (output as Partial<AgentState>).pendingClarification;
+  if (direct) return direct;
+  for (const item of interruptedOf(output) ?? []) {
+    const value = (item as { value?: unknown }).value ?? item;
+    const pending = (value as { pendingClarification?: unknown }).pendingClarification;
+    if (
+      pending !== null &&
+      typeof pending === "object" &&
+      Array.isArray((pending as { options?: unknown }).options)
+    ) {
+      return pending as AgentState["pendingClarification"];
+    }
+  }
+  return null;
+}
+
 
 /** Verdict tokens safe to record verbatim: protocol decisions, never content. */
 const APPROVAL_VERDICTS = new Set([
@@ -168,10 +186,11 @@ const APPROVAL_VERDICTS = new Set([
  * clarification gate; anything else stays a generic approval so future
  * gates (cost_approval, …) can mint their own kinds without a shape change.
  */
-function approvalKindFor(out: AgentState): string {
-  return out.pendingClarification && out.pendingClarification.length > 0
-    ? "clarification"
-    : "approval";
+function approvalKindFor(
+  out: AgentState,
+  pendingClarification: AgentState["pendingClarification"] = out.pendingClarification,
+): string {
+  return pendingClarification ? "clarification" : "approval";
 }
 
 /**
@@ -447,15 +466,16 @@ export function buildApp(options: BuildAppOptions): express.Express {
       )) as AgentState;
       const interrupts = interruptedOf(out);
       if (interrupts?.length) {
+        const pendingClarification = pendingClarificationOf(out);
         emit?.({
           node: "answer",
           type: "approval_requested",
           durationMs: 0,
           attempt: 0,
           payload: {
-            kind: approvalKindFor(out),
-            ...(out.pendingClarification
-              ? { pendingClarification: [...out.pendingClarification] }
+            kind: approvalKindFor(out, pendingClarification),
+            ...(pendingClarification
+              ? { pendingClarification }
               : {}),
           },
         });
@@ -471,13 +491,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId,
-          node: "ucEntry",
+          node: "answer",
           data: interruptPayload({
             action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
             reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
-            pendingClarification:
-              out.pendingClarification ??
-              (interruptData["pendingClarification"] as string[] | undefined),
+            pendingClarification,
             plan: interruptData["plan"],
             currentPlan: interruptData["currentPlan"],
           }),
@@ -616,15 +634,16 @@ export function buildApp(options: BuildAppOptions): express.Express {
       })) as AgentState;
       const resumeInterrupts = interruptedOf(out);
       if (resumeInterrupts?.length) {
+        const pendingClarification = pendingClarificationOf(out);
         emit({
           node: "answer",
           type: "approval_requested",
           durationMs: 0,
           attempt: 0,
           payload: {
-            kind: approvalKindFor(out),
-            ...(out.pendingClarification
-              ? { pendingClarification: [...out.pendingClarification] }
+            kind: approvalKindFor(out, pendingClarification),
+            ...(pendingClarification
+              ? { pendingClarification }
               : {}),
           },
         });
@@ -640,13 +659,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId: stored.threadId,
-          node: "ucEntry",
+          node: "answer",
           data: interruptPayload({
             action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
             reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
-            pendingClarification:
-              out.pendingClarification ??
-              (interruptData["pendingClarification"] as string[] | undefined),
+            pendingClarification,
             plan: interruptData["plan"],
             currentPlan: interruptData["currentPlan"],
           }),
