@@ -361,6 +361,15 @@ describe("root graph seam", () => {
     let intentCalls = 0;
     const questions: string[] = [];
     const graph = buildRootGraph({
+      retrieve: async () => ({
+        semanticChunks: [
+          {
+            chunkId: "metric:order_count",
+            text: "order_count metric definition",
+            aliasMatched: true,
+          },
+        ],
+      }),
       textToSql: {
         intentModel: {
           withStructuredOutput: () => ({
@@ -445,6 +454,20 @@ describe("root graph seam", () => {
   it("pauses before the executor when intent has multiple KPI candidates", async () => {
     let executorCalled = false;
     const graph = buildRootGraph({
+      retrieve: async () => ({
+        semanticChunks: [
+          {
+            chunkId: "metric:net_revenue",
+            text: "net_revenue metric definition",
+            aliasMatched: true,
+          },
+          {
+            chunkId: "metric:gross_revenue",
+            text: "gross_revenue metric definition",
+            aliasMatched: true,
+          },
+        ],
+      }),
       textToSql: {
         intentModel: {
           withStructuredOutput: () => ({
@@ -497,6 +520,20 @@ describe("root graph seam", () => {
   it("does not run an ambiguous KPI query after the two-selection limit", async () => {
     let executorCalled = false;
     const graph = buildRootGraph({
+      retrieve: async () => ({
+        semanticChunks: [
+          {
+            chunkId: "metric:net_revenue",
+            text: "net_revenue metric definition",
+            aliasMatched: true,
+          },
+          {
+            chunkId: "metric:gross_revenue",
+            text: "gross_revenue metric definition",
+            aliasMatched: true,
+          },
+        ],
+      }),
       textToSql: {
         intentModel: {
           withStructuredOutput: () => ({
@@ -536,6 +573,20 @@ describe("root graph seam", () => {
 
   it("stops after two invalid clarification responses", async () => {
     const graph = buildRootGraph({
+      retrieve: async () => ({
+        semanticChunks: [
+          {
+            chunkId: "metric:net_revenue",
+            text: "net_revenue metric definition",
+            aliasMatched: true,
+          },
+          {
+            chunkId: "metric:gross_revenue",
+            text: "gross_revenue metric definition",
+            aliasMatched: true,
+          },
+        ],
+      }),
       textToSql: {
         intentModel: {
           withStructuredOutput: () => ({
