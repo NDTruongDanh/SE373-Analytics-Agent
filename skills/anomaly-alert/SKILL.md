@@ -94,7 +94,7 @@ Action: No alert dispatched; emit telemetry trace with latency and token usage.
 ### Example 3: Same-Day Re-Run (Deduplication Check)
 
 Input Slice: `metric:return_rate`, date: `2026-09-12`, province: `Đà Nẵng`
-Fingerprint: `SHA256("ops_lead|metric:return_rate|2026-09-12|Đà Nẵng|2026-09-12|spike")`
+Fingerprint: `SHA256("ops_lead|metric:return_rate|Đà Nẵng|2026-09-12|spike")`
 History Check: An entry with this fingerprint already exists in `app_state.alert_history` for `date = 2026-09-12`.
 Action: Alert delivery is skipped (`skipped_duplicate`), preventing alert spam across multiple cron runs on the same day.
 
