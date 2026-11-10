@@ -3,13 +3,20 @@ type: mcp-server-guide
 title: Database MCP server and gateway
 description: Implemented db-tools MCP gateway with scoped tools, 7-stage pipeline, read-only executor, audit, and operator surfaces.
 tags: [mcp, db-tools, scoped-auth, sql-validation, audit-log, operator-ui, uc-09]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-07T14:35:23.411Z
 sources:
+  - id: openwiki-source-4cc9c6a076b816ea09303ac9
+    resource: repo://apps/api/src/constants.ts
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
-  - id: openwiki-source-29e6795232e203660915fd20
-    resource: repo://apps/web/src/constants.ts
-  - id: openwiki-source-1dfd9d0040aec8cc63e58d27
-    resource: repo://apps/web/src/index.ts
+  - id: openwiki-source-874170dfe5527cc01ce20f78
+    resource: repo://apps/web/src/app.tsx
+  - id: openwiki-source-614085671aea15957fd51fb6
+    resource: repo://apps/web/src/chat.ts
+  - id: openwiki-source-00249b1fa46703c475604204
+    resource: repo://apps/web/src/stream.ts
   - id: openwiki-source-959b64ff54cd1f30f8828ba2
     resource: repo://docs/mcp_interface.md
   - id: openwiki-source-2fda883e9b76745f69f487f7
@@ -42,10 +49,7 @@ sources:
     resource: repo://packages/mcp-server/src/server.ts
   - id: openwiki-source-239b7c4787e6faba4ea0bd52
     resource: repo://policies/mcp_clients.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-11-01T07:02:11.362Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-06T15:32:05.739Z
+generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
 ---
 
 # Database MCP server and gateway
@@ -189,10 +193,10 @@ Tool handlers return MCP content with the JSON-stringified result, or an `isErro
 
 ## 11. Operator surfaces
 
-Operator software is split across two hosts with different maturity:
+Operator software is split across two implemented hosts:
 
-- **API host (implemented).** `apps/api` wires the agent root graph, span emitter, and persistence ports behind sanitized SSE: `POST /api/ask` mints run context, maps the UI persona to an MCP principal through the server-side registry, streams allowlisted schema-validated events, and `POST /api/runs/:runId/resume` resumes on the same thread. Boot fails fast when `HARNESS_STATE_DATABASE_URL` is absent and never falls back to memory.
-- **Web UI (shell).** `apps/web` still exports only the `WEB_SHELL` marker from `constants.ts` (via `index.ts`) for the planned Vite plus React chat UI. It may import only shared contract types and is lint-forbidden from importing the DB driver, agent, access-policy, or MCP server packages.
+- **API host (implemented).** `apps/api` wires the agent root graph, span emitter, and persistence ports behind sanitized SSE: `POST /api/ask` mints run context, maps the UI persona to an MCP principal through the server-side registry (`PERSONA_TO_CLIENT` plus `resolvePersona`), streams allowlisted schema-validated events, and `POST /api/runs/:runId/resume` resumes on the same thread. Boot fails fast when `HARNESS_STATE_DATABASE_URL` is absent and never falls back to memory.
+- **Web UI (implemented).** `apps/web` is a Vite plus React chat UI: `App` in `app.tsx` mounted by `main.tsx` offers a persona selector (`sales_south`, `marketing`, `hr`, `data_admin`), posts questions to `POST /api/ask` and clarification answers to `POST /api/runs/:runId/resume`, decodes the stream incrementally with `SseParser` plus `postStream` and `readEventStream` in `stream.ts`, tracks `runId` and `threadId` with `chatReducer` in `chat.ts` rejecting mismatched sessions, and shows SQL, attempts, citations, and preview rows in `ResultDrawer`. It imports workspace types only from `@shared/contracts` and is lint-forbidden from importing the DB driver, agent, access-policy, MCP server, API, or data packages.
 
 Because enforcement lives on the server, any MCP client with a valid token gets identical controls. Use MCP Inspector against `POST /mcp` to list and call all six tools and read both resources; a `DELETE` attempt still fails with `FORBIDDEN_STATEMENT` with no table change, proving the guard does not depend on agent cooperation.
 
@@ -203,7 +207,7 @@ The gateway suite stays DB-free with a stub session factory that records begin, 
 - `packages/mcp-server/test/pipeline.test.ts` covers the seven-stage matrix: stage order, auth, scopes, zod bounds, guard, policy masking with row scope and denials, bounded reads, PII scan, and exactly-once audit.
 - `packages/mcp-server/test/errors.test.ts` covers the `sanitizeError` choke-point and PG-code mapping.
 - `packages/mcp-server/test/semantic.test.ts` covers chunking, fake embeddings, and hybrid retrieval without keys.
-- `packages/mcp-server/test/shell.test.ts` pins the remaining shell marker.
+- `packages/mcp-server/test/index.test.ts` pins the barrel re-exports and asserts no `MCP_SERVER_SHELL` marker remains.
 - `packages/mcp-server/test/live.test.ts` exercises the real read-only path when a database is available.
 
 Run the focused suites with `pnpm --filter mcp-server test` and regenerate the interface doc with `pnpm docs:interface` rather than editing it by hand.

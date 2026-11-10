@@ -64,10 +64,10 @@ sources:
     resource: repo://packages/contracts/test/schemas.test.ts
   - id: openwiki-source-5ce0b28a6cb6c2f639298bc1
     resource: repo://packages/contracts/test/tools.test.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-06T15:32:05.739Z
+    at: 2026-11-07T14:35:23.411Z
+generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
 ---
 
 # Agent workflow and harness architecture

@@ -39,7 +39,16 @@ const baseCatalog: SchemaCatalog = {
         { ...col("id"), type: "integer", nullable: false },
         { ...col("customer_id"), type: "integer" },
         { ...col("status") },
+        { ...col("purchase_date"), type: "timestamp" },
         { ...col("total"), type: "numeric" },
+      ],
+    },
+    {
+      name: "order_items",
+      columns: [
+        { ...col("id"), type: "integer", nullable: false },
+        { ...col("order_id"), type: "integer", nullable: false },
+        { ...col("product_id"), type: "integer", nullable: false },
       ],
     },
     {
@@ -65,7 +74,7 @@ const baseCatalog: SchemaCatalog = {
 /** orders flagged large: any large column marks the table large. */
 const largeCatalog: SchemaCatalog = {
   tables: baseCatalog.tables.map((table) =>
-    table.name === "orders"
+    table.name === "orders" || table.name === "order_items"
       ? { ...table, columns: table.columns.map((c) => ({ ...c, large: true })) }
       : table,
   ),
@@ -73,10 +82,10 @@ const largeCatalog: SchemaCatalog = {
 
 async function gate(sql: string, catalog: SchemaCatalog = baseCatalog) {
   const guard = await sqlGuard(sql, catalog);
-  expect(guard.ok).toBe(true);
   if (!guard.ok) {
     throw new Error(`guard unexpectedly failed: ${guard.error.message}`);
   }
+  expect(guard.ok).toBe(true);
   return localQuerySafetyGate(sql, guard as GuardSuccess, catalog);
 }
 
@@ -132,14 +141,86 @@ describe("LocalQuerySafetyGate", () => {
     expect(result.reason).toContain("orders");
   });
 
-  it("passes a filtered large-table scan (with the LIMIT clamp)", async () => {
+  it("requires the indexed purchase_date filter, not an arbitrary WHERE clause", async () => {
     const result = await gate(
       "SELECT id, status FROM orders WHERE status = 'ok'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("passes a large-table scan bounded by purchase_date", async () => {
+    const result = await gate(
+      "SELECT id, status FROM orders WHERE purchase_date >= '2026-01-01'",
       largeCatalog,
     );
     expect(result.verdict).toBe("pass");
     if (result.verdict !== "pass") return;
     expect(result.sql).toContain(`LIMIT ${DETAIL_QUERY_LIMIT}`);
+  });
+
+  it("allows aggregate metrics that use their own derived date field", async () => {
+    const result = await gate(
+      "SELECT COUNT(*) AS new_customers FROM orders",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
+  });
+
+  it("allows the canonical new-customers CTE filtered on first_purchase", async () => {
+    const result = await gate(
+      "WITH first_orders AS (SELECT o.customer_id, MIN(o.purchase_date) AS first_purchase FROM orders o WHERE o.status = 'delivered' GROUP BY o.customer_id) SELECT COUNT(*) AS new_customers FROM first_orders fo WHERE fo.first_purchase >= '2026-01-01' AND fo.first_purchase < '2026-04-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
+  });
+
+  it("does not treat a scalar function as an aggregate bypass", async () => {
+    const result = await gate(
+      "SELECT LOWER(status) FROM orders",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("does not let an aggregate CTE bypass an outer detail scan", async () => {
+    const result = await gate(
+      "WITH customer_count AS (SELECT COUNT(*) AS n FROM customers) SELECT LOWER(status) FROM orders",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("does not treat a string literal as a purchase_date range", async () => {
+    const result = await gate(
+      "SELECT id FROM orders WHERE status = 'purchase_date'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("does not treat IS NOT NULL as a purchase_date range", async () => {
+    const result = await gate(
+      "SELECT id FROM orders WHERE purchase_date IS NOT NULL",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("does not accept a purchase_date predicate hidden behind OR", async () => {
+    const result = await gate(
+      "SELECT id FROM orders WHERE status = 'ok' OR purchase_date > '1900-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("allows order_items only when its parent orders time filter is present", async () => {
+    const result = await gate(
+      "SELECT i.id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.purchase_date >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
   });
 
   it("appends LIMIT 200 to a detail query with no LIMIT", async () => {
