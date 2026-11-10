@@ -1,5 +1,6 @@
 import { walk } from "@pgsql/traverse";
 import type { NodePath } from "@pgsql/traverse";
+export { deparse, parse } from "pgsql-parser";
 import { parse } from "pgsql-parser";
 import type { DbToolError, SchemaCatalog } from "@shared/contracts";
 import { dbToolError } from "@shared/contracts";
