@@ -21,13 +21,13 @@ export const AbsoluteThresholdSchema = z.object({
 export type AbsoluteThreshold = z.infer<typeof AbsoluteThresholdSchema>;
 
 export const MinSupportConfigSchema = z.object({
-  minOrders: z.number().int().nonnegative().default(15),
+  minOrders: z.number().int().min(15).default(15),
   minMetricTrimmedMean: z.number().nonnegative().optional(),
 });
 export type MinSupportConfig = z.infer<typeof MinSupportConfigSchema>;
 
 export const MinSupportSchema = z.union([
-  z.number().int().nonnegative(),
+  z.number().int().min(15),
   MinSupportConfigSchema,
 ]);
 export type MinSupport = z.infer<typeof MinSupportSchema>;

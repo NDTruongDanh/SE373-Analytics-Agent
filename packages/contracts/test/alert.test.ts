@@ -108,6 +108,22 @@ describe("UC-10 Alert and Subscription Contract Schemas", () => {
       minOrders: 20,
       minMetricTrimmedMean: 500000,
     });
+
+    // Rejects minSupport < 15 per §3.8 / §4.3 fail-closed enforcement
+    expect(() =>
+      SubscriptionSchema.parse({
+        ...validSubscription,
+        minSupport: 14,
+      }),
+    ).toThrow();
+    expect(() =>
+      SubscriptionSchema.parse({
+        ...validSubscription,
+        minSupport: {
+          minOrders: 10,
+        },
+      }),
+    ).toThrow();
   });
 
   it("validates SubscriptionsConfigSchema wrapper", () => {
