@@ -491,7 +491,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId,
-          node: "ucEntry",
+          node: "answer",
           data: interruptPayload({
             action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
             reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
@@ -659,7 +659,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId: stored.threadId,
-          node: "ucEntry",
+          node: "answer",
           data: interruptPayload({
             action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
             reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,

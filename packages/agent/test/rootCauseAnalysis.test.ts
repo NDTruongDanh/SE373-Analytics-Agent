@@ -8,12 +8,17 @@ import {
   createPlan,
   createRcaRuntime,
   executeAnalysis,
+  getDisjointLeafNodes,
+  getDisjointSkippedNodes,
   getNextDimension,
+  identifyPrimaryRootCauses,
   parseRcaIntent,
   slugify,
+  synthesizeReport,
   toRegionGroup,
   validateBaseline,
   verifySqlDateFilter,
+  verifyWaterfallAttribution,
   RCA_UC_ID,
 } from "../src/subgraphs/rootCauseAnalysis.js";
 import { routeQuestionToUc } from "../src/router.js";
@@ -2601,6 +2606,439 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
         { configurable: { thread_id: threadId } },
       ),
     ).rejects.toThrow("Lỗi lưu checkpoint tiến độ bước");
+  });
+
+  it("T37-T1: getDisjointLeafNodes excludes parent nodes when a child step is marked done", () => {
+    const steps: PlanStep[] = [
+      {
+        stepId: "step_region_central",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Trung",
+        dimensionPath: ["Miền Trung"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -400_000_000,
+        contributionPct: 86.96,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_region_north",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Bắc",
+        dimensionPath: ["Miền Bắc"],
+        parentId: null,
+        depth: 0,
+        status: "skipped",
+        delta: -40_000_000,
+        contributionPct: 8.7,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_channel_shopee_central",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Shopee",
+        dimensionPath: ["Miền Trung", "Shopee"],
+        parentId: "step_region_central",
+        depth: 1,
+        status: "done",
+        delta: -350_000_000,
+        contributionPct: 76.09,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_channel_lazada_central",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Lazada",
+        dimensionPath: ["Miền Trung", "Lazada"],
+        parentId: "step_region_central",
+        depth: 1,
+        status: "skipped",
+        delta: -50_000_000,
+        contributionPct: 10.87,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_category_appliances_shopee_central",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Đồ gia dụng",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+        parentId: "step_channel_shopee_central",
+        depth: 2,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 65.22,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+    ];
+
+    const leaves = getDisjointLeafNodes(steps);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].stepId).toBe("step_category_appliances_shopee_central");
+    expect(leaves[0].dimensionValue).toBe("Đồ gia dụng");
+  });
+
+  it("T37-T2: Waterfall Attribution Math Check PASS: sum of leaves + residual within 5% tolerance", () => {
+    const leafNodes: PlanStep[] = [
+      {
+        stepId: "leaf_1",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Đồ gia dụng",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+        parentId: "p1",
+        depth: 2,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 65.22,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+      {
+        stepId: "leaf_2",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Thời trang",
+        dimensionPath: ["Miền Nam", "TikTok Shop", "Thời trang"],
+        parentId: "p2",
+        depth: 2,
+        status: "done",
+        delta: -145_000_000,
+        contributionPct: 31.52,
+        sql: "SELECT 2",
+        retryCount: 0,
+      },
+    ];
+
+    const result = verifyWaterfallAttribution(leafNodes, 15_000_000, -460_000_000);
+    expect(result.mathVerified).toBe(true);
+    expect(result.mathDiffRatio).toBeLessThanOrEqual(0.05);
+    expect(result.deltaExplained).toBe(-460_000_000);
+  });
+
+  it("T37-T3: Waterfall Attribution Math Check WARNING: sum differs > 5%", () => {
+    const leafNodes: PlanStep[] = [
+      {
+        stepId: "leaf_1",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Đồ gia dụng",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+        parentId: "p1",
+        depth: 2,
+        status: "done",
+        delta: -200_000_000,
+        contributionPct: 43.48,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+    ];
+
+    const result = verifyWaterfallAttribution(leafNodes, 10_000_000, -460_000_000);
+    expect(result.mathVerified).toBe(false);
+    expect(result.mathDiffRatio).toBeGreaterThan(0.05);
+  });
+
+  it("T37-T4: identifyPrimaryRootCauses selects top high impact causes sorted by contribution", () => {
+    const leaves: PlanStep[] = [
+      {
+        stepId: "l1",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "TikTok",
+        dimensionPath: ["TikTok"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -80_000_000,
+        contributionPct: 17.39,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+      {
+        stepId: "l2",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Shopee",
+        dimensionPath: ["Shopee"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 65.22,
+        sql: "SELECT 2",
+        retryCount: 0,
+      },
+      {
+        stepId: "l3",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Lazada",
+        dimensionPath: ["Lazada"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -80_000_000,
+        contributionPct: 17.39,
+        sql: "SELECT 3",
+        retryCount: 0,
+      },
+    ];
+
+    const primary = identifyPrimaryRootCauses(leaves);
+    expect(primary).toHaveLength(1);
+    expect(primary[0].stepId).toBe("l2");
+    expect(primary[0].contributionPct).toBe(65.22);
+    expect(primary[0].summaryVi).toContain("giảm");
+  });
+
+  it("T37-T5: synthesizeReport generates verified RootCauseAnswer with all 5 report sections and SQL evidence", () => {
+    const plan: AnalysisPlan = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      metricName: "net_revenue",
+      metricType: "additive",
+      direction: "decrease",
+      currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+      baselineVal: 2_500_000_000,
+      currentVal: 2_040_000_000,
+      absDelta: -460_000_000,
+      pctDelta: -18.4,
+      isValidBaseline: true,
+      totalQueriesCount: 6,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      residualOtherAbs: 160_000_000,
+      unexploredBranches: [
+        {
+          axis: "dimension",
+          dimensionOrFactor: "region",
+          dimensionValue: "Miền Bắc",
+          parentId: null,
+          reason: "PRUNED_BELOW_THRESHOLD",
+        },
+      ],
+      steps: [
+        {
+          stepId: "s1",
+          axis: "dimension",
+          dimensionOrFactor: "category",
+          dimensionValue: "Đồ gia dụng",
+          dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+          parentId: null,
+          depth: 2,
+          status: "done",
+          delta: -300_000_000,
+          contributionPct: 65.22,
+          sql: "SELECT SUM(price) FROM order_items WHERE category = 'Đồ gia dụng'",
+          retryCount: 0,
+        },
+      ],
+    };
+
+    const answer = synthesizeReport(plan);
+    expect(answer.question).toBe(plan.question);
+    expect(answer.mathVerified).toBe(true);
+    expect(answer.primaryCauses).toHaveLength(1);
+    expect(answer.primaryCauses[0].sql).toContain("order_items");
+    expect(answer.finalReportMarkdown).toContain("## 1. Hiện tượng & Mức biến động");
+    expect(answer.finalReportMarkdown).toContain("## 2. Cây phân rã nguyên nhân");
+    expect(answer.finalReportMarkdown).toContain("## 3. Nguyên nhân cốt lõi");
+    expect(answer.finalReportMarkdown).toContain("## 4. Kiểm chứng số học Waterfall");
+    expect(answer.finalReportMarkdown).toContain("## 5. Nhánh chưa phân tích & Giới hạn");
+  });
+
+  it("T37-T6: Waterfall Attribution handles offsetting/cancellation branches correctly", () => {
+    const steps: PlanStep[] = [
+      {
+        stepId: "leaf_neg",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Trung",
+        dimensionPath: ["Miền Trung"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 150.0,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+      {
+        stepId: "leaf_pos",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Nam",
+        dimensionPath: ["Miền Nam"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: 100_000_000,
+        contributionPct: -50.0,
+        sql: "SELECT 2",
+        retryCount: 0,
+      },
+    ];
+
+    const result = verifyWaterfallAttribution(steps, 0, -200_000_000, steps);
+    expect(result.mathVerified).toBe(true);
+    expect(result.mathDiffRatio).toBe(0);
+    expect(result.deltaExplained).toBe(-200_000_000);
+  });
+
+  it("T37-T7: Waterfall attribution FAILS when leaf delta has opposite sign to total delta", () => {
+    const leafNodes: PlanStep[] = [
+      {
+        stepId: "wrong_sign_leaf",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Bắc",
+        dimensionPath: ["Miền Bắc"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: 100_000_000, // positive attribution
+        contributionPct: -100.0,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+    ];
+
+    // Total delta is negative (-100M). Absolute diff would be |100 - 100| = 0,
+    // but strictly signed diff is |100 - (-100)| = 200M (200% diff).
+    const result = verifyWaterfallAttribution(leafNodes, 0, -100_000_000);
+    expect(result.mathVerified).toBe(false);
+    expect(result.mathDiffRatio).toBe(2);
+  });
+
+  it("T37-T8: Parent node with all-skipped children is excluded from leaves to prevent double counting", () => {
+    const steps: PlanStep[] = [
+      {
+        stepId: "parent_central",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Trung",
+        dimensionPath: ["Miền Trung"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -400_000_000,
+        contributionPct: 100.0,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "child_channel_lazada",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Lazada",
+        dimensionPath: ["Miền Trung", "Lazada"],
+        parentId: "parent_central",
+        depth: 1,
+        status: "skipped",
+        delta: -250_000_000,
+        contributionPct: 62.5,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "child_channel_tiki",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Tiki",
+        dimensionPath: ["Miền Trung", "Tiki"],
+        parentId: "parent_central",
+        depth: 1,
+        status: "skipped",
+        delta: -150_000_000,
+        contributionPct: 37.5,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+    ];
+
+    // Parent must not be treated as a leaf because it has children in the decomposition tree
+    const leaves = getDisjointLeafNodes(steps);
+    expect(leaves).toHaveLength(0);
+
+    const skipped = getDisjointSkippedNodes(steps);
+    expect(skipped).toHaveLength(2);
+    expect(skipped.map((s) => s.stepId)).toEqual(["child_channel_lazada", "child_channel_tiki"]);
+
+    const result = verifyWaterfallAttribution(leaves, 400_000_000, -400_000_000, steps);
+    expect(result.mathVerified).toBe(true);
+    expect(result.deltaExplained).toBe(-400_000_000);
+    expect(result.mathDiffRatio).toBe(0);
+  });
+
+  it("T37-T9: Preserves signedResidual = 0 when skipped branches cancel out, not falling back to residualOtherAbs", () => {
+    const leaf: PlanStep = {
+      stepId: "main_leaf",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Shopee",
+      dimensionPath: ["Shopee"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: -200_000_000,
+      contributionPct: 100.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const skipped1: PlanStep = {
+      stepId: "skipped_pos",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Website",
+      dimensionPath: ["Website"],
+      parentId: null,
+      depth: 0,
+      status: "skipped",
+      delta: 50_000_000, // +50M
+      contributionPct: -25.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const skipped2: PlanStep = {
+      stepId: "skipped_neg",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Tiki",
+      dimensionPath: ["Tiki"],
+      parentId: null,
+      depth: 0,
+      status: "skipped",
+      delta: -50_000_000, // -50M, cancels out skipped1 to 0 signed residual
+      contributionPct: 25.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const steps = [leaf, skipped1, skipped2];
+    const leaves = [leaf];
+    const residualOtherAbs = 100_000_000; // |50M| + |-50M| = 100M
+    const totalDelta = -200_000_000;
+
+    // Because signed residual data is present (+50M + -50M = 0), signedResidual must stay 0,
+    // not fall back to inferring -100M from residualOtherAbs.
+    const result = verifyWaterfallAttribution(leaves, residualOtherAbs, totalDelta, steps);
+    expect(result.mathVerified).toBe(true);
+    expect(result.deltaExplained).toBe(-200_000_000);
+    expect(result.mathDiffRatio).toBe(0);
   });
 });
 
