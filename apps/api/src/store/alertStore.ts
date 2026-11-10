@@ -90,7 +90,8 @@ export class AppStateStore {
   /** Pre-send dedup check: true when this fingerprint was already recorded. */
   async hasFingerprint(fingerprint: string): Promise<boolean> {
     const result = await this.pool.query(
-      "SELECT 1 FROM app_state.alert_history WHERE fingerprint = $1",
+      "SELECT 1 FROM app_state.alert_history " +
+        "WHERE fingerprint = $1 AND sent_at >= NOW() - INTERVAL '24 hours'",
       [fingerprint],
     );
     return result.rows.length > 0;
@@ -98,16 +99,20 @@ export class AppStateStore {
 
   /**
    * Post-send record: INSERT exactly one row. Call ONLY after the alert was
-   * actually sent (write-after-send). A duplicate fingerprint violates the
-   * PRIMARY KEY (23505) — the caller treats that as already-sent, never as
-   * a retryable transport error.
+   * actually sent (write-after-send). A fingerprint from an expired 24h
+   * window is updated in place so the primary key does not block a later alert.
    */
   async recordSent(row: AlertRecord): Promise<void> {
     const fingerprint = row.fingerprint ?? sha256Fingerprint(row);
     await this.pool.query(
       "INSERT INTO app_state.alert_history " +
         "(fingerprint, recipient_id, metric, dimension_key, alert_date, direction) " +
-        "VALUES ($1, $2, $3, $4, $5, $6)",
+        "VALUES ($1, $2, $3, $4, $5, $6) " +
+        "ON CONFLICT (fingerprint) DO UPDATE SET " +
+        "recipient_id = EXCLUDED.recipient_id, metric = EXCLUDED.metric, " +
+        "dimension_key = EXCLUDED.dimension_key, alert_date = EXCLUDED.alert_date, " +
+        "direction = EXCLUDED.direction, sent_at = NOW() " +
+        "WHERE app_state.alert_history.sent_at < NOW() - INTERVAL '24 hours'",
       [
         fingerprint,
         row.recipientId,
