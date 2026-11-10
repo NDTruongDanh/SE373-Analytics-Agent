@@ -1,6 +1,6 @@
 version: 1
 subscriptions:
-  # ANOM-01: Tỉ lệ hoàn đơn
+  # ANOM-01: Tỉ lệ hoàn đơn (Critical routing: realtime alert)
   - id: return-rate-daily
     metricId: metric:return_rate
     primaryDimension: orders.purchase_date
@@ -10,14 +10,14 @@ subscriptions:
     recipientId: "ops_lead"
     recipientRole: "operations"
     channel: webhook
-    digestPreference: digest
+    digestPreference: realtime
     absoluteThreshold:
       operator: above
       value: 0.10
       unit: ratio
     minSupport: 15
 
-  # ANOM-02: Doanh thu thuần
+  # ANOM-02: Doanh thu thuần (Financial reporting: Slack digest with support threshold)
   - id: net-revenue-daily
     metricId: metric:net_revenue
     primaryDimension: orders.purchase_date
@@ -26,15 +26,17 @@ subscriptions:
       - orders.channel_id
     recipientId: "finance_lead"
     recipientRole: "finance"
-    channel: webhook
+    channel: slack
     digestPreference: digest
     absoluteThreshold:
       operator: below
       value: 10000000
       unit: vnd
-    minSupport: 15
+    minSupport:
+      minOrders: 15
+      minMetricTrimmedMean: 500000
 
-  # ANOM-03: Tỉ lệ huỷ đơn
+  # ANOM-03: Tỉ lệ huỷ đơn (Ops spike monitoring: Telegram realtime)
   - id: cancel-rate-daily
     metricId: metric:cancellation_rate
     primaryDimension: orders.purchase_date
@@ -43,15 +45,15 @@ subscriptions:
       - payments.payment_type
     recipientId: "ops_lead"
     recipientRole: "operations"
-    channel: webhook
-    digestPreference: digest
+    channel: telegram
+    digestPreference: realtime
     absoluteThreshold:
       operator: above
       value: 0.10
       unit: ratio
     minSupport: 15
 
-  # ANOM-04: Số đơn hàng mới
+  # ANOM-04: Số đơn hàng mới (Sales lead daily summary: Email digest)
   - id: new-orders-daily
     metricId: metric:order_count
     primaryDimension: orders.purchase_date
@@ -60,7 +62,7 @@ subscriptions:
       - sellers.seller_id
     recipientId: "sales_director"
     recipientRole: "sales_lead"
-    channel: webhook
+    channel: email
     digestPreference: digest
     absoluteThreshold:
       operator: above
@@ -68,7 +70,7 @@ subscriptions:
       unit: orders
     minSupport: 15
 
-  # ANOM-05: Điểm đánh giá trung bình
+  # ANOM-05: Điểm đánh giá trung bình (Support daily review: Webhook digest)
   - id: review-score-daily
     metricId: metric:review_score_avg
     primaryDimension: reviews.created_at
