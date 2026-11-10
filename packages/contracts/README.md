@@ -25,7 +25,10 @@ constant consumers can assert against. Enforcement is by CODEOWNERS review on
   column names only) carrying the server-minted row-scope record the MCP
   gateway already returned. Pre-1.1.0 payloads without the field still parse
   (`default: []`). Single authority lives here; `@shared/access-policy`
-  re-exports the schema.
+  re-exports the schema. Also includes additive UC-10 schemas in `src/alert.ts`
+  (`SubscriptionsConfigSchema`, `SubscriptionSchema`, `AnomalyAlertSchema`,
+  `AlertChannelSchema`, etc.) for periodic anomaly detection without breaking
+  existing envelopes (`AnomalyAlertResponseSchema.data` remains `z.unknown()`).
 
 ## Naming: camelCase is canonical
 
