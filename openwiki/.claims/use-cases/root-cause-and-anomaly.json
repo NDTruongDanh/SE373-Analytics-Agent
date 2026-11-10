@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:50a68451de8625dd1a552d5eef13a63c4dac43249722a9d247b2a4f4eb8c2196",
+  "pageVersion": "sha256:1cc045d2de48887786442e1e3642309c46c3fbc245b8dd380fc629c9ce0b047a",
   "claims": [
     {
       "id": "claim_c092349b60ee43fdab0b26417119585d",
@@ -256,15 +256,19 @@
     },
     {
       "id": "claim_5b63477c0dad4355a423da1a8b0b67b3",
-      "statement": "Generic HITL pause/resume plumbing has landed: pauseForApproval wraps LangGraph interrupt, resumeDecision builds Command resume on the same stable chat thread id, proven DB-free on MemorySaver without re-running completed nodes.",
+      "statement": "Generic HITL pause/resume has landed: pauseForApproval wraps LangGraph interrupt, resumeDecision builds Command resume on the same stable chat thread id, proven DB-free on MemorySaver without re-running completed nodes.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/hitl.ts#L70-L92",
-          "version": "repo-lines-v1:sha256:5cdbd2e59b3daef5bdc285773bb035b78427971d015076e1043c5837063d3f71:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ZTU2OTM0ZGRhMzVjMjg1MzFhYWNiOTMyZThhZGQ0YTJkYjUzOGQ2MzNmYmUzMjU2NDk1ZDk4YWRjMTlkZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://packages/agent/src/hitl.ts#L106-L122",
+          "version": "repo-lines-v1:sha256:a985c1653ec8be706df110c9a84f539d44e65d251e9396c2e9d1da1d3d8eb68e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjZjAzYWY0NjA5ZmNiZTdjMzhlODZmNTA1ODUzMjQ4YWNlNGYxM2JlOGE0MTgzMDMwZWMwZTA5ODUxZWY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/hitl.ts#L16-L36",
+          "version": "repo-lines-v1:sha256:97dbc30a347e1c888b0a7cfa809fc3c73fde57068ee5967c3a3fff3bbe328b43:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlOTg0NDExNjg5MDJhZjlmMGNiNzc2YzljZWM1MWQ1ZDY3YTViYTU5MTEzMjkwNjY2OGM1ZjAzZWQwMGYwOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4NzkwN2QxNzA2ODhkYmZkNDA5YWI4OGNmMDQ2NTVjZGNjMTRhYTk2NWUzZWM3YjIzMDhkZTZkOTIxN2NhNjMifQ"
         },
         {
           "resource": "repo://packages/agent/test/resume.test.ts#L85-L100",
-          "version": "repo-lines-v1:sha256:e1132a51594f8835d9de31760882398a6bb85a4732794c3d25283e4e2e30e12d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDc5ZmYyMzcyZTkwMWVmODRkZGI0YWZjMDI3Mjk1MDg4YTM0ZDNmOWRlYWI2NWRmOTEwNzNlYzk4ZmJjOTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ZjFhODlkNzU2MjlkM2Q2NTUzYzVmMjRjMjFiODgyYTAzZTY4MGY3YjRlMGQwODUzNjc5OTkzZjgxNGI3Y2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxM2ZmZjhjYWJkMTYzOTkxMDIwNTY2ZWVmZTdiNzQzNjdmMzU0NGE0MTY5NWYyNTBlMGViNTBjYzI4OTAxNjIifQ"
+          "version": "repo-lines-v1:sha256:402d8eb49a71ef8cb78b8780fec39da6173fcd2cf56cfd959932acfe828173a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NjBjYzI3NWFjYTU4Y2YwNDQzYmRjZTBlZmRlZWY1MzcxNzQ2OWFjYWE0OWRkNGI3Y2E2YjNlM2VmZTg5NGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmOThlOWQ5OTliNjA1ZGE4NTAzNTQyYjg1MDU4YmU2MWYzNmUxNzAyNDM4MmU3ZmM5Y2M4ODJhMmNmZDY3ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxNTI2MzdkMGRhMGY2ZmRkZTBiNmY2OTk4ZDc2ZWI2NzkwZGM4MDY3MWM2ZjY4M2VjNTFiOTcwYzhmNWFhMDkifQ"
         }
       ]
     },
@@ -273,12 +277,12 @@
       "statement": "Durable checkpoint and host resume path has landed: createCheckpointer builds PostgresSaver on langgraph schema from HARNESS_STATE_DATABASE_URL with fail-fast setup and agent_ro rejection, createHostPorts injects it with AppStateStore, and POST /api/runs/:runId/resume resumes via Command on the same thread.",
       "evidence": [
         {
-          "resource": "repo://apps/api/src/index.ts#L532-L592",
-          "version": "repo-lines-v1:sha256:78a3f5e096c058bbe731a0f8a1857425ee19f632362a92acbf5551e15cf58cb7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyODNjNjdhY2QyNmI5Mzg1MDdlNDY4Y2NlNGY3ZTkzZDZkMWVmNGQxMjQ4ZTQzNDMzZGVjNWZmMmJjMGI3ODMifQ"
+          "resource": "repo://apps/api/src/index.ts#L569-L634",
+          "version": "repo-lines-v1:sha256:8e3546de7638c4a1b92279bb5dec922b6948d852c41dcef650b78b9b76154c09:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzZjUxY2VlNzIyN2RmZWUzYjc5M2UxOGNjM2I3ZTQ1MmZlMWVjYTRhOTZjYjE1ZDI5ZjhiODRkYzMxYWRlMjEifQ"
         },
         {
-          "resource": "repo://apps/api/src/index.ts#L705-L749",
-          "version": "repo-lines-v1:sha256:bb2a2e8e689399c809df64ce0a96e38b26a309545ff8f5296af592bc439a62fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1NDhhMzNmMTIxMzY2MGQxMTRjYmI1MjFmNjE3ODFkNDI1OTY3NDZkZGE3Nzg2YTFmZTQ3YmRhMjNhNWVjNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4NzRlMTAwYTEwODQ2M2YwZGVmZWM3N2JlYjZhZjljNmI3YjJmZjkwMmNiMjFkMmI4NzAyYjNkNjE1ZTliOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzZTIwM2FkNzc5M2I0ZDI4ZDg3NjU4NmU2MzI4MjA5ZmExOTllZmZjMjhlMmM0YTc3MGVkZTFhNTc3OTcxNjIifQ"
+          "resource": "repo://apps/api/src/index.ts#L762-L790",
+          "version": "repo-lines-v1:sha256:8ab6f9a9e174be683e3f0b4ce9c0fc6f269e2704e98ac34860ae84d50336d979:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1NDhhMzNmMTIxMzY2MGQxMTRjYmI1MjFmNjE3ODFkNDI1OTY3NDZkZGE3Nzg2YTFmZTQ3YmRhMjNhNWVjNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjZWU2MmZlNjhhYjczYjFhZGJkNzRhMDUxMWNjOTMxOTFlMTQ2NGJlZmFjMjA0NzNmMjhlODczOWIzZjcxNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4NzRlMTAwYTEwODQ2M2YwZGVmZWM3N2JlYjZhZjljNmI3YjJmZjkwMmNiMjFkMmI4NzAyYjNkNjE1ZTliOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3YzA4YjMwOWRlZTk2NWJlZDAxNTMzOTY2YjhhMTRkZDdkNjIxMDhiZjhiYWZmZDNmNzE5MjRjNzRiYTM3MDkifQ"
         },
         {
           "resource": "repo://apps/api/src/ports.ts#L29-L42",
@@ -314,19 +318,23 @@
     },
     {
       "id": "claim_c5ccc9ff6e6548e7aaee2350fe36c3b2",
-      "statement": "UC-05 orchestrator subgraph (RCAState/PlanStep, validate/create/execute/evaluate/synthesize nodes), UC-10 runner/detector/sender (alerts/*, subscriptions.yaml, node-cron/manual CLI, sendAlert with timeout/retries/queue), and both domain skills (root-cause-analysis, anomaly-alert) are still planned with no implementation files; only the frozen registry seam exists and no domain skill files exist in the repository.",
+      "statement": "UC-05 orchestrator has landed as packages/agent/src/subgraphs/rootCauseAnalysis.ts with createRcaRuntime entry registered under RCA_UC_ID and routed by routeQuestionToUc; only the UC-10 runner/sender (alerts/*, subscriptions.yaml, node-cron/manual CLI) and both domain skill directories remain planned with no implementation files.",
       "evidence": [
         {
-          "resource": "repo://docs/architecture.md#L258-L259",
-          "version": "repo-lines-v1:sha256:043cedd8db9cb966934ea7f6f1392c94fdb574243d99989b8533b3dfe9cc2394:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWQwMmY2N2Q5YmY4ZjFiMjdhNWU3M2U2NWNhNmRjMDIyM2RkOTc4M2RhOWI4MmE3MjIyMjA5ZWJjMmVlNzFlYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmM3OTFjNWJhZGE2ZjQ3OTU5NWZhMmFmMzAwYmQ0ZDAxMDk5NTQ4NzAwNzFlODMyZWNmN2JiODcxNzkxZWRjYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTMzOTMxYmY1ZGJjNjVjYjU3ZTE3NjA3NzE1OTk2N2RiOGZjNTZlZDk4MDFhY2Q4YTJlYzRlYTExMmU3MzY4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDA1NWE5OGQ0ZDRiZTM5MDk3M2IyNTE1NmY5ZjdkMGE1ZTU5MjY3YmUzOWYwYWZjNjc0ODBhZWJiNmI2M2YyYyJ9"
+          "resource": "repo://packages/agent/src/constants.ts#L33-L34",
+          "version": "repo-lines-v1:sha256:52894c40494d725fbf4abc0b5df2203300e4558dc0b69a34cabcd8097c0fe042:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGVkMTMyNDRhMTg3YjY3NTBjZTMzMzgzMTVhMTY5NmVlY2IzYTNhYjk4OTllZmM1ZThlOTA3ZThiOTA4YTJkNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTA2NmE3MzZkZGJkMjI2OGYxYmIyMGZlMGVlYWNiNGMzOWM2MzgzOTA0ZTYwYThiN2ZiY2MwNTEwYWJlZTJhZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzg1NDlmYzNhZGEyNTE0ODhmY2M2Mjg0ZjZhNzI2YmQ1Yzg3OWE0Nzk2ODhmMzU2YTAwYjEzNzZhZmMzM2Q1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWU5MmNhY2U5YTVjZDdkOTkxZjc0MGM0MGQyNmVlYzdkMjk2OTRmM2M1ZjYxMGQwYjMxNTJiZDg2ODUyYmU2NyJ9"
         },
         {
-          "resource": "repo://packages/agent/src/graph.ts#L107-L197",
-          "version": "repo-lines-v1:sha256:5b1fd67ba3fc1e88096ae44af71f2b9c00b61f7bf6ef34b102f414cf57f642f6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMDAxOTQ3MDJhZDFkYmMxNmRkNmY2YWM2MDVjOWEzYWFhMWY5NDNmMWZlMWQ3NzY0MTBkNjY0Y2M0OTRmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNThkZjA2YTQ3YzRjNGJiOTYxNDdmZmFkYTdkNjk5ZWYxOWNmYTI2NDA3NjA0YjhlZDAzMmMyNDM3MzhkNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ZTc5YWY1YmYyMzAyYzUwNDE2MzdjNjFmODFjNTUzODdjYWFhNjhhZjczZDY0MWI4ZDlkNmU4NGIwZmZiMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYzE4ZDU1NDAzZjdlMmRmYTBmMTdjMGQ0NWE1N2U3NGQzNjhhM2I1OTFlNDdlMmEzZGFjYjFhMDViZjg1YjgifQ"
+          "resource": "repo://packages/agent/src/router.ts#L59-L75",
+          "version": "repo-lines-v1:sha256:e49bfe3fcf0f00bcf015d5ed7fe44a316c93f133460c0c7ede129e308c63ed11:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZTVjNjNkZjcyYWQ5MGE5ZDY2YTA4OTdjYjA4NTRiYWI0ODhjYmZkOWFmMWJiMzg3MDE5MjJiM2M5NjIxODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmMjZlYzgzMWU1MDYxMGIyYWY2MDVlMjYzNjk0OWU5NjcyYWFiN2Q2ZjliMWYxOGJmMWQ3ZTlmZDRkZjc4NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://packages/agent/src/graph.ts#L72-L96",
-          "version": "repo-lines-v1:sha256:67deae385db1cfcec16a6eafdaf87c198e46dd256e86c893deb39ae513c33b11:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyZjk0ZDNiMTdlOGE0ZDExMWYzMWM1ZTQ1MzAyNzhjZTE5MGY1MzU5MGNlMTE3MTQzMmIyNjFkYWI2NmEzOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhYzcxMjFlOTQ1NDc5NWU2MWZkOTEwM2ZkM2I1ZjhiMmZhZWQzMjQyN2I2ZDVmNWZlMDhlNDMxN2Y2ZmQ5MDEifQ"
+          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L294-L298",
+          "version": "repo-lines-v1:sha256:662cffd78feb88d7e3279fa9ee0e99b80d8f745cc3fbfa3614c63b03b9a3ad04:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjI3MjUwYzc4NGM4MzRiN2MwOTBmOWRmYTBiYjdkNzljYWQ2MThmZjk3NmYwN2Q0ODE5NjY4OTU5OTAwMGEyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2ZiYjU4Y2ZhMzE1OGVhNWU0ZjY3NDhiODM0M2EwNzhhNmM3NDYzMjc3NWNmZTVmZDdlZThlNGI5NWRmMjc5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWM3NGM4NTRmZmZlYjUwOTI4OWNmMjhjMzhmYjk4MDA0MzA5MjM1M2MzNGU0MWMxZGJjYWM1MjMwNDA0Mzg5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L2173-L2550",
+          "version": "repo-lines-v1:sha256:fc3a33f7083df51965263961f9fb5d8c1f3a23af2bd8bf208b9e4dec409f3242:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzc4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkOGRkMTYxMzVmYzI2ZDNlYzYxMGVmMThmODE1MjdkNDI3M2UzMjk5M2Q1ZWMzM2ZmMmNhYjkyYTg1MmFmZGRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2NmNhY2E2Y2I4NTQ2NjZhNWM5ZmFlNDRjODdjZWFiYmJiOTI3NDAyNGM1M2Q3NThiNjc0NTBhOTUzMTZkNzg3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -359,15 +367,15 @@
       "statement": "The frozen root builder compiles a fixed START to END chain with budgetGuard, understand, retrieve, router, ucEntry/defaultEntry, statusCheck, vizSeam, and answer nodes; the router dispatches only by overlay allowlist and a tripped budgetGuard short-circuits directly to answer without model or MCP I/O.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/graph.ts#L107-L197",
-          "version": "repo-lines-v1:sha256:5b1fd67ba3fc1e88096ae44af71f2b9c00b61f7bf6ef34b102f414cf57f642f6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMDAxOTQ3MDJhZDFkYmMxNmRkNmY2YWM2MDVjOWEzYWFhMWY5NDNmMWZlMWQ3NzY0MTBkNjY0Y2M0OTRmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNThkZjA2YTQ3YzRjNGJiOTYxNDdmZmFkYTdkNjk5ZWYxOWNmYTI2NDA3NjA0YjhlZDAzMmMyNDM3MzhkNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ZTc5YWY1YmYyMzAyYzUwNDE2MzdjNjFmODFjNTUzODdjYWFhNjhhZjczZDY0MWI4ZDlkNmU4NGIwZmZiMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYzE4ZDU1NDAzZjdlMmRmYTBmMTdjMGQ0NWE1N2U3NGQzNjhhM2I1OTFlNDdlMmEzZGFjYjFhMDViZjg1YjgifQ"
+          "resource": "repo://packages/agent/src/graph.ts#L108-L200",
+          "version": "repo-lines-v1:sha256:fc6f16d0ac3a303b004aa43854310c35e9cedfd0bef4bd4be99b50fba63aff7a:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMDAxOTQ3MDJhZDFkYmMxNmRkNmY2YWM2MDVjOWEzYWFhMWY5NDNmMWZlMWQ3NzY0MTBkNjY0Y2M0OTRmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhYjg5NGQ5YTNkNzkyYWMwODczZmM4OWMwNjViYjkxNzQ3YTU0MjM4ZTM2YmY4YzczMzAwNDFlZDg4MTIwMjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ZTc5YWY1YmYyMzAyYzUwNDE2MzdjNjFmODFjNTUzODdjYWFhNjhhZjczZDY0MWI4ZDlkNmU4NGIwZmZiMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxNTgzMjQ3YmNmNjg3MDlhNzZmZGJlMDUwNmMxYWY4NDVhZWY1MmViZmI4NGM3OTI0MGM3MTA5NTVmN2FjOTkifQ"
         },
         {
-          "resource": "repo://packages/agent/src/graph.ts#L113-L131",
+          "resource": "repo://packages/agent/src/graph.ts#L114-L132",
           "version": "repo-lines-v1:sha256:7e009d2f1fcda2cfef054831873fed94aed1117bd00cfe957812294da40bf7d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMmE1YmY4YjU5ZGMwMmQzM2JiMGZlZmM0MjQ0YzE5ZDk2MWQ5ZDk5NmUwOTVjZDJkMzE2MTJkNDBlYzczNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyMjJiMTA2NjA4NWFhODFhYzhmZmE3YjkzNTk0MjVmMzg2NmZlODgyNDE2YmE3NWFmYTUxZjc2MGIwOTAxMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0MzU4ODFjNTk5YjBiMTU0Mjk1ZDU4NzhjZDkzNTUzYzFmMTRlNmI1YzZmMjVlNTRkMDhiYWFkNTJiMTZkMzMifQ"
         },
         {
-          "resource": "repo://packages/agent/src/graph.ts#L187-L189",
+          "resource": "repo://packages/agent/src/graph.ts#L195-L197",
           "version": "repo-lines-v1:sha256:1a57a68e232949ebb1a6199acb5b71e8ab6b6bee954fcf0cef537b6339d0fb7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTc2YWMyOGRkNDhhNjcxNmMzOWQ5NGIwNWI2NGFhY2M5ZDFlOWY5OTA4YzhkMjZiNmRmMTA5ZWU0YmI1YmFkMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTBhZTc1ZDhkODM4NjQ3ZjIyNzQ3NGVlMzE4ZWI0YTY5MGFmNjYwZThhMzJkMmMzYzBmODZkNmVmOTUzNzNjNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ5NjA2NDUyZGE2NzFkMzFmZGUzNjNiMjViOGU5NDI5YTdmZjhmNDMwNWY2ZjI2ODIzZjU1ZmFkMjVlZGQwNSJ9"
         }
       ]
@@ -377,11 +385,11 @@
       "statement": "UC-05 and UC-10 extend the agent without editing graph.ts by registering UcEntryHandler implementations through registerUC or RootGraphDeps.ucHandlers overlay merge, sharing the single (state, runtime) handler signature.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/graph.ts#L34-L49",
+          "resource": "repo://packages/agent/src/graph.ts#L35-L50",
           "version": "repo-lines-v1:sha256:f57af3572ad30d33b52dc0b3d7292cbbd60fa7a2cd3caab1c1f6af9327215143:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNTJmNjBlNDdkMmVkN2E0MDI1NDFjZDQwYjk5NDQ0Y2I5OTE1ZDgyNjc3YTg2YjRlOTRlYTNjZWYxZDUwMTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmMjcwNjQyOWI3ODliOTRiMWU2NzUyYjBlMDEyMzZjNDA3YTRiNjgwZDVmMmI4N2YyMjZkYjUxYmMwNWNhZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNTY1ZWRiNDlmMGVlZjBmODUwNDlhOTFiN2YyYTc4NDNjNzI4ODFhOTM1YWUwYzIxNGIxOTUyNmY4MjMyMzQifQ"
         },
         {
-          "resource": "repo://packages/agent/src/graph.ts#L79-L91",
+          "resource": "repo://packages/agent/src/graph.ts#L80-L92",
           "version": "repo-lines-v1:sha256:c87783d92d6ec360d3c976259019a599440654adacf3c788174272333d379d78:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMjFlOTIxNzE3N2Y2NWZhN2JmOWQ3ZTAxMDdkNzE5MzhmM2VlZjllODQ2NTBkY2Y4NWM0Mzg4YTZjODU1MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1NWVjZGI1NjBhOWZkYjYyZmNiNTdkNjVjODAzMzg5N2VlYjc1YTlkNWViYjVhOTk5NjY0NDI1NTkwOGI2YmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyN2EwMTE1YzRiODAxMGQ0MDM2NmZmOGU3YjFhNTQ1MDI0MmI2MzUwNDVlOTFjOTk5Y2QxNWQ5YTU2NzEwN2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzZTJkYTU1ZTc1ZGQ2MzcwY2ViYWQ4ZmQ2OWIwM2Y3OGYwOGViNmVlMzdkMGMyMDZjNDUzYTYzMjliNzFkMTMifQ"
         },
         {
@@ -395,7 +403,7 @@
       "statement": "Registry transport identity comes from RunnableConfig.configurable populated by the host and readTracerContext fails closed when any of mcpUrl, token, runId, userId, roleScope, threadId, or tracesDir is missing.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/graph.ts#L220-L261",
+          "resource": "repo://packages/agent/src/graph.ts#L228-L269",
           "version": "repo-lines-v1:sha256:28471766d94da7f04525986c8d7c731d5f0fca23b46dad9fd968439695d6952f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmM0YzYzMWJlNTNjOTg5ZDVkMDhmNWNjNjFmZjMwNGNlMGMzMzA5OWNhMTllYzA3YmI5Yjk5Njk4OWY5YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkNjYyMzIzOTc0NDAwOGFiZjJhMjY3ODNiNWMyZTM0ZWI2NDAyZjZhZDdlNWI5ZTUyOWZmYmU1YmJlMWNjMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
@@ -449,10 +457,164 @@
           "version": "repo-lines-v1:sha256:ef0cbb76b4f801946869fddaabe57a99d44b18070a3210f1bfb378281def4976:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmIxNjllYWQ2MzcwYzU0MzBmY2ZjNWNiZWFhMzUwYjIzMjk0YzdlYjNlNDJlOGUxNzdmZjE5MmMxMGVlOTQwZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGQ1NzkwZTAxNWM2YmJmZDhkNTNmODg0ZjgyOWQ5YjI4MmRmY2NiY2RhMjQ5OWUzZGYyYWU1NzUwYjgyZmU1MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2M1ZDZhNTNiNmQwZWRkY2FhMzk0ZjI0NTY4YzZlMDU4OTFhNGQ0ODE0NmNiZGZlM2E5ZjgyNGRkNGMwZTYxOCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_9941ccdc22904c3086fde85d68672dc3",
+      "statement": "Why/variance diagnostic questions with directional change or comparison route deterministically to RCA_UC_ID (root-cause-analysis) while definitional/formula lookups bypass to the default route.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/constants.ts#L33-L34",
+          "version": "repo-lines-v1:sha256:52894c40494d725fbf4abc0b5df2203300e4558dc0b69a34cabcd8097c0fe042:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGVkMTMyNDRhMTg3YjY3NTBjZTMzMzgzMTVhMTY5NmVlY2IzYTNhYjk4OTllZmM1ZThlOTA3ZThiOTA4YTJkNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTA2NmE3MzZkZGJkMjI2OGYxYmIyMGZlMGVlYWNiNGMzOWM2MzgzOTA0ZTYwYThiN2ZiY2MwNTEwYWJlZTJhZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzg1NDlmYzNhZGEyNTE0ODhmY2M2Mjg0ZjZhNzI2YmQ1Yzg3OWE0Nzk2ODhmMzU2YTAwYjEzNzZhZmMzM2Q1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWU5MmNhY2U5YTVjZDdkOTkxZjc0MGM0MGQyNmVlYzdkMjk2OTRmM2M1ZjYxMGQwYjMxNTJiZDg2ODUyYmU2NyJ9"
+        },
+        {
+          "resource": "repo://packages/agent/src/router.ts#L59-L75",
+          "version": "repo-lines-v1:sha256:e49bfe3fcf0f00bcf015d5ed7fe44a316c93f133460c0c7ede129e308c63ed11:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZTVjNjNkZjcyYWQ5MGE5ZDY2YTA4OTdjYjA4NTRiYWI0ODhjYmZkOWFmMWJiMzg3MDE5MjJiM2M5NjIxODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmMjZlYzgzMWU1MDYxMGIyYWY2MDVlMjYzNjk0OWU5NjcyYWFiN2Q2ZjliMWYxOGJmMWQ3ZTlmZDRkZjc4NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/registry.ts#L294-L298",
+          "version": "repo-lines-v1:sha256:662cffd78feb88d7e3279fa9ee0e99b80d8f745cc3fbfa3614c63b03b9a3ad04:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjI3MjUwYzc4NGM4MzRiN2MwOTBmOWRmYTBiYjdkNzljYWQ2MThmZjk3NmYwN2Q0ODE5NjY4OTU5OTAwMGEyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2ZiYjU4Y2ZhMzE1OGVhNWU0ZjY3NDhiODM0M2EwNzhhNmM3NDYzMjc3NWNmZTVmZDdlZThlNGI5NWRmMjc5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWM3NGM4NTRmZmZlYjUwOTI4OWNmMjhjMzhmYjk4MDA0MzA5MjM1M2MzNGU0MWMxZGJjYWM1MjMwNDA0Mzg5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7608f2981fa846048f8fb26499248496",
+      "statement": "parseRcaIntent deterministically extracts metric (net_revenue/aov/return_rate with formula components), explicit direction, and current/baseline periods including Vietnamese month, quarter, week, and YoY forms with a September-vs-August 2026 fallback.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L854-L1059",
+          "version": "repo-lines-v1:sha256:401d0842203d28134675ea0497ed8de149ff485d76ed6339cac54fe52fbd08d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzYTMyZjM0MzA2NGNhMjRhNWQ0ZGMwMzdlZTVkNzQyOTQzYjgzNTllZmFhZjc1MWIyYTRjZTc1M2I3MDFmYzAzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyZDE5YmRiMmYxMmVhNjU5MWMwNWFmNTZjMzZhY2E2NWFiMTMyOGNhOWY0MjQwMDc2MzlmYmI2NjE2YWM5ZDIyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNDEzMjA4OWI5MDAyZjBmMzIwNTgyZjVhMTY4ZDlkNTUwODY3Y2UxZjNmNWQ0Yzk5MjNkNTFlZTI5OWNkYWY5In0"
+        },
+        {
+          "resource": "repo://packages/agent/test/rootCauseAnalysis.test.ts#L44-L73",
+          "version": "repo-lines-v1:sha256:335013d9df4d7af25a33056ca7c274982051bacfda7a324d0b65d1b3e0c11727:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkOWNhZGNiY2NjNmQxZTg5ZmVlNWUzOTk3YmRhNDkxZTcwZmQ4NDEyMWJiMjQ0NzYxMmY3NzY2NGZhMDQ1MjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxNmExMmE2ZjYxOTA3ZmUxMTI0OTM0ZTZjNTU5OGMyY2U4NDE1YmNkZDE2ZjZjYTdhMGEwMzI5YjU4MmRmN2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyOTRmYTA1OWY0YWQ3MjBlYTM0MWQyMWJiNDc0MTFhNjgyYzU4NDE2NThhYjM2MWE3NTAwN2MzMzg5NmFhMzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3bb8d365118b4932ba06d7e2c12c3042",
+      "statement": "validateBaseline runs two baseline/current fetches via fetchBaseline or ValidatedQueryExecutor with reference SQL, rejects generated SQL missing period date bounds, treats <1% moves as insignificant no-data, and rejects explicit-direction mismatches as false premises with true direction and values.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1071-L1081",
+          "version": "repo-lines-v1:sha256:93701a300fcbf4c09290b70b78a2b56ba62e26f96b3f46e44a003f7dc401412d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2ZDI4YmE2ZDRmNDYyMzIxYjkyNTM0MDkwYWUxOGVhOTk1MWM3NjcwYjE1ZThiZDNkZDJkNTYwNjc5OTE2NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjZTVkNzE2MmViMDJiMDJmNWE1MjgwNjI4NDdhNmJjZTQ0NTlkYzcwNDUwYWQ5OTk4YjhmYzYyNTE0OTEwNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjOTBjODBlMzNhNmFjMmEzMGNjNjA1MmY5NjliMjBkYTNkMDg0NzFiYTEzZjU4NTQwMGM4NTI5ZWI2ZDZjMjgifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1090-L1338",
+          "version": "repo-lines-v1:sha256:58fc961644ca4c8ba640433504b9bc8150c1bc38d10c133be617d10dbc8a6836:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQ5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjY2E3MWNlYmM2MWIxMmVmNTQwNDM0NTUxMTY1ODQ1MmM1NmZjNDQyNzA0YTRjNzdmMmRmMjhiZmIxMjA1M2ViIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNDhlNzE2MGI5OTNiNzgxMmJlYjU2ZjJiZjNiZjRkNDVkMTgwYTNmODI2ZGMzYWUwZmM3ZDM5ZDBiNWRhMjgyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjRiNjAwYjY2YWI2OWFjNGJiZmQ3NDFiMmRmNzMwNWQ4MDBmYTI1MzEyMDZlMDE4ODQ1NTVjNjVlMDNkNzFlIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_99757b47e45c4f58beab9f78d18ac54b",
+      "statement": "createPlan returns null on invalid baseline, builds 3 region steps for additive metrics and a 2-formula-plus-regions tree for ratio metrics, and pins maxQueriesLimit 20, maxDepthLimit 4, and drilldownThreshold 30.0.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1344-L1456",
+          "version": "repo-lines-v1:sha256:f803dca047b24132f450ff191d4559f6b1d548a4f6ccba9049e480f663271813:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzZTIzMTg5OTRlOTM5ZDAyMTNmOTZkMjhhNTVmNDllNDBmN2E1ZTlkOWQwODU3MDNiNjIxMTk2NWFjNjBlM2MwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMzVlNjVlYmYyYmZhNWI2NmNlODU4NmQyYjIwNTE5NTczNTQzOGY4OGZjNzZhZWJjNGE2YjgxY2VjNDVmYzI2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjYjBmMGNkMzMxMDIwYzI1MDg2MDU4YjNhNjQ5Mjk1YmYxODc5NDVhNmQ3MjYyY2JlNzcxNDU1NTg2ODJjMGMzIn0"
+        },
+        {
+          "resource": "repo://packages/agent/test/rootCauseAnalysis.test.ts#L128-L185",
+          "version": "repo-lines-v1:sha256:670451b5293a62e0560ce314765fe21a06dd28bcb34343e751a038a356ef2b6e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4OTgxOGQ1MmVkMWJhYmEyM2NkNGVkNjdlYWFjMzMyYjYyYTFiMjQ1N2E5OGY4ZGMwMTgwZWIzNzRmNjJlZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0YTUwYTkzNmI1YzE3ODliYmY0MDM0NWEyYmJlZDQ4OGZlMWM2YTBjYWQxZDdkNjdmOGQ5NzhmYjE1Y2RmYTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYjVkZmNlYmUwZWQ2NzMzOTM4NDhhZWUyMDBkODM3NTIyYzE5NzM5MTc2N2IyMjBjZDFhMjNlYjc1OWMzMDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fa1693b92e22403a9ebc8eb80bc5057f",
+      "statement": "executeAnalysis scans todo steps, enforces query/depth budgets with MAX_QUERIES_REACHED/MAX_DEPTH_REACHED skips, retries each step at most twice before marking failed and continuing, expands significant branches along region-channel-category-product, and prunes weak branches to skipped plus residual.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1579-L1867",
+          "version": "repo-lines-v1:sha256:47eac54571d8cd9e7c954c3209291409835e8cf7424f66777432f79e8e422591:eyJzZWxlY3RlZExpbmVDb3VudCI6Mjg5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmZWM0NDZjZjFlZGRkMjkxODg1NmU1MTY5NzI3NmFjNzgyY2E1N2ZmMjJkZDliYjZiMmU5NTRkOGQyYzk5ZGMwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YjU5ZjEyYmJmNzFjODk2Y2I4MWE0ODRmNWNlYzc2MTQ1YzA3MDQ3YzIzNWRhMWQ4NzFhYTg0NWVjY2NkZWVhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ZDhhN2RiMzM4NmQ5NDQwNWUxOWIwZmMxMTFjMmQxZWQ3Y2Q1MjRhY2VhMjIxYmQ1YmY5OTNlYTg4NjUxN2U4In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_fe0dbfde38ff4975ad2bb033dab7a305",
+      "statement": "Waterfall verification sums disjoint leaf deltas plus signed residual and passes when signed mathDiffRatio <=0.05; primary causes select >=50% contributors or top 3, synthesized into a schema-validated RootCauseAnswer markdown report.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1905-L1972",
+          "version": "repo-lines-v1:sha256:1199a964d7989c30ba1582fa803ba5d857700550eccf91b5b44987fd82e99065:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwOWNlNWY5Zjc2NTFkMzUxY2NiODg4MjhmZDQ2YTg2YThlZTYzYjE4Y2E1OTIwMGU3Y2FlZGRiNTY5MjViZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyMDQwZjQyOTc2NmRmMjk4MWEwNDY1Yzg2ZTAxOGQzZWVlOTc0NmUyNTljYWUzYTk4MmVkMTc5NDRiMjU3ZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MWY2NjEyYjQyNjYxYjVjZTg3ODAyMDgzMDg2NmYxZjc1OGY1OWJmNjhjODE0ODZjYjIyNGVjN2U1YWI2YjkifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1978-L2005",
+          "version": "repo-lines-v1:sha256:9d413da0ba0cae498a473e94bc9b204964761216b0d8476f1a066046fb716f86:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZTFhYzNiM2IyNDk2OGY4YTdmNGRjYmUyYmNlYmE3MGY3N2Y4Yjg3MzViMDFiMjc1ZWJjY2IxOTgwYjU3ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmMzgwMTY0OTQ1ODNiZWZjZjMyNDE2MGE3YmUxNmQ1M2U1MDU2ZjUyZjk4YWM5NWUzMmMyNWYxZTAyMDhkNGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwYTU2NzRjM2Q5MzMyOWFiMTNhMmY4N2ViNmQ4OGY4NjgxZTkxNjJhZjgxZjFjNTMwNWQ4MDUzY2E5MTlkMWMifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L2111-L2145",
+          "version": "repo-lines-v1:sha256:b1d9d076541477c2af9789968cc9dd9f3ed67a5b38c61bb5610479da11b96677:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5OWY2NGUzZmQwZmJmOGNiM2VmMTQ5MTZiNzMyYzI1MzljMjVmMTVlOWM2NmY1NTYwNjA4MzI1NzI5ODNiNTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkODUyOGRlNzI0N2Y2YzkzM2Y0ODcwNmEwNmJhYjYwMWM5NGVmNThkN2NlZjhiMWQ5NWEzODhlZjAxZjIwYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0ZTRiOWI3NmY4ZGU4MDFkNjcwNDRkZGQzMDA5YzYyZWU3ZWZiNTNmZjJmOTRkZjBmNmUwNzNjODU5N2I2N2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f1f1d77bc7df498cbbcc6ff4317e0a62",
+      "statement": "UC-05 human review pauses with action review_analysis_plan carrying plan/currentPlan, accepts APPROVE to execute, schema-parsed MODIFY to replace steps/plan, REJECT/CANCEL/DENY to stop, and rejects anything else; the gate is skipped when no execution backend exists or skipHitlReview is set.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L2384-L2391",
+          "version": "repo-lines-v1:sha256:e13a96fc7b6e648168a6662f36cf592d68bd4d656d63ac522c32a3b9429a153a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzRlYTg0N2FjNzVkZGU5OWI4YjNiMmUzODhmNmI1NGY0ZmQ0NWM3ZmI3YTU1MWFhOWE2NWI1ZGJmMzk2MDYxOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjcxMzY3YjQ5YzNlNTA5Mzg0YWYwN2FkNjAwZGFhYjA5MzNhOTNhMGZjOWMwZWRlMTMzMzQ3ZTYxZDQ3ZDI2OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDRiOWEwYjE2Yjk5MTBiYWE1ZDBhNGRjYWZmOGE2MGM0Mjk2MzNiZjJhZTNjYmFjYzgyMDI5MDc1ODBkMTBjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzJhN2QwOWEwMTNmMThkM2FhMTJhMzhhOWY3Yzc5YmU3ZjkwYjI2ZDM3NjQ3NjAxZjFkODBhM2NhYzI2OTYzMSJ9"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L2393-L2477",
+          "version": "repo-lines-v1:sha256:73069dc2daebddcc4a88d5ae259123bca371ba22b6220853417a28f40f30ad50:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkMDM5ZTBkMzZjYmZlZTYwNDliMGQ3NjEyMzdlNzIwZTcyNTA2NGI5ZTFiZTIzYjEzYmI2YThjYmEwOTdkNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllNTVmMjFhZTkzZDMzNWRlM2RhMTY1YTJkZjEwYmQ1YWJmMzllMDU1ZjljMjgwODI5MTY4ZDQzMjFhNWJjNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNzFhZjU5YTYyMzgyOWYzNGMyODMxMWMxMmJlNjMxZjRkODEzZWY3MjZmZTlhNDc5ODZjYzI3NWQyMzZlNDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_babff3e431014995ad1696f88feefd92",
+      "statement": "Each executed RCA step appends an __interrupt__ putWrites checkpoint with currentPlan/plan, and resume rehydrates from state.analysisPlan or the richest thread interrupt write, failing closed when a resume has no recoverable plan.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L2250-L2343",
+          "version": "repo-lines-v1:sha256:c7a93ec8d00bbdbf9649718b9bab70ff960b701a06a1e60a8b6fc10a858556dc:eyJzZWxlY3RlZExpbmVDb3VudCI6OTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjY2IxMDRhZGU1YTIzOGJhOWJiZmFlYWEwZDRhZmI5MmU0ZjFhZDdhOTkwMjg0ZDVhYzI1MDM4YzEwMDYxZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNjYzZjk1M2E1MTVjNTFlYjFjZWE3ZWVmYzIwMTVhMTM3MzI2Y2U0MjE5NTE3OGUyNzg4MDgzMDIzYTYzNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5YTVkYTJiY2QzNjE0NzQyZDBmMzZhYWY4YTBkOTRjOTE3ZGEzY2M5Mzg0ZjBjNDBhOWFlOTA1MTQ4MmRmZjkifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L2490-L2534",
+          "version": "repo-lines-v1:sha256:879a01ba3772222db6b0f8dc43188858e8e21229f42659bf9a584e2043497b36:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkMWQ4YzI5MTIzNWY2ZDAxODdkMjI3YzUwMDU2M2Y4MTY0ZWVlODhjYzA2OTE4YjE4ZGM3ZmQ3NDhkOTViYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTQyMDhjZDZmZmI4YzRhMzU0N2IyZjU0YWRhMTk5NzhjM2YzNjVlNzhmOTUwMmVmNTE0NWNkZDJhYTg1NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmM2E1MDYzMzBiMGU1NDBiZjM1ZDYwZGM2ZjZlNTNmZDBkNmE0ZjllNGM3NGIyOTI0NGQ0YzMyZmNjMTkxZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3MWRlNWEwZDJiMzFjNTcwNGQ0ODNhMDE1MzBkMTcxOWJkZGNkNmM2MjE4NzQzMWE2ZDIxMDA1ZGU1ODI2NmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_89ecb91aa5f74db59e67d8a5b5267d6f",
+      "statement": "Date-guarded MCP wrapper blocks explain_query/run_query whose SQL fails verifySqlDateFilter before MCP/DB I/O; the verifier requires every UNION and top-level OR branch to bind the same target-table date column to both period endpoints.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L152-L176",
+          "version": "repo-lines-v1:sha256:b17158e566f101ff0b71a19544638d241706acc00e324f0ac77b228615961c98:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZGNlMDdlZmVkYmRhZjEwMjQ1Njk0MDA5MTQ3OTMwNTA3ZDE3YmU0ZGE3ZTA5NzM1NjQ4NTJkNTU0Y2JiZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiMGY1YzgyNTgyNGU1N2ExNWEwZThmNDcwZWRlMDZlNTUzNWUyNzUxOTJlMzA5ODczMDlmMWE1ZDdiNzAyNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlNzg4OTkxZjNiYmQzNmUwMGRkMTQ5YTg4MjI0NmI3MjY3MTVlZjZkMTIwODA5YzZmZTllMzg5MTgyNGVhMTEifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L710-L769",
+          "version": "repo-lines-v1:sha256:534123a80158c9d430d408b1ce24208e3689947035408b62c9a9f9b7c4b68c26:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1YTY2Njc2NTJmYWI4MTEzODU1NTkzMjdmYTI3N2Q2NTAyZTljMTg0MWFkNjEzMzNmY2I3OGI2MDllOWVmMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2MmM0ZmZlZGM1NzYzNTZmYzllZGE5N2E2NTY3MzU1YTFiOTZkNzQ3NTk0MTEyMWM0ZTcxMDY5ODYyZDQ4NjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlZjhlZGQ2NDAzNzZkM2E0MjA4NzUyZTZlYmJhODY1ODAwZDEyNTBjZGQwZGFkMmMxZjc4MTE4ZmIwMDI3NTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_044140ba33da44a6a4e72d176f5f8d74",
+      "statement": "Step SQL inherits parent dimension filters via collectInheritedFilters and buildStepQuery joins only required dimension tables with mandatory purchase_date bounds, with metric-specific SELECT shapes for net revenue, AOV, denominators, and return rate.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1475-L1498",
+          "version": "repo-lines-v1:sha256:dbd8f7f83b0dc8d63c1ca8585bb1cd2bc94f3b0a48ab34bd3f8659f6b1c87211:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjM2VkYzBlZGQ2N2NmNjE0MTQ4NDFiZWMyNjZmZWZhNzkxNGYxZDQxYmUzYzY4MWE3ZjgxNzFmOWMxNWI4ODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNjYwOGQzYzE4ZGFmNDYzNTVlNzA1NjdhNTk4ZTkwNWYyMDkxN2YxYjFiNzA5NWJmODIxOWE3NjdhZTQ2YTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjYTcyNTJjNDg4NmEzOWY4ZGI4YmY4ZWNhNTdiNzQ4MzdhODQyZWIyMzRiZTZiYjIxMDQwMTE4ZDFkNzlmOWQifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/subgraphs/rootCauseAnalysis.ts#L1509-L1577",
+          "version": "repo-lines-v1:sha256:68851a94a62ea9299a25c52f5c1c889a413eb1241205a0a68c8276e81d711459:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NTc0MTE2M2I4ODk4MGUyYTVhZWM4NDMzMDQ4MWUzMDM4MjFlYmNkZjA2NjFhMDMwYTI0MTk0NDE1ZjYxMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5ZjFiZmNiZGUyMzdhMTIxNDEyMDUyNDRhOWNhNDAzM2I4OGVkYzAwNTlmNmQ1YzAzM2U0MTcxMmRhYTEyMWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3ZTlhMzdjYWRkZDcwZjU5MjZjYzYxYmEzYWU1MWQ1YWMxMDJmMTVlOWEyZjliZjMzOTJjMzZmODJhMGZkMDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5440998720e4492c9c271d9a101ec571",
+      "statement": "scripts/test-uc05-live.ts proves the live UC-05 baseline/planner path by booting a real MCP gateway, injecting a fake SQL model, invoking createRcaRuntime entry, and asserting ok status with run_query usage and all-todo initial steps.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/test-uc05-live.ts#L15-L88",
+          "version": "repo-lines-v1:sha256:ec4bcb2f61ef01f5afdb3105a3758d2799f44ca7a3230d2184a646b444dc519e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1OWFmYTViM2I3YjM4MWYwNmY1MGRlMjdjZDYzN2ZkMWRjOTBhOTE0NzUyZjMzMmQ4ODJjN2IyNWRkYzk5ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4YTg0ODRhOGY2NWI4MThjYmFiZDFkYzE2NGJiZmY3MzI0YzAzMDMzNTIxODNjMmJhNjk0OGQ0ZmRiMTQyMDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-07T14:35:23.411Z"
+    "at": "2026-11-10T15:59:31.941Z"
   }
 }

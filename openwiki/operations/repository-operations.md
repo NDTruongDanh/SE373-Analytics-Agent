@@ -1,10 +1,13 @@
 ---
 type: operations-guide
 title: Repository operations
-description: Toolchain, build and test entrypoints, provider and session-header
-  configuration, scheduled wiki CI, and submission layout for the Analytics
-  Agent monorepo.
+description: Toolchain, workspace and quality gates, API SSE and resume host,
+  persistence ports, provider and session-header configuration, scheduled wiki
+  CI, and operator runbooks.
 tags: [operations, repository, openwiki-automation, configuration, ci]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-10T15:59:31.941Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -74,18 +77,16 @@ sources:
     resource: repo://tsconfig.json
   - id: openwiki-source-b6f224d26b4ec604e90101e3
     resource: repo://vitest.workspace.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-07T14:35:23.411Z
+generated: { by: "openwiki/0.7.2", at: "2026-11-10T15:59:31.941Z" }
 ---
 
 # Repository operations
 
 This page owns the operational layer coding agents must not break: toolchain,
-`pnpm` entrypoints for the harness and the wiki, inference-provider and fetch-patch
-session-header configuration, scheduled wiki CI, and the expected submission
-layout. It is a TypeScript monorepo (`packages/*`, `apps/*`) implementing the
+`pnpm` entrypoints, workspace and quality gates, the API SSE and resume host,
+persistence ports, inference-provider and fetch-patch session-header
+configuration, scheduled wiki CI, and the expected submission layout. It is a
+TypeScript monorepo (`packages/*`, `apps/*`) implementing the
 `agent = model + harness` thesis: the LLM proposes, deterministic code disposes
 through policy, validation, and audit (see [Workflow architecture](../agent/workflow-architecture.md)).
 Start with [Quickstart](../quickstart.md) for the task-routing map.
@@ -242,8 +243,150 @@ workspace, skills, and secrets checks behind one `gate` status check
   CI regenerates the interface and fails on drift with
   `git diff --exit-code -- docs/mcp_interface.md`
   (`.github/workflows/ci.yml:98-102`).
+- `packages/contracts/test/zod-singleton.test.ts:14-27` pins the single-Zod-copy
+  invariant: the lockfile must hold exactly one distinct `zod@4` version key so
+  schema identity holds across contracts. The one documented exception is
+  `zod@3.25.76` pulled by the UC-03 web stack (`@ag-ui/core` via
+  `@openuidev/react-headless`) for its own protocol validation; any further
+  `zod@3` line fails the test and forces review.
 
-## 4. Environment and provider configuration
+## 4. API host: SSE and resume endpoints
+
+The full host is `apps/api/src/index.ts:1-14` (`buildApp`). It wires the root
+graph, span emitter, and persistence ports behind sanitized SSE. Persona
+mapping and run identity live in `apps/api/src/principals.ts`; the wire
+sanitization gate lives in `apps/api/src/sse.ts`; persistence construction
+lives in `apps/api/src/ports.ts` (see next section).
+
+```mermaid
+sequenceDiagram
+  participant Client as API client
+  participant Host as buildApp host
+  participant Graph as Root graph
+  Client->>Host: POST /api/ask with question and persona
+  Host->>Host: resolve persona and mint run context
+  Host->>Client: SSE intent_parsed then progress events
+  Host->>Graph: invoke on thread_id
+  Graph->>Host: interrupt for approval or clarification
+  Host->>Client: SSE interrupt_waiting and pause
+  Client->>Host: POST /api/runs/runId/resume with value
+  Host->>Graph: Command resume on SAME thread_id
+  Graph->>Host: final state
+  Host->>Client: SSE completed or failed and end
+```
+
+*This diagram shows the ask, interrupt, and resume SSE lifecycle on one thread.*
+
+- `POST /api/ask` validates `question` as a non-empty string, resolves the UI
+  persona through the server-side registry, mints D-13 run context
+  (`runId` plus `threadId`), stores it write-once keyed by `runId`, opens an
+  SSE stream (`intent_parsed` with `phase: starting`), invokes the root graph
+  with fresh budgets, and either streams `interrupt_waiting` on `__interrupt__`
+  or streams `completed` (`apps/api/src/index.ts:366-526`).
+- Persona resolution is fail-closed: unknown personas throw
+  `UnknownPersonaError` (400 `INVALID_PARAMS`, never a default role or admin);
+  scopes and `rowScope` come only from `policies/mcp_clients.yaml`, and every
+  `tokenEnv` named there must be present via `assertTokensPresent` or boot
+  throws before listening (`apps/api/src/principals.ts:199-247`).
+- Run identity mints `runId` with `randomUUID` on every ask; `threadId` is the
+  validated client-supplied `chat:{userId}:{sessionId}` value or a minted
+  `chat:{userId}:{runId}` value, capped at 255 characters
+  (`apps/api/src/principals.ts:260-287`, `apps/api/src/constants.ts:17-18`).
+  The persona table is static (`sales_south`, `regional_manager_south`,
+  `marketing`, `hr`, `data_admin`) in `apps/api/src/constants.ts:9-15`.
+- `POST /api/runs/:runId/resume` requires a JSON object body carrying a
+  non-null `value` (else 400), looks up the in-memory run or rehydrates it from
+  the trace header (else 404), opens a new SSE stream (`intent_parsed` with
+  `phase: resuming`), records metadata-only `approval_decided`, and issues
+  `new Command({ resume: value })` on the SAME `thread_id` so checkpointed
+  state continues without re-running (`apps/api/src/index.ts:569-694`,
+  `apps/api/test/resume.test.ts:124-179`).
+- Resume is restart-proof: `rehydrateRun` reads only the first line of
+  `traces/<runId>.jsonl`, enforces `runId` match plus `threadId` shape plus
+  registry role and token presence, and falls through to 404 on malformed or
+  mismatched lines — a trace line can never inject identity
+  (`apps/api/src/index.ts:705-756`,
+  `apps/api/test/resume.test.ts:198-254`). `buildResumeInvokeOptions` mints a
+  fresh `randomUUID` for the LangSmith root run while keeping
+  `configurable.runId` on the JSONL `runId`, because checkpointing keys on
+  `configurable.thread_id` (`apps/api/src/index.ts:788-806`).
+- Resume values are metadata-only: allowlisted protocol tokens
+  (`approve`, `yes`, `reject`, and similar) are recorded verbatim; anything
+  else becomes `provided` plus length. Neither the raw value nor its hash
+  enters a span, and the trace file never contains free-form secrets
+  (`apps/api/src/index.ts:184-213`,
+  `apps/api/test/resume.test.ts:339-393`).
+- `POST /api/semantic/reindex` is admin-only: any persona other than
+  `data_admin` (role `admin`) gets 403 `SCOPE_DENIED`; success proxies to the
+  MCP gateway `/reindex` via `defaultReindex` (`apps/api/src/index.ts:528-567`).
+  `GET /healthz` returns `{ ok: true }` for probes
+  (`apps/api/src/index.ts:289-291`).
+- The compatibility `createTracerApi` slice keeps the pre-01-14 UUID-thread
+  shape and five-event stream pinned by `tracer.test.ts` and is not the
+  operator path (`apps/api/src/index.ts:808-978`).
+
+### SSE sanitization gate
+
+- The host allowlist is exactly the nine contracts event names
+  (`intent_parsed`, `schema_retrieved`, `sql_generated`, `sql_repaired`,
+  `query_running`, `viz`, `completed`, `failed`, `interrupt_waiting`),
+  re-exported from `@shared/contracts` so the two lists cannot drift
+  (`apps/api/src/constants.ts:1-4`, `apps/api/src/sse.ts:35-47`,
+  `apps/api/test/sse.test.ts:97-99`).
+- `emitSseEvent` validates every emit against its per-event Zod schema before
+  writing; a mismatch degrades to a `failed` event and raw payloads never reach
+  the wire (`apps/api/src/sse.ts:195-233`,
+  `apps/api/test/sse.test.ts:77-95`).
+- Payload builders are construction-based allowlists: `intent_parsed` carries
+  metric shape without filter values, `schema_retrieved` carries table names
+  plus count, `sql_generated` carries statement metadata without SQL text,
+  and only `displayableSql` may add a literal-free order-status demo proposal
+  after the gateway accepts the query (`apps/api/src/sse.ts:73-134`).
+- `displayableSql` is vocabulary-locked (`select`, `status`, `count`,
+  `orders`, and similar) with length, charset, comment, and alias checks;
+  anything outside returns `null` and the event carries `withheld: true`
+  (`apps/api/src/sse.ts:107-120`,
+  `apps/api/test/sse.test.ts:50-66`).
+- The wire tripwire is defense-in-depth, not the canonical trace redactor: a
+  VN-mobile (`0` plus nine digits) or `@`-email shape in free-text answer or
+  error message degrades the emit to `failed` or `[withheld]`
+  (`apps/api/src/sse.ts:56-71`, `apps/api/src/sse.ts:136-167`). For the
+  gateway, MCP server, and trace ownership behind these events see
+  [MCP server](../integrations/mcp-server.md) and
+  [Root cause and anomaly](../use-cases/root-cause-and-anomaly.md).
+
+## 5. Persistence ports
+
+- `createHostPorts(env)` builds both host ports from
+  `HARNESS_STATE_DATABASE_URL` only: the PostgresSaver checkpointer via the
+  agent ports barrel plus the `AppStateStore` DAO. It throws fail-fast when
+  the variable is absent so the host never boots on `MemorySaver`
+  (`apps/api/src/ports.ts:29-42`, `apps/api/src/index.ts:993-1002`).
+- `createCheckpointer(conn)` takes a connection string only (never a pool),
+  calls `PostgresSaver.fromConnString(conn, { schema: "langgraph" })`, then
+  awaits `setup()` exactly once so the four checkpoint tables exist before the
+  first invoke; any setup failure throws at boot
+  (`packages/agent/src/ports/checkpoints.ts:54-72`). It rejects the
+  read-only `agent_ro` URL before touching the network because checkpoint
+  writes require the `harness_state` owner
+  (`packages/agent/src/ports/checkpoints.ts:80-93`).
+- `AppStateStore` is the `app_state.alert_history` DAO as `harness_state` with
+  zero grants on `public.*`, constructed from the same connection string with
+  an injectable pool seam for DB-free unit tests
+  (`apps/api/src/store/alertStore.ts:70-88`). All queries are parameterized;
+  fingerprints are SHA-256 over canonical
+  `recipientId|metric|dimensionKey|date|direction` field order through one
+  helper so DAO rows and UC-10 dedup checks cannot diverge
+  (`apps/api/src/store/alertStore.ts:36-55`).
+- Write-after-send contract: call `hasFingerprint(fp)` before sending (24-hour
+  dedup check), then call `recordSent(row)` only after `send_alert` succeeds —
+  never speculatively, never inside the send path — so retries of failed sends
+  are never falsely suppressed (`apps/api/src/ports.ts:12-14`,
+  `apps/api/src/store/alertStore.ts:90-120`). The `pg` driver lives only in
+  `apps/api` (this DAO) per the ESLint ban; the agent package reaches it only
+  through injected ports.
+
+## 6. Environment and provider configuration
 
 The template is [`.env.example`](../../.env.example); the real `.env` is never
 committed (`.env.example:1-3`, [`.gitignore`](../../.gitignore):5-10). In CI the
@@ -303,7 +446,7 @@ wiki inference (`.env.example:38-88`):
   `.github/workflows/openwiki-update.yml:67`,
   `.github/workflows/openwiki-update.yml:99-103`).
 
-## 5. Fetch-patch session header
+## 7. Fetch-patch session header
 
 OpenCode Go requires `x-opencode-session` on every request, otherwise it returns
 `400 MissingSessionID`. OpenWiki builds its client with only `{ baseURL }` and
@@ -318,7 +461,7 @@ Behavior contract (`README.md:78-85`,
 - Scope is `opencode.ai` requests only; other hosts pass through unchanged
   (`scripts/openwiki-fetch-patch.mjs:74-81`,
   `scripts/openwiki-fetch-patch.mjs:96-113`).
-- Value shape is opaque `ses_` plus 32 lowercase hex characters; it never
+- Value shape is opaque `ses_` plus 32 lowercase hexadecimal characters; it never
   contains PII (`scripts/openwiki-fetch-patch.mjs:11-14`,
   `scripts/openwiki-fetch-patch.mjs:41-42`).
 - Resolution order: reuse a valid `OPENWIKI_OPENCODE_SESSION_ID` override when
@@ -341,7 +484,7 @@ Failure modes: missing or bypassed preload causes every Go call to 400; a
 override fails fast before any request (`scripts/openwiki-fetch-patch.mjs:57-70`,
 `.env.example:18-21`).
 
-## 6. Scheduled wiki CI
+## 8. Scheduled wiki CI and ownership
 
 Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows/openwiki-update.yml).
 
@@ -390,12 +533,13 @@ Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows
   PRs (`ruleset-main.json:31-47`,
   `.github/workflows/openwiki-update.yml:116-128`).
 - Code ownership lives in [`.github/CODEOWNERS`](../../.github/CODEOWNERS):
-  every change needs an owner from `@NDTruongDanh` or `@HungPham-VNU`, with
-  per-path owners for `packages/contracts/`, `packages/mcp-server/`,
-  `packages/access-policy/`, `packages/agent/`, `apps/api/`, `apps/web/`,
-  `policies/`, `packages/data/`, `docker/`, `semantic/`, `skills/`, `evals/`,
-  and `data/`, plus UC-scoped validators, subgraphs, and traces
-  (`.github/CODEOWNERS:1-29`).
+  every change needs an owner from `@NDTruongDanh` or `@HungPham-VNU`, with a
+  third owner `@nguyenhun11` on `packages/contracts/`, `packages/agent/`,
+  `apps/api/`, `skills/`, and `evals/`. Per-path owners also cover
+  `packages/mcp-server/`, `packages/access-policy/`, `apps/web/`, `policies/`,
+  `packages/data/`, `docker/`, `semantic/`, and `data/`, plus UC-scoped
+  validators, subgraphs, tests, and traces (notably UC-02/UC-03) and web chart
+  files (`.github/CODEOWNERS:1-29`).
 - Advisory PR review is separate from the required `gate`. Workflow file:
   [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml).
   It runs on `pull_request` into `main` for `opened`, `synchronize`,
@@ -422,7 +566,45 @@ Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows
   (`scripts/pr-review.mjs:16-17`, `scripts/pr-review.mjs:431-457`,
   `scripts/pr-review.mjs:499-510`).
 
-## 7. Configuration and security consequences
+## 9. Operator runbooks
+
+- Boot the full API host only through the ports module: set
+  `HARNESS_STATE_DATABASE_URL`, `MCP_URL` (or `MCP_PORT`), `API_PORT`, and
+  every `MCP_TOKEN_*` named by `policies/mcp_clients.yaml`, then
+  `await createHostPorts()` and `buildApp({ checkpointer, store, mcpUrl, ... })`.
+  Missing `HARNESS_STATE_DATABASE_URL` or any bearer token fails fast before
+  listening — the host never falls back to `MemorySaver`
+  (`apps/api/src/ports.ts:29-42`, `apps/api/src/index.ts:993-1002`,
+  `apps/api/src/principals.ts:199-211`).
+- Loopback bring-up order: `pnpm db:up`, then `pnpm data:load`
+  (or `--scale=small` for CI), then `pnpm data:verify`; start the MCP gateway
+  on `MCP_PORT=8081` and the API host on `API_PORT=3001`, and probe
+  `GET /healthz` before asking (`package.json:14-20`,
+  `apps/api/src/index.ts:289-291`). Use `pnpm db:reset` only when the volume
+  must be dropped.
+- Human-in-the-loop recovery: `POST /api/ask` returns `interrupt_waiting` when
+  approval or clarification is needed; `POST /api/runs/:runId/resume` with
+  `{ value }` continues the same `threadId`. Unknown `runId` is 404, a body
+  without a usable `value` is 400, and a malformed trace header also falls
+  through to 404 so the operator can distinguish bad input from unknown runs
+  (`apps/api/test/resume.test.ts:124-152`,
+  `apps/api/test/resume.test.ts:249-254`). After a host restart the same resume
+  call rehydrates identity from `traces/<runId>.jsonl` against the same durable
+  checkpointer (`apps/api/test/resume.test.ts:198-247`).
+- Semantic maintenance: `POST /api/semantic/reindex` requires the `data_admin`
+  persona; `pnpm semantic:index` rebuilds the gateway index directly. Both need
+  the indexer role URL and gateway token environment
+  (`apps/api/src/index.ts:528-567`, `package.json:34`).
+- Regression scope for operational changes: while iterating run the affected
+  Vitest file (`pnpm --filter @shared/api test <file>`); before done run
+  `pnpm typecheck && pnpm lint && pnpm --filter @shared/<pkg> test`; run full
+  `pnpm test` when touching shared `packages/*`. Contracts, SSE, resume, and
+  zod-singleton legs are the API-surface guards
+  (`AGENTS.md:124-132`, `apps/api/test/sse.test.ts:49-99`,
+  `apps/api/test/resume.test.ts:339-393`,
+  `packages/contracts/test/zod-singleton.test.ts:14-27`).
+
+## 10. Configuration and security consequences
 
 - Treat the database as read-only over the `agent_ro` role with
   `statement_timeout`: the gateway connects as `agent_ro` with `SELECT`-only
@@ -459,7 +641,7 @@ Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows
   silently bypass DB and contract boundaries (`pnpm-workspace.yaml:16-45`,
   `eslint.config.mjs:61-67`, `scripts/check-workspace.mjs:34-71`).
 
-## 8. Expected repository and submission layout
+## 11. Expected repository and submission layout
 
 The PRD submission contract (`docs/prd.md:591-604`) defines the layout agent
 code grows into; this operations page does not duplicate per-UC design:
@@ -496,7 +678,7 @@ architecture specification already assume that shape; consult the architecture
 and UC-plan documents before adding a new framework or dependency
 (`AGENTS.md:73-74`).
 
-## 9. Coding-agent operating rules
+## 12. Coding-agent operating rules
 
 - Audience and scope: this wiki is code documentation for coding agents that
   build and modify the repository; optimize for entrypoints, commands, paths,

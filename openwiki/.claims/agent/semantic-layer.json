@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8d99e1164acaa374f083f5678b79a679c4bdf5f78c36afc85b12263ca6077018",
+  "pageVersion": "sha256:5e46bf2b45669343ffeca7805f478181838894b5760b406c4d2665de9548ea07",
   "claims": [
     {
       "id": "claim_67cb28f975154c3dab2eee2e110ffe62",
@@ -408,7 +408,7 @@
       "evidence": [
         {
           "resource": "repo://packages/agent/src/graph.ts",
-          "version": "repo-file-v1:sha256:7634c7ba97ffc0694ce4a5e143589553d2bf7e0dbc079854b5fa0d722cbfa7de"
+          "version": "repo-file-v1:sha256:5b6f6fc055d7783d49284007645c10810c77d0f49c85ff1bda9ad4a36106b077"
         },
         {
           "resource": "repo://packages/agent/src/semantic/retrieveSemantic.ts",
@@ -416,7 +416,7 @@
         },
         {
           "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
-          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
+          "version": "repo-file-v1:sha256:d1c8dca8d7c9ff27170dd3e45c58f9f625f7f6f2a068a3c554a7a5ffe46e4c83"
         },
         {
           "resource": "repo://packages/agent/src/validators/citationValidator.ts",
@@ -472,11 +472,11 @@
         },
         {
           "resource": "repo://packages/agent/src/state.ts",
-          "version": "repo-file-v1:sha256:ba3edb1efbe8a445c1be26693e0ae47f6bfe2cd19516a00375bf759c1a00659b"
+          "version": "repo-file-v1:sha256:a5d4ca341beb42fc88f1abc6f362828348b0c5ae25630388a27acd684ca9980a"
         },
         {
           "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
-          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
+          "version": "repo-file-v1:sha256:d1c8dca8d7c9ff27170dd3e45c58f9f625f7f6f2a068a3c554a7a5ffe46e4c83"
         }
       ]
     },
@@ -490,7 +490,7 @@
         },
         {
           "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
-          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
+          "version": "repo-file-v1:sha256:d1c8dca8d7c9ff27170dd3e45c58f9f625f7f6f2a068a3c554a7a5ffe46e4c83"
         }
       ]
     },
@@ -510,7 +510,7 @@
       "evidence": [
         {
           "resource": "repo://packages/agent/src/subgraphs/textToSql.ts",
-          "version": "repo-file-v1:sha256:44a9a7d7539426b6e6d9929077c245506054eedaf61bd3878a642b55f15b5589"
+          "version": "repo-file-v1:sha256:d1c8dca8d7c9ff27170dd3e45c58f9f625f7f6f2a068a3c554a7a5ffe46e4c83"
         }
       ]
     },
@@ -527,6 +527,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-07T14:35:23.411Z"
+    "at": "2026-11-10T15:59:31.941Z"
   }
 }

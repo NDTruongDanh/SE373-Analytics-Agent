@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:efb9e9741e10efeabec2936e76759c730fff5091862b8f54502fe29e277a4980",
+  "pageVersion": "sha256:5ab5471341ca5984995115278a5a89b68203ce8aa744ef7bd54add1796281f99",
   "claims": [
     {
       "id": "claim_fb880a6112554a6c93dd71e222eca5d7",
@@ -432,11 +432,11 @@
     },
     {
       "id": "claim_a2ece88b6b534b7ea300895d9ea62026",
-      "statement": ".github/CODEOWNERS requires approval from @NDTruongDanh and @HungPham-VNU with per-path owners covering contracts, mcp-server, access-policy, agent validators and subgraphs, api, web, policies, data, docker, semantic, skills, evals, and traces.",
+      "statement": ".github/CODEOWNERS requires approval from @NDTruongDanh or @HungPham-VNU on every change, with @nguyenhun11 as third owner on contracts, agent, api, skills, and evals, plus per-path owners covering mcp-server, access-policy, web, policies, data, docker, semantic, validators, subgraphs, UC-02/UC-03 tests and traces, and chart files.",
       "evidence": [
         {
           "resource": "repo://.github/CODEOWNERS#L1-L29",
-          "version": "repo-lines-v1:sha256:cc0dbdbe72c21f192b92df3278b4d841f49893400e9010e0baa243a62ae8e7fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxODg0ODgzZWIzODE1YWVhYjNhN2ZlYzc5NjM2NTIyZmRhZTZkYTc3YzM3YmE1YjA5Y2JhYjUyNmI5NDhhYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MjJhNTE0Mzc0YmU1MDdjNzUyOGFiOTE0Yjk4NTZmNzcwNTcyMTYxOTgzYzY0ZDJlMmEyYzU3ZDBhNzA4ZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:82070d5fdde37a99ec079e4131ca1cc1ac9a7589651ed70276c879a1670f6716:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxODg0ODgzZWIzODE1YWVhYjNhN2ZlYzc5NjM2NTIyZmRhZTZkYTc3YzM3YmE1YjA5Y2JhYjUyNmI5NDhhYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MjJhNTE0Mzc0YmU1MDdjNzUyOGFiOTE0Yjk4NTZmNzcwNTcyMTYxOTgzYzY0ZDJlMmEyYzU3ZDBhNzA4ZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -533,6 +533,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-07T14:35:23.411Z"
+    "at": "2026-11-10T15:59:31.941Z"
   }
 }

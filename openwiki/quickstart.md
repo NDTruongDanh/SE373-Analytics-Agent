@@ -5,7 +5,7 @@ description: Entry points, one-command setup, wiki commands, and routing links t
 tags: [quickstart, setup, analytics-agent, routing, openwiki]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-07T14:35:23.411Z
+    at: 2026-11-10T15:59:31.941Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -17,6 +17,10 @@ sources:
     resource: repo://apps/api/src/constants.ts
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
+  - id: openwiki-source-c4cad033353f1dc74105e364
+    resource: repo://apps/api/src/ports.ts
+  - id: openwiki-source-b6c48ff1dbe6fcf04f2e36f1
+    resource: repo://apps/api/src/sse.ts
   - id: openwiki-source-874170dfe5527cc01ce20f78
     resource: repo://apps/web/src/app.tsx
   - id: openwiki-source-8e8b395281c4996e784ae3b5
@@ -49,7 +53,7 @@ sources:
     resource: repo://scripts/openwiki-fetch-patch.mjs
   - id: openwiki-source-8f237913979f09c8e64c25ba
     resource: repo://scripts/trace-show.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-10T15:59:31.941Z" }
 ---
 
 # Quickstart task map
@@ -91,7 +95,7 @@ pnpm skills:check      # declarative-skills invariant (no scripts/credentials)
 
 This is the documented operator sequence (`README.md:13-26`). External MCP clients (MCP Inspector, `scripts/externalClient.ts`) connect to the gateway over Streamable HTTP with a per-role bearer token from `policies/mcp_clients.yaml`, whose values stay in `.env` and never enter the repo (`README.md:29-31`).
 
-The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — the full Express SSE host that mints run context, maps UI persona to MCP principal, invokes the root graph, and supports resume on the same thread — and the full Vite + React operator chat UI rooted at [`apps/web/src/app.tsx`](../apps/web/src/app.tsx) and mounted by [`apps/web/src/main.tsx`](../apps/web/src/main.tsx) — persona switcher, SSE streaming via `postStream`, and clarification resume against `/api/runs/:runId/resume`.
+The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — the full Express SSE host that mints run context, maps UI persona to MCP principal, invokes the root graph, and supports resume on the same thread — with persistence ports injected from [`apps/api/src/ports.ts`](../apps/api/src/ports.ts) (fail-fast when `HARNESS_STATE_DATABASE_URL` is absent) and sanitized streaming via [`apps/api/src/sse.ts`](../apps/api/src/sse.ts), and the full Vite + React operator chat UI rooted at [`apps/web/src/app.tsx`](../apps/web/src/app.tsx) and mounted by [`apps/web/src/main.tsx`](../apps/web/src/main.tsx) — persona switcher, SSE streaming via `postStream`, and clarification resume against `/api/runs/:runId/resume`.
 
 ## 3. Commands (entrypoints)
 
@@ -129,12 +133,16 @@ Scheduled CI ([`openwiki-update.yml`](../.github/workflows/openwiki-update.yml),
 | Path | Role |
 |---|---|
 | [`README.md`](../README.md) | Operator setup, harness eval flow, provider/session-header caveat |
+| [`AGENTS.md`](../AGENTS.md) | Agent guide: progressive disclosure, ownership, boundaries, conventions |
 | [`package.json`](../package.json) | Scripts (`package.json:13-36`) and pinned `openwiki@0.7.2` dependency |
+| [`pnpm-workspace.yaml`](../pnpm-workspace.yaml) | Workspace packages (`apps/*`, `packages/*`) and shared catalog versions |
 | [`docs/architecture.md`](../docs/architecture.md) | Harness architecture, package boundaries, shared contracts, per-UC code placement |
 | [`docs/prd.md`](../docs/prd.md) | Full product requirements (11 use cases, harness, evals) |
 | [`docs/mcp_interface.md`](../docs/mcp_interface.md) | Generated MCP tool interface; regenerate with `pnpm docs:interface` |
 | [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) | Frozen shared Zod schemas consumed by the interface generator |
 | [`apps/api/src/index.ts`](../apps/api/src/index.ts) | Full Express SSE host: `/api/ask`, `/api/runs/:runId/resume`, persona-to-principal mapping |
+| [`apps/api/src/ports.ts`](../apps/api/src/ports.ts) | Host persistence ports: PostgresSaver checkpointer + AppStateStore, fail-fast boot |
+| [`apps/api/src/sse.ts`](../apps/api/src/sse.ts) | Sanitized SSE emitter: allowlisted events, metadata-only payloads, wire PII tripwire |
 | [`apps/web/src/app.tsx`](../apps/web/src/app.tsx) | Full Vite + React operator chat UI: persona switcher, SSE streaming, clarification resume |
 | [`openwiki/INSTRUCTIONS.md`](INSTRUCTIONS.md) | Brief every OpenWiki run reads; defines scope, taxonomy, and grounding rules |
 | [`.openwikiignore`](../.openwikiignore) | Read boundary: secrets, generated state, `node_modules/`, data dumps, evals/seeds/traces |
