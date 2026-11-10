@@ -3,9 +3,6 @@ type: semantic-layer
 title: Semantic layer and retrieval
 description: Versioned semantic corpus, incremental indexing, three-way hybrid retrieval, LangGraph grounding gate, and deterministic citation validation.
 tags: [semantic-layer, retrieval, rag, citations, knowledge-base, text-to-sql]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-07T14:35:23.411Z
 sources:
   - id: openwiki-source-4912fb87763cb10856716453
     resource: repo://docker/initdb/02_schemas.sql
@@ -56,6 +53,9 @@ sources:
   - id: openwiki-source-d2c7e7764edc89333a818b3e
     resource: repo://semantic/tables.yaml
 generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-10T15:59:31.941Z
 ---
 
 # Semantic layer and retrieval
