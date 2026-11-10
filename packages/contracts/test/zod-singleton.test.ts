@@ -16,8 +16,7 @@ describe("zod singleton", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const lockText = readFileSync(join(here, "../../../pnpm-lock.yaml"), "utf8");
     const keys = lockText
-      .replace(/\r/g, "")
-      .split("\n")
+      .split(/\r?\n/)
       .map((line) => /^  (zod@\S+?):?$/.exec(line)?.[1])
       .filter((key) => key !== undefined);
     const distinct = [...new Set(keys)];

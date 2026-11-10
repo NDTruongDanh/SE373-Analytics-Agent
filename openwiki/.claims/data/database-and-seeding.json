@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:821b366348885bbc04db180f184dc6f8738eb9119a41746e4f3bbbb6ffdf2ed8",
+  "pageVersion": "sha256:9d8400514a43251f90be88459cd7ada030f0094fa3fe93d4e653c03acaae7c17",
   "claims": [
     {
       "id": "claim_7900d07fa59e42b2827a0c0d856025b0",
@@ -264,7 +264,7 @@
         },
         {
           "resource": "repo://packages/data/src/manifest.ts",
-          "version": "repo-file-v1:sha256:67296586ecaebfb46fae1d535ca90df84018ea7f5c4f9692b52537f28e1184fb"
+          "version": "repo-file-v1:sha256:e118647147be0be23ad461a0b732b7f4a338167a22f8f5c91c918e0ba1655ec6"
         }
       ]
     },
@@ -274,7 +274,7 @@
       "evidence": [
         {
           "resource": "repo://packages/data/src/seeds.ts",
-          "version": "repo-file-v1:sha256:9c5f86b0ce79ebeb14b51d918acbb6a75f1b9b8786f55613f2e320a3509a6897"
+          "version": "repo-file-v1:sha256:326aa7c0cc10a764567b97ad890e1e4b980cdbcc17e5afe0b77908737637240a"
         }
       ]
     },
@@ -327,6 +327,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-06T15:32:05.739Z"
+    "at": "2026-11-07T14:35:23.411Z"
   }
 }

@@ -5,7 +5,7 @@ description: Entry points, one-command setup, wiki commands, and routing links t
 tags: [quickstart, setup, analytics-agent, routing, openwiki]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-06T15:32:05.739Z
+    at: 2026-11-07T14:35:23.411Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -17,10 +17,10 @@ sources:
     resource: repo://apps/api/src/constants.ts
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
-  - id: openwiki-source-29e6795232e203660915fd20
-    resource: repo://apps/web/src/constants.ts
-  - id: openwiki-source-1dfd9d0040aec8cc63e58d27
-    resource: repo://apps/web/src/index.ts
+  - id: openwiki-source-874170dfe5527cc01ce20f78
+    resource: repo://apps/web/src/app.tsx
+  - id: openwiki-source-8e8b395281c4996e784ae3b5
+    resource: repo://apps/web/src/main.tsx
   - id: openwiki-source-115b2dad781e2a2c5b5a980d
     resource: repo://docs/architecture.md
   - id: openwiki-source-959b64ff54cd1f30f8828ba2
@@ -49,7 +49,7 @@ sources:
     resource: repo://scripts/openwiki-fetch-patch.mjs
   - id: openwiki-source-8f237913979f09c8e64c25ba
     resource: repo://scripts/trace-show.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
 ---
 
 # Quickstart task map
@@ -91,7 +91,7 @@ pnpm skills:check      # declarative-skills invariant (no scripts/credentials)
 
 This is the documented operator sequence (`README.md:13-26`). External MCP clients (MCP Inspector, `scripts/externalClient.ts`) connect to the gateway over Streamable HTTP with a per-role bearer token from `policies/mcp_clients.yaml`, whose values stay in `.env` and never enter the repo (`README.md:29-31`).
 
-The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — the full Express SSE host that mints run context, maps UI persona to MCP principal, invokes the root graph, and supports resume on the same thread — and [`apps/web/src/index.ts`](../apps/web/src/index.ts) — currently a web shell placeholder for the Vite + React chat UI.
+The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — the full Express SSE host that mints run context, maps UI persona to MCP principal, invokes the root graph, and supports resume on the same thread — and the full Vite + React operator chat UI rooted at [`apps/web/src/app.tsx`](../apps/web/src/app.tsx) and mounted by [`apps/web/src/main.tsx`](../apps/web/src/main.tsx) — persona switcher, SSE streaming via `postStream`, and clarification resume against `/api/runs/:runId/resume`.
 
 ## 3. Commands (entrypoints)
 
@@ -135,7 +135,7 @@ Scheduled CI ([`openwiki-update.yml`](../.github/workflows/openwiki-update.yml),
 | [`docs/mcp_interface.md`](../docs/mcp_interface.md) | Generated MCP tool interface; regenerate with `pnpm docs:interface` |
 | [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) | Frozen shared Zod schemas consumed by the interface generator |
 | [`apps/api/src/index.ts`](../apps/api/src/index.ts) | Full Express SSE host: `/api/ask`, `/api/runs/:runId/resume`, persona-to-principal mapping |
-| [`apps/web/src/index.ts`](../apps/web/src/index.ts) | Web shell placeholder for the Vite + React operator UI |
+| [`apps/web/src/app.tsx`](../apps/web/src/app.tsx) | Full Vite + React operator chat UI: persona switcher, SSE streaming, clarification resume |
 | [`openwiki/INSTRUCTIONS.md`](INSTRUCTIONS.md) | Brief every OpenWiki run reads; defines scope, taxonomy, and grounding rules |
 | [`.openwikiignore`](../.openwikiignore) | Read boundary: secrets, generated state, `node_modules/`, data dumps, evals/seeds/traces |
 | [`.github/workflows/openwiki-update.yml`](../.github/workflows/openwiki-update.yml) | Scheduled wiki refresh workflow |

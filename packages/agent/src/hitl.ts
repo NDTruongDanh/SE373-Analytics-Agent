@@ -6,6 +6,10 @@
 
 import { Command, interrupt } from "@langchain/langgraph";
 import { THREAD_ID_MAX_LENGTH } from "./constants.js";
+import type {
+  ClarificationField,
+  PendingClarification,
+} from "./state.js";
 
 export { THREAD_ID_MAX_LENGTH } from "./constants.js";
 
@@ -32,8 +36,10 @@ export function isSameThread(a: string, b: string): boolean {
 }
 
 export interface ClarificationRequest {
-  reason: string;
+  field: ClarificationField;
+  question: string;
   options: string[];
+  attempts: number;
   table?: string;
 }
 
@@ -42,7 +48,7 @@ export interface ClarificationPayload {
   reason: string;
   table?: string;
   sql: null;
-  pendingClarification: string[];
+  pendingClarification: PendingClarification;
 }
 
 /**
@@ -52,25 +58,49 @@ export interface ClarificationPayload {
 export function requestClarification(
   req: ClarificationRequest,
 ): ClarificationPayload {
-  if (!req.reason) {
-    throw new Error("requestClarification requires a reason");
+  if (!req.question) {
+    throw new Error("requestClarification requires a question");
   }
-  if (req.options.length === 0) {
-    throw new Error("requestClarification requires at least one option");
+  if (req.options.length < 2 || req.options.length > 4) {
+    throw new Error("requestClarification requires two to four options");
+  }
+  if (!Number.isInteger(req.attempts) || req.attempts < 0 || req.attempts > 2) {
+    throw new Error("requestClarification attempts must be an integer from 0 to 2");
   }
   return {
     status: "needs_clarification",
-    reason: req.reason,
+    reason: req.question,
     ...(req.table ? { table: req.table } : {}),
     sql: null,
-    pendingClarification: [...req.options],
+    pendingClarification: {
+      field: req.field,
+      question: req.question,
+      options: [...req.options],
+      attempts: req.attempts,
+    },
   };
+}
+
+/** Pause a query at the structured UC-01 clarification edge. */
+export function pauseForClarification(request: PendingClarification): unknown {
+  return interrupt({ action: "clarify_then_query", pendingClarification: request });
+}
+
+/** A resume response is accepted only when it exactly matches a presented option. */
+export function isClarificationOption(
+  request: PendingClarification,
+  value: unknown,
+): value is string {
+  return typeof value === "string" && request.options.includes(value);
 }
 
 export interface ReviewPayload {
   action: string;
   sql?: string;
   reason?: string;
+  plan?: unknown;
+  currentPlan?: unknown;
+  planId?: string;
 }
 
 /**

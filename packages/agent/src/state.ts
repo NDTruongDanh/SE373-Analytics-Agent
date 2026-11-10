@@ -38,10 +38,30 @@ export const IntentSchema = z.object({
   queryMode: z.enum(["standard_query", "definition_lookup"]).default("standard_query"),
 });
 
+/** The one unresolved intent component a user may answer in a HITL turn. */
+export const ClarificationFieldSchema = z.enum([
+  "metric",
+  "timeRange",
+  "scope",
+  "filterValue",
+]);
+export type ClarificationField = z.infer<typeof ClarificationFieldSchema>;
+
+/** Checkpoint-safe Clarify-Then-Query request (UC-01, maximum two turns). */
+export const PendingClarificationSchema = z.object({
+  field: ClarificationFieldSchema,
+  question: z.string().min(1),
+  options: z.array(z.string().min(1)).min(2).max(4),
+  attempts: z.number().int().min(0).max(2),
+});
+export type PendingClarification = z.infer<typeof PendingClarificationSchema>;
+
 const SemanticChunkSchema = z.object({
   chunkId: z.string().min(1),
   score: z.number().optional(),
   text: z.string().optional(),
+  aliasMatched: z.boolean().optional(),
+  denseScore: z.number().optional(),
 });
 
 const BudgetStateSchema = z
@@ -141,8 +161,10 @@ export const AgentStateSchema = new StateSchema({
   threadId: z.string().default(""),
   /** VIZ seam output (JSON only); set by the injected VIZ implementation. */
   vizSpec: z.unknown().nullable().default(null),
-  /** Clarification options carried for the 01-12 HITL resume path. */
-  pendingClarification: z.array(z.string()).nullable().default(null),
+  /** One structured UC-01 clarification request, or no pending question. */
+  pendingClarification: PendingClarificationSchema.nullable().default(null),
+  /** Completed valid clarification turns; limits a run to two selections. */
+  clarificationAttempts: z.number().int().min(0).max(2).default(0),
   /** UC-05 AnalysisPlan checkpointed state (architecture §4.3 Tier 2). */
   analysisPlan: AnalysisPlanSchema.nullable().default(null),
   /** UC-05 Final verified root cause answer payload. */

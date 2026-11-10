@@ -191,6 +191,41 @@ describe("ValidatedQueryExecutor core path", () => {
     }
   });
 
+  it("requests and retains at most a 1,000-row transient validation buffer", async () => {
+    const rows = Array.from({ length: 1001 }, (_, index) => ({
+      id: index + 1,
+      status: "completed",
+    }));
+    const model = new FakeChatModel([
+      proposalFor("SELECT id, status FROM orders LIMIT 1000", ["orders"]),
+    ]);
+    const mcp = new StubMcpCaller({
+      describe_table: describeHandler,
+      explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 1001 }),
+      run_query: () => ({
+        columns: ["id", "status"],
+        rows,
+        rowCount: rows.length,
+        truncated: true,
+        maskedColumns: [],
+        durationMs: 4,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+
+    const result = await executor.run({
+      question: "show orders",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.rows).toHaveLength(1000);
+    const runCall = mcp.calls.find((call) => call.tool === "run_query");
+    expect(runCall?.args["maxRows"]).toBe(1000);
+  });
+
   it("makes zero MCP run calls when the pre-check denies the proposal", async () => {
     const model = new FakeChatModel([
       proposalFor("SELECT * FROM orders, customers", ["orders", "customers"]),
@@ -223,6 +258,80 @@ describe("ValidatedQueryExecutor core path", () => {
       "describe_table",
       "describe_table",
     ]);
+  });
+
+  it("repairs a large-table SQL that omitted an already selected time range", async () => {
+    const model = new FakeChatModel([
+      proposalFor("SELECT id FROM orders", ["orders"]),
+      proposalFor(
+        "SELECT id FROM orders WHERE purchase_date >= '2026-07-01' AND purchase_date < '2026-10-01'",
+        ["orders"],
+      ),
+    ]);
+    const mcp = new StubMcpCaller({
+      describe_table: describeHandler,
+      explain_query: () => ({ estimatedCost: 1, estimatedRows: 1 }),
+      run_query: () => ({
+        columns: ["id"],
+        rows: [{ id: 1 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 1,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+    const result = await executor.run({
+      question: "show orders",
+      timeRange: "2026-07-01/2026-10-01",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+      catalog: {
+        tables: [
+          {
+            name: "orders",
+            columns: [
+              ...ORDERS_COLUMNS,
+              { name: "purchase_date", type: "timestamp", nullable: false, sensitive: false, large: true },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.attempts).toBe(2);
+    expect(mcp.calls.map((call) => call.tool)).toEqual([
+      "describe_table",
+      "explain_query",
+      "run_query",
+    ]);
+  });
+
+  it("derives parseable quarter options from the actual orders date extent", async () => {
+    const mcp = new StubMcpCaller({
+      explain_query: () => ({ estimatedCost: 1, estimatedRows: 1 }),
+      run_query: () => ({
+        columns: ["min_date", "max_date"],
+        rows: [{ min_date: "2025-01-15", max_date: "2026-11-30" }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 1,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp });
+
+    await expect(executor.timeRangeOptions({ principal: PRINCIPAL })).resolves.toEqual([
+      "2026-01-01/2026-04-01",
+      "2026-04-01/2026-07-01",
+      "2026-07-01/2026-10-01",
+      "2026-10-01/2027-01-01",
+    ]);
+    expect(mcp.calls.map((call) => call.tool)).toEqual(["explain_query", "run_query"]);
+    expect(String(mcp.calls[0]?.args["sql"])).toContain('MIN("purchase_date")');
+    expect(mcp.calls[1]?.args["maxRows"]).toBe(1);
   });
 
   it("denies a sensitive proposal without any MCP run call", async () => {

@@ -25,6 +25,7 @@ import {
   BUDGET_DEFAULTS,
   buildRootGraph,
   previewCountTotal,
+  routeQuestionToUc,
   runTracerGraph,
   type AgentState,
   type SpanEvent,
@@ -146,6 +147,24 @@ function interruptedOf(output: unknown): unknown[] | undefined {
   return (output as { __interrupt__?: unknown[] }).__interrupt__;
 }
 
+/** Read clarification metadata from either checkpoint state or LangGraph's interrupt payload. */
+function pendingClarificationOf(output: unknown): AgentState["pendingClarification"] {
+  const direct = (output as Partial<AgentState>).pendingClarification;
+  if (direct) return direct;
+  for (const item of interruptedOf(output) ?? []) {
+    const value = (item as { value?: unknown }).value ?? item;
+    const pending = (value as { pendingClarification?: unknown }).pendingClarification;
+    if (
+      pending !== null &&
+      typeof pending === "object" &&
+      Array.isArray((pending as { options?: unknown }).options)
+    ) {
+      return pending as AgentState["pendingClarification"];
+    }
+  }
+  return null;
+}
+
 
 /** Verdict tokens safe to record verbatim: protocol decisions, never content. */
 const APPROVAL_VERDICTS = new Set([
@@ -167,10 +186,11 @@ const APPROVAL_VERDICTS = new Set([
  * clarification gate; anything else stays a generic approval so future
  * gates (cost_approval, …) can mint their own kinds without a shape change.
  */
-function approvalKindFor(out: AgentState): string {
-  return out.pendingClarification && out.pendingClarification.length > 0
-    ? "clarification"
-    : "approval";
+function approvalKindFor(
+  out: AgentState,
+  pendingClarification: AgentState["pendingClarification"] = out.pendingClarification,
+): string {
+  return pendingClarification ? "clarification" : "approval";
 }
 
 /**
@@ -414,19 +434,21 @@ export function buildApp(options: BuildAppOptions): express.Express {
       // when all three vars are set; its handler name suppresses the bare
       // env auto-tracer. runId equals the JSONL runId for 1:1 correlation.
       const tracer = createLangSmithTracer(env);
+      const reqUcId = typeof req.body?.["ucId"] === "string" ? req.body["ucId"] : undefined;
+      const effectiveUcId = routeQuestionToUc(question, reqUcId);
       const ls = tracer
         ? buildLangSmithRunConfig(tracer, {
             runId,
             threadId,
             userId: principal.userId,
             role: principal.role,
-            ucId: "",
+            ucId: effectiveUcId,
             maskedColumns: [],
           })
         : undefined;
       const out = (await graph.invoke(
         {
-          question, ucId: "", runId, threadId,
+          question, ucId: effectiveUcId, runId, threadId,
           // A new question reuses the thread, but not the previous run's outputs or budgets.
           status: "no_data", answerText: "", sql: null, tablesUsed: [],
           semanticChunks: [], resultPreview: [], columns: [], toolsCalled: [],
@@ -442,25 +464,40 @@ export function buildApp(options: BuildAppOptions): express.Express {
           configurable: configurableFor(run, runId),
         },
       )) as AgentState;
-      if (interruptedOf(out)?.length) {
-        emit({
+      const interrupts = interruptedOf(out);
+      if (interrupts?.length) {
+        const pendingClarification = pendingClarificationOf(out);
+        emit?.({
           node: "answer",
           type: "approval_requested",
           durationMs: 0,
           attempt: 0,
           payload: {
-            kind: approvalKindFor(out),
-            ...(out.pendingClarification
-              ? { pendingClarification: [...out.pendingClarification] }
+            kind: approvalKindFor(out, pendingClarification),
+            ...(pendingClarification
+              ? { pendingClarification }
               : {}),
           },
         });
+        const rawInterrupt = interrupts[0] as { value?: unknown } | unknown;
+        const interruptValue =
+          rawInterrupt && typeof rawInterrupt === "object" && "value" in rawInterrupt
+            ? (rawInterrupt as { value: unknown }).value
+            : rawInterrupt;
+        const interruptData =
+          interruptValue && typeof interruptValue === "object"
+            ? (interruptValue as Record<string, unknown>)
+            : {};
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId,
           node: "answer",
           data: interruptPayload({
-            pendingClarification: out.pendingClarification,
+            action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
+            reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
+            pendingClarification,
+            plan: interruptData["plan"],
+            currentPlan: interruptData["currentPlan"],
           }),
         });
         return;
@@ -535,7 +572,12 @@ export function buildApp(options: BuildAppOptions): express.Express {
       res.status(404).json(dbToolError("INVALID_PARAMS", "unknown runId ''"));
       return;
     }
-    if (!isRecord(req.body)) {
+    if (
+      !isRecord(req.body) ||
+      !("value" in req.body) ||
+      req.body["value"] === undefined ||
+      req.body["value"] === null
+    ) {
       res.status(400).json(dbToolError("INVALID_PARAMS", "resume body must carry a value"));
       return;
     }
@@ -590,25 +632,40 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const out = (await graph.invoke(new Command({ resume: req.body["value"] }), {
         ...buildResumeInvokeOptions({ langsmith: ls, run: stored, runId }),
       })) as AgentState;
-      if (interruptedOf(out)?.length) {
+      const resumeInterrupts = interruptedOf(out);
+      if (resumeInterrupts?.length) {
+        const pendingClarification = pendingClarificationOf(out);
         emit({
           node: "answer",
           type: "approval_requested",
           durationMs: 0,
           attempt: 0,
           payload: {
-            kind: approvalKindFor(out),
-            ...(out.pendingClarification
-              ? { pendingClarification: [...out.pendingClarification] }
+            kind: approvalKindFor(out, pendingClarification),
+            ...(pendingClarification
+              ? { pendingClarification }
               : {}),
           },
         });
+        const rawInterrupt = resumeInterrupts[0] as { value?: unknown } | unknown;
+        const interruptValue =
+          rawInterrupt && typeof rawInterrupt === "object" && "value" in rawInterrupt
+            ? (rawInterrupt as { value: unknown }).value
+            : rawInterrupt;
+        const interruptData =
+          interruptValue && typeof interruptValue === "object"
+            ? (interruptValue as Record<string, unknown>)
+            : {};
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId: stored.threadId,
           node: "answer",
           data: interruptPayload({
-            pendingClarification: out.pendingClarification,
+            action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
+            reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
+            pendingClarification,
+            plan: interruptData["plan"],
+            currentPlan: interruptData["currentPlan"],
           }),
         });
         return;

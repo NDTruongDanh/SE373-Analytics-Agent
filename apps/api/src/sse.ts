@@ -17,6 +17,7 @@
 // error message) and degrades to failed on a hit.
 
 import type { Response } from "express";
+import type { PendingClarification } from "@shared/agent";
 import {
   SseCompletedEventSchema,
   SseFailedEventSchema,
@@ -165,14 +166,29 @@ export function failedPayload(input: {
   };
 }
 
-/** interrupt_waiting payload: clarification options only, no prompts. */
-export function interruptPayload(input: {
+export interface InterruptPayloadInput {
+  action?: string;
   reason?: string;
-  pendingClarification?: string[] | null;
-}): Record<string, unknown> {
+  pendingClarification?: PendingClarification | string[] | null;
+  plan?: unknown;
+  currentPlan?: unknown;
+}
+
+/** interrupt_waiting payload: clarification options and review plan for HITL. */
+export function interruptPayload(input: InterruptPayloadInput): Record<string, unknown> {
+  const plan = input.currentPlan ?? input.plan;
+  let pending: unknown;
+  if (Array.isArray(input.pendingClarification)) {
+    pending = [...input.pendingClarification];
+  } else if (input.pendingClarification) {
+    const pc = input.pendingClarification as PendingClarification;
+    pending = { ...pc, options: [...pc.options] };
+  }
   return {
+    ...(input.action ? { action: input.action } : {}),
     ...(input.reason ? { reason: scrubMessage(input.reason) } : {}),
-    ...(input.pendingClarification ? { pendingClarification: [...input.pendingClarification] } : {}),
+    ...(pending ? { pendingClarification: pending } : {}),
+    ...(plan !== undefined ? { plan, currentPlan: plan } : {}),
   };
 }
 

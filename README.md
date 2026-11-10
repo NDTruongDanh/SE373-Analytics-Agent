@@ -92,7 +92,9 @@ read boundary is `.openwikiignore`.
 Every non-draft PR into `main` gets an architecture review from
 `muse-spark-1.3-contributor` @ `xhigh` (`.github/workflows/pr-review.yml`
 → `scripts/pr-review.mjs`), judged against [`docs/architecture.md`](docs/architecture.md)
-as the source of truth. It reuses the OpenWiki secret — no new secret needed
+as the source of truth. It runs on PR creation **and every push**, and updates
+one living PR comment in place (stamped with the reviewed commit) so the visible
+review always matches the latest code. It reuses the OpenWiki secret — no new secret needed
 (`Settings → Secrets and variables → Actions → OPENCODE_GO_API_KEY`); fork PRs
 without secret access get a skip notice. Reviews post as a PR comment and are
 **advisory only** (never part of the `gate` branch-protection check).

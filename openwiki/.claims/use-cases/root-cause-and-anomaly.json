@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:da62aef88270a195466b30b1f4e798dabc72502a4cfc0c1ba3030ba05a432f2a",
+  "pageVersion": "sha256:50a68451de8625dd1a552d5eef13a63c4dac43249722a9d247b2a4f4eb8c2196",
   "claims": [
     {
       "id": "claim_c092349b60ee43fdab0b26417119585d",
@@ -273,12 +273,12 @@
       "statement": "Durable checkpoint and host resume path has landed: createCheckpointer builds PostgresSaver on langgraph schema from HARNESS_STATE_DATABASE_URL with fail-fast setup and agent_ro rejection, createHostPorts injects it with AppStateStore, and POST /api/runs/:runId/resume resumes via Command on the same thread.",
       "evidence": [
         {
-          "resource": "repo://apps/api/src/index.ts#L513-L572",
-          "version": "repo-lines-v1:sha256:01687f5ccd8d28b2b0fb6e2ed5868669d6bb96c3a9cc04ea3eff746fe15d0ce2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyODNjNjdhY2QyNmI5Mzg1MDdlNDY4Y2NlNGY3ZTkzZDZkMWVmNGQxMjQ4ZTQzNDMzZGVjNWZmMmJjMGI3ODMifQ"
+          "resource": "repo://apps/api/src/index.ts#L532-L592",
+          "version": "repo-lines-v1:sha256:78a3f5e096c058bbe731a0f8a1857425ee19f632362a92acbf5551e15cf58cb7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTI5NWM2ZmM0MDg1NGFkMmJjOTcxM2ViMGE0MzUyNWRjZTNmMDNmMDQ0NDQzZDAxMWNmMTljMWY0NzgzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMGUzOGIzNmQzMmI5Nzk1M2YwMmViZmUwYWNmNzBjNjllMGQzZGIwMDIwZTNkMzBlODRlN2Y2MjdhODMxMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyODNjNjdhY2QyNmI5Mzg1MDdlNDY4Y2NlNGY3ZTkzZDZkMWVmNGQxMjQ4ZTQzNDMzZGVjNWZmMmJjMGI3ODMifQ"
         },
         {
-          "resource": "repo://apps/api/src/index.ts#L686-L700",
-          "version": "repo-lines-v1:sha256:3457060bd4d234be9b11d974cb82116ca0adaa7c243d909217cd8dd9dc77bf0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkMzE2YTljNTY0NGNkZDg0YjVmMGM2MTQ0OTg4ZjgyZTEyNmU1NGI1MjkzODNjYjZkNzA3YmYwZDJlMzRjMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmZDJkYjU2MWRlOThhNGFkZTkwMThjMDlkOTNkMTA2YWFhYmE0MWViMjZjMDliNjU3MzRlMWRjNWExY2MwYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlZWMxMDQ1MjM2ZTM4MjIwYmY2NzYyODRiNGQwMDFlYTQ4ZWNhYjM0NjVlOTUxNWY2NDFiOGFiMmUzNzc5MWIifQ"
+          "resource": "repo://apps/api/src/index.ts#L705-L749",
+          "version": "repo-lines-v1:sha256:bb2a2e8e689399c809df64ce0a96e38b26a309545ff8f5296af592bc439a62fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1NDhhMzNmMTIxMzY2MGQxMTRjYmI1MjFmNjE3ODFkNDI1OTY3NDZkZGE3Nzg2YTFmZTQ3YmRhMjNhNWVjNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4NzRlMTAwYTEwODQ2M2YwZGVmZWM3N2JlYjZhZjljNmI3YjJmZjkwMmNiMjFkMmI4NzAyYjNkNjE1ZTliOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzZTIwM2FkNzc5M2I0ZDI4ZDg3NjU4NmU2MzI4MjA5ZmExOTllZmZjMjhlMmM0YTc3MGVkZTFhNTc3OTcxNjIifQ"
         },
         {
           "resource": "repo://apps/api/src/ports.ts#L29-L42",
@@ -453,6 +453,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-06T15:32:05.739Z"
+    "at": "2026-11-07T14:35:23.411Z"
   }
 }

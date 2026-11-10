@@ -29,6 +29,7 @@ import {
   type TextToSqlRuntimeDeps,
 } from "./subgraphs/textToSql.js";
 import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
+import { routeQuestionToUc } from "./router.js";
 
 
 export interface RootGraphDeps {
@@ -150,7 +151,14 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
       });
     }))
     .addNode("retrieve", runWithRuntime((state, rt) => retrieve(state, rt)))
-    .addNode("router", noopUpdate)
+    .addNode(
+      "router",
+      runWithRuntime(async (state) => {
+        if (state.ucId && overlay.has(state.ucId)) return {};
+        const routed = routeQuestionToUc(state.question);
+        return overlay.has(routed) ? { ucId: routed } : {};
+      }),
+    )
     .addNode(
       "ucEntry",
       runWithRuntime((state, rt) => {
