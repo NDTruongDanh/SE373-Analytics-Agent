@@ -10,7 +10,7 @@ import {
   type SseEnvelope,
   type SseEventName,
 } from "@shared/contracts";
-import { emitSseEvent, SSE_ALLOWLIST as HOST_ALLOWLIST } from "../src/sse.js";
+import { displayableSql, emitSseEvent, SSE_ALLOWLIST as HOST_ALLOWLIST } from "../src/sse.js";
 
 interface CapturedWrite {
   chunks: string[];
@@ -42,6 +42,23 @@ function emit(
 }
 
 describe("sse contracts-schema gate (D-20)", () => {
+  it("displays only a bounded literal-free SQL proposal", () => {
+    const sql = "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status";
+    expect(displayableSql(sql)).toBe(sql);
+    for (const unsafe of [
+      "SELECT * FROM orders WHERE phone = '0901111111'",
+      "SELECT * FROM orders WHERE id = 1234",
+      "SELECT * FROM orders -- token",
+      "SELECT * FROM orders /* secret */",
+      'SELECT "private" FROM orders',
+      "SELECT * FROM orders WHERE token = $$secret$$",
+      "SELECT * FROM orders WHERE id = $1",
+      "SELECT status AS arbitrary_secret FROM orders",
+      "SELECT * FROM đơn_hàng",
+      "DELETE FROM orders",
+      "SELECT " + "x".repeat(33) + " FROM orders",
+    ]) expect(displayableSql(unsafe)).toBeNull();
+  });
   it("emits a schema-valid payload on its allowlisted event", () => {
     const { events, text } = emit("completed", {
       runId: "run-1",

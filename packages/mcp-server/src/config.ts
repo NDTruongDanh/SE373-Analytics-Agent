@@ -5,7 +5,7 @@
 // config means no boot (fail-closed). Tokens are resolved from process.env
 // at boot and never logged.
 import { parse as parseYaml } from "yaml";
-import * as z from "zod";
+import { z } from "zod";
 import {
   loadSensitiveColumns as loadAccessPolicySensitiveColumns,
   type SensitiveColumns,

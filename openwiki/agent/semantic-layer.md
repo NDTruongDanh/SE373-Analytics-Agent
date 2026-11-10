@@ -1,11 +1,11 @@
 ---
 type: semantic-layer
 title: Semantic layer and retrieval
-description: Versioned semantic corpus, incremental indexing, and 3-way hybrid retrieval with weighted RRF and join-rule expansion grounding the Analytics Agent.
+description: Versioned semantic corpus, incremental indexing, three-way hybrid retrieval, LangGraph grounding gate, and deterministic citation validation.
 tags: [semantic-layer, retrieval, rag, citations, knowledge-base, text-to-sql]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-03T15:42:11.322Z
+    at: 2026-11-07T14:35:23.411Z
 sources:
   - id: openwiki-source-4912fb87763cb10856716453
     resource: repo://docker/initdb/02_schemas.sql
@@ -17,8 +17,16 @@ sources:
     resource: repo://docs/UC-plan/UC02.md
   - id: openwiki-source-7a382cb67515f2241c13f47e
     resource: repo://packages/agent/src/graph.ts
+  - id: openwiki-source-8860e603c8066483560fd1ca
+    resource: repo://packages/agent/src/semantic/retrieveSemantic.ts
   - id: openwiki-source-8f32b5188dc80fbc97e18ece
     resource: repo://packages/agent/src/state.ts
+  - id: openwiki-source-0da85c5a9f665a701eb30287
+    resource: repo://packages/agent/src/subgraphs/textToSql.ts
+  - id: openwiki-source-2b95b8103081e6e1c4c6d60b
+    resource: repo://packages/agent/src/validators/citationValidator.ts
+  - id: openwiki-source-e8963d4301c3bfb1b82a32bc
+    resource: repo://packages/agent/src/validators/claimValidator.ts
   - id: openwiki-source-4ab6f6b20d8ae6cdc708e0b0
     resource: repo://packages/contracts/src/search.ts
   - id: openwiki-source-80d7c64af501ca63c5b59584
@@ -47,14 +55,14 @@ sources:
     resource: repo://semantic/metrics.yaml
   - id: openwiki-source-d2c7e7764edc89333a818b3e
     resource: repo://semantic/tables.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-11-03T15:42:11.322Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
 ---
 
 # Semantic layer and retrieval
 
-This page owns the versioned semantic corpus, the chunking and incremental-indexing pipeline, and the hybrid retrieval path that grounds business language in tables, metrics, and join warnings before SQL generation. The normative UC-02 design (six YAML document types, three-way retrieval with join expansion, LangGraph guardrail, dual citations) lives in the UC-02 plan; what has landed is the YAML plus Markdown indexer, embedder, 3-way retriever, RRF helper, chunk table, gateway tool, and gateway resources described here. Runtime, data, and verification details live in [Workflow Architecture](./workflow-architecture.md), [Database and Seeding](../data/database-and-seeding.md), and [Text to SQL](../use-cases/text-to-sql.md).
+This page owns the versioned semantic corpus, the chunking and incremental-indexing pipeline, the hybrid retrieval path that grounds business language in tables, metrics, and join warnings before SQL generation, and the LangGraph grounding and citation gates that decide what may proceed to SQL synthesis. Runtime, data, and verification details live in [Workflow Architecture](./workflow-architecture.md), [Database and Seeding](../data/database-and-seeding.md), and [Text to SQL](../use-cases/text-to-sql.md).
 
-> Implementation status: the indexer, embedder, 3-way retriever (dense plus BM25 plus alias), weighted RRF helper, join-rule expansion, hot-reload catalog, chunk table, gateway tool, and gateway resources are built. The LangGraph `retrieveSemantic` node with two-tier grounding, deterministic citation validator, and UC-02 eval gates are still plan, not code.
+> Implementation status: the YAML plus Markdown indexer, embedder, three-way retriever (dense plus BM25 plus alias), weighted RRF helper, join-rule expansion, hot-reload catalog, chunk table, gateway tool, gateway resources, LangGraph `retrieveSemantic` node with the two-tier grounding gate, deterministic citation validator, and text-to-SQL entry wiring are built. Recall, execution-accuracy lift, and reindex acceptance thresholds remain eval criteria, not runtime checks.
 
 ## 1. Responsibility and position in the loop
 
@@ -66,7 +74,7 @@ It has three duties:
 2. **Direct definitional answers.** Serve the dictionary and metric text itself so definitional questions can be answered from retrieved chunks without running SQL.
 3. **Refusal by omission.** Withhold `restricted_pii` chunks and resource sections from principals lacking `data:sensitive`, instead of leaking them and redacting later.
 
-The layer is read-only at query time. It never writes the business database, never edits user data, and every tool or resource call still passes authentication, scope checks, zod validation, PII redaction, and audit in the fixed gateway pipeline.
+The layer is read-only at query time. It never writes the business database, never edits user data, and every tool or resource call still passes authentication, scope checks, zod validation, PII redaction, and audit in the fixed gateway pipeline. Access-control and redaction guarantees are detailed in [Safety and Access Control](./safety-and-access-control.md); the gateway transport is detailed in [MCP Server](../integrations/mcp-server.md).
 
 ## 2. Knowledge corpus
 
@@ -77,7 +85,7 @@ The two versioned Markdown files at the repository root are retained as fallback
 - `semantic/data_dictionary.md` — twelve seeded business tables (`regions`, `channels`, `categories`, `sellers`, `products`, `customers`, `employees`, `promotions`, `orders`, `order_items`, `payments`, `reviews`) with grain, primary keys, aliases, and join rules. It carries no row counts, no example values, and no query fragments.
 - `semantic/metrics.md` — six canonical metric definitions (`revenue_vnd`, `order_count`, `average_order_value`, `freight_share`, `review_score_avg`, `compensation_cost`) with the tables each derives from and Vietnamese plus English aliases. It carries no formulas, no thresholds, and no query fragments.
 
-Markdown chunking is by section: every `## ` heading starts one self-contained chunk, and preamble text before the first heading is skipped. The leading `Table:` / `Tables:` / `Metric:` / `Aliases:` lines populate metadata columns and stay in the stored content so lexical search still matches them. A header ending in `[restricted_pii]` marks the whole section restricted — currently `employees` in the dictionary and `compensation_cost` in metrics — while the YAML corpus marks restriction per entry (`table:employees`, `metric:compensation_cost`, and the four restricted columns `customers.phone`, `customers.email`, `customers.address`, `employees.salary`). The dictionary additionally flags `order_items` as the `large` table that must be filtered before a full scan, and marks review text as untrusted user input wrapped in untrusted-data delimiters.
+Markdown chunking is by section: every `## ` heading starts one self-contained chunk, and preamble text before the first heading is skipped. The leading `Table:` / `Tables:` / `Metric:` / `Aliases:` lines populate metadata columns and stay in the stored content so lexical search still matches them. A header ending in `[restricted_pii]` marks the whole section restricted — currently `employees` in the dictionary and `compensation_cost` in metrics — while the YAML corpus marks restriction per entry (`table:employees`, `metric:compensation_cost`, and the four restricted columns `customers.phone`, `customers.email`, `customers.address`, `employees.salary`). The dictionary additionally marks `order_items` as the `large` table that must be filtered before a full scan, and marks review text as untrusted user input wrapped in untrusted-data delimiters.
 
 ```mermaid
 flowchart TD
@@ -141,7 +149,7 @@ Role grants are the read boundary. The `agent_ro` role used by the gateway has `
 2. **Lexical BM25 leg.** In-memory Okapi BM25 (`Bm25Retriever` with `k1 = 1.2`, `b = 0.75`) over a hot-reloaded catalog of `content` plus `metric_name`, `aliases`, `table_name`, and `tables`. Tokenization lowercases, preserves Vietnamese diacritics while also emitting ASCII-folded variants, splits `_`/`.`/`-` compounds into sub-tokens, and removes Vietnamese plus English stopwords. The leg returns at most `max(topK * 3, topK)` hits ordered by BM25 score.
 3. **Deterministic alias leg.** `matchAliases` checks normalized query forms (lowercased, ASCII-folded, underscore-aware spaced variants) against `metric_name`, `aliases`, `chunk_id` plus its suffix and spaced form, and `table_name` with exact-first then longest-phrase then `chunk_id` ordering. Any exact or word-boundary substring hit (minimum two characters) ranks in this leg and sets `aliasMatched = true` on the fused chunk.
 
-Unless `allowRestricted` is true, all three legs exclude `sensitivity = 'restricted_pii'`. Rank lists are fused by the pure `fuseRRF` helper: each hit contributes `weight / (60 + rank)` per leg it appears in with default weights `W_DENSE = 1.0`, `W_BM25 = 1.0`, `W_ALIAS = 1.5`, results sort by fused score with first-seen order breaking ties, and the list truncates to `topK`. `rrfScore` recomputes the same number for the returned `score` field, and the pure boundary mapper `toContractChunk` converts each fused storage row to the camelCase contract shape, splitting comma-joined `tables` and attaching `aliasMatched` plus `denseScore` whenever they are defined.
+Unless `allowRestricted` is true, all three legs exclude `sensitivity = 'restricted_pii'`. Rank lists are fused by the pure `fuseRRF` helper: each hit contributes `weight / (60 + rank)` per leg it appears in with default weights `W_DENSE = 1.0`, `W_BM25 = 1.0`, `W_ALIAS = 1.5`, results sort by fused score with first-seen order breaking ties, and the list truncates to `topK`. `rrfScore` recomputes the same number for the returned `score` field, and the pure boundary mapper `toContractChunk` converts each fused storage row to the camelCase contract shape, splitting comma-joined `tables` and attaching `aliasMatched` plus `denseScore` whenever they are defined. Those two signals are what the agent-side grounding gate consumes: `aliasMatched` proves an exact alias hit and `denseScore` carries the cosine similarity for threshold comparison.
 
 ```mermaid
 flowchart TD
@@ -167,20 +175,51 @@ The `search_semantic_layer` tool is registered in `TOOL_SPECS`/`TOOL_SCOPES` (de
 
 The two resources `semantic://data-dictionary` and `semantic://metrics` are served from the checked-in Markdown files. Resource reads require the `schema:read` scope, withhold every `## ` section whose header ends in `[restricted_pii]` unless the principal holds `data:sensitive`, then apply the same PII redaction and audit as tool calls.
 
-## 9. UC-02 grounding contract (planned)
+## 9. Agent grounding and citation contract
 
-The following UC-02 behaviors are specified in the UC-02 plan but have no implementation in the agent package, whose root graph still exposes only a generic injectable `retrieve` hook and whose checkpointed state carries only a minimal `chunkId` plus `score` plus `text` semantic entry:
+The UC-02 grounding contract is implemented in `packages/agent`: `semantic/retrieveSemantic.ts` owns the retrieve node, `validators/citationValidator.ts` owns deterministic citations, and `subgraphs/textToSql.ts` owns entry-time re-gating plus header injection. The root graph stays generic: its `retrieve` node delegates to the injected `RootGraphDeps.retrieve` seam, and the text-to-SQL entry is registered through the UC registry.
 
-- **Three-route retrieve-then-decide node.** After intent understanding, a `retrieveSemantic` node would route to unknown-metric clarification (`cannot_answer` without inventing a formula), definitional fast-path (synthesize from the chunk without SQL), or grounded SQL generation with formulas and join rules injected.
-- **Two-tier unknown-term guardrail.** Intent extraction would split `requested_metrics` (business KPIs) from `schema_entities` (plain tables, columns, filter literals) so empty metric lists never falsely refuse basic table queries, while unmatched metrics require an exact or substring alias hit, a dense score above the calibrated threshold plus a grounding confirmation, or an explicit user-supplied formula.
-- **Deterministic dual citations.** Every SQL answer would carry a `citations` array plus a prepended `-- @citations: ...` SQL header comment, validated against the chunk catalog and current context for catalog membership, context grounding, and metric coverage, with up to two self-correction retries.
-- **Acceptance and eval gates.** Recall at 5 of at least 0.85, execution-accuracy lift of at least 15 points with the layer on versus off, 100% valid citations, clarification without hallucination on unknown terms, and incremental reindex visibly changing behavior while re-embedding only the changed chunk — measured with token, cost, and latency telemetry over disjoint few-shot and graded question sets.
+### Retrieve node
 
-Coding agents must not assume any of these exist in code paths today; implement against the gateway tool and resources above and treat the plan as the spec for the missing pieces. The hot-reload citation catalog helper (`getCitationCatalog`) exists for future validator use but no validator calls it yet.
+`createRetrieveSemantic({ search, topK })` builds the node. Production resolves MCP transport identity (`mcpUrl`, `token`, `runId`, `userId`, `roleScope`) from `RootRuntime.config` and calls `search_semantic_layer` with `{ query: state.question, topK }`; hosts and tests inject `search` directly. Defaults are `RETRIEVE_TOP_K = 8` and `UNKNOWN_TERM_DENSE_THRESHOLD = 0.6`.
+
+Control flow:
+
+- Basic queries pass through with `{}` and no search when `requestedMetrics` is empty and `queryMode` is not `definition_lookup`.
+- Otherwise the node searches, emits a `retrieve/tool_call` span with the chunk count, and maps each contract chunk to checkpointed state via `toStateChunk` (`chunkId`, `score`, `text`, plus `aliasMatched`/`denseScore` when set). Checkpointed `semanticChunks` therefore carry the trust signals, not just ids and text.
+- Missing MCP transport while metrics need grounding (or while a definition lookup runs) fails closed to `status: error` without speculating.
+- Empty retrieval for a metric question fails closed to `cannot_answer` with zero SQL.
+- A user-supplied formula (`formula:`, `define X as`, `custom formula` in the question) bypasses the unknown-term gate.
+- Ungrounded terms short-circuit to `cannot_answer` with the closest valid metrics and zero SQL; grounded turns return `{ semanticChunks }` and emit `retrieve/node_done` with `gate: unknown_term`, `definition_lookup`, or `data_query`.
+
+### Two-tier unknown-term guardrail
+
+Intent extraction splits `requestedMetrics` (business KPIs) from `schemaEntities` (plain tables, columns, filter literals), so empty metric lists never falsely refuse basic table queries. `isMetricGrounded(term, chunks, threshold, allTerms)` and `checkUnknownTerms(requestedMetrics, chunks)` enforce the gate:
+
+- Only `metric`/`column` chunks (by `docType` or `chunkId` prefix) can ground a term.
+- A grounding chunk must be trusted via exact alias (`aliasMatched === true`) or calibrated dense similarity (`denseScore >= 0.60`).
+- Single-metric questions accept a trusted match directly; multi-metric questions additionally require text overlap between the term and `chunkId` plus `metricName` plus content (substring, metric-token, or `>= 2`-token/`>= 50%`-token overlap), so one retrieval cannot ground an unrelated co-asked term.
+- `closestMetrics` suggests up to `CLOSEST_METRICS_LIMIT = 5` retrieved `metric:*` ids (else top chunk ids) for the `cannot_answer` clarification, which lists the ungrounded terms plus available metrics and invites the user to pick one or supply an explicit formula. Unit tests pin the NPS and forced-hallucination (`chi phí marketing`) short-circuits.
+
+### Definition fast-path
+
+`definition_lookup` still searches, but the synthesis split is explicit: the retrieve node only persists `semanticChunks` (the `definition_lookup` test asserts no status change at this stage), and the text-to-SQL entry owns synthesis. `handleDefinitionLookup` answers from the first five chunk snippets with their scores plus a `Citations:` line over retrieved `metric:*` ids, sets `sql: null`, runs zero executor calls, and returns `cannot_answer` only when no chunks were retrieved. `buildDefinitionAnswer` in the retrieve module is the pure helper for the same answer shape.
+
+### Deterministic citations
+
+`validators/citationValidator.ts` is pure (no model, no I/O) and enforces three rules in `validateCitations({ citations, sql, requestedMetrics, retrievedChunkIds, catalogIds })`:
+
+1. Every citation exists in the catalog (`citation_unknown`).
+2. Every citation was retrieved this turn (`citation_not_retrieved`), with `column:orders.status` versus `orders.status` and `metric:net_revenue` versus `net_revenue` interop in `expandRetrieved`.
+3. Metric queries (`requestedMetrics.length > 0`) cite at least one `metric:*` chunk (`citation_missing_metric`).
+
+On success it deterministically prepends (or replaces) a sorted, deduped `-- @citations: id1, id2` first-line header via `ensureCitationHeader` (`parseCitationHeader` reads it back). `deriveCitations` builds the minimal valid set from retrieved ids — preferring retrieved `metric:*` (up to 5), else top retrieved ids — so the harness fills omissions from grounding rather than letting the model invent ids. `repairCitations` retries at most `CITATION_REPAIR_LIMIT = 2` times, and only for `citation_unknown`/`citation_not_retrieved` by swapping bad ids for derived ones; `citation_missing_metric` never repairs when no `metric:*` was retrieved.
+
+The entry seam `withCitationHeader` applies this per turn without a fake full catalog: it derives citations from `state.semanticChunks` ids, validates retrieved-this-turn plus `metric:*` coverage, repairs up to twice, and returns `null` on persistent failure so the caller fails closed to `cannot_answer` instead of shipping an unverified header. A column-only retrieval on a metric query therefore still runs the executor once but then refuses to answer. Downstream, the UC-03 claim validator consumes retrieved `event:*` chunk ids as `eventIds` for causal gating: causal language passes only with an `event:*` evidence pointer, an event id named in the claim, or a row-backed non-time dimension value.
 
 ## 10. Configuration, invariants, and focused tests
 
-Key configuration is the six YAML corpus files plus two Markdown fallback and resource files, the `INDEXER_DATABASE_URL` write URL, the embedder environment (`EMBEDDING_MODEL_ID`, `OPENAI_COMPATIBLE_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_DIM`), the contract `topK` default and cap, the fixed `RRF_K = 60` with weights `[1.0, 1.0, 1.5]`, the BM25 parameters `k1 = 1.2` and `b = 0.75`, and the HNSW build parameters.
+Key configuration is the six YAML corpus files plus two Markdown fallback and resource files, the `INDEXER_DATABASE_URL` write URL, the embedder environment (`EMBEDDING_MODEL_ID`, `OPENAI_COMPATIBLE_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_DIM`), the retrieve default `topK = 8` versus the gateway contract default 5 and cap 20, the grounding threshold `0.6`, the repair limit `2`, the closest-metrics limit `5`, the fixed `RRF_K = 60` with weights `[1.0, 1.0, 1.5]`, the BM25 parameters `k1 = 1.2` and `b = 0.75`, and the HNSW build parameters.
 
 Invariants to preserve when changing this area:
 
@@ -190,8 +229,10 @@ Invariants to preserve when changing this area:
 - Never serve `restricted_pii` chunks or resource sections to principals without `data:sensitive`; the retriever filter, alias filter, BM25 filter, join-expansion filter, and the section filter must agree.
 - Never change the embedding dimension without DDL plus full reindex; the column is fixed at 1536.
 - Never bypass the snake_case to camelCase boundary mapper; storage text with commas must split into clean arrays, and `aliasMatched` plus `denseScore` must only appear when the fusion path sets them.
+- Never persist semantic chunks without their trust signals; dropping `aliasMatched`/`denseScore` from `semanticChunks` blinds the unknown-term gate.
+- Never let a metric query ship SQL without a verified `metric:*` citation; fail closed to `cannot_answer` on persistent `citation_missing_metric`.
 - Never assume Postgres FTS is the lexical leg; the GIN/`fts` column is reserve DDL while `hybridSearch` uses in-memory BM25 plus the alias matcher.
 
-Common failures are an unset indexer URL, an OpenAI embedder missing model or key, dimension mismatch after an endpoint change, and assuming join-rule expansion or alias matching can be skipped for short queries.
+Common failures are an unset indexer URL, an OpenAI embedder missing model or key, dimension mismatch after an endpoint change, missing MCP transport identity at retrieve time, and assuming join-rule expansion or alias matching can be skipped for short queries.
 
-Focused tests live in the DB-free semantic unit suite: fake-embedder shape, determinism, and normalization; weighted RRF ordering at `k = 60` with stable tie-breaking and `topK` truncation plus alias-weight boost; BM25 diacritic folding, sub-token expansion, Okapi scoring, and `allowRestricted` filtering; alias exact-versus-substring ranking and `aliasMatched` propagation through `hybridSearch`; join-rule injection and tail replacement at `topK`; cross-process hot-reload of the BM25 index and citation catalog on watermark change; resource section filtering with and without `data:sensitive`; storage-to-contract mapping; corpus chunking with metadata parsing and restricted-header tagging; and the 6-type YAML corpus suite proving canonical discovery order, per-type chunk counts and sensitivities, deterministic `canonicalJson` and `contentHash` behavior, first-run bulk insert plus second-run full skip, single-chunk re-embed on metric edit, and stale-delete reporting via `chunk_id = ANY($1)`. The live suite replays the same incremental index and fused retrieval plus the `data:sensitive` split against real role grants when database URLs are present.
+Focused tests live in the DB-free semantic unit suite: fake-embedder shape, determinism, and normalization; weighted RRF ordering at `k = 60` with stable tie-breaking and `topK` truncation plus alias-weight boost; BM25 diacritic folding, sub-token expansion, Okapi scoring, and `allowRestricted` filtering; alias exact-versus-substring ranking and `aliasMatched` propagation through `hybridSearch`; join-rule injection and tail replacement at `topK`; cross-process hot-reload of the BM25 index and citation catalog on watermark change; resource section filtering with and without `data:sensitive`; storage-to-contract mapping; corpus chunking with metadata parsing and restricted-header tagging; and the 6-type YAML corpus suite proving canonical discovery order, per-type chunk counts and sensitivities, deterministic `canonicalJson` and `contentHash` behavior, first-run bulk insert plus second-run full skip, single-chunk re-embed on metric edit, and stale-delete reporting via `chunk_id = ANY($1)`. The live suite replays the same incremental index and fused retrieval plus the `data:sensitive` split against real role grants when database URLs are present. Agent tests pin the grounding gate (`uc02retrieve`: threshold value, no-search passthrough, alias and dense grounding, multi-term attribution, NPS and forced-guess short-circuits with zero SQL, definition passthrough, fail-closed transport and empty-retrieval cases), the citation validator (`uc02citation`: header injection and parsing, column-variant interop, three rejection codes, `<= 2` repair, unrepairable metric-missing case), and entry integration (`uc02entry`: NPS short-circuit with zero executor calls, definition answer with zero executor calls, SQL header plus validator pass, empty-chunk and column-only fail-closed paths).

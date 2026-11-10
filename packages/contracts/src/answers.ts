@@ -1,5 +1,10 @@
-import * as z from "zod";
+import { z } from "zod";
 import { AnalysisPlanSchema, RootCauseAnswerSchema } from "./rca.js";
+import {
+  CHART_TYPE_TO_COMPONENT,
+  ChartTypeSchema,
+  OpenuiChartSpecSchema,
+} from "./render.js";
 
 // Single answer contract shared by UC-01 and UC-02 (UC-01 section 3.1/3.2,
 // UC-02 Feature 5). camelCase is the canonical shape; UC-02's snake_case
@@ -61,9 +66,10 @@ export const SQLAnswerSchema = z.object({
 export type SQLAnswer = z.infer<typeof SQLAnswerSchema>;
 
 // AgentResponse: kind-discriminated union (CONT-07). The sql_answer variant
-// carries the full SQLAnswer shape; the four envelope variants carry a
-// status, a non-empty summary, and an unknown-typed data payload owned by
-// the later UC phases (UC-03 insight, UC-05 plan/root-cause, UC-10 alert).
+// carries the full SQLAnswer shape; the analysis_plan and root_cause variants
+// carry strict UC-05 payloads, and the insight_report variant carries the
+// strict UC-03 InsightReportSchema below. Only anomaly_alert still carries an
+// unknown-typed data payload (owned by UC-10).
 
 export const SqlAnswerResponseSchema = SQLAnswerSchema.extend({
   kind: z.literal("sql_answer"),
@@ -77,8 +83,67 @@ const AgentEnvelopeBaseSchema = z.object({
   data: z.unknown(),
 });
 
+// UC-03 evidence-backed insight payload (PRD UC-03, architecture §3.2 K7).
+// Every number in an insight claim must trace to an EvidencePointer whose
+// column/rowKey/value cell exists in RunQueryOutput; the numeric validator
+// re-checks the match within <= 1% rounding tolerance. camelCase is canonical.
+
+// Single query cell backing one number or label inside a claim.
+export const EvidencePointerSchema = z.object({
+  column: z.string().min(1).max(128),
+  rowKey: z.string().min(1).max(256),
+  value: z.union([z.number(), z.string().min(1).max(1000)]),
+});
+
+export type EvidencePointer = z.infer<typeof EvidencePointerSchema>;
+
+// One natural-language finding plus the pointers that prove it. evidence must
+// be non-empty so no claim ships without at least one verifiable cell.
+export const InsightClaimSchema = z.object({
+  claim: z.string().min(1).max(2000),
+  evidence: z.array(EvidencePointerSchema).min(1),
+});
+
+export type InsightClaim = z.infer<typeof InsightClaimSchema>;
+
+// Chart selector canonical in RenderChartInputSchema (contracts/render.ts):
+// line = trends via OpenUI LineChart, bar = comparisons via BarChart,
+// pie = share of 2-6 groups via PieChart, scatter = correlations via
+// ScatterChart, table = detail rows via Table, none = scalar/no_data.
+// This alias keeps the UC-03 import surface (`InsightChartTypeSchema`) stable.
+export const InsightChartTypeSchema = ChartTypeSchema;
+
+export type InsightChartType = z.infer<typeof InsightChartTypeSchema>;
+
+// Full UC-03 report: OpenUI chart spec plus verified insights. chartSpec is
+// a strict OpenUI genui-lib mirror (render.ts) — it serializes
+// deterministically to OpenUI Lang (e.g. `chart = BarChart(labels, series)`)
+// for the web <Renderer/>. chartType must match the spec component
+// (CHART_TYPE_TO_COMPONENT). insights may be empty only for chartType
+// "none" / status "no_data" — the K7 validator strips unverified claims and
+// requires caveats there.
+export const InsightReportSchema = z.object({
+  chartType: InsightChartTypeSchema,
+  chartSpec: OpenuiChartSpecSchema,
+  chartReason: z.string().min(1).max(500),
+  insights: z.array(InsightClaimSchema).max(10),
+  caveats: z.array(z.string().min(1).max(500)).default([]),
+}).superRefine((report, ctx) => {
+  const expected = CHART_TYPE_TO_COMPONENT[report.chartType];
+  if (report.chartSpec.chart !== expected) {
+    ctx.addIssue({
+      code: "custom",
+      message: `chartType "${report.chartType}" requires chartSpec.chart "${expected}", got "${report.chartSpec.chart}"`,
+      path: ["chartSpec", "chart"],
+    });
+  }
+});
+
+export type InsightReport = z.infer<typeof InsightReportSchema>;
+
 export const InsightReportResponseSchema = AgentEnvelopeBaseSchema.extend({
   kind: z.literal("insight_report"),
+  data: InsightReportSchema,
 });
 
 export type InsightReportResponse = z.infer<typeof InsightReportResponseSchema>;

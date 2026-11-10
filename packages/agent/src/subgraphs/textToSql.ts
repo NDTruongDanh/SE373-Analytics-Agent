@@ -1,5 +1,5 @@
 import { dbToolError, type DbToolError } from "@shared/contracts";
-import * as z from "zod";
+import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createChatModel } from "../models/factory.js";
 import {
@@ -29,6 +29,12 @@ import {
   type UcEntryHandler,
   type PendingClarification,
 } from "../state.js";
+import { checkUnknownTerms, buildCannotAnswer } from "../semantic/retrieveSemantic.js";
+import {
+  deriveCitations,
+  repairCitations,
+  validateCitations,
+} from "../validators/citationValidator.js";
 import { registerUC } from "./registry.js";
 import { TEXT_TO_SQL_UC_ID } from "../constants.js";
 
@@ -203,11 +209,26 @@ const EXECUTOR_UPDATE_MAP: {
   }),
 };
 
-function updateFromExecutor(result: ExecutorResult): AgentUpdate {
+function updateFromExecutor(result: ExecutorResult, state: AgentState): AgentUpdate {
   const handler = EXECUTOR_UPDATE_MAP[result.status] as (
     r: ExecutorResult,
   ) => AgentUpdate;
-  return handler(result);
+  const update = handler(result);
+  if ((result.status === "ok" || result.status === "no_data") && typeof update.sql === "string") {
+    const headed = withCitationHeader(state, update.sql);
+    if (headed === null) {
+      // Persistent K7 failure (e.g. citation_missing_metric): fail closed
+      // rather than shipping an unverified header.
+      return {
+        status: "cannot_answer",
+        sql: result.sql,
+        answerText:
+          "Citation check failed (metric queries must cite at least one retrieved metric:* chunk); cannot answer without verified citations.",
+      };
+    }
+    return { ...update, sql: headed };
+  }
+  return update;
 }
 
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -244,6 +265,12 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
     if (chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score})`;
     return `${chunk.chunkId}`;
   });
+  const citations = chunks
+    .filter((chunk) => chunk.chunkId.startsWith("metric:"))
+    .map((chunk) => chunk.chunkId)
+    .slice(0, 5);
+  const citationLine =
+    citations.length > 0 ? `\nCitations: ${citations.join(", ")}.` : "";
   const prefix =
     metrics.length > 0 ? `Definitions for ${metrics.join(", ")}:\n` : "Definitions:\n";
   return {
@@ -252,31 +279,55 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
     tablesUsed: [],
     columns: [],
     resultPreview: [],
-    answerText: `${prefix}${lines.map((line) => `- ${line}`).join("\n")}`,
+    answerText: `${prefix}${lines.map((line) => `- ${line}`).join("\n")}${citationLine}`,
   };
 }
 
-/** Unknown-term short-circuit: requested metrics match no retrieved chunk; fail before any MCP. */
+/** Unknown-term short-circuit (two-tier gate): fail before any MCP when retrieval ran but grounds nothing. */
 function handleUnknownTerm(state: AgentState): AgentUpdate | null {
   const metrics = state.intent.requestedMetrics;
   const chunks = state.semanticChunks;
-  if (metrics.length === 0 || chunks.length === 0) return null;
-  const haystacks = chunks.map((chunk) => `${chunk.chunkId} ${chunk.text ?? ""}`.toLowerCase());
-  const matched = metrics.some((metric) => {
-    const needle = metric.toLowerCase();
-    return haystacks.some((haystack) => haystack.includes(needle));
-  });
-  if (matched) return null;
-  const available = chunks
-    .slice(0, 5)
-    .map((chunk) => chunk.chunkId)
-    .join(", ");
-  return {
-    status: "cannot_answer",
-    answerText:
-      `None of the requested metrics (${metrics.join(", ")}) were found in the retrieved ` +
-      `definitions (available: ${available}); cannot answer without speculating.`,
+  if (metrics.length === 0) return null;
+  // Fail closed: metrics present but no retrieved chunks means nothing is
+  // grounded — never let the executor run ungrounded.
+  if (chunks.length === 0) return buildCannotAnswer(metrics, []);
+  const { ungrounded } = checkUnknownTerms(metrics, chunks);
+  if (ungrounded.length === 0) return null;
+  return buildCannotAnswer(ungrounded, chunks);
+}
+
+/**
+ * K7 citation header (UC-02): derive citations from the retrieved turn
+ * context and prepend `-- @citations: ...` to executor SQL. Never changes
+ * status on success — the unknown-term gate owns cannot_answer; this seam
+ * only guarantees dual (JSON + SQL header) citation formatting. Returns
+ * null on persistent K7 failure so the caller can fail closed to
+ * cannot_answer instead of shipping an unverified header.
+ *
+ * No fake catalog: the runtime turn has only retrieved IDs, so catalog
+ * membership is enforced in eval/grader (full catalog) and validator unit
+ * tests — here we enforce retrieved-this-turn + metric:* coverage, with a
+ * <= 2 repair loop before failing.
+ */
+function withCitationHeader(state: AgentState, sql: string | null): string | null {
+  if (sql === null || sql === undefined) return sql;
+  const retrievedIds = state.semanticChunks.map((chunk) => chunk.chunkId);
+  if (retrievedIds.length === 0) return sql;
+  const citations = deriveCitations(retrievedIds);
+  if (citations.length === 0) return sql;
+  const input = {
+    citations,
+    sql,
+    requestedMetrics: state.intent.requestedMetrics,
+    retrievedChunkIds: retrievedIds,
   };
+  const checked = validateCitations(input);
+  if (checked.ok) return checked.sql;
+  const repaired = repairCitations(input, 2);
+  if (repaired.ok) return repaired.sql;
+  // Persistent failure (e.g. citation_missing_metric for column-only
+  // retrieval on a metric query): signal the caller to fail closed.
+  return null;
 }
 
 /** MCP tool names the executor reports via span payloads. */
@@ -526,7 +577,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       if (activeState.intent.timeRange !== null || activeState.clarificationAttempts >= 2) {
         return {
           ...clarificationUpdate,
-          ...updateFromExecutor(result),
+          ...updateFromExecutor(result, state),
           pendingClarification: null,
           answerText: "The query still needs clarification after two responses.",
         };
@@ -535,7 +586,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       if (!options || options.length < 2 || options.length > 4) {
         return {
           ...clarificationUpdate,
-          ...updateFromExecutor(result),
+          ...updateFromExecutor(result, state),
           pendingClarification: null,
           answerText: "A valid time range could not be derived from the available data.",
         };
@@ -565,7 +616,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         callbacks: rt.config.callbacks,
       });
     }
-    const update = updateFromExecutor(result);
+    const update = updateFromExecutor(result, state);
     const isOkLike = result.status === "ok" || result.status === "no_data";
     const observedTools =
       collectedTools.length > 0

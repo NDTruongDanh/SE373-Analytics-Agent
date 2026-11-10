@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { MemorySaver, StateGraph, StateSchema, START, END } from "@langchain/langgraph";
-import * as z from "zod";
+import { z } from "zod";
 import {
   isSameThread,
   makeThreadId,

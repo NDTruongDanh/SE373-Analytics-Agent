@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // Tracer slice of the db-tool contract surface: list_tables and
 // describe_table I/O schemas (UC-09 A.6/A.7, PRD 4.1 tool table).

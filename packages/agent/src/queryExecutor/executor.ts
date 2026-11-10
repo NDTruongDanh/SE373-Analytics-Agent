@@ -23,7 +23,7 @@ import {
 } from "@shared/contracts";
 import { sqlGuard } from "@shared/access-policy";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
-import * as z from "zod";
+import { z } from "zod";
 import {
   checkBudget,
   createBudgetState,

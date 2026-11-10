@@ -70,6 +70,8 @@ import {
   type GatewayCase,
   type GatewayObserved,
 } from "./gateway.js";
+import { gradeUc03, printUc03Report } from "./uc03/grader.js";
+import { gradeUc02, printUc02Report } from "./uc02/grader.js";
 import {
   parseCountValue,
   probeAgentRoWriteRefused,
@@ -1363,6 +1365,38 @@ async function main(): Promise<void> {
   } else {
     console.error("usage: pnpm eval --all | pnpm eval --uc <id>");
     process.exit(1);
+    return;
+  }
+
+  // UC-02 dispatch (pure, DB-free): 3-way proxy retrieval + gate + citation
+  // validators run without booting the gateway. Writes the same GradedCase
+  // envelope for --compare.
+  if (ucs.length === 1 && ucs[0] === "uc02") {
+    const uc02 = await gradeUc02(repoRoot);
+    const passed = uc02.cases.filter((c) => c.exPass).length;
+    writeFileSync(
+      path.join(repoRoot, "results", "uc02.json"),
+      `${JSON.stringify({ uc: "uc02", datasetVersion: "uc02-1", cases: uc02.cases, summary: summarizeCases(uc02.cases) }, null, 2)}\n`,
+      "utf8",
+    );
+    printUc02Report(uc02);
+    process.exit(passed === uc02.cases.length ? 0 : 1);
+    return;
+  }
+
+  // UC-03 dispatch (pure, DB-free): validators are local deterministic code
+  // and the scripted model stands in for Profile 3, so grading runs without
+  // booting the gateway. Writes the same GradedCase envelope for --compare.
+  if (ucs.length === 1 && ucs[0] === "uc03") {
+    const uc03 = await gradeUc03(repoRoot);
+    const passed = uc03.cases.filter((c) => c.exPass).length;
+    writeFileSync(
+      path.join(repoRoot, "results", "uc03.json"),
+      `${JSON.stringify({ uc: "uc03", datasetVersion: "uc03-1", cases: uc03.cases, summary: summarizeCases(uc03.cases) }, null, 2)}\n`,
+      "utf8",
+    );
+    printUc03Report(uc03);
+    process.exit(passed === uc03.cases.length ? 0 : 1);
     return;
   }
 
