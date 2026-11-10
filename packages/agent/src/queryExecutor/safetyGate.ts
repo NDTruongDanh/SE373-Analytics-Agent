@@ -133,15 +133,107 @@ export function hasWhereFilter(ast: GuardAst): boolean {
   );
 }
 
-/** Aggregate = any function call, or a GROUP BY / HAVING at the root. */
+const AGGREGATE_FUNCTIONS = new Set([
+  "array_agg",
+  "avg",
+  "bit_and",
+  "bit_or",
+  "bool_and",
+  "bool_or",
+  "count",
+  "every",
+  "json_agg",
+  "json_object_agg",
+  "jsonb_agg",
+  "jsonb_object_agg",
+  "max",
+  "min",
+  "range_agg",
+  "range_intersect_agg",
+  "string_agg",
+  "sum",
+  "xmlagg",
+]);
+
+function functionName(node: unknown): string | undefined {
+  const call = asRecord(node);
+  const parts = call?.["funcname"];
+  if (!Array.isArray(parts) || parts.length === 0) return undefined;
+  const finalPart = asRecord(parts.at(-1));
+  const name = asRecord(finalPart?.["String"])?.["sval"];
+  return typeof name === "string" ? name.toLowerCase() : undefined;
+}
+
+/** Aggregate = a known aggregate call, or a GROUP BY / HAVING at the root. */
 function hasAggregate(ast: GuardAst): boolean {
-  if (findNodes(ast, "FuncCall").length > 0) return true;
   const root = rootSelectStmt(ast);
   if (!root) return false;
+  const targetList = root["targetList"];
+  if (
+    findNodes(targetList, "FuncCall").some((node) =>
+      AGGREGATE_FUNCTIONS.has(functionName(node) ?? ""),
+    )
+  ) {
+    return true;
+  }
   const group = root["groupClause"];
   if (Array.isArray(group) && group.length > 0) return true;
   const having = root["havingClause"];
   return having !== undefined && having !== null;
+}
+
+function columnRefName(node: unknown): string | undefined {
+  const ref = asRecord(asRecord(node)?.["ColumnRef"]);
+  const fields = ref?.["fields"];
+  if (!Array.isArray(fields) || fields.length === 0) return undefined;
+  const finalField = asRecord(fields.at(-1));
+  const name = asRecord(finalField?.["String"])?.["sval"];
+  return typeof name === "string" ? name.toLowerCase() : undefined;
+}
+
+function comparisonOperator(expression: Record<string, unknown>): string | undefined {
+  const names = expression["name"];
+  if (!Array.isArray(names)) return undefined;
+  const value = asRecord(asRecord(names[0])?.["String"])?.["sval"];
+  return typeof value === "string" ? value.toUpperCase() : undefined;
+}
+
+/**
+ * True only for a direct, conjunctive comparison on purchase_date. This keeps
+ * literals, IS NOT NULL, and an OR escape hatch from satisfying the large-table
+ * policy while accepting qualified ColumnRef nodes and CURRENT_DATE windows.
+ */
+function hasConjunctivePurchaseDateRange(node: unknown, insideOr = false): boolean {
+  const record = asRecord(node);
+  if (!record) return false;
+  const bool = asRecord(record["BoolExpr"]);
+  if (bool) {
+    const args = bool["args"];
+    const isOr = bool["boolop"] === 1 || String(bool["boolop"]).toUpperCase() === "OR_EXPR";
+    return Array.isArray(args) && args.some((arg) => hasConjunctivePurchaseDateRange(arg, insideOr || isOr));
+  }
+  const expression = asRecord(record["A_Expr"]);
+  if (!expression || insideOr) return false;
+  const operator = comparisonOperator(expression);
+  if (!operator || ![">", ">=", "<", "<=", "BETWEEN"].includes(operator)) return false;
+  return (
+    columnRefName(expression["lexpr"]) === "purchase_date" ||
+    columnRefName(expression["rexpr"]) === "purchase_date"
+  );
+}
+
+/**
+ * UC-01 performance policy: both large fact tables must be bounded by the
+ * indexed parent-order timestamp. `order_items` gets its bound through the
+ * required join to `orders`; province/region can further narrow a query but
+ * cannot replace the time bound.
+ */
+function hasLargeTableTimeFilter(guard: GuardSuccess, large: string[]): boolean {
+  const names = new Set(large.map((table) => table.toLowerCase()));
+  if (!names.has("orders") && !names.has("order_items")) return true;
+  return findNodes(guard.ast, "whereClause").some((where) =>
+    hasConjunctivePurchaseDateRange(where),
+  );
 }
 
 /**
@@ -202,18 +294,14 @@ export function localQuerySafetyGate(
   }
 
   const large = largeScannedTables(guard, catalog);
-  if (
-    large.length > 0 &&
-    !hasWhereFilter(guard.ast) &&
-    !hasAggregate(guard.ast)
-  ) {
+  if (large.length > 0 && !hasAggregate(guard.ast) && !hasLargeTableTimeFilter(guard, large)) {
     const table = large[0];
     return {
       verdict: "needs_clarification",
       table,
       reason:
-        `Query scans large table "${table}" with no WHERE filter and no ` +
-        `aggregate; add a filter, an aggregate, or pick a smaller table.`,
+        `Query scans large table "${table}" without an indexed ` +
+        "orders.purchase_date filter; choose a time range before running it.",
     };
   }
 
