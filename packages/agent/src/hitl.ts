@@ -98,6 +98,9 @@ export interface ReviewPayload {
   action: string;
   sql?: string;
   reason?: string;
+  plan?: unknown;
+  currentPlan?: unknown;
+  planId?: string;
 }
 
 /**

@@ -10,7 +10,12 @@ import {
   type SseEnvelope,
   type SseEventName,
 } from "@shared/contracts";
-import { displayableSql, emitSseEvent, SSE_ALLOWLIST as HOST_ALLOWLIST } from "../src/sse.js";
+import {
+  displayableSql,
+  emitSseEvent,
+  interruptPayload,
+  SSE_ALLOWLIST as HOST_ALLOWLIST,
+} from "../src/sse.js";
 
 interface CapturedWrite {
   chunks: string[];
@@ -92,5 +97,29 @@ describe("sse contracts-schema gate (D-20)", () => {
   it("keeps the host allowlist identical to the contracts event names", () => {
     expect([...HOST_ALLOWLIST]).toEqual([...SSE_EVENT_NAMES]);
     expect(HOST_ALLOWLIST).toHaveLength(9);
+  });
+
+  it("formats interruptPayload with strict camelCase and scrubbed reason", () => {
+    const payload = interruptPayload({
+      action: "review_analysis_plan",
+      reason: "Please review the proposed plan before execution",
+      pendingClarification: ["opt1", "opt2"],
+      plan: { metricName: "net_revenue" },
+      currentPlan: { metricName: "net_revenue" },
+    });
+    expect(payload).toEqual({
+      action: "review_analysis_plan",
+      reason: "Please review the proposed plan before execution",
+      pendingClarification: ["opt1", "opt2"],
+      plan: { metricName: "net_revenue" },
+      currentPlan: { metricName: "net_revenue" },
+    });
+    expect(Object.keys(payload)).toEqual([
+      "action",
+      "reason",
+      "pendingClarification",
+      "plan",
+      "currentPlan",
+    ]);
   });
 });

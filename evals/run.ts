@@ -72,6 +72,7 @@ import {
 } from "./gateway.js";
 import { gradeUc03, printUc03Report } from "./uc03/grader.js";
 import { gradeUc02, printUc02Report } from "./uc02/grader.js";
+import { gradeUc05, printUc05Report } from "./uc05/grader.js";
 import {
   parseCountValue,
   probeAgentRoWriteRefused,
@@ -1400,6 +1401,22 @@ async function main(): Promise<void> {
     return;
   }
 
+  // UC-05 dispatch (pure, DB-free): RCA tree decomposition + HITL + K7 waterfall gate.
+  // Writes the same GradedCase envelope for --compare.
+  if (ucs.length === 1 && ucs[0] === "uc05") {
+    const uc05 = await gradeUc05(repoRoot);
+    const passed = uc05.cases.filter((c) => c.exPass).length;
+    mkdirSync(path.join(repoRoot, "results"), { recursive: true });
+    writeFileSync(
+      path.join(repoRoot, "results", "uc05.json"),
+      `${JSON.stringify({ uc: "uc05", datasetVersion: "uc05-1", cases: uc05.cases, summary: summarizeCases(uc05.cases) }, null, 2)}\n`,
+      "utf8",
+    );
+    printUc05Report(uc05);
+    process.exit(passed === uc05.cases.length ? 0 : 1);
+    return;
+  }
+
   mkdirSync(path.join(repoRoot, "results"), { recursive: true });
 
   let live: LiveHandle;
@@ -1414,6 +1431,20 @@ async function main(): Promise<void> {
   let failed = false;
   try {
     for (const uc of ucs) {
+      if (uc === "uc05") {
+        const uc05 = await gradeUc05(repoRoot);
+        const passed = uc05.cases.filter((c) => c.exPass).length;
+        writeFileSync(
+          path.join(repoRoot, "results", "uc05.json"),
+          `${JSON.stringify({ uc: "uc05", datasetVersion: "uc05-1", cases: uc05.cases, summary: summarizeCases(uc05.cases) }, null, 2)}\n`,
+          "utf8",
+        );
+        if (passed !== uc05.cases.length) failed = true;
+        console.log(
+          `eval uc05: ${passed}/${uc05.cases.length} EX pass (dataset uc05-1, deterministic rca runner)`,
+        );
+        continue;
+      }
       const cases = loadUcCases(repoRoot, uc);
       const gatewayFile = path.join(repoRoot, "evals", uc, "cases.jsonl");
       if (existsSync(gatewayFile)) {

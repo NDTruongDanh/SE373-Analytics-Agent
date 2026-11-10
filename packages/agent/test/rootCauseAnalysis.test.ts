@@ -1,20 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { MemorySaver, StateGraph, START, END } from "@langchain/langgraph";
+import { MemorySaver, StateGraph, START, END, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
   buildBaselineQuery,
+  buildStepQuery,
+  collectInheritedFilters,
   createDateGuardedMcpCaller,
   createPlan,
   createRcaRuntime,
+  executeAnalysis,
+  getDisjointLeafNodes,
+  getDisjointSkippedNodes,
+  getNextDimension,
+  identifyPrimaryRootCauses,
   parseRcaIntent,
+  slugify,
+  synthesizeReport,
+  toRegionGroup,
   validateBaseline,
   verifySqlDateFilter,
+  verifyWaterfallAttribution,
   RCA_UC_ID,
 } from "../src/subgraphs/rootCauseAnalysis.js";
+import { routeQuestionToUc } from "../src/router.js";
 import { createChatModel } from "../src/models/factory.js";
 import { buildRootGraph } from "../src/graph.js";
 import { getUcEntry, isKnownUc } from "../src/subgraphs/registry.js";
 import { pauseForApproval, resumeDecision, makeThreadId } from "../src/hitl.js";
 import { AgentStateSchema, type AgentState } from "../src/state.js";
+import type { AnalysisPlan, PlanStep } from "@shared/contracts";
 
 describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
   const mockPrincipal = {
@@ -1224,6 +1237,1808 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(out.analysisPlan).toBeDefined();
     expect(out.analysisPlan?.isValidBaseline).toBe(true);
     expect(out.analysisPlan?.absDelta).toBe(-460_000_000);
+  });
+
+  it("T36-T0: helper utilities: toRegionGroup, slugify, and getNextDimension behave correctly", () => {
+    expect(toRegionGroup("Miền Bắc")).toBe("Bắc");
+    expect(toRegionGroup("Miền Trung")).toBe("Trung");
+    expect(toRegionGroup("Miền Nam")).toBe("Nam");
+    expect(toRegionGroup("Khác")).toBe("Khác");
+
+    expect(slugify("Đồ gia dụng")).toBe("do_gia_dung");
+    expect(slugify("Shopee")).toBe("shopee");
+
+    expect(getNextDimension("region")).toBe("channel");
+    expect(getNextDimension("channel")).toBe("category");
+    expect(getNextDimension("category")).toBe("product");
+    expect(getNextDimension("product")).toBeNull();
+  });
+
+  it("T36-T1: HITL interrupt fires and suspends graph with { action: 'review_analysis_plan', plan, currentPlan } on MemorySaver", async () => {
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => ({ baselineVal: 100, currentVal: 100 }),
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const threadId = makeThreadId("u_t36", "s_1");
+    const result = await testGraph.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const interrupts = (result as { __interrupt__?: unknown[] }).__interrupt__;
+    expect(interrupts).toBeDefined();
+    expect(interrupts).toHaveLength(1);
+
+    const interruptPayload = (interrupts![0] as { value: Record<string, unknown> }).value;
+    expect(interruptPayload.action).toBe("review_analysis_plan");
+    expect(interruptPayload.plan).toBeDefined();
+    expect(interruptPayload.currentPlan).toBeDefined();
+
+    const plan = interruptPayload.plan as AnalysisPlan;
+    expect(plan.isValidBaseline).toBe(true);
+    expect(plan.absDelta).toBe(-460_000_000);
+    expect(plan.steps.length).toBe(3);
+    expect(plan.steps.every((s) => s.status === "todo")).toBe(true);
+  });
+
+  it("T36-T2: Resume with APPROVE continues execution and completes steps", async () => {
+    const executedSteps: string[] = [];
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedSteps.push(step.stepId);
+        if (step.dimensionValue === "Miền Trung") {
+          return { baselineVal: 1_000_000_000, currentVal: 605_000_000 };
+        }
+        return { baselineVal: 500_000_000, currentVal: 490_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const threadId = makeThreadId("u_t36", "s_2");
+    await testGraph.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "APPROVE" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    expect(resumed.analysisPlan).toBeDefined();
+    expect(resumed.analysisPlan?.steps.some((s) => s.status === "done")).toBe(true);
+    expect(executedSteps).toContain("step_region_central");
+    expect(resumed.answerText).toContain("Đã hoàn thành phân tích bóc tách");
+  });
+
+  it("T36-T3: Resume with MODIFY replaces steps with custom steps and executes them", async () => {
+    const executedSteps: string[] = [];
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedSteps.push(step.stepId);
+        return { baselineVal: 1_000_000_000, currentVal: 700_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const threadId = makeThreadId("u_t36", "s_3");
+    await testGraph.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const customSteps: PlanStep[] = [
+      {
+        stepId: "custom_step_shopee",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Shopee",
+        dimensionPath: ["Shopee"],
+        parentId: null,
+        depth: 0,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+        hypothesis: "Kiểm tra kênh Shopee do người dùng tùy biến",
+      },
+    ];
+
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "MODIFY", steps: customSteps }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    expect(resumed.analysisPlan?.steps.some((s) => s.stepId === "custom_step_shopee")).toBe(true);
+    expect(executedSteps).toContain("custom_step_shopee");
+  });
+
+  it("T36-T4: Pruning: Step with contribution < 30% stays leaf, no children generated, delta added to residualOtherAbs", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "step_north", name: "Miền Bắc" }],
+    )!;
+
+    const deps = {
+      fetchStepMetrics: async () => ({
+        baselineVal: 300_000_000,
+        currentVal: 280_000_000,
+      }),
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const step = executed.steps.find((s) => s.stepId === "step_north")!;
+    expect(step.status).toBe("skipped");
+    expect(step.contributionPct).toBe(10);
+    expect(executed.steps.length).toBe(1);
+    expect(executed.residualOtherAbs).toBe(20_000_000);
+    expect(executed.unexploredBranches).toHaveLength(1);
+    expect(executed.unexploredBranches[0].reason).toBe("PRUNED_BELOW_THRESHOLD");
+    expect(executed.unexploredBranches[0].dimensionValue).toBe("Miền Bắc");
+  });
+
+  it("T36-T5: Drill-down: Step with contribution >= 30% generates child steps at depth + 1", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 600_000_000,
+        absDelta: -400_000_000,
+        pctDelta: -40.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "step_central", name: "Miền Trung" }],
+    )!;
+
+    let callCount = 0;
+    const deps = {
+      candidateChannels: ["Shopee", "Website"],
+      fetchStepMetrics: async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { baselineVal: 500_000_000, currentVal: 180_000_000 };
+        }
+        return { baselineVal: 100_000_000, currentVal: 95_000_000 };
+      },
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const parentStep = executed.steps.find((s) => s.stepId === "step_central")!;
+    expect(parentStep.status).toBe("done");
+    expect(parentStep.contributionPct).toBe(80);
+
+    const childSteps = executed.steps.filter((s) => s.parentId === "step_central");
+    expect(childSteps.length).toBe(2);
+    expect(childSteps[0].depth).toBe(1);
+    expect(childSteps[0].dimensionOrFactor).toBe("channel");
+    expect(childSteps.map((c) => c.dimensionValue)).toEqual(["Shopee", "Website"]);
+  });
+
+  it("T36-T6: Fault isolation: Step with simulated SQL errors retries 2 times, marks status: 'failed' with errorMessage, and workflow continues", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [
+        { id: "step_failing", name: "Miền Bắc" },
+        { id: "step_healthy", name: "Miền Nam" },
+      ],
+    )!;
+
+    let failingAttempts = 0;
+    const deps = {
+      fetchStepMetrics: async (step: PlanStep) => {
+        if (step.stepId === "step_failing") {
+          failingAttempts++;
+          throw new Error("DB statement_timeout simulated");
+        }
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const failingStep = executed.steps.find((s) => s.stepId === "step_failing")!;
+    expect(failingStep.status).toBe("failed");
+    expect(failingStep.retryCount).toBe(2);
+    expect(failingStep.errorMessage).toContain("DB statement_timeout");
+    expect(failingAttempts).toBe(3); // 1 initial + 2 retries
+
+    const healthyStep = executed.steps.find((s) => s.stepId === "step_healthy")!;
+    expect(healthyStep.status).toBe("done");
+  });
+
+  it("T36-T7: Max queries quota: Stops when totalQueriesCount >= maxQueriesLimit and marks remaining steps 'skipped' with 'MAX_QUERIES_REACHED'", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [
+        { id: "step_1", name: "Miền Bắc" },
+        { id: "step_2", name: "Miền Trung" },
+        { id: "step_3", name: "Miền Nam" },
+      ],
+    )!;
+    plan.steps.forEach((s) => {
+      s.depth = 1;
+    });
+
+    const deps = {
+      maxQueriesLimit: 4,
+      maxDepthLimit: 1,
+      fetchStepMetrics: async () => ({ baselineVal: 100_000_000, currentVal: 40_000_000 }),
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    expect(executed.totalQueriesCount).toBe(4);
+    const doneSteps = executed.steps.filter((s) => s.status === "done");
+    const skippedSteps = executed.steps.filter((s) => s.status === "skipped");
+    expect(doneSteps.length).toBe(1);
+    expect(skippedSteps.length).toBe(2);
+
+    const quotaBranches = executed.unexploredBranches.filter(
+      (b) => b.reason === "MAX_QUERIES_REACHED",
+    );
+    expect(quotaBranches.length).toBe(2);
+  });
+
+  it("T36-T8: Max depth quota: Step at depth = 4 with contribution >= 30% is not expanded, pushed to unexploredBranches with 'MAX_DEPTH_REACHED'", async () => {
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [],
+    )!;
+
+    plan.steps = [
+      {
+        stepId: "step_depth_4",
+        axis: "dimension",
+        dimensionOrFactor: "product",
+        dimensionValue: "Chảo chống dính Sunhouse",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng", "Chảo chống dính Sunhouse"],
+        parentId: "step_depth_3",
+        depth: 4,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+      },
+    ];
+
+    const deps = {
+      maxDepthLimit: 4,
+      fetchStepMetrics: async () => ({
+        baselineVal: 200_000_000,
+        currentVal: 100_000_000,
+      }),
+    };
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      deps,
+      mockPrincipal,
+    );
+
+    const step = executed.steps.find((s) => s.stepId === "step_depth_4")!;
+    expect(step.status).toBe("done");
+    expect(step.contributionPct).toBe(50);
+    expect(executed.steps.length).toBe(1);
+
+    const maxDepthBranch = executed.unexploredBranches.find(
+      (b) => b.reason === "MAX_DEPTH_REACHED",
+    );
+    expect(maxDepthBranch).toBeDefined();
+    expect(maxDepthBranch?.dimensionValue).toBe("Chảo chống dính Sunhouse");
+  });
+
+  it("T36-T9: Filter inheritance: Child step inherits parent filters (region + channel) and builds valid SQL", async () => {
+    const parentStep: PlanStep = {
+      stepId: "step_region_central",
+      axis: "dimension",
+      dimensionOrFactor: "region",
+      dimensionValue: "Miền Trung",
+      dimensionPath: ["Miền Trung"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: -395_000_000,
+      contributionPct: 85.87,
+      sql: null,
+      retryCount: 0,
+    };
+
+    const childStep: PlanStep = {
+      stepId: "step_channel_shopee",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Shopee",
+      dimensionPath: ["Miền Trung", "Shopee"],
+      parentId: "step_region_central",
+      depth: 1,
+      status: "todo",
+      delta: 0,
+      contributionPct: 0,
+      sql: null,
+      retryCount: 0,
+    };
+
+    const grandChildStep: PlanStep = {
+      stepId: "step_cat_do_gia_dung",
+      axis: "dimension",
+      dimensionOrFactor: "category",
+      dimensionValue: "Đồ gia dụng",
+      dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+      parentId: "step_channel_shopee",
+      depth: 2,
+      status: "todo",
+      delta: 0,
+      contributionPct: 0,
+      sql: null,
+      retryCount: 0,
+    };
+
+    const allSteps = [parentStep, childStep, grandChildStep];
+
+    const childFilters = collectInheritedFilters(childStep, allSteps);
+    expect(childFilters).toEqual({
+      channel: "Shopee",
+      region: "Miền Trung",
+    });
+
+    const grandChildFilters = collectInheritedFilters(grandChildStep, allSteps);
+    expect(grandChildFilters).toEqual({
+      category: "Đồ gia dụng",
+      channel: "Shopee",
+      region: "Miền Trung",
+    });
+
+    const period = { start: "2026-09-01", end: "2026-09-30" };
+    const sql = buildStepQuery("net_revenue", "additive", period, grandChildFilters);
+
+    expect(sql).toContain("c.region_group = 'Trung'");
+    expect(sql).toContain("ch.channel_name = 'Shopee'");
+    expect(sql).toContain("cat.name_vi = 'Đồ gia dụng'");
+    expect(sql).toContain("o.purchase_date >= '2026-09-01'");
+    expect(sql).toContain("o.purchase_date <= '2026-09-30'");
+
+    const isValid = await verifySqlDateFilter(sql, period, ["purchase_date"], "orders");
+    expect(isValid).toBe(true);
+  });
+
+  it("T36-T10: Executor failure is not masked as 0 and triggers retry + failed status", async () => {
+    let runs = 0;
+    const failingExecutor = {
+      run: async () => {
+        runs++;
+        return {
+          status: "error" as const,
+          error: { code: "QUERY_TIMEOUT" as const, message: "statement_timeout" },
+          sql: null,
+          attempts: 1,
+        };
+      },
+    };
+
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "step_failing", name: "Miền Bắc" }],
+    )!;
+
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: failingExecutor },
+      mockPrincipal,
+    );
+
+    const step = executed.steps.find((s) => s.stepId === "step_failing")!;
+    expect(step.status).toBe("failed");
+    expect(step.retryCount).toBe(2);
+    expect(step.errorMessage).toContain("statement_timeout");
+    expect(runs).toBe(3); // 1 initial + 2 retries
+  });
+
+  it("T36-T11: Strictly enforces maxQueriesLimit and never exceeds quota during split queries or retries", async () => {
+    let queryCalls = 0;
+    const mockExecutor = {
+      run: async () => {
+        queryCalls++;
+        return {
+          status: "ok" as const,
+          sql: "SELECT 100 AS val",
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val: 100 }],
+          maskedColumns: [],
+          attempts: 1,
+        };
+      },
+    };
+
+    const plan = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2, // baseline check used 2
+      },
+      [
+        { id: "step_1", name: "Miền Bắc" },
+        { id: "step_2", name: "Miền Trung" },
+        { id: "step_3", name: "Miền Nam" },
+      ],
+    )!;
+
+    // Quota of 3: only 1 query can execute (step needs 2, so it stops after 1 query!)
+    const executed = await executeAnalysis(
+      plan,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: mockExecutor, maxQueriesLimit: 3 },
+      mockPrincipal,
+    );
+
+    expect(executed.totalQueriesCount).toBeLessThanOrEqual(3);
+    expect(queryCalls).toBeLessThanOrEqual(1);
+    expect(executed.unexploredBranches.some((b) => b.reason === "MAX_QUERIES_REACHED")).toBe(true);
+
+    // Verify that multi-attempt queries count all internal SQL executions against quota
+    let multiAttemptCalls = 0;
+    const repairingExecutor = {
+      run: async () => {
+        multiAttemptCalls++;
+        return {
+          status: "ok" as const,
+          sql: "SELECT 100 AS val",
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val: 100 }],
+          maskedColumns: [],
+          attempts: 2, // 2 SQL attempts inside executor repair loop
+        };
+      },
+    };
+    const plan2 = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [
+        { id: "s1", name: "Bắc" },
+        { id: "s2", name: "Trung" },
+      ],
+    )!;
+    const executed2 = await executeAnalysis(
+      plan2,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: repairingExecutor, maxQueriesLimit: 4 },
+      mockPrincipal,
+    );
+    expect(executed2.totalQueriesCount).toBe(4); // 2 baseline check + 2 from first query = 4 reached!
+    expect(multiAttemptCalls).toBe(1); // Second query skipped because quota (4) was reached after 1 call with 2 attempts
+  });
+
+  it("T36-T12: Resume does not re-run baseline queries or completed steps across restart without RAM cache", async () => {
+    let baselineQueryCalls = 0;
+    const executedStepIds: string[] = [];
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) => {
+        baselineQueryCalls++;
+        return period.start.includes("08") ? 2_500_000_000 : 2_040_000_000;
+      },
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedStepIds.push(step.stepId);
+        return { baselineVal: 500_000_000, currentVal: 480_000_000 };
+      },
+    };
+    const rcaRuntime1 = createRcaRuntime(deps);
+    const sharedCheckpointer = new MemorySaver();
+
+    const testGraph1 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime1.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: sharedCheckpointer });
+
+    const threadId = makeThreadId("u_t36", "s_persist");
+
+    // 1. First run: baseline runs, plan created, pauses at interrupt
+    await testGraph1.invoke(
+      {
+        question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+        ucId: RCA_UC_ID,
+      },
+      { configurable: { thread_id: threadId, runId: "run_persist_1" } },
+    );
+
+    expect(baselineQueryCalls).toBe(2); // baseline + current
+
+    // 2. Simulate host process restart: completely new runtime & graph instances over the same checkpointer
+    const rcaRuntime2 = createRcaRuntime(deps);
+    const testGraph2 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime2.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: sharedCheckpointer });
+
+    // Second run (Resume): baseline MUST NOT re-run!
+    const resumed = (await testGraph2.invoke(
+      resumeDecision({ action: "APPROVE" }),
+      { configurable: { thread_id: threadId, runId: "run_persist_1" } },
+    )) as AgentState;
+
+    expect(baselineQueryCalls).toBe(2); // Still 2, zero additional baseline queries!
+    expect(resumed.status).toBe("ok");
+    expect(executedStepIds.length).toBeGreaterThan(0);
+  });
+
+  it("T36-T14: Resume rehydrates plan from checkpointer pendingWrites without in-memory RAM cache", async () => {
+    let baselineQueryCalls = 0;
+    const deps = {
+      fetchBaseline: async () => {
+        baselineQueryCalls++;
+        return 1_000_000;
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    // Simulated checkpointer (as PostgresSaver returns from checkpoint_writes table)
+    const mockPlan: AnalysisPlan = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+      metricName: "net_revenue",
+      metricType: "additive",
+      direction: "decrease",
+      isExplicitDirection: true,
+      currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+      baselineVal: 2_500_000_000,
+      currentVal: 2_040_000_000,
+      absDelta: -460_000_000,
+      pctDelta: -18.4,
+      isValidBaseline: true,
+      steps: [],
+      unexploredBranches: [],
+      maxDepthLimit: 4,
+      maxQueriesLimit: 20,
+      totalQueriesCount: 2,
+      drilldownThreshold: 30,
+      residualOtherAbs: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    const mockCheckpointer = {
+      getTuple: async () => ({
+        checkpoint: { channel_values: {} },
+        pendingWrites: [
+          ["t1", "__interrupt__", { id: "int1", value: { action: "review_analysis_plan", currentPlan: mockPlan } }],
+        ],
+      }),
+    } as unknown as BaseCheckpointSaver;
+
+    const mockState: AgentState = {
+      runId: "run_dur_1",
+      threadId: "chat:u1:s1",
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      status: "ok",
+      answerText: "",
+      sql: null,
+      tablesUsed: [],
+      columns: [],
+      resultPreview: [],
+      toolsCalled: [],
+      intent: null,
+      budget: { llmCalls: 0, maxLlmCalls: 10, tokensUsed: 0, maxTokens: 100000, deadlineMs: 0 },
+      pendingClarification: null,
+      analysisPlan: null,
+    };
+
+    const mockRt: RootRuntime = {
+      emit: () => "",
+      config: {
+        configurable: {
+          thread_id: "chat:u1:s1",
+          runId: "run_dur_1",
+          userId: "u1",
+          roleScope: "sales_south",
+          __pregel_checkpointer: mockCheckpointer,
+        },
+      },
+    };
+
+    const out = await rcaRuntime.entry(mockState, mockRt);
+    expect(out.status).toBe("ok");
+    expect(out.analysisPlan?.metricName).toBe("net_revenue");
+    expect(out.analysisPlan?.absDelta).toBe(-460_000_000);
+    expect(baselineQueryCalls).toBe(0); // ZERO baseline calls! Restored completely from checkpointer!
+  });
+
+  it("T36-T13: routeQuestionToUc classifies Why/Variance questions and integrates with rootGraph without explicit ucId", async () => {
+    expect(routeQuestionToUc("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Tại sao giá trị đơn hàng trung bình (AOV) miền Nam tuần 39/2026 giảm?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Nguyên nhân sụt giảm doanh thu Shopee là gì?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Why did revenue decrease in September?")).toBe(RCA_UC_ID);
+    expect(routeQuestionToUc("Root cause of return rate variance")).toBe(RCA_UC_ID);
+
+    // Standard queries route to default
+    expect(routeQuestionToUc("Top 5 sản phẩm bán chạy nhất tháng 8")).toBe("tracer");
+
+    // Regression tests for UC-01/UC-02 overlap: definition lookups and column-level reasons must route to default
+    expect(routeQuestionToUc("Giải thích định nghĩa doanh thu thuần")).toBe("tracer");
+    expect(routeQuestionToUc("Giải thích công thức tính AOV")).toBe("tracer");
+    expect(routeQuestionToUc("Khách hàng hoạt động nghĩa là gì?")).toBe("tracer");
+    expect(routeQuestionToUc("Khách hàng hoạt động được tính thế nào?")).toBe("tracer");
+    expect(routeQuestionToUc("Lý do hủy đơn hàng phổ biến nhất trong quý 3 là gì?")).toBe("tracer");
+    expect(routeQuestionToUc("Top 3 lý do khách hàng đổi trả hàng")).toBe("tracer");
+    expect(routeQuestionToUc("Explain net revenue definition")).toBe("tracer");
+    expect(routeQuestionToUc("Reason for cancelled orders in Q3")).toBe("tracer");
+    expect(routeQuestionToUc("What is the formula for customer lifetime value?")).toBe("tracer");
+
+    // Root graph automatically routes question to RCA handler when ucId is empty
+    let rcaCalled = false;
+    const mockRcaEntry = async () => {
+      rcaCalled = true;
+      return { status: "ok" as const, answerText: "routed to rca" };
+    };
+
+    const rootGraph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      ucHandlers: {
+        [RCA_UC_ID]: mockRcaEntry,
+      },
+    });
+
+    const out = (await rootGraph.invoke(
+      {
+        question: "Vì sao doanh thu tháng 9 giảm so với tháng 8?",
+        ucId: "", // Not set by caller!
+      },
+      {
+        configurable: {
+          thread_id: makeThreadId("u_route", "s_1"),
+          runId: "run_route_test",
+          userId: "u_route",
+          roleScope: "sales_south",
+        },
+      },
+    )) as AgentState;
+
+    expect(rcaCalled).toBe(true);
+    expect(out.answerText).toBe("routed to rca");
+  });
+
+  it("T36-T15: Resume with REJECT decision stops execution without running steps", async () => {
+    let stepsExecuted = 0;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        stepsExecuted++;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+    const memory = new MemorySaver();
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    const threadId = makeThreadId("u_reject", "s_1");
+
+    // 1. Initial run suspends at HITL interrupt
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // 2. Resume with REJECT decision
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "REJECT" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    expect(resumed.answerText).toContain("Kế hoạch phân tích đã bị từ chối bởi người dùng");
+    expect(stepsExecuted).toBe(0); // 0 steps executed!
+    expect(resumed.analysisPlan?.steps.every((s) => s.status === "todo")).toBe(true);
+  });
+
+  it("T36-T16: Resume with invalid/unrecognized decision returns status: 'error' without executing", async () => {
+    let stepsExecuted = 0;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        stepsExecuted++;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+    const memory = new MemorySaver();
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    const threadId = makeThreadId("u_invalid_dec", "s_1");
+
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const resumed = (await testGraph.invoke(
+      resumeDecision({ action: "UNKNOWN_ACTION" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("error");
+    expect(resumed.answerText).toContain("Quyết định duyệt kế hoạch không hợp lệ");
+    expect(stepsExecuted).toBe(0);
+  });
+
+  it("T36-T18: Resume with undefined, null, or empty object is rejected with error status and does not execute plan steps", async () => {
+    let stepsExecuted = 0;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        stepsExecuted++;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+    const memory = new MemorySaver();
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    // 1. undefined resume decision: LangGraph rejects empty resume input
+    const threadId1 = makeThreadId("u_undef_dec", "s_1");
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId1 } },
+    );
+    await expect(
+      testGraph.invoke(
+        resumeDecision(undefined),
+        { configurable: { thread_id: threadId1 } },
+      ),
+    ).rejects.toThrow();
+    expect(stepsExecuted).toBe(0);
+
+    // 2. null resume decision: LangGraph Command rejects null/empty resume input
+    const threadId2 = makeThreadId("u_null_dec", "s_2");
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId2 } },
+    );
+    await expect(
+      testGraph.invoke(
+        resumeDecision(null),
+        { configurable: { thread_id: threadId2 } },
+      ),
+    ).rejects.toThrow();
+    expect(stepsExecuted).toBe(0);
+
+    // 3. empty object {} resume decision
+    const threadId3 = makeThreadId("u_empty_dec", "s_3");
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId3 } },
+    );
+    const resumed3 = (await testGraph.invoke(
+      resumeDecision({}),
+      { configurable: { thread_id: threadId3 } },
+    )) as AgentState;
+    expect(resumed3.status).toBe("error");
+    expect(resumed3.answerText).toContain("Quyết định duyệt kế hoạch không hợp lệ");
+    expect(stepsExecuted).toBe(0);
+  });
+
+  it("T36-T17: Resume fail-closed: fails with error and executes 0 baseline queries if checkpoint cannot recover plan", async () => {
+    let baselineQueryCalls = 0;
+    const deps = {
+      fetchBaseline: async () => {
+        baselineQueryCalls++;
+        return 2_000_000_000;
+      },
+    };
+    const rcaRuntime = createRcaRuntime(deps);
+
+    // Mock checkpointer that throws or returns no interrupt write
+    const faultyCheckpointer = {
+      getTuple: async () => ({
+        config: { configurable: { thread_id: "chat:u_fail:s_1" } },
+        pendingWrites: [],
+      }),
+    } as unknown as BaseCheckpointSaver;
+
+    const mockState: AgentState = {
+      runId: "run_fail_closed",
+      threadId: "chat:u_fail:s_1",
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm?",
+      ucId: RCA_UC_ID,
+      status: "ok",
+      answerText: "",
+      sql: null,
+      tablesUsed: [],
+      columns: [],
+      resultPreview: [],
+      toolsCalled: [],
+      intent: null,
+      budget: { llmCalls: 0, maxLlmCalls: 10, tokensUsed: 0, maxTokens: 100000, deadlineMs: 0 },
+      pendingClarification: null,
+      analysisPlan: null,
+    };
+
+    const mockRt: RootRuntime = {
+      emit: () => "",
+      config: {
+        configurable: {
+          thread_id: "chat:u_fail:s_1",
+          runId: "run_fail_closed",
+          userId: "u_fail",
+          roleScope: "sales_south",
+          __pregel_checkpointer: faultyCheckpointer,
+          __pregel_resuming: true, // Marked as resume!
+        },
+      },
+    };
+
+    const out = await rcaRuntime.entry(mockState, mockRt);
+    expect(out.status).toBe("error");
+    expect(out.answerText).toContain("Lỗi phục hồi state: Không thể khôi phục kế hoạch phân tích");
+    expect(baselineQueryCalls).toBe(0); // ZERO baseline queries executed!
+  });
+
+  it("T36-T18: Quota edge case: strictly enforces quota when remaining quota is 1 or executor attempts 3 repairs", async () => {
+    let executorCalls = 0;
+    const receivedMaxAttempts: (number | undefined)[] = [];
+    const mockExecutor = {
+      run: async (input?: { maxAttempts?: number; question?: string }) => {
+        executorCalls++;
+        receivedMaxAttempts.push(input?.maxAttempts);
+        const attempts =
+          typeof input?.maxAttempts === "number" && input.maxAttempts > 0
+            ? Math.min(input.maxAttempts, 3)
+            : 3;
+        const val = input?.question?.includes("baseline") ? 500_000_000 : 400_000_000;
+        return {
+          status: "ok" as const,
+          sql: "SELECT 1",
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val }],
+          maskedColumns: [],
+          attempts,
+        };
+      },
+    };
+
+    // Case A: Remaining quota is 1 (maxQueriesLimit: 3, baseline check = 2)
+    // Step needs at least 2 queries. Since remaining is 1 (< 2), step should be skipped immediately.
+    const planA = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "s1", name: "Bắc" }],
+    )!;
+
+    const executedA = await executeAnalysis(
+      planA,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: mockExecutor, maxQueriesLimit: 3 },
+      mockPrincipal,
+    );
+
+    expect(executedA.totalQueriesCount).toBe(2); // Never started step, quota 3 not exceeded
+    expect(executorCalls).toBe(0); // Executor was NOT called!
+    expect(executedA.steps[0].status).toBe("skipped");
+    expect(executedA.unexploredBranches[0].reason).toBe("MAX_QUERIES_REACHED");
+
+    // Case B: Remaining quota is 2 (maxQueriesLimit: 4, baseline check = 2).
+    // Both baseline and current queries are allocated exactly 1 attempt (maxAttempts: 1).
+    // Both queries execute within their 1-attempt quota without exceeding maxQueriesLimit 4.
+    const planB = createPlan(
+      "Vì sao doanh thu giảm?",
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      {
+        isValidBaseline: true,
+        baselineVal: 1_000_000_000,
+        currentVal: 800_000_000,
+        absDelta: -200_000_000,
+        pctDelta: -20.0,
+        queriesExecuted: 2,
+      },
+      [{ id: "s1", name: "Bắc" }],
+    )!;
+
+    const executedB = await executeAnalysis(
+      planB,
+      {
+        metricName: "net_revenue",
+        metricType: "additive",
+        direction: "decrease",
+        isExplicitDirection: true,
+        currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+        baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+        candidateTables: ["orders"],
+      },
+      { executor: mockExecutor, maxQueriesLimit: 4 },
+      mockPrincipal,
+    );
+
+    expect(receivedMaxAttempts).toEqual([1, 1]); // Each query bounded strictly to remaining quota (1 attempt each)
+    expect(executedB.totalQueriesCount).toBe(4); // Bounded strictly by maxAttempts without over-running
+    expect(executorCalls).toBe(2); // Both baseline and current ran within 1 attempt
+    expect(executedB.steps[0].status).toBe("done");
+  });
+
+  it("T36-T19: Step-by-step checkpoint persistence: step progress is saved into checkpointer and survives crash", async () => {
+    const executedSteps: string[] = [];
+    const memory = new MemorySaver();
+    const threadId = makeThreadId("u_crash_test", "s_step_ckpt");
+
+    let shouldCrashAfterStep1 = true;
+
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async (step: PlanStep) => {
+        executedSteps.push(step.stepId);
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+      onStepExecuted: async (step: PlanStep) => {
+        if (shouldCrashAfterStep1 && step.stepId.includes("north")) {
+          throw new Error("Simulated host process crash after step 1 checkpoint");
+        }
+      },
+    };
+
+    const rcaRuntime1 = createRcaRuntime(deps);
+    const testGraph1 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime1.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    // 1. Initial run creates plan and pauses at review_analysis_plan interrupt
+    await testGraph1.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // 2. Resume graph: step 1 checkpoints, then process crashes
+    await expect(
+      testGraph1.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      ),
+    ).rejects.toThrow("Simulated host process crash after step 1 checkpoint");
+
+    // Verify intermediate step 1 write was persisted in checkpointer
+    const tuple = await memory.getTuple({ configurable: { thread_id: threadId } });
+    const stepInterruptWrites = tuple?.pendingWrites?.filter(
+      (w: unknown[]) => Array.isArray(w) && w[1] === "__interrupt__",
+    );
+    expect(stepInterruptWrites).toBeDefined();
+    expect(stepInterruptWrites!.length).toBeGreaterThan(0);
+
+    // 3. Process restarts: new graph instance recovers state from checkpointer
+    shouldCrashAfterStep1 = false;
+    const rcaRuntime2 = createRcaRuntime(deps);
+    const testGraph2 = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime2.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    const step1CallsBeforeRestart = executedSteps.filter((id) => id.includes("north")).length;
+    expect(step1CallsBeforeRestart).toBe(1);
+
+    const resumed = (await testGraph2.invoke(
+      resumeDecision({ action: "APPROVE" }),
+      { configurable: { thread_id: threadId } },
+    )) as AgentState;
+
+    expect(resumed.status).toBe("ok");
+    // Step 1 was checkpointed, so on restart it was skipped and NOT re-executed!
+    const step1CallsAfterRestart = executedSteps.filter((id) => id.includes("north")).length;
+    expect(step1CallsAfterRestart).toBe(1); // Still 1! Never called again!
+  });
+
+  it("T36-T20: Fail-fast on step checkpoint error: throws explicit error and aborts if putWrites fails during step execution", async () => {
+    const memory = new MemorySaver();
+    const threadId = makeThreadId("u_putwrites_fail", "s_step_fail");
+
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => ({ baselineVal: 500_000_000, currentVal: 400_000_000 }),
+    };
+
+    const originalPutWrites = memory.putWrites.bind(memory);
+    memory.putWrites = async (config, writes, taskId) => {
+      if (typeof taskId === "string" && taskId.startsWith("step_")) {
+        throw new Error("Disk full or connection closed during putWrites");
+      }
+      return originalPutWrites(config, writes, taskId);
+    };
+
+    const rcaRuntime = createRcaRuntime(deps);
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // Resuming will run step 1 and attempt to checkpoint it with putWrites, which must throw
+    await expect(
+      testGraph.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      ),
+    ).rejects.toThrow("Lỗi lưu checkpoint tiến độ bước");
+  });
+
+  it("T36-T21: Fail-fast when currentTuple.config is missing during step checkpointing", async () => {
+    const memory = new MemorySaver();
+    const threadId = makeThreadId("u_tuple_config_missing", "s_step_fail");
+
+    let inStepExecution = false;
+    const deps = {
+      fetchBaseline: async (_m: string, _t: "additive" | "ratio", period: { start: string }) =>
+        period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+      fetchStepMetrics: async () => {
+        inStepExecution = true;
+        return { baselineVal: 500_000_000, currentVal: 400_000_000 };
+      },
+    };
+
+    const originalGetTuple = memory.getTuple.bind(memory);
+    memory.getTuple = async (config) => {
+      const res = await originalGetTuple(config);
+      if (inStepExecution && res) {
+        return { ...res, config: undefined as unknown as typeof res.config };
+      }
+      return res;
+    };
+
+    const rcaRuntime = createRcaRuntime(deps);
+    const testGraph = new StateGraph(AgentStateSchema)
+      .addNode("rca", rcaRuntime.entry)
+      .addEdge(START, "rca")
+      .addEdge("rca", END)
+      .compile({ checkpointer: memory });
+
+    await testGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    // Resuming will run step 1 and attempt to checkpoint it, but getTuple returns undefined config
+    await expect(
+      testGraph.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      ),
+    ).rejects.toThrow("Lỗi lưu checkpoint tiến độ bước");
+  });
+
+  it("T37-T1: getDisjointLeafNodes excludes parent nodes when a child step is marked done", () => {
+    const steps: PlanStep[] = [
+      {
+        stepId: "step_region_central",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Trung",
+        dimensionPath: ["Miền Trung"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -400_000_000,
+        contributionPct: 86.96,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_region_north",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Bắc",
+        dimensionPath: ["Miền Bắc"],
+        parentId: null,
+        depth: 0,
+        status: "skipped",
+        delta: -40_000_000,
+        contributionPct: 8.7,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_channel_shopee_central",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Shopee",
+        dimensionPath: ["Miền Trung", "Shopee"],
+        parentId: "step_region_central",
+        depth: 1,
+        status: "done",
+        delta: -350_000_000,
+        contributionPct: 76.09,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_channel_lazada_central",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Lazada",
+        dimensionPath: ["Miền Trung", "Lazada"],
+        parentId: "step_region_central",
+        depth: 1,
+        status: "skipped",
+        delta: -50_000_000,
+        contributionPct: 10.87,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_category_appliances_shopee_central",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Đồ gia dụng",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+        parentId: "step_channel_shopee_central",
+        depth: 2,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 65.22,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+    ];
+
+    const leaves = getDisjointLeafNodes(steps);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].stepId).toBe("step_category_appliances_shopee_central");
+    expect(leaves[0].dimensionValue).toBe("Đồ gia dụng");
+  });
+
+  it("T37-T2: Waterfall Attribution Math Check PASS: sum of leaves + residual within 5% tolerance", () => {
+    const leafNodes: PlanStep[] = [
+      {
+        stepId: "leaf_1",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Đồ gia dụng",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+        parentId: "p1",
+        depth: 2,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 65.22,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+      {
+        stepId: "leaf_2",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Thời trang",
+        dimensionPath: ["Miền Nam", "TikTok Shop", "Thời trang"],
+        parentId: "p2",
+        depth: 2,
+        status: "done",
+        delta: -145_000_000,
+        contributionPct: 31.52,
+        sql: "SELECT 2",
+        retryCount: 0,
+      },
+    ];
+
+    const result = verifyWaterfallAttribution(leafNodes, 15_000_000, -460_000_000);
+    expect(result.mathVerified).toBe(true);
+    expect(result.mathDiffRatio).toBeLessThanOrEqual(0.05);
+    expect(result.deltaExplained).toBe(-460_000_000);
+  });
+
+  it("T37-T3: Waterfall Attribution Math Check WARNING: sum differs > 5%", () => {
+    const leafNodes: PlanStep[] = [
+      {
+        stepId: "leaf_1",
+        axis: "dimension",
+        dimensionOrFactor: "category",
+        dimensionValue: "Đồ gia dụng",
+        dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+        parentId: "p1",
+        depth: 2,
+        status: "done",
+        delta: -200_000_000,
+        contributionPct: 43.48,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+    ];
+
+    const result = verifyWaterfallAttribution(leafNodes, 10_000_000, -460_000_000);
+    expect(result.mathVerified).toBe(false);
+    expect(result.mathDiffRatio).toBeGreaterThan(0.05);
+  });
+
+  it("T37-T4: identifyPrimaryRootCauses selects top high impact causes sorted by contribution", () => {
+    const leaves: PlanStep[] = [
+      {
+        stepId: "l1",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "TikTok",
+        dimensionPath: ["TikTok"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -80_000_000,
+        contributionPct: 17.39,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+      {
+        stepId: "l2",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Shopee",
+        dimensionPath: ["Shopee"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 65.22,
+        sql: "SELECT 2",
+        retryCount: 0,
+      },
+      {
+        stepId: "l3",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Lazada",
+        dimensionPath: ["Lazada"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -80_000_000,
+        contributionPct: 17.39,
+        sql: "SELECT 3",
+        retryCount: 0,
+      },
+    ];
+
+    const primary = identifyPrimaryRootCauses(leaves);
+    expect(primary).toHaveLength(1);
+    expect(primary[0].stepId).toBe("l2");
+    expect(primary[0].contributionPct).toBe(65.22);
+    expect(primary[0].summaryVi).toContain("giảm");
+  });
+
+  it("T37-T5: synthesizeReport generates verified RootCauseAnswer with all 5 report sections and SQL evidence", () => {
+    const plan: AnalysisPlan = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      metricName: "net_revenue",
+      metricType: "additive",
+      direction: "decrease",
+      currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+      baselineVal: 2_500_000_000,
+      currentVal: 2_040_000_000,
+      absDelta: -460_000_000,
+      pctDelta: -18.4,
+      isValidBaseline: true,
+      totalQueriesCount: 6,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      residualOtherAbs: 160_000_000,
+      unexploredBranches: [
+        {
+          axis: "dimension",
+          dimensionOrFactor: "region",
+          dimensionValue: "Miền Bắc",
+          parentId: null,
+          reason: "PRUNED_BELOW_THRESHOLD",
+        },
+      ],
+      steps: [
+        {
+          stepId: "s1",
+          axis: "dimension",
+          dimensionOrFactor: "category",
+          dimensionValue: "Đồ gia dụng",
+          dimensionPath: ["Miền Trung", "Shopee", "Đồ gia dụng"],
+          parentId: null,
+          depth: 2,
+          status: "done",
+          delta: -300_000_000,
+          contributionPct: 65.22,
+          sql: "SELECT SUM(price) FROM order_items WHERE category = 'Đồ gia dụng'",
+          retryCount: 0,
+        },
+      ],
+    };
+
+    const answer = synthesizeReport(plan);
+    expect(answer.question).toBe(plan.question);
+    expect(answer.mathVerified).toBe(true);
+    expect(answer.primaryCauses).toHaveLength(1);
+    expect(answer.primaryCauses[0].sql).toContain("order_items");
+    expect(answer.finalReportMarkdown).toContain("## 1. Hiện tượng & Mức biến động");
+    expect(answer.finalReportMarkdown).toContain("## 2. Cây phân rã nguyên nhân");
+    expect(answer.finalReportMarkdown).toContain("## 3. Nguyên nhân cốt lõi");
+    expect(answer.finalReportMarkdown).toContain("## 4. Kiểm chứng số học Waterfall");
+    expect(answer.finalReportMarkdown).toContain("## 5. Nhánh chưa phân tích & Giới hạn");
+  });
+
+  it("T37-T6: Waterfall Attribution handles offsetting/cancellation branches correctly", () => {
+    const steps: PlanStep[] = [
+      {
+        stepId: "leaf_neg",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Trung",
+        dimensionPath: ["Miền Trung"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -300_000_000,
+        contributionPct: 150.0,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+      {
+        stepId: "leaf_pos",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Nam",
+        dimensionPath: ["Miền Nam"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: 100_000_000,
+        contributionPct: -50.0,
+        sql: "SELECT 2",
+        retryCount: 0,
+      },
+    ];
+
+    const result = verifyWaterfallAttribution(steps, 0, -200_000_000, steps);
+    expect(result.mathVerified).toBe(true);
+    expect(result.mathDiffRatio).toBe(0);
+    expect(result.deltaExplained).toBe(-200_000_000);
+  });
+
+  it("T37-T7: Waterfall attribution FAILS when leaf delta has opposite sign to total delta", () => {
+    const leafNodes: PlanStep[] = [
+      {
+        stepId: "wrong_sign_leaf",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Bắc",
+        dimensionPath: ["Miền Bắc"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: 100_000_000, // positive attribution
+        contributionPct: -100.0,
+        sql: "SELECT 1",
+        retryCount: 0,
+      },
+    ];
+
+    // Total delta is negative (-100M). Absolute diff would be |100 - 100| = 0,
+    // but strictly signed diff is |100 - (-100)| = 200M (200% diff).
+    const result = verifyWaterfallAttribution(leafNodes, 0, -100_000_000);
+    expect(result.mathVerified).toBe(false);
+    expect(result.mathDiffRatio).toBe(2);
+  });
+
+  it("T37-T8: Parent node with all-skipped children is excluded from leaves to prevent double counting", () => {
+    const steps: PlanStep[] = [
+      {
+        stepId: "parent_central",
+        axis: "dimension",
+        dimensionOrFactor: "region",
+        dimensionValue: "Miền Trung",
+        dimensionPath: ["Miền Trung"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: -400_000_000,
+        contributionPct: 100.0,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "child_channel_lazada",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Lazada",
+        dimensionPath: ["Miền Trung", "Lazada"],
+        parentId: "parent_central",
+        depth: 1,
+        status: "skipped",
+        delta: -250_000_000,
+        contributionPct: 62.5,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "child_channel_tiki",
+        axis: "dimension",
+        dimensionOrFactor: "channel",
+        dimensionValue: "Tiki",
+        dimensionPath: ["Miền Trung", "Tiki"],
+        parentId: "parent_central",
+        depth: 1,
+        status: "skipped",
+        delta: -150_000_000,
+        contributionPct: 37.5,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+    ];
+
+    // Parent must not be treated as a leaf because it has children in the decomposition tree
+    const leaves = getDisjointLeafNodes(steps);
+    expect(leaves).toHaveLength(0);
+
+    const skipped = getDisjointSkippedNodes(steps);
+    expect(skipped).toHaveLength(2);
+    expect(skipped.map((s) => s.stepId)).toEqual(["child_channel_lazada", "child_channel_tiki"]);
+
+    const result = verifyWaterfallAttribution(leaves, 400_000_000, -400_000_000, steps);
+    expect(result.mathVerified).toBe(true);
+    expect(result.deltaExplained).toBe(-400_000_000);
+    expect(result.mathDiffRatio).toBe(0);
+  });
+
+  it("T37-T9: Preserves signedResidual = 0 when skipped branches cancel out, not falling back to residualOtherAbs", () => {
+    const leaf: PlanStep = {
+      stepId: "main_leaf",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Shopee",
+      dimensionPath: ["Shopee"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: -200_000_000,
+      contributionPct: 100.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const skipped1: PlanStep = {
+      stepId: "skipped_pos",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Website",
+      dimensionPath: ["Website"],
+      parentId: null,
+      depth: 0,
+      status: "skipped",
+      delta: 50_000_000, // +50M
+      contributionPct: -25.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const skipped2: PlanStep = {
+      stepId: "skipped_neg",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Tiki",
+      dimensionPath: ["Tiki"],
+      parentId: null,
+      depth: 0,
+      status: "skipped",
+      delta: -50_000_000, // -50M, cancels out skipped1 to 0 signed residual
+      contributionPct: 25.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const steps = [leaf, skipped1, skipped2];
+    const leaves = [leaf];
+    const residualOtherAbs = 100_000_000; // |50M| + |-50M| = 100M
+    const totalDelta = -200_000_000;
+
+    // Because signed residual data is present (+50M + -50M = 0), signedResidual must stay 0,
+    // not fall back to inferring -100M from residualOtherAbs.
+    const result = verifyWaterfallAttribution(leaves, residualOtherAbs, totalDelta, steps);
+    expect(result.mathVerified).toBe(true);
+    expect(result.deltaExplained).toBe(-200_000_000);
+    expect(result.mathDiffRatio).toBe(0);
   });
 });
 

@@ -2,6 +2,8 @@ import {
   AnalysisPlanSchema,
   FormulaComponentsSchema,
   MetricTypeSchema,
+  PlanStepSchema,
+  RootCauseAnswerSchema,
   TimePeriodSchema,
   dbToolError,
   type AnalysisPlan,
@@ -9,6 +11,9 @@ import {
   type FormulaComponents,
   type MetricType,
   type PlanStep,
+  type PlanStepAxis,
+  type RootCauseAnswer,
+  type RootCauseItem,
   type TimePeriod,
 } from "@shared/contracts";
 import * as z from "zod";
@@ -29,8 +34,11 @@ import {
   type McpToolCaller,
 } from "../queryExecutor/index.js";
 import { deparse, parse } from "@shared/access-policy";
+import { createBudgetState } from "../queryExecutor/budgets.js";
 import { createChatModel } from "../models/factory.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
+import { pauseForApproval } from "../hitl.js";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 
 export { RCA_UC_ID } from "../constants.js";
 
@@ -84,6 +92,31 @@ export interface IntentModelLike {
   ): { invoke(input: string): Promise<RcaIntent> };
 }
 
+export const DEFAULT_CANDIDATE_REGIONS = [
+  { id: "step_region_north", name: "Miền Bắc" },
+  { id: "step_region_central", name: "Miền Trung" },
+  { id: "step_region_south", name: "Miền Nam" },
+];
+
+export const DEFAULT_CANDIDATE_CHANNELS = [
+  "Shopee",
+  "TikTok Shop",
+  "Website",
+  "Lazada",
+];
+
+export const DEFAULT_CANDIDATE_CATEGORIES = [
+  "Đồ gia dụng",
+  "Thời trang nữ",
+  "Laptop & Thiết bị IT",
+  "Điện thoại & Phụ kiện",
+];
+
+export const DEFAULT_CANDIDATE_PRODUCTS = [
+  "Chảo chống dính Sunhouse",
+  "Nồi chiên không dầu Philips",
+];
+
 export interface RcaRuntimeDeps {
   intentModel?: IntentModelLike;
   executor?: TextToSqlExecutorLike;
@@ -98,6 +131,22 @@ export interface RcaRuntimeDeps {
     period: TimePeriod,
     principal: ExecutorPrincipal,
   ) => Promise<number>;
+  skipHitlReview?: boolean;
+  executeSteps?: boolean;
+  maxQueriesLimit?: number;
+  maxDepthLimit?: number;
+  drilldownThreshold?: number;
+  candidateRegions?: Array<{ id: string; name: string }>;
+  candidateChannels?: string[];
+  candidateCategories?: string[];
+  candidateProducts?: string[];
+  fetchStepMetrics?: (
+    step: PlanStep,
+    baselinePeriod: TimePeriod,
+    currentPeriod: TimePeriod,
+    inheritedFilters: Record<string, string>,
+  ) => Promise<{ baselineVal: number; currentVal: number; sql?: string }>;
+  onStepExecuted?: (step: PlanStep, plan: AnalysisPlan) => void | Promise<void>;
 }
 
 export function createDateGuardedMcpCaller(
@@ -1009,7 +1058,7 @@ export function parseRcaIntent(question: string): RcaIntent {
   };
 }
 
-function formatVnd(val: number): string {
+export function formatVnd(val: number): string {
   if (Math.abs(val) >= 1_000_000_000) {
     return `${(val / 1_000_000_000).toFixed(2)} tỷ VNĐ`;
   }
@@ -1076,7 +1125,8 @@ export async function validateBaseline(
       deps.setAllowedDateColumns?.(null);
       deps.setTargetTable?.(null);
     }
-    queriesExecuted += 1;
+    const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
+    queriesExecuted += baseAttempts;
     actualToolsCalled.push("run_query");
 
     if (baseRes.status !== "ok") {
@@ -1134,7 +1184,8 @@ export async function validateBaseline(
       deps.setAllowedDateColumns?.(null);
       deps.setTargetTable?.(null);
     }
-    queriesExecuted += 1;
+    const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
+    queriesExecuted += currAttempts;
     actualToolsCalled.push("run_query");
 
     if (currRes.status !== "ok") {
@@ -1297,22 +1348,21 @@ export function createPlan(
     BaselineCheckResult,
     "isValidBaseline" | "baselineVal" | "currentVal" | "absDelta" | "pctDelta" | "queriesExecuted"
   >,
+  candidateRegions: Array<{ id: string; name: string }> = DEFAULT_CANDIDATE_REGIONS,
 ): AnalysisPlan | null {
   if (!baseline.isValidBaseline) {
     return null;
   }
 
   const steps: PlanStep[] = [];
-
-  const candidateRegions = [
-    { id: "step_region_north", name: "Miền Bắc" },
-    { id: "step_region_central", name: "Miền Trung" },
-    { id: "step_region_south", name: "Miền Nam" },
-  ];
+  const regions =
+    candidateRegions && candidateRegions.length > 0
+      ? candidateRegions
+      : DEFAULT_CANDIDATE_REGIONS;
 
   if (intent.metricType === "additive") {
     // Horizontal business dimension decomposition: region -> channel -> category -> product
-    for (const r of candidateRegions) {
+    for (const r of regions) {
       steps.push({
         stepId: r.id,
         axis: "dimension",
@@ -1361,7 +1411,7 @@ export function createPlan(
       retryCount: 0,
       hypothesis: `Biến động của thành phần mẫu số (${intent.formulaComponents?.denominator ?? "mẫu số"})`,
     });
-    for (const r of candidateRegions) {
+    for (const r of regions) {
       steps.push({
         stepId: r.id,
         axis: "dimension",
@@ -1405,11 +1455,701 @@ export function createPlan(
   return AnalysisPlanSchema.parse(planPayload);
 }
 
-function readRunContext(rt: RootRuntime): {
+export function toRegionGroup(regionName: string): string {
+  if (regionName.includes("Bắc")) return "Bắc";
+  if (regionName.includes("Trung")) return "Trung";
+  if (regionName.includes("Nam")) return "Nam";
+  return regionName;
+}
+
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+export function collectInheritedFilters(
+  step: PlanStep,
+  allSteps: PlanStep[],
+): Record<string, string> {
+  const filters: Record<string, string> = {};
+  const visited = new Set<string>();
+  let curr: PlanStep | undefined = step;
+
+  while (curr) {
+    if (visited.has(curr.stepId)) break;
+    visited.add(curr.stepId);
+
+    if (curr.axis === "dimension" && curr.dimensionValue) {
+      if (!(curr.dimensionOrFactor in filters)) {
+        filters[curr.dimensionOrFactor] = curr.dimensionValue;
+      }
+    }
+
+    if (!curr.parentId) break;
+    curr = allSteps.find((s) => s.stepId === curr!.parentId);
+  }
+
+  return filters;
+}
+
+export function getNextDimension(
+  currentDim: string,
+): "channel" | "category" | "product" | null {
+  if (currentDim === "region") return "channel";
+  if (currentDim === "channel") return "category";
+  if (currentDim === "category") return "product";
+  return null;
+}
+
+export function buildStepQuery(
+  metricName: string,
+  metricType: MetricType,
+  period: TimePeriod,
+  filters: Record<string, string> = {},
+  axis?: PlanStepAxis,
+  factor?: string,
+): string {
+  const joins: string[] = [];
+  const whereClauses: string[] = [];
+
+  const isDenominatorOnly = axis === "formula" && factor === "denominator";
+  const isReturnRateOnly = metricType === "ratio" && metricName === "return_rate";
+  const baseTableIsOrdersOnly = isDenominatorOnly || isReturnRateOnly;
+
+  const needsProducts = Boolean(filters["category"] || filters["product"]);
+  if (baseTableIsOrdersOnly && needsProducts) {
+    joins.push("JOIN public.order_items i ON o.order_id = i.order_id");
+  }
+
+  if (filters["region"]) {
+    joins.push("JOIN public.customers c ON o.customer_id = c.customer_id");
+    const regGroup = toRegionGroup(filters["region"]);
+    whereClauses.push(`c.region_group = '${regGroup}'`);
+  }
+
+  if (filters["channel"]) {
+    joins.push("JOIN public.channels ch ON o.channel_id = ch.channel_id");
+    whereClauses.push(`ch.channel_name = '${filters["channel"]}'`);
+  }
+
+  if (needsProducts) {
+    joins.push("JOIN public.products p ON i.product_id = p.product_id");
+  }
+
+  if (filters["category"]) {
+    joins.push("JOIN public.categories cat ON p.category_id = cat.category_id");
+    whereClauses.push(`cat.name_vi = '${filters["category"]}'`);
+  }
+
+  if (filters["product"]) {
+    whereClauses.push(`p.name = '${filters["product"]}'`);
+  }
+
+  whereClauses.push(`o.purchase_date >= '${period.start}'`);
+  whereClauses.push(`o.purchase_date <= '${period.end}'`);
+
+  const joinsStr = joins.length > 0 ? " " + joins.join(" ") : "";
+  const whereStr = whereClauses.join(" AND ");
+
+  if (isDenominatorOnly) {
+    return `SELECT COUNT(DISTINCT o.order_id)::float AS val FROM public.orders o${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+  }
+
+  if (axis === "formula" && factor === "numerator") {
+    return `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+  }
+
+  if (metricType === "ratio" && metricName === "aov") {
+    return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+  }
+
+  if (isReturnRateOnly) {
+    return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o${joinsStr} WHERE ${whereStr}`;
+  }
+
+  // Default: Net Revenue
+  return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status IN ('delivered', 'returned') AND ${whereStr}`;
+}
+
+export async function executeAnalysis(
+  plan: AnalysisPlan,
+  intent: RcaIntent,
+  deps: RcaRuntimeDeps,
+  principal: ExecutorPrincipal,
+  targetTable: string = "orders",
+): Promise<AnalysisPlan> {
+  const maxQueries = deps.maxQueriesLimit ?? plan.maxQueriesLimit ?? 20;
+  const maxDepth = deps.maxDepthLimit ?? plan.maxDepthLimit ?? 4;
+  const threshold = deps.drilldownThreshold ?? plan.drilldownThreshold ?? 30.0;
+
+  plan.maxQueriesLimit = maxQueries;
+  plan.maxDepthLimit = maxDepth;
+  plan.drilldownThreshold = threshold;
+
+  const markAllRemainingSkipped = (reason: "MAX_QUERIES_REACHED" | "MAX_DEPTH_REACHED") => {
+    for (const s of plan.steps) {
+      if (s.status === "todo") {
+        s.status = "skipped";
+        plan.unexploredBranches.push({
+          axis: s.axis,
+          dimensionOrFactor: s.dimensionOrFactor,
+          dimensionValue: s.dimensionValue,
+          parentId: s.parentId,
+          reason,
+        });
+      }
+    }
+  };
+
+  while (plan.steps.some((s) => s.status === "todo")) {
+    if (plan.totalQueriesCount >= maxQueries) {
+      markAllRemainingSkipped("MAX_QUERIES_REACHED");
+      break;
+    }
+
+    const step = plan.steps.find((s) => s.status === "todo");
+    if (!step) break;
+
+    // Skip already processed steps
+    if (step.status === "done" || step.status === "failed" || step.status === "skipped") {
+      continue;
+    }
+
+    if (step.depth > maxDepth) {
+      step.status = "skipped";
+      plan.unexploredBranches.push({
+        axis: step.axis,
+        dimensionOrFactor: step.dimensionOrFactor,
+        dimensionValue: step.dimensionValue,
+        parentId: step.parentId,
+        reason: "MAX_DEPTH_REACHED",
+      });
+      continue;
+    }
+
+    step.status = "doing";
+    const combinedFilters = collectInheritedFilters(step, plan.steps);
+
+    let baselineVal: number | null = null;
+    let currentVal: number | null = null;
+    let sqlExecuted: string | null = null;
+    let attempt = 0;
+    let lastError: Error | null = null;
+
+    while (attempt <= 2) {
+      // Step needs at least 2 queries (baseline + current). Stop before starting if quota insufficient.
+      if (plan.totalQueriesCount + 2 > maxQueries) {
+        step.status = "skipped";
+        plan.unexploredBranches.push({
+          axis: step.axis,
+          dimensionOrFactor: step.dimensionOrFactor,
+          dimensionValue: step.dimensionValue,
+          parentId: step.parentId,
+          reason: "MAX_QUERIES_REACHED",
+        });
+        markAllRemainingSkipped("MAX_QUERIES_REACHED");
+        break;
+      }
+
+      try {
+        if (deps.fetchStepMetrics) {
+          plan.totalQueriesCount += 2;
+          const res = await deps.fetchStepMetrics(
+            step,
+            plan.baselinePeriod,
+            plan.currentPeriod,
+            combinedFilters,
+          );
+          baselineVal = res.baselineVal;
+          currentVal = res.currentVal;
+          sqlExecuted = res.sql ?? null;
+          break;
+        } else if (deps.executor) {
+          const expectedDateCol = getMetricDateColumn(plan.metricName);
+          const baseSql = buildStepQuery(
+            plan.metricName,
+            plan.metricType,
+            plan.baselinePeriod,
+            combinedFilters,
+            step.axis,
+            step.dimensionOrFactor,
+          );
+          const currSql = buildStepQuery(
+            plan.metricName,
+            plan.metricType,
+            plan.currentPeriod,
+            combinedFilters,
+            step.axis,
+            step.dimensionOrFactor,
+          );
+
+          deps.setTargetTable?.(targetTable);
+          deps.setAllowedDateColumns?.([expectedDateCol]);
+
+          const remainingForBaseline = Math.max(1, maxQueries - plan.totalQueriesCount - 1);
+          deps.setActivePeriod?.(plan.baselinePeriod);
+          const baseRes = await deps.executor.run({
+            question: `Calculate baseline for step ${step.stepId} from ${plan.baselinePeriod.start} to ${plan.baselinePeriod.end}. Reference SQL: ${baseSql}`,
+            candidateTables: intent.candidateTables,
+            principal,
+            budget: createBudgetState({ maxLlmCalls: remainingForBaseline }),
+            maxAttempts: remainingForBaseline,
+          });
+
+          const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
+          plan.totalQueriesCount += baseAttempts;
+
+          // Verify baseline executor result status: MUST be 'ok' before running current query
+          if (baseRes.status !== "ok") {
+            const err =
+              "error" in baseRes
+                ? baseRes.error.message
+                : "reason" in baseRes
+                  ? baseRes.reason
+                  : `Executor failed: ${baseRes.status}`;
+            throw new Error(`Baseline query failed: ${err}`);
+          }
+
+          // Run current query only if quota still permits
+          if (plan.totalQueriesCount >= maxQueries) {
+            step.status = "skipped";
+            plan.unexploredBranches.push({
+              axis: step.axis,
+              dimensionOrFactor: step.dimensionOrFactor,
+              dimensionValue: step.dimensionValue,
+              parentId: step.parentId,
+              reason: "MAX_QUERIES_REACHED",
+            });
+            markAllRemainingSkipped("MAX_QUERIES_REACHED");
+            break;
+          }
+
+          const remainingForCurrent = Math.max(1, maxQueries - plan.totalQueriesCount);
+          deps.setActivePeriod?.(plan.currentPeriod);
+          const currRes = await deps.executor.run({
+            question: `Calculate current for step ${step.stepId} from ${plan.currentPeriod.start} to ${plan.currentPeriod.end}. Reference SQL: ${currSql}`,
+            candidateTables: intent.candidateTables,
+            principal,
+            budget: createBudgetState({ maxLlmCalls: remainingForCurrent }),
+            maxAttempts: remainingForCurrent,
+          });
+
+          const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
+          plan.totalQueriesCount += currAttempts;
+
+          deps.setActivePeriod?.(null);
+          deps.setAllowedDateColumns?.(null);
+          deps.setTargetTable?.(null);
+
+          // Verify current executor result status: MUST be 'ok'
+          if (currRes.status !== "ok") {
+            const err =
+              "error" in currRes
+                ? currRes.error.message
+                : "reason" in currRes
+                  ? currRes.reason
+                  : `Executor failed: ${currRes.status}`;
+            throw new Error(`Current query failed: ${err}`);
+          }
+
+          const extractVal = (res: Extract<ExecutorResult, { status: "ok" }>): number => {
+            const row = res.rows?.[0] as Record<string, unknown> | undefined;
+            if (!row) return 0;
+            const raw = row["val"] ?? Object.values(row)[0];
+            const num = Number(raw);
+            return Number.isFinite(num) ? num : 0;
+          };
+
+          baselineVal = extractVal(baseRes);
+          currentVal = extractVal(currRes);
+          sqlExecuted = currRes.sql ?? currSql;
+          break;
+        } else {
+          throw new Error("No executor or fetchStepMetrics configured for executeAnalysis");
+        }
+      } catch (err: unknown) {
+        attempt++;
+        step.retryCount = Math.min(2, attempt);
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt > 2) {
+          step.status = "failed";
+          step.errorMessage = lastError.message;
+          break;
+        }
+      } finally {
+        deps.setActivePeriod?.(null);
+        deps.setAllowedDateColumns?.(null);
+        deps.setTargetTable?.(null);
+      }
+    }
+
+    if (step.status === "failed" || step.status === "skipped") {
+      await deps.onStepExecuted?.(step, plan);
+      continue;
+    }
+
+    const bVal = baselineVal ?? 0;
+    const cVal = currentVal ?? 0;
+    const delta = cVal - bVal;
+    step.delta = delta;
+    step.sql = sqlExecuted;
+
+    const contributionPct = plan.absDelta !== 0 ? (delta / plan.absDelta) * 100 : 0;
+    step.contributionPct = Number(contributionPct.toFixed(2));
+
+    const isSignificant = Math.abs(contributionPct) >= threshold;
+
+    if (isSignificant) {
+      step.status = "done";
+      if (step.depth >= maxDepth) {
+        plan.unexploredBranches.push({
+          axis: step.axis,
+          dimensionOrFactor: step.dimensionOrFactor,
+          dimensionValue: step.dimensionValue,
+          parentId: step.stepId,
+          reason: "MAX_DEPTH_REACHED",
+        });
+      } else {
+        const nextDim = getNextDimension(step.dimensionOrFactor);
+        if (nextDim) {
+          let candidates: string[] = [];
+          if (nextDim === "channel") {
+            candidates = deps.candidateChannels ?? DEFAULT_CANDIDATE_CHANNELS;
+          } else if (nextDim === "category") {
+            candidates = deps.candidateCategories ?? DEFAULT_CANDIDATE_CATEGORIES;
+          } else if (nextDim === "product") {
+            candidates = deps.candidateProducts ?? DEFAULT_CANDIDATE_PRODUCTS;
+          }
+
+          for (const cand of candidates) {
+            const childId = `step_${nextDim}_${slugify(cand)}_${step.stepId}`;
+            const childStep: PlanStep = {
+              stepId: childId,
+              axis: "dimension",
+              dimensionOrFactor: nextDim,
+              dimensionValue: cand,
+              dimensionPath: [...step.dimensionPath, cand],
+              parentId: step.stepId,
+              depth: step.depth + 1,
+              status: "todo",
+              delta: 0,
+              contributionPct: 0,
+              sql: null,
+              retryCount: 0,
+              hypothesis: `Phân rã tiếp theo chiều ${nextDim}: ${cand} (từ ${step.dimensionValue ?? step.dimensionOrFactor})`,
+            };
+            plan.steps.push(childStep);
+          }
+        }
+      }
+    } else {
+      // Weak branches (< 30%): marked as 'skipped' per issue requirements
+      step.status = "skipped";
+      plan.residualOtherAbs += Math.abs(delta);
+      plan.unexploredBranches.push({
+        axis: step.axis,
+        dimensionOrFactor: step.dimensionOrFactor,
+        dimensionValue: step.dimensionValue,
+        parentId: step.stepId,
+        reason: "PRUNED_BELOW_THRESHOLD",
+      });
+    }
+
+    await deps.onStepExecuted?.(step, plan);
+  }
+
+  return AnalysisPlanSchema.parse(plan);
+}
+
+/**
+ * Returns disjoint leaf steps from the hierarchical plan:
+ * steps that are marked "done" and have no child steps in the tree.
+ */
+export function getDisjointLeafNodes(steps: PlanStep[]): PlanStep[] {
+  const hasDoneDimension = steps.some((s) => s.axis === "dimension" && s.status === "done");
+  const candidates = hasDoneDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+
+  // Any step that acts as parentId for any step in candidates has children and is not a leaf
+  const parentIdsWithChildren = new Set(
+    candidates
+      .map((s) => s.parentId)
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  return candidates.filter(
+    (s) => s.status === "done" && !parentIdsWithChildren.has(s.stepId),
+  );
+}
+
+/**
+ * Returns disjoint skipped steps whose parents were not already skipped.
+ */
+export function getDisjointSkippedNodes(steps: PlanStep[]): PlanStep[] {
+  const hasDimension = steps.some((s) => s.axis === "dimension");
+  const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+  const skippedSteps = candidates.filter((s) => s.status === "skipped");
+  const skippedIds = new Set(skippedSteps.map((s) => s.stepId));
+  return skippedSteps.filter((s) => !s.parentId || !skippedIds.has(s.parentId));
+}
+
+/**
+ * Performs Waterfall Attribution Math Check (PRD §4.3, K7 Gate):
+ * Validates that sum(disjoint leaves) + residualOther balances the total delta within 5% tolerance.
+ * Enforces strictly signed delta comparison to prevent false positive attribution when signs diverge.
+ */
+export function verifyWaterfallAttribution(
+  leafNodes: PlanStep[],
+  residualOtherAbs: number,
+  absDeltaTotal: number,
+  steps?: PlanStep[],
+): {
+  deltaExplained: number;
+  mathDiffRatio: number;
+  mathVerified: boolean;
+} {
+  const leafDeltaSum = leafNodes.reduce((sum, n) => sum + n.delta, 0);
+
+  let signedResidual = 0;
+  let hasSignedResidualData = false;
+
+  if (steps && steps.length > 0) {
+    const disjointSkipped = getDisjointSkippedNodes(steps);
+    const skippedSum = disjointSkipped.reduce((sum, s) => sum + s.delta, 0);
+
+    // If a parent node was decomposed, any difference between parent.delta and the sum of all its children's deltas
+    // represents unanalyzed / unallocated residual from that parent.
+    const hasDimension = steps.some((s) => s.axis === "dimension");
+    const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+    const parentIds = new Set(
+      candidates
+        .map((s) => s.parentId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    let unanalyzedParentResidual = 0;
+    for (const parentId of parentIds) {
+      const parent = candidates.find((s) => s.stepId === parentId);
+      if (parent && parent.status === "done") {
+        const children = candidates.filter((s) => s.parentId === parentId);
+        const childrenDelta = children.reduce((acc, c) => acc + c.delta, 0);
+        unanalyzedParentResidual += (parent.delta - childrenDelta);
+      }
+    }
+
+    signedResidual = skippedSum + unanalyzedParentResidual;
+    hasSignedResidualData = disjointSkipped.length > 0 || unanalyzedParentResidual !== 0;
+  }
+
+  // Only fall back to inferring sign from absDeltaTotal * residualOtherAbs when no signed residual data was provided
+  // (e.g. steps was omitted). If skipped branches exist and cancel each other out to 0, keep signedResidual = 0.
+  if (!hasSignedResidualData && residualOtherAbs !== 0) {
+    signedResidual = (absDeltaTotal < 0 ? -1 : 1) * Math.abs(residualOtherAbs);
+  }
+
+  const deltaExplained = leafDeltaSum + signedResidual;
+
+  let mathDiffRatio = 0;
+  if (absDeltaTotal === 0) {
+    mathDiffRatio = deltaExplained === 0 ? 0 : 1;
+  } else {
+    // K7 Gate: strictly signed difference. Never take absolute value before difference.
+    const diffSigned = Math.abs(deltaExplained - absDeltaTotal);
+    mathDiffRatio = Number((diffSigned / Math.abs(absDeltaTotal)).toFixed(4));
+  }
+
+  const mathVerified = mathDiffRatio <= 0.05;
+
+  return {
+    deltaExplained,
+    mathDiffRatio,
+    mathVerified,
+  };
+}
+
+/**
+ * Identifies primary root causes from disjoint leaf nodes:
+ * Selects nodes with |contributionPct| >= 50% or top 3 if none reach 50%, sorted by impact descending.
+ */
+export function identifyPrimaryRootCauses(leafNodes: PlanStep[]): RootCauseItem[] {
+  const sorted = [...leafNodes].sort((a, b) => Math.abs(b.contributionPct) - Math.abs(a.contributionPct));
+  const highImpact = sorted.filter((n) => Math.abs(n.contributionPct) >= 50);
+  const selected = highImpact.length > 0 ? highImpact : sorted.slice(0, 3);
+
+  return selected.map((leaf) => {
+    const pathStr =
+      leaf.dimensionPath.length > 0
+        ? leaf.dimensionPath.join(" > ")
+        : (leaf.dimensionValue ?? leaf.dimensionOrFactor);
+    const formattedDelta = formatVnd(leaf.delta);
+    const changeVerb = leaf.delta < 0 ? "giảm" : "tăng";
+    const summaryVi = `Tổ hợp [${pathStr}]: ${changeVerb} ${formattedDelta} (${Math.abs(leaf.contributionPct).toFixed(1)}% tổng biến động).`;
+
+    return {
+      stepId: leaf.stepId,
+      axis: leaf.axis,
+      dimensionOrFactor: leaf.dimensionOrFactor,
+      dimensionValue: leaf.dimensionValue,
+      dimensionPath: leaf.dimensionPath,
+      delta: leaf.delta,
+      contributionPct: leaf.contributionPct,
+      sql: leaf.sql,
+      hypothesis: leaf.hypothesis,
+      summaryVi,
+    };
+  });
+}
+
+/**
+ * Generates the full structured Markdown report for Root Cause Analysis.
+ */
+export function generateMarkdownReport(
+  plan: AnalysisPlan,
+  rca: Omit<RootCauseAnswer, "finalReportMarkdown">,
+): string {
+  const directionText = plan.absDelta < 0 ? "sụt giảm" : "tăng trưởng";
+  const pctStr = `${plan.pctDelta > 0 ? "+" : ""}${plan.pctDelta.toFixed(1)}%`;
+  const absStr = formatVnd(plan.absDelta);
+  const baselineStr = formatVnd(plan.baselineVal);
+  const currentStr = formatVnd(plan.currentVal);
+
+  const doneCount = plan.steps.filter((s) => s.status === "done").length;
+  const prunedCount = plan.unexploredBranches.filter(
+    (b) => b.reason === "PRUNED_BELOW_THRESHOLD",
+  ).length;
+
+  const sections: string[] = [];
+
+  // Section 1: Hiện tượng & Mức biến động
+  sections.push(`## 1. Hiện tượng & Mức biến động
+- **Chỉ số phân tích:** \`${plan.metricName}\` (${plan.metricType})
+- **Kỳ mốc (${plan.baselinePeriod.start} đến ${plan.baselinePeriod.end}):** ${baselineStr}
+- **Kỳ phân tích (${plan.currentPeriod.start} đến ${plan.currentPeriod.end}):** ${currentStr}
+- **Biến động tổng thể:** ${directionText} **${absStr}** (${pctStr})
+- **Trạng thái:** Đã hoàn thành phân tích bóc tách cây nguyên nhân (${doneCount} bước hoàn thành, ${prunedCount} nhánh cắt tỉa).`);
+
+  // Section 2: Cây phân rã nguyên nhân
+  const treeLines: string[] = ["## 2. Cây phân rã nguyên nhân"];
+  for (const step of plan.steps) {
+    const indent = "  ".repeat(step.depth);
+    const statusIcon =
+      step.status === "done"
+        ? "✅"
+        : step.status === "skipped"
+          ? "⏭️"
+          : step.status === "failed"
+            ? "❌"
+            : "⏳";
+    const deltaPart =
+      step.status === "done" ? `: ${formatVnd(step.delta)} (${step.contributionPct}%)` : "";
+    const dimName = step.dimensionValue
+      ? `${step.dimensionOrFactor}=${step.dimensionValue}`
+      : step.dimensionOrFactor;
+    treeLines.push(
+      `${indent}- ${statusIcon} **${dimName}** (depth ${step.depth}, ${step.status})${deltaPart}`,
+    );
+  }
+  sections.push(treeLines.join("\n"));
+
+  // Section 3: Nguyên nhân cốt lõi
+  const causeLines: string[] = ["## 3. Nguyên nhân cốt lõi (Primary Root Causes)"];
+  if (rca.primaryCauses.length === 0) {
+    causeLines.push("_Không xác định được nguyên nhân chính vượt ngưỡng ý nghĩa._");
+  } else {
+    for (let i = 0; i < rca.primaryCauses.length; i++) {
+      const cause = rca.primaryCauses[i];
+      const pathStr =
+        cause.dimensionPath.length > 0
+          ? cause.dimensionPath.join(" ➔ ")
+          : (cause.dimensionValue ?? cause.dimensionOrFactor);
+      causeLines.push(`### ${i + 1}. ${pathStr}`);
+      causeLines.push(`- **Mức độ đóng góp:** ${cause.contributionPct}% (${formatVnd(cause.delta)})`);
+      if (cause.summaryVi) {
+        causeLines.push(`- **Tóm tắt:** ${cause.summaryVi}`);
+      }
+      if (cause.sql) {
+        causeLines.push(`- **SQL bằng chứng:**\n\`\`\`sql\n${cause.sql}\n\`\`\``);
+      }
+    }
+  }
+  sections.push(causeLines.join("\n"));
+
+  // Section 4: Kiểm chứng số học Waterfall (K7 Gate)
+  const mathStatusBadge = rca.mathVerified ? "✅ ĐẠT (PASS)" : "⚠️ CẢNH BÁO (WARNING)";
+  const diffPct = (rca.mathDiffRatio * 100).toFixed(2);
+  sections.push(`## 4. Kiểm chứng số học Waterfall (K7 Tolerance ≤ 5%)
+- **Trạng thái kiểm chứng:** ${mathStatusBadge}
+- **Tổng biến động cần giải trình:** ${absStr}
+- **Sai số toán học:** ${diffPct}% (ngưỡng cho phép: ≤ 5.00%)
+- **Phần dư từ các nhánh cắt tỉa (Residual Other):** ${formatVnd(rca.residualOtherAbs)}`);
+
+  // Section 5: Phần dư & Các nhánh chưa phân tích
+  const unexploredLines: string[] = ["## 5. Nhánh chưa phân tích & Giới hạn"];
+  if (rca.unexploredBranches.length === 0) {
+    unexploredLines.push("_Tất cả các nhánh ứng viên đều đã được phân tích đầy đủ._");
+  } else {
+    for (const ub of rca.unexploredBranches) {
+      const valStr = ub.dimensionValue ? `=${ub.dimensionValue}` : "";
+      unexploredLines.push(`- \`${ub.dimensionOrFactor}${valStr}\`: lý do **${ub.reason}**`);
+    }
+  }
+  unexploredLines.push(`- **Tổng số truy vấn đã thực thi:** ${rca.totalQueriesCount}`);
+  sections.push(unexploredLines.join("\n"));
+
+  return sections.join("\n\n");
+}
+
+/**
+ * Node 5: synthesize_report
+ * Evaluates the executed plan, filters disjoint leaves, runs Waterfall verification,
+ * identifies primary causes, and returns a verified RootCauseAnswer.
+ */
+export function synthesizeReport(plan: AnalysisPlan): RootCauseAnswer {
+  const leafNodes = getDisjointLeafNodes(plan.steps);
+  const mathResult = verifyWaterfallAttribution(
+    leafNodes,
+    plan.residualOtherAbs,
+    plan.absDelta,
+    plan.steps,
+  );
+  const primaryCauses = identifyPrimaryRootCauses(leafNodes);
+
+  const partialAnswer = {
+    question: plan.question,
+    metricName: plan.metricName,
+    metricType: plan.metricType,
+    currentPeriod: plan.currentPeriod,
+    baselinePeriod: plan.baselinePeriod,
+    baselineVal: plan.baselineVal,
+    currentVal: plan.currentVal,
+    absDelta: plan.absDelta,
+    pctDelta: plan.pctDelta,
+    mathVerified: mathResult.mathVerified,
+    mathDiffRatio: mathResult.mathDiffRatio,
+    primaryCauses,
+    residualOtherAbs: plan.residualOtherAbs,
+    unexploredBranches: plan.unexploredBranches,
+    totalQueriesCount: plan.totalQueriesCount,
+  };
+
+  const finalReportMarkdown = generateMarkdownReport(plan, partialAnswer);
+
+  return RootCauseAnswerSchema.parse({
+    ...partialAnswer,
+    finalReportMarkdown,
+  });
+}
+
+function readRunContext(rt?: RootRuntime): {
   identity: ExecutorPrincipal;
   transport: TracerRunConfig | null;
 } {
-  const cfg = (rt.config.configurable ?? {}) as Record<string, unknown>;
+  const raw = rt as unknown as Record<string, unknown> | undefined;
+  const cfg = ((rt?.config?.configurable ?? raw?.configurable ?? {}) as Record<string, unknown>);
   const pick = (k: string): string => (typeof cfg[k] === "string" ? (cfg[k] as string) : "");
   const runId = pick("runId") || "run_rca_default";
   const userId = pick("userId") || "user_default";
@@ -1490,48 +2230,317 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       }
     }
 
-    // 1. validate_baseline
-    let baseline: BaselineCheckResult;
-    try {
-      baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
-    } catch (err) {
+    const rawRt = rt as unknown as Record<string, unknown> | undefined;
+    const conf = ((rt?.config?.configurable ?? rawRt?.configurable ?? {}) as Record<string, unknown>);
+    const checkpointer = conf["__pregel_checkpointer"] as BaseCheckpointSaver | undefined;
+    const threadId = (conf["thread_id"] ?? state.threadId) as string | undefined;
+
+    const isResume =
+      Boolean(conf["__pregel_resuming"]) ||
+      (conf["__pregel_scratchpad"] as Record<string, unknown> | undefined)?.nullResume !== undefined ||
+      (((conf["__pregel_scratchpad"] as Record<string, unknown> | undefined)?.resume as unknown[] | undefined)?.length ?? 0) > 0;
+
+    let baseline!: BaselineCheckResult;
+    let plan: AnalysisPlan | null = null;
+
+    const effectiveIntent: RcaIntent = {
+      ...intent,
+    };
+
+    if (state.analysisPlan && state.analysisPlan.isValidBaseline) {
+      plan = state.analysisPlan;
+      effectiveIntent.direction = (plan.direction as "increase" | "decrease") ?? "decrease";
+      baseline = {
+        baselineVal: plan.baselineVal,
+        currentVal: plan.currentVal,
+        absDelta: plan.absDelta,
+        pctDelta: plan.pctDelta,
+        isValidBaseline: true,
+        isSignificant: true,
+        message: `Tiền đề hợp lệ: ${plan.metricName} thực tế biến động ${plan.pctDelta}%.`,
+        queriesExecuted: plan.totalQueriesCount,
+        lastSql: null,
+        tablesUsed: ["orders", "order_items"],
+        actualToolsCalled: [],
+        resolvedDirection: (plan.direction as "increase" | "decrease") ?? "decrease",
+      };
+    } else if (checkpointer && threadId) {
+      try {
+        let tuple = await checkpointer.getTuple({ configurable: { thread_id: threadId } });
+        let interruptWrites = tuple?.pendingWrites?.filter(
+          (w: unknown[]) => Array.isArray(w) && w[1] === "__interrupt__",
+        );
+        if ((!interruptWrites || interruptWrites.length === 0) && tuple?.parentConfig) {
+          const parentTuple = await checkpointer.getTuple(tuple.parentConfig);
+          const parentInterruptWrites = parentTuple?.pendingWrites?.filter(
+            (w: unknown[]) => Array.isArray(w) && w[1] === "__interrupt__",
+          );
+          if (parentInterruptWrites && parentInterruptWrites.length > 0) {
+            tuple = parentTuple;
+            interruptWrites = parentInterruptWrites;
+          }
+        }
+        let bestWrite: unknown[] | undefined;
+        let maxScore = -1;
+        for (const write of interruptWrites ?? []) {
+          const raw = (write as unknown[])[2] as
+            | { value?: { plan?: unknown; currentPlan?: unknown } }
+            | undefined;
+          const candidateP = raw?.value?.currentPlan ?? raw?.value?.plan;
+          if (candidateP && typeof candidateP === "object") {
+            const parsed = AnalysisPlanSchema.safeParse(candidateP);
+            if (parsed.success) {
+              const completedCount = parsed.data.steps.filter((s) => s.status !== "todo").length;
+              const score = completedCount * 1000 + parsed.data.totalQueriesCount;
+              if (score > maxScore) {
+                maxScore = score;
+                bestWrite = write as unknown[];
+              }
+            }
+          }
+        }
+        const interruptWrite = bestWrite ?? (interruptWrites && interruptWrites.length > 0
+          ? interruptWrites[interruptWrites.length - 1]
+          : undefined);
+        if (interruptWrite) {
+          const raw = interruptWrite[2] as
+            | { value?: { plan?: unknown; currentPlan?: unknown } }
+            | undefined;
+          const p = raw?.value?.currentPlan ?? raw?.value?.plan;
+          if (p && typeof p === "object") {
+            const parsed = AnalysisPlanSchema.safeParse(p);
+            if (parsed.success) {
+              plan = parsed.data;
+              effectiveIntent.direction = (plan.direction as "increase" | "decrease") ?? "decrease";
+              baseline = {
+                baselineVal: plan.baselineVal,
+                currentVal: plan.currentVal,
+                absDelta: plan.absDelta,
+                pctDelta: plan.pctDelta,
+                isValidBaseline: true,
+                isSignificant: true,
+                message: `Tiền đề hợp lệ: ${plan.metricName} thực tế biến động ${plan.pctDelta}%.`,
+                queriesExecuted: plan.totalQueriesCount,
+                lastSql: null,
+                tablesUsed: ["orders", "order_items"],
+                actualToolsCalled: [],
+                resolvedDirection: (plan.direction as "increase" | "decrease") ?? "decrease",
+              };
+            }
+          }
+        }
+      } catch {
+        // Fall back to clean baseline execution if not a resume
+      }
+    }
+
+    // Fail closed: if this is a resume invocation and plan could not be restored, fail with explicit error
+    if (isResume && !plan) {
       return {
         status: "error",
-        answerText: err instanceof Error ? err.message : String(err),
+        answerText: "Lỗi phục hồi state: Không thể khôi phục kế hoạch phân tích từ checkpoint của thread.",
       };
     }
 
-    if (!baseline.isValidBaseline) {
-      const status = baseline.isSignificant === false ? "no_data" : "false_premise";
+    if (!plan) {
+      // 1. validate_baseline
+      try {
+        baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
+      } catch (err) {
+        return {
+          status: "error",
+          answerText: err instanceof Error ? err.message : String(err),
+        };
+      }
+
+      if (!baseline.isValidBaseline) {
+        const status = baseline.isSignificant === false ? "no_data" : "false_premise";
+        return {
+          status,
+          answerText: baseline.message,
+          sql: baseline.lastSql,
+          tablesUsed: baseline.tablesUsed,
+          resultPreview: [],
+          toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
+        };
+      }
+
+      // 2. create_plan
+      effectiveIntent.direction = baseline.resolvedDirection;
+      plan = createPlan(
+        state.question,
+        effectiveIntent,
+        baseline,
+        deps.candidateRegions ?? DEFAULT_CANDIDATE_REGIONS,
+      );
+      if (!plan) {
+        return {
+          status: "error",
+          answerText: "Không thể khởi tạo kế hoạch phân tích nguyên nhân gốc rễ.",
+        };
+      }
+    }
+
+    // 3. human_review (HITL Review Gate)
+    const hasExecutionBackend = Boolean(
+      effectiveDeps.fetchStepMetrics ||
+      deps.executeSteps ||
+      (effectiveDeps.executor && (deps.skipHitlReview || deps.executeSteps || transport !== null)),
+    );
+
+    let shouldExecute = hasExecutionBackend && Boolean(deps.skipHitlReview);
+
+    if (hasExecutionBackend && !deps.skipHitlReview) {
+      try {
+        const feedback = pauseForApproval({
+          action: "review_analysis_plan",
+          plan,
+          currentPlan: plan,
+        });
+
+        let decisionAction = "";
+        let feedbackObj: Record<string, unknown> | null = null;
+
+        if (typeof feedback === "string") {
+          decisionAction = feedback.trim().toUpperCase();
+        } else if (feedback && typeof feedback === "object") {
+          feedbackObj = feedback as Record<string, unknown>;
+          if (typeof feedbackObj["action"] === "string") {
+            decisionAction = feedbackObj["action"].trim().toUpperCase();
+          } else if (
+            feedbackObj["steps"] ||
+            feedbackObj["updated_plan"] ||
+            feedbackObj["currentPlan"] ||
+            feedbackObj["plan"]
+          ) {
+            decisionAction = "MODIFY";
+          }
+        } else if (feedback === true) {
+          decisionAction = "APPROVE";
+        }
+
+        if (decisionAction === "APPROVE" || decisionAction === "APPROVED") {
+          shouldExecute = true;
+        } else if (
+          decisionAction === "MODIFY" ||
+          Boolean(
+            feedbackObj &&
+              (feedbackObj["updated_plan"] ||
+                feedbackObj["currentPlan"] ||
+                feedbackObj["steps"] ||
+                feedbackObj["plan"]),
+          )
+        ) {
+          shouldExecute = true;
+          if (feedbackObj) {
+            if (Array.isArray(feedbackObj["steps"])) {
+              plan.steps = z.array(PlanStepSchema).parse(feedbackObj["steps"]);
+            } else if (feedbackObj["updated_plan"]) {
+              plan = AnalysisPlanSchema.parse(feedbackObj["updated_plan"]);
+            } else if (feedbackObj["currentPlan"] && typeof feedbackObj["currentPlan"] === "object") {
+              plan = AnalysisPlanSchema.parse(feedbackObj["currentPlan"]);
+            } else if (feedbackObj["plan"] && typeof feedbackObj["plan"] === "object") {
+              plan = AnalysisPlanSchema.parse(feedbackObj["plan"]);
+            }
+          }
+        } else if (
+          decisionAction === "REJECT" ||
+          decisionAction === "REJECTED" ||
+          decisionAction === "CANCEL" ||
+          decisionAction === "CANCELLED" ||
+          decisionAction === "DENY" ||
+          decisionAction === "DENIED"
+        ) {
+          shouldExecute = false;
+          return {
+            status: "ok",
+            analysisPlan: plan,
+            answerText:
+              "Kế hoạch phân tích đã bị từ chối bởi người dùng. Đã dừng thực thi phân tích nguyên nhân.",
+            sql: baseline.lastSql,
+            tablesUsed: baseline.tablesUsed,
+            toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
+          };
+        } else {
+          return {
+            status: "error",
+            answerText: `Quyết định duyệt kế hoạch không hợp lệ: '${decisionAction || JSON.stringify(feedback)}'. Chỉ chấp nhận 'approve', 'modify', hoặc 'reject'.`,
+          };
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message.includes("outside the context of a graph")) {
+          // Called in raw unit test without LangGraph execution context and skipHitlReview was not set.
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!shouldExecute) {
       return {
-        status,
-        answerText: baseline.message,
+        status: "ok",
+        analysisPlan: plan,
+        answerText: `${baseline.message} Đã lập kế hoạch phân rã 2 trục MECE với ${plan.steps.length} nhánh công việc sơ khởi.`,
         sql: baseline.lastSql,
         tablesUsed: baseline.tablesUsed,
-        resultPreview: [],
         toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
       };
     }
 
-    // 2. create_plan
-    const effectiveIntent: RcaIntent = {
-      ...intent,
-      direction: baseline.resolvedDirection,
-    };
-    const plan = createPlan(state.question, effectiveIntent, baseline);
-    if (!plan) {
-      return {
-        status: "error",
-        answerText: "Không thể khởi tạo kế hoạch phân tích nguyên nhân gốc rễ.",
-      };
-    }
+    // 4. execute_step & evaluate_branch loop
+    const targetFactTable = getMetricTargetTable(plan.metricName);
+    const executedPlan = await executeAnalysis(
+      plan,
+      effectiveIntent,
+      {
+        ...effectiveDeps,
+        onStepExecuted: async (step, p) => {
+          if (checkpointer && threadId) {
+            try {
+              const currentTuple =
+                await checkpointer.getTuple({ configurable: { thread_id: threadId } });
+              if (!currentTuple?.config) {
+                throw new Error(
+                  `Không tìm thấy checkpoint tuple hợp lệ để lưu tiến độ (threadId: ${threadId})`,
+                );
+              }
+              await checkpointer.putWrites(
+                currentTuple.config,
+                [
+                  [
+                    "__interrupt__",
+                    {
+                      id: `step_${step.stepId}`,
+                      value: {
+                        action: "review_analysis_plan",
+                        currentPlan: p,
+                        plan: p,
+                      },
+                    },
+                  ],
+                ],
+                `step_${step.stepId}`,
+              );
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              throw new Error(`Lỗi lưu checkpoint tiến độ bước ${step.stepId}: ${msg}`);
+            }
+          }
+          await effectiveDeps.onStepExecuted?.(step, p);
+        },
+      },
+      principal,
+      targetFactTable,
+    );
 
-    // Issue #35 scope: baseline validated + 2-axis MECE plan constructed with steps in 'todo'
+    const rcaAnswer = synthesizeReport(executedPlan);
+
     return {
       status: "ok",
-      analysisPlan: plan,
-      answerText: `${baseline.message} Đã lập kế hoạch phân rã 2 trục MECE với ${plan.steps.length} nhánh công việc sơ khởi.`,
-      sql: baseline.lastSql,
+      analysisPlan: executedPlan,
+      rootCauseAnswer: rcaAnswer,
+      answerText: rcaAnswer.finalReportMarkdown,
+      sql: rcaAnswer.primaryCauses[0]?.sql ?? baseline.lastSql,
       tablesUsed: baseline.tablesUsed,
       toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
     };

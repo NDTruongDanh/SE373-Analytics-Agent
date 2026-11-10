@@ -259,6 +259,39 @@ describe("bounded repair loop", () => {
     ]);
   });
 
+  it("aborts on attempt 1 during TIMEOUT when input.maxAttempts is 1", async () => {
+    const model = new RepairFakeModel([
+      proposalFor("SELECT id, status FROM orders WHERE status = 'x' ORDER BY id", [
+        "orders",
+      ]),
+    ]);
+    let explains = 0;
+    const mcp = new StubMcpCaller(
+      baseHandlers(
+        () => {
+          explains += 1;
+          throw dbToolError("TIMEOUT", "statement timeout");
+        },
+        () => okRun(),
+      ),
+    );
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+
+    const result = await executor.run({
+      question: "recent orders",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+      maxAttempts: 1,
+    });
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") return;
+    expect(result.error.code).toBe("TIMEOUT");
+    expect(result.attempts).toBe(1);
+    expect(explains).toBe(1);
+    expect(mcp.tools()).toEqual(["describe_table", "explain_query"]);
+  });
+
   it("runs one guarded diagnostic pass before no_data on filtered zero rows", async () => {
     const model = new RepairFakeModel([
       proposalFor("SELECT id, status FROM orders WHERE status = 'zzz'", [
