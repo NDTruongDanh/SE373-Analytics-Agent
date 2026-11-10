@@ -8,14 +8,16 @@
 // wire (T-01-14-02).
 //
 // Sanitization is construction-based: payload builders pick whitelisted
-// fields only (counts, column/table names, status, scrubbed message), so
-// SQL literals, row cell values, and tokens can never reach the wire. The
+// fields only (counts, column/table names, status, scrubbed message, and a
+// restricted SQL proposal after a successful query). SQL literals and row
+// cell values are not sent. The
 // canonical PII redaction stays in the trace/audit layers (01-06 redactor
 // via the 01-09 writer); the small tripwire below is defense-in-depth for
 // the two free-text fields the wire legitimately carries (answerText,
 // error message) and degrades to failed on a hit.
 
 import type { Response } from "express";
+import type { PendingClarification } from "@shared/agent";
 import {
   SseCompletedEventSchema,
   SseFailedEventSchema,
@@ -102,6 +104,21 @@ export function sqlPayload(
   return { tablesUsed: [...tablesUsed], statementType };
 }
 
+/**
+ * Only display a restricted, literal-free order-status demo proposal after the
+ * gateway has accepted the query. Do not attempt to parse or redact arbitrary
+ * SQL with regex: anything outside this vocabulary is withheld entirely,
+ * including strings, comments, parameters, and model-chosen aliases.
+ * The result is a proposal, not the policy-rewritten SQL sent to the DB.
+ */
+export function displayableSql(sql: string): string | null {
+  if (sql.length === 0 || sql.length > 4000 || !/^\s*(?:select|with)\b/i.test(sql)) return null;
+  if (!/^[a-zA-Z_\s.,()*+\-/;<>!=]+$/.test(sql) || /--|\/\*|\*\//.test(sql)) return null;
+  const safeWords = new Set(["select", "status", "count", "distinct", "as", "n", "total", "order_count", "order_total", "from", "public", "orders", "group", "by", "order", "asc", "desc", "nulls", "first", "last"]);
+  if ((sql.match(/[a-zA-Z_]+/g) ?? []).some((word) => !safeWords.has(word.toLowerCase()))) return null;
+  return sql;
+}
+
 /** sql_repaired payload: attempt metadata only, no error text. */
 export function sqlRepairedPayload(
   sql: string | null,
@@ -149,14 +166,29 @@ export function failedPayload(input: {
   };
 }
 
-/** interrupt_waiting payload: clarification options only, no prompts. */
-export function interruptPayload(input: {
+export interface InterruptPayloadInput {
+  action?: string;
   reason?: string;
-  pendingClarification?: string[] | null;
-}): Record<string, unknown> {
+  pendingClarification?: PendingClarification | string[] | null;
+  plan?: unknown;
+  currentPlan?: unknown;
+}
+
+/** interrupt_waiting payload: clarification options and review plan for HITL. */
+export function interruptPayload(input: InterruptPayloadInput): Record<string, unknown> {
+  const plan = input.currentPlan ?? input.plan;
+  let pending: unknown;
+  if (Array.isArray(input.pendingClarification)) {
+    pending = [...input.pendingClarification];
+  } else if (input.pendingClarification) {
+    const pc = input.pendingClarification as PendingClarification;
+    pending = { ...pc, options: [...pc.options] };
+  }
   return {
+    ...(input.action ? { action: input.action } : {}),
     ...(input.reason ? { reason: scrubMessage(input.reason) } : {}),
-    ...(input.pendingClarification ? { pendingClarification: [...input.pendingClarification] } : {}),
+    ...(pending ? { pendingClarification: pending } : {}),
+    ...(plan !== undefined ? { plan, currentPlan: plan } : {}),
   };
 }
 

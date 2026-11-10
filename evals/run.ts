@@ -70,6 +70,9 @@ import {
   type GatewayCase,
   type GatewayObserved,
 } from "./gateway.js";
+import { gradeUc03, printUc03Report } from "./uc03/grader.js";
+import { gradeUc02, printUc02Report } from "./uc02/grader.js";
+import { gradeUc05, printUc05Report } from "./uc05/grader.js";
 import {
   parseCountValue,
   probeAgentRoWriteRefused,
@@ -154,11 +157,20 @@ export function validateCase(raw: unknown): {
   if (!hasRows && !hasPath) {
     errors.push("one of goldRows or goldResultPath is required");
   }
+  if (typeof raw["goldSql"] !== "string" || raw["goldSql"].trim() === "") {
+    errors.push("goldSql must be a non-empty string");
+  }
   if (raw["ordered"] !== undefined && typeof raw["ordered"] !== "boolean") {
     errors.push("ordered must be a boolean");
   }
   if (raw["tags"] !== undefined && !Array.isArray(raw["tags"])) {
     errors.push("tags must be an array");
+  }
+  if (
+    raw["ucId"] !== undefined &&
+    (typeof raw["ucId"] !== "string" || raw["ucId"].trim() === "")
+  ) {
+    errors.push("ucId must be a non-empty string");
   }
   if (errors.length > 0) return { ok: false, errors };
   return {
@@ -174,6 +186,7 @@ export function validateCase(raw: unknown): {
       ordered: (raw["ordered"] as boolean | undefined) ?? false,
       datasetVersion: raw["datasetVersion"] as string,
       tags: (raw["tags"] as string[] | undefined) ?? [],
+      ucId: raw["ucId"] as string | undefined,
     },
   };
 }
@@ -183,8 +196,13 @@ function loadGoldRows(c: EvalCase, repoRoot: string): Record<string, unknown>[] 
   // UC-01 benchmark scale: rows live behind a goldResultPath pointer.
   const raw = readFileSync(path.join(repoRoot, c.goldResultPath as string), "utf8");
   const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error(`gold rows at ${c.goldResultPath} are not an array`);
-  return parsed as Record<string, unknown>[];
+  if (Array.isArray(parsed)) return parsed as Record<string, unknown>[];
+  // A benchmark may keep its snapshots in one immutable catalogue.  The
+  // row's id selects its array, so every case still has an explicit path.
+  if (isRecord(parsed) && Array.isArray(parsed[c.id])) {
+    return parsed[c.id] as Record<string, unknown>[];
+  }
+  throw new Error(`gold rows for ${c.id} at ${c.goldResultPath} are not an array`);
 }
 
 /** Default stub adapter: explicit not-wired marker, never a fake pass. */
@@ -304,8 +322,10 @@ export function createEvalEmitter(
  * Build the live adapter: DB TCP preflight, gateway child boot with
  * bounded healthz wait, PostgresSaver checkpointer (fail-fast setup),
  * then per-case buildRootGraph invoke with the 01-12 identity shape.
- * Deterministic fake model by default (no API key): AGENT_MODEL_API_KEY
- * is dropped unless EVAL_USE_LIVE_MODEL=1 explicitly opts into keyed runs.
+ * Benchmarks are deliberately live-model only: the model key is dropped
+ * unless EVAL_USE_LIVE_MODEL=1 explicitly opts into a keyed run. Failing
+ * closed prevents a synthetic or unrelated graph route being graded as a
+ * real Text-to-SQL evaluation.
  * Every wait is bounded — a missing DB/gateway throws a clear message,
  * never hangs.
  */
@@ -338,6 +358,12 @@ export async function buildLiveAdapter(
   if (!harnessStateUrl) {
     throw new Error(
       "eval: HARNESS_STATE_DATABASE_URL is not set — the live checkpointer needs the harness_state identity.",
+    );
+  }
+
+  if (process.env.EVAL_USE_LIVE_MODEL !== "1" || !process.env.AGENT_MODEL_API_KEY) {
+    throw new Error(
+      "eval: a real benchmark requires EVAL_USE_LIVE_MODEL=1 and AGENT_MODEL_API_KEY; refusing to run a synthetic result.",
     );
   }
 
@@ -437,13 +463,23 @@ export async function buildLiveAdapter(
         answerText?: unknown;
       };
       const status = out.status ?? "error";
+      // Graph errors are normalized into answerText instead of being thrown.
+      // Keep a redacted, bounded diagnostic so a failed benchmark remains
+      // actionable without writing returned rows to results.
+      const diagnostic =
+        typeof out.answerText === "string" && out.answerText.length > 0
+          ? redactPII(out.answerText).redacted.slice(0, 500)
+          : undefined;
       emit.emitRunDone(status);
       return {
         status,
         rows: out.resultPreview ?? [],
         answerText:
           typeof out.answerText === "string" ? out.answerText : undefined,
-        reason: status === "ok" || status === "no_data" ? undefined : `harness status '${status}'`,
+        reason:
+          status === "ok" || status === "no_data"
+            ? undefined
+            : diagnostic ?? `harness status '${status}'`,
         ms: Date.now() - t0,
         tokens: 0,
         wired: true,
@@ -471,7 +507,16 @@ export async function buildLiveAdapter(
     mcpUrl,
     tracesDir,
     close: async () => {
-      gateway.kill();
+      if (gateway.exitCode === null && !gateway.killed) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 5_000);
+          gateway.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          gateway.kill();
+        });
+      }
       await (checkpointer as unknown as { end?: () => Promise<void> }).end?.();
     },
   };
@@ -507,7 +552,11 @@ export async function runEval(
     }
     const { pass, mismatches } = gradeExecution(
       { status: outcome.status, rows: outcome.rows ?? [], reason: outcome.reason },
-      { rows: c.goldRows ?? [], ordered: c.ordered ?? false },
+      {
+        status: c.tags?.includes("unanswerable") ? "cannot_answer" : undefined,
+        rows: c.goldRows ?? [],
+        ordered: c.ordered ?? false,
+      },
     );
     graded.push({
       id: c.id,
@@ -515,7 +564,14 @@ export async function runEval(
       exPass: pass,
       ms: outcome.ms,
       tokens: outcome.tokens,
-      ...(pass ? {} : { note: mismatches.join("; ") }),
+      ...(pass
+        ? {}
+        : {
+            note: [
+              ...mismatches,
+              ...(outcome.reason ? [`reason: ${outcome.reason}`] : []),
+            ].join("; "),
+          }),
     });
   }
   return {
@@ -532,21 +588,35 @@ function discoverUcDirs(repoRoot: string): string[] {
     .sort();
 }
 
-function loadUcCases(repoRoot: string, uc: string): EvalCase[] {
+export function loadUcCases(repoRoot: string, uc: string): EvalCase[] {
   const dir = path.join(repoRoot, "evals", uc);
   const out: EvalCase[] = [];
   for (const file of readdirSync(dir).sort()) {
-    if (!file.endsWith(".json")) continue;
-    const raw: unknown = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
-    const checked = validateCase(raw);
-    if (!checked.ok || !checked.value) {
-      throw new Error(`invalid case ${uc}/${file}: ${checked.errors?.join("; ")}`);
+    if (!file.endsWith(".json") && !file.endsWith(".jsonl")) continue;
+    const contents = readFileSync(path.join(dir, file), "utf8");
+    const records: unknown[] = file.endsWith(".jsonl")
+      ? contents
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .map((line, index) => {
+            try {
+              return JSON.parse(line) as unknown;
+            } catch {
+              throw new Error(`invalid JSON in ${uc}/${file} line ${index + 1}`);
+            }
+          })
+      : [JSON.parse(contents) as unknown];
+    for (const raw of records) {
+      const checked = validateCase(raw);
+      if (!checked.ok || !checked.value) {
+        throw new Error(`invalid case ${uc}/${file}: ${checked.errors?.join("; ")}`);
+      }
+      const c = checked.value;
+      if (!c.goldRows && c.goldResultPath) {
+        c.goldRows = loadGoldRows(c, repoRoot);
+      }
+      out.push(c);
     }
-    const c = checked.value;
-    if (!c.goldRows && c.goldResultPath) {
-      c.goldRows = loadGoldRows(c, repoRoot);
-    }
-    out.push(c);
   }
   return out;
 }
@@ -1299,6 +1369,54 @@ async function main(): Promise<void> {
     return;
   }
 
+  // UC-02 dispatch (pure, DB-free): 3-way proxy retrieval + gate + citation
+  // validators run without booting the gateway. Writes the same GradedCase
+  // envelope for --compare.
+  if (ucs.length === 1 && ucs[0] === "uc02") {
+    const uc02 = await gradeUc02(repoRoot);
+    const passed = uc02.cases.filter((c) => c.exPass).length;
+    writeFileSync(
+      path.join(repoRoot, "results", "uc02.json"),
+      `${JSON.stringify({ uc: "uc02", datasetVersion: "uc02-1", cases: uc02.cases, summary: summarizeCases(uc02.cases) }, null, 2)}\n`,
+      "utf8",
+    );
+    printUc02Report(uc02);
+    process.exit(passed === uc02.cases.length ? 0 : 1);
+    return;
+  }
+
+  // UC-03 dispatch (pure, DB-free): validators are local deterministic code
+  // and the scripted model stands in for Profile 3, so grading runs without
+  // booting the gateway. Writes the same GradedCase envelope for --compare.
+  if (ucs.length === 1 && ucs[0] === "uc03") {
+    const uc03 = await gradeUc03(repoRoot);
+    const passed = uc03.cases.filter((c) => c.exPass).length;
+    writeFileSync(
+      path.join(repoRoot, "results", "uc03.json"),
+      `${JSON.stringify({ uc: "uc03", datasetVersion: "uc03-1", cases: uc03.cases, summary: summarizeCases(uc03.cases) }, null, 2)}\n`,
+      "utf8",
+    );
+    printUc03Report(uc03);
+    process.exit(passed === uc03.cases.length ? 0 : 1);
+    return;
+  }
+
+  // UC-05 dispatch (pure, DB-free): RCA tree decomposition + HITL + K7 waterfall gate.
+  // Writes the same GradedCase envelope for --compare.
+  if (ucs.length === 1 && ucs[0] === "uc05") {
+    const uc05 = await gradeUc05(repoRoot);
+    const passed = uc05.cases.filter((c) => c.exPass).length;
+    mkdirSync(path.join(repoRoot, "results"), { recursive: true });
+    writeFileSync(
+      path.join(repoRoot, "results", "uc05.json"),
+      `${JSON.stringify({ uc: "uc05", datasetVersion: "uc05-1", cases: uc05.cases, summary: summarizeCases(uc05.cases) }, null, 2)}\n`,
+      "utf8",
+    );
+    printUc05Report(uc05);
+    process.exit(passed === uc05.cases.length ? 0 : 1);
+    return;
+  }
+
   mkdirSync(path.join(repoRoot, "results"), { recursive: true });
 
   let live: LiveHandle;
@@ -1313,6 +1431,20 @@ async function main(): Promise<void> {
   let failed = false;
   try {
     for (const uc of ucs) {
+      if (uc === "uc05") {
+        const uc05 = await gradeUc05(repoRoot);
+        const passed = uc05.cases.filter((c) => c.exPass).length;
+        writeFileSync(
+          path.join(repoRoot, "results", "uc05.json"),
+          `${JSON.stringify({ uc: "uc05", datasetVersion: "uc05-1", cases: uc05.cases, summary: summarizeCases(uc05.cases) }, null, 2)}\n`,
+          "utf8",
+        );
+        if (passed !== uc05.cases.length) failed = true;
+        console.log(
+          `eval uc05: ${passed}/${uc05.cases.length} EX pass (dataset uc05-1, deterministic rca runner)`,
+        );
+        continue;
+      }
       const cases = loadUcCases(repoRoot, uc);
       const gatewayFile = path.join(repoRoot, "evals", uc, "cases.jsonl");
       if (existsSync(gatewayFile)) {

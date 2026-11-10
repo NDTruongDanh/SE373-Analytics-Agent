@@ -11,6 +11,10 @@
       "types": "./dist/ports/index.d.ts",
       "default": "./dist/ports/index.js"
     },
+    "./uc03": {
+      "types": "./dist/subgraphs/uc03/viz.d.ts",
+      "default": "./dist/subgraphs/uc03/viz.js"
+    },
     "./telemetry": {
       "types": "./dist/telemetry/spans.d.ts",
       "default": "./dist/telemetry/spans.js"

@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // SendAlert contract (CONT-04, UC-10 delivery surface). Carries the six
 // mandatory UC-10 alert fields: recipient, severity, metric, current and

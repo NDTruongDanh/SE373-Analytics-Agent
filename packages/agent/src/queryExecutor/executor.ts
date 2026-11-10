@@ -23,7 +23,7 @@ import {
 } from "@shared/contracts";
 import { sqlGuard } from "@shared/access-policy";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
-import * as z from "zod";
+import { z } from "zod";
 import {
   checkBudget,
   createBudgetState,
@@ -45,6 +45,11 @@ import {
 import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
 export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
+
+/** Rows retained for in-process validation; checkpoint state keeps only 50. */
+export const TRANSIENT_ROW_BUFFER_MAX = 1000;
+const DIAGNOSTIC_DISTINCT_LIMIT = 20;
+const MAX_DIAGNOSTIC_FILTER_PROBES = 3;
 
 /** Structured SQL proposal the model must produce (untrusted until gated). */
 export const SqlProposalSchema = z.object({
@@ -101,6 +106,8 @@ export interface ExecutorPrincipal {
 
 export interface ExecutorRunInput {
   question: string;
+  /** User-supplied or clarification-selected range the SQL must honor. */
+  timeRange?: string | null;
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
   principal: ExecutorPrincipal;
@@ -117,6 +124,17 @@ export interface ExecutorRunInput {
    */
   catalog?: SchemaCatalog;
   /** Reused across calls to share one run budget; created when absent. */
+  budget?: BudgetState;
+  /**
+   * Bounded attempt limit for this run (e.g. capped by remaining query quota).
+   * Overrides this.maxAttempts if lower, preventing over-execution during repair loops.
+   */
+  maxAttempts?: number;
+}
+
+export interface TimeRangeOptionsInput {
+  principal: ExecutorPrincipal;
+  /** Reused across calls so metadata lookup respects the enclosing run budget. */
   budget?: BudgetState;
 }
 
@@ -279,6 +297,248 @@ function catalogFromDescribe(
   };
 }
 
+function isoDate(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const date = value.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined;
+}
+
+function quarterStart(date: string): Date {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  return new Date(Date.UTC(value.getUTCFullYear(), Math.floor(value.getUTCMonth() / 3) * 3, 1));
+}
+
+function formatIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** Two to four canonical [start, end) calendar quarters intersecting the data. */
+function quarterOptions(minDate: string, maxDate: string): string[] {
+  const minimum = quarterStart(minDate);
+  const maximum = quarterStart(maxDate);
+  const quarters: string[] = [];
+  for (let current = maximum; current >= minimum && quarters.length < 4; ) {
+    const end = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 3, 1));
+    quarters.push(`${formatIsoDate(current)}/${formatIsoDate(end)}`);
+    current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 3, 1));
+  }
+  return quarters.reverse();
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+type FilterLiteral = {
+  table: string;
+  column: string;
+  literal: string;
+};
+
+function stringField(value: unknown): string | undefined {
+  const record = asRecord(value);
+  const string = record ? asRecord(record["String"]) : undefined;
+  const text = string?.["sval"];
+  return typeof text === "string" ? text : undefined;
+}
+
+function columnRef(value: unknown): { qualifier?: string; column: string } | undefined {
+  const inner = asRecord(asRecord(value)?.["ColumnRef"]);
+  const fields = inner?.["fields"];
+  if (!Array.isArray(fields) || fields.length === 0) return undefined;
+  const names = fields.map(stringField);
+  if (names.some((name) => name === undefined)) return undefined;
+  const column = names[names.length - 1];
+  if (column === undefined) return undefined;
+  return {
+    ...(names.length >= 2 && names[names.length - 2] !== undefined
+      ? { qualifier: names[names.length - 2] }
+      : {}),
+    column,
+  };
+}
+
+function stringConstant(value: unknown): string | undefined {
+  const constant = asRecord(asRecord(value)?.["A_Const"]);
+  if (!constant) return undefined;
+  const scalar = constant["sval"];
+  if (typeof scalar === "string") return scalar;
+  const text = asRecord(scalar)?.["sval"];
+  return typeof text === "string" ? text : stringField(scalar);
+}
+
+function tableAliases(ast: unknown, catalog: SchemaCatalog): Map<string, string> {
+  const catalogNames = new Map(
+    catalog.tables.map((table) => [table.name.toLowerCase(), table.name]),
+  );
+  const aliases = new Map<string, string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) visit(entry);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    const rangeVar = asRecord(record["RangeVar"]);
+    if (rangeVar) {
+      const relname = rangeVar["relname"];
+      const table =
+        typeof relname === "string"
+          ? catalogNames.get(relname.toLowerCase())
+          : undefined;
+      if (table) {
+        aliases.set(table.toLowerCase(), table);
+        const alias = asRecord(rangeVar["alias"])?.["aliasname"];
+        if (typeof alias === "string" && alias.length > 0) {
+          aliases.set(alias.toLowerCase(), table);
+        }
+      }
+    }
+    for (const entry of Object.values(record)) visit(entry);
+  };
+  visit(ast);
+  return aliases;
+}
+
+function resolveFilterTable(
+  ref: { qualifier?: string; column: string },
+  aliases: Map<string, string>,
+  catalog: SchemaCatalog,
+  scannedTables: readonly string[],
+): string | undefined {
+  if (ref.qualifier) return aliases.get(ref.qualifier.toLowerCase());
+  const scanned = new Set(scannedTables.map((table) => table.toLowerCase()));
+  const matches = catalog.tables.filter(
+    (table) =>
+      scanned.has(table.name.toLowerCase()) &&
+      table.columns.some((column) => column.name.toLowerCase() === ref.column.toLowerCase()),
+  );
+  return matches.length === 1 ? matches[0]?.name : undefined;
+}
+
+/**
+ * Extract only direct WHERE comparisons between a real column and a string
+ * literal. Each value stays paired to its table/alias-qualified column; this
+ * avoids guessing from unrelated numeric predicates, SELECT expressions, or
+ * comments.
+ */
+function stringFilterPredicates(
+  ast: unknown,
+  catalog: SchemaCatalog,
+  scannedTables: readonly string[],
+): FilterLiteral[] {
+  const whereClauses: unknown[] = [];
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) visit(entry);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "whereClause" && value !== undefined && value !== null) {
+        whereClauses.push(value);
+      }
+      visit(value);
+    }
+  };
+  visit(ast);
+
+  const aliases = tableAliases(ast, catalog);
+  const predicates = new Map<string, FilterLiteral>();
+  const collect = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) collect(entry);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    const expression = asRecord(record["A_Expr"]);
+    if (expression) {
+      const leftRef = columnRef(expression["lexpr"]);
+      const rightRef = columnRef(expression["rexpr"]);
+      const leftLiteral = stringConstant(expression["lexpr"]);
+      const rightLiteral = stringConstant(expression["rexpr"]);
+      const ref = leftRef && rightLiteral !== undefined
+        ? leftRef
+        : rightRef && leftLiteral !== undefined
+          ? rightRef
+          : undefined;
+      const literal = leftRef && rightLiteral !== undefined
+        ? rightLiteral
+        : rightRef && leftLiteral !== undefined
+          ? leftLiteral
+          : undefined;
+      if (ref && literal !== undefined) {
+        const table = resolveFilterTable(ref, aliases, catalog, scannedTables);
+        if (table) {
+          const catalogTable = catalog.tables.find(
+            (entry) => entry.name.toLowerCase() === table.toLowerCase(),
+          );
+          const column = catalogTable?.columns.find(
+            (entry) => entry.name.toLowerCase() === ref.column.toLowerCase(),
+          )?.name;
+          if (column) {
+            const predicate = { table, column, literal };
+            predicates.set(`${table}\u0000${column}\u0000${literal}`, predicate);
+          }
+        }
+      }
+    }
+    for (const value of Object.values(record)) collect(value);
+  };
+  for (const where of whereClauses) collect(where);
+  return [...predicates.values()].slice(0, MAX_DIAGNOSTIC_FILTER_PROBES);
+}
+
+function quotedIdentifier(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
+function normalizeDiagnosticValue(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replaceAll("đ", "d")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** Detect a bounded synonym signal such as "Mien Nam" versus "Nam". */
+function diagnosticMismatch(
+  predicate: FilterLiteral,
+  rows: Record<string, unknown>[],
+): string | undefined {
+  const values = rows
+    .map((row) => row[predicate.column])
+    .filter((value): value is string => typeof value === "string")
+    .slice(0, DIAGNOSTIC_DISTINCT_LIMIT);
+  const normalizedRequested = normalizeDiagnosticValue(predicate.literal);
+  if (normalizedRequested.length < 2) return undefined;
+  for (const actual of values) {
+    const normalizedActual = normalizeDiagnosticValue(actual);
+    if (
+      normalizedActual.length >= 2 &&
+      normalizedActual !== normalizedRequested &&
+      (normalizedActual.includes(normalizedRequested) ||
+        normalizedRequested.includes(normalizedActual))
+    ) {
+      return [
+        "Zero-row diagnostic found one likely filter-value mismatch. Use only the evidence below to repair the SQL.",
+        "<untrusted-diagnostic-data>",
+        `table: ${predicate.table}`,
+        `column: ${predicate.column}`,
+        `requested: ${JSON.stringify(predicate.literal)}`,
+        `observed: ${JSON.stringify(actual)}`,
+        "</untrusted-diagnostic-data>",
+      ].join("\n");
+    }
+  }
+  return undefined;
+}
+
 export class ValidatedQueryExecutor {
   private readonly model: ChatModelLike;
   private readonly mcp: McpToolCaller;
@@ -298,6 +558,84 @@ export class ValidatedQueryExecutor {
     },
   ): string {
     return this.emitSpan({ ...event });
+  }
+
+  /**
+   * Read the actual orders date extent through the existing MCP boundary, then
+   * offer parseable calendar-quarter ranges. The fixed aggregate returns one
+   * row and never becomes part of checkpoint state or a synthesis prompt.
+   */
+  async timeRangeOptions(input: TimeRangeOptionsInput): Promise<string[]> {
+    const budget = input.budget ?? createBudgetState();
+    const sql =
+      'SELECT MIN("purchase_date") AS min_date, MAX("purchase_date") AS max_date ' +
+      'FROM "orders" WHERE "purchase_date" IS NOT NULL';
+    let check = checkBudget(budget);
+    if (check.tripped) return [];
+    const explainStarted = Date.now();
+    try {
+      const rawExplain = await this.mcp.call("explain_query", {
+        ...input.principal,
+        sql,
+      });
+      const parsedExplain = ExplainQueryOutputSchema.safeParse(rawExplain);
+      if (!parsedExplain.success) return [];
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - explainStarted,
+        payload: {
+          tool: "explain_query",
+          purpose: "time_range_options",
+          estimatedCost: parsedExplain.data.estimatedCost,
+        },
+      });
+    } catch (thrown) {
+      const error = asDbToolError("explain_query", thrown);
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - explainStarted,
+        payload: { tool: "explain_query", purpose: "time_range_options", probeError: error.code },
+      });
+      return [];
+    }
+
+    check = checkBudget(budget);
+    if (check.tripped) return [];
+    const runStarted = Date.now();
+    try {
+      const raw = await this.mcp.call("run_query", {
+        ...input.principal,
+        sql,
+        maxRows: 1,
+      });
+      const parsed = RunQueryOutputSchema.safeParse(raw);
+      if (!parsed.success) return [];
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - runStarted,
+        payload: { tool: "run_query", purpose: "time_range_options", rowCount: parsed.data.rowCount },
+      });
+      const row = parsed.data.rows[0];
+      const minDate = isoDate(row?.["min_date"]);
+      const maxDate = isoDate(row?.["max_date"]);
+      return minDate && maxDate ? quarterOptions(minDate, maxDate) : [];
+    } catch (thrown) {
+      const error = asDbToolError("run_query", thrown);
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - runStarted,
+        payload: { tool: "run_query", purpose: "time_range_options", probeError: error.code },
+      });
+      return [];
+    }
   }
 
   async run(input: ExecutorRunInput): Promise<ExecutorResult> {
@@ -373,6 +711,10 @@ export class ValidatedQueryExecutor {
     // 2-5. Bounded repair loop (D-02): at most maxAttempts total including
     // the first try. Only REPAIRABLE_CODES retry; hard security codes abort on
     // attempt 1; TIMEOUT gets exactly one simplification rewrite.
+    const effectiveMaxAttempts =
+      typeof input.maxAttempts === "number" && input.maxAttempts > 0
+        ? Math.min(input.maxAttempts, this.maxAttempts)
+        : this.maxAttempts;
     let attemptNo = 0;
     let lastError: DbToolError | null = null;
     let repairFeedback: string | null = null;
@@ -380,7 +722,7 @@ export class ValidatedQueryExecutor {
     let lastTablesUsed: string[] = [];
     let timeoutSimplified = false;
 
-    while (attemptNo < this.maxAttempts) {
+    while (attemptNo < effectiveMaxAttempts) {
       attemptNo += 1;
       const attempt = attemptNo;
 
@@ -396,10 +738,13 @@ export class ValidatedQueryExecutor {
         let proposal: SqlProposal;
         let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
         let usageModel: string | undefined;
+        const timeRangeContext = input.timeRange?.trim()
+          ? `\n\n<user-selected-time-range>${JSON.stringify(input.timeRange.trim())}</user-selected-time-range>`
+          : "";
         const prompt =
           repairFeedback === null
-            ? input.question
-            : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
+            ? `${input.question}${timeRangeContext}`
+            : `${input.question}${timeRangeContext}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
         try {
           const out = await invokeWithUsage(this.model, SqlProposalSchema, prompt, {
             name: "sql_proposal",
@@ -468,7 +813,7 @@ export class ValidatedQueryExecutor {
       const guard = await sqlGuard(sql, catalog);
       if (!guard.ok) {
         lastError = guard.error;
-        if (isRepairable(guard.error.code) && attempt < this.maxAttempts) {
+        if (isRepairable(guard.error.code) && attempt < effectiveMaxAttempts) {
           repairFeedback = feedbackFor(lastError);
           this.span({
             node: "repair",
@@ -488,7 +833,7 @@ export class ValidatedQueryExecutor {
       const gate = localQuerySafetyGate(sql, guard, catalog);
       if (gate.verdict === "deny") {
         lastError = gate.error;
-        if (isRepairable(gate.error.code) && attempt < this.maxAttempts) {
+        if (isRepairable(gate.error.code) && attempt < effectiveMaxAttempts) {
           repairFeedback = feedbackFor(lastError);
           this.span({
             node: "repair",
@@ -501,6 +846,19 @@ export class ValidatedQueryExecutor {
         return { status: "restricted", error: gate.error, sql, attempts: attempt };
       }
       if (gate.verdict === "needs_clarification") {
+        if (input.timeRange?.trim() && attempt < this.maxAttempts) {
+          repairFeedback = [
+            "The user already supplied a time range, but the SQL did not include a valid conjunctive orders.purchase_date range predicate.",
+            "Use the selected range exactly as a [start, end) bound and preserve the requested metric.",
+          ].join(" ");
+          this.span({
+            node: "repair",
+            type: "node_done",
+            attempt,
+            payload: { strategy: "selected_time_range", nextAttempt: attempt + 1 },
+          });
+          continue;
+        }
         return {
           status: "needs_clarification",
           reason: gate.reason,
@@ -550,6 +908,7 @@ export class ValidatedQueryExecutor {
           attempt,
           sql: finalSql,
           timeoutSimplified,
+          maxAttempts: effectiveMaxAttempts,
         });
         if (routed.retry) {
           lastError = error;
@@ -566,10 +925,10 @@ export class ValidatedQueryExecutor {
         };
       }
 
-      // run_query: rows pass through untouched (D-19). Every attempt emits
-      // its own tool_call span: ok:true on success, ok:false plus the
-      // contract code (never message/PII) on any failure, so the run_done
-      // roll-up counts attempts and failures off the same span stream.
+      // run_query retains a bounded transient validation buffer; values pass
+      // through untouched (D-19). Every attempt emits its own tool_call span:
+      // ok:true on success, ok:false plus the contract code (never
+      // message/PII) on failure, so run_done can derive attempt/failure counts.
       {
         const check = checkBudget(budget);
         if (check.tripped) return budgetTrip(check.reason, attempt);
@@ -583,7 +942,7 @@ export class ValidatedQueryExecutor {
         const rawRun = await this.mcp.call("run_query", {
           ...identity,
           sql: finalSql,
-          maxRows: 200,
+          maxRows: TRANSIENT_ROW_BUFFER_MAX,
         });
         const parsedRun = RunQueryOutputSchema.safeParse(rawRun);
         if (!parsedRun.success) {
@@ -605,7 +964,7 @@ export class ValidatedQueryExecutor {
           };
         }
         columns = parsedRun.data.columns;
-        rows = parsedRun.data.rows;
+        rows = parsedRun.data.rows.slice(0, TRANSIENT_ROW_BUFFER_MAX);
         maskedColumns = parsedRun.data.maskedColumns;
         rowScopeApplied = parsedRun.data.rowScopeApplied;
         partials.rowsFetched = rows.length;
@@ -635,6 +994,7 @@ export class ValidatedQueryExecutor {
           attempt,
           sql: finalSql,
           timeoutSimplified,
+          maxAttempts: effectiveMaxAttempts,
         });
         if (routed.retry) {
           lastError = error;
@@ -658,13 +1018,25 @@ export class ValidatedQueryExecutor {
         // immediately with zero probes.
         if (attempt === 1 && hasWhereFilter(guard.ast)) {
           const diagnostic = await this.zeroRowProbe(
-            guard.tables[0] ?? input.candidateTables[0],
             identity,
             budget,
             attempt,
+            catalog,
+            guard.ast,
+            guard.tables,
           );
           if (diagnostic.budgetTripped) {
             return budgetTrip(diagnostic.budgetTripped, attempt);
+          }
+          if (diagnostic.repairFeedback && attempt < this.maxAttempts) {
+            repairFeedback = diagnostic.repairFeedback;
+            this.span({
+              node: "repair",
+              type: "node_done",
+              attempt,
+              payload: { strategy: "zero_row_diagnostic", nextAttempt: attempt + 1 },
+            });
+            continue;
           }
           return {
             status: "no_data",
@@ -717,14 +1089,15 @@ export class ValidatedQueryExecutor {
    */
   private routeMcpError(
     error: DbToolError,
-    ctx: { attempt: number; sql: string; timeoutSimplified: boolean },
+    ctx: { attempt: number; sql: string; timeoutSimplified: boolean; maxAttempts?: number },
   ): {
     retry: true;
     forcedSql: string | null;
     feedback: string | null;
     timeoutSimplified: boolean;
   } | { retry: false } {
-    if (error.code === "TIMEOUT" && !ctx.timeoutSimplified) {
+    const maxAttempts = ctx.maxAttempts ?? this.maxAttempts;
+    if (error.code === "TIMEOUT" && !ctx.timeoutSimplified && ctx.attempt < maxAttempts) {
       this.span({
         node: "repair",
         type: "node_done",
@@ -738,7 +1111,7 @@ export class ValidatedQueryExecutor {
         timeoutSimplified: true,
       };
     }
-    if (isRepairable(error.code) && ctx.attempt < this.maxAttempts) {
+    if (isRepairable(error.code) && ctx.attempt < maxAttempts) {
       this.span({
         node: "repair",
         type: "node_done",
@@ -756,53 +1129,219 @@ export class ValidatedQueryExecutor {
   }
 
   /**
-   * The single zero-row probe: sample_rows (server cap n <= 5) against the
-   * first scanned table. Never a full-table rescan; probe failure still
-   * concludes no_data.
+   * One bounded zero-row diagnostic pass. It resolves direct string-literal
+   * filters to their table/column pairs, re-describes and samples each relevant
+   * table once, then runs guarded DISTINCT probes capped at 20 rows. Only a
+   * concrete near-match may trigger attempt 2.
    */
   private async zeroRowProbe(
-    table: string | undefined,
     identity: { runId: string; userId: string; roleScope: string },
     budget: BudgetState,
     attempt: number,
-  ): Promise<{ note: string; budgetTripped?: BudgetTripReason }> {
-    const target = table ?? "unknown";
-    const check = checkBudget(budget);
-    if (check.tripped) {
-      return { note: "", budgetTripped: check.reason };
-    }
-    const started = Date.now();
-    try {
-      const raw = await this.mcp.call("sample_rows", {
-        ...identity,
-        table: target,
-        n: 5,
-      });
-      const parsed = SampleRowsOutputSchema.safeParse(raw);
-      const rowCount = parsed.success ? parsed.data.rowCount : -1;
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        durationMs: Date.now() - started,
-        payload: { tool: "sample_rows", table: target, rowCount },
-      });
+    catalog: SchemaCatalog,
+    ast: unknown,
+    scannedTables: readonly string[],
+  ): Promise<{
+    note: string;
+    repairFeedback?: string;
+    budgetTripped?: BudgetTripReason;
+  }> {
+    const predicates = stringFilterPredicates(ast, catalog, scannedTables);
+    if (predicates.length === 0) {
       return {
-        note: `zero-row diagnostic: sample_rows ${target} n=5 returned ${rowCount} rows; filters match nothing, concluding no_data`,
-      };
-    } catch (thrown) {
-      const error = asDbToolError("sample_rows", thrown);
-      this.span({
-        node: "diagnose",
-        type: "tool_call",
-        attempt,
-        durationMs: Date.now() - started,
-        payload: { tool: "sample_rows", table: target, probeError: error.code },
-      });
-      return {
-        note: `zero-row diagnostic: sample_rows ${target} probe failed (${error.code}), concluding no_data`,
+        note:
+          "zero-row diagnostic: no direct string-literal filter could be " +
+          "safely resolved, concluding no_data",
       };
     }
+
+    const described = new Set<string>();
+    const sampled = new Set<string>();
+    const notes: string[] = [];
+    for (const predicate of predicates) {
+      const tableKey = predicate.table.toLowerCase();
+      if (!described.has(tableKey)) {
+        const check = checkBudget(budget);
+        if (check.tripped) return { note: "", budgetTripped: check.reason };
+        try {
+          const started = Date.now();
+          const raw = await this.mcp.call("describe_table", {
+            ...identity,
+            table: predicate.table,
+          });
+          const parsed = DescribeTableOutputSchema.safeParse(raw);
+          if (!parsed.success) {
+            notes.push(`describe_table ${predicate.table} returned an unexpected shape`);
+            continue;
+          }
+          described.add(tableKey);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - started,
+            payload: { tool: "describe_table", table: predicate.table },
+          });
+        } catch (thrown) {
+          const error = asDbToolError("describe_table", thrown);
+          notes.push(`describe_table ${predicate.table} probe failed (${error.code})`);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            payload: { tool: "describe_table", table: predicate.table, probeError: error.code },
+          });
+          continue;
+        }
+      }
+
+      let sampleNote = "sample_rows was unavailable";
+      if (!sampled.has(tableKey)) {
+        const check = checkBudget(budget);
+        if (check.tripped) return { note: "", budgetTripped: check.reason };
+        try {
+          const started = Date.now();
+          const raw = await this.mcp.call("sample_rows", {
+            ...identity,
+            table: predicate.table,
+            n: 5,
+          });
+          const parsed = SampleRowsOutputSchema.safeParse(raw);
+          sampleNote = parsed.success
+            ? `sample_rows ${predicate.table} n=5 returned ${parsed.data.rowCount} rows`
+            : `sample_rows ${predicate.table} returned an unexpected shape`;
+          sampled.add(tableKey);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - started,
+            payload: {
+              tool: "sample_rows",
+              table: predicate.table,
+              ...(parsed.success ? { rowCount: parsed.data.rowCount } : {}),
+            },
+          });
+        } catch (thrown) {
+          const error = asDbToolError("sample_rows", thrown);
+          sampleNote = `sample_rows ${predicate.table} probe failed (${error.code})`;
+          sampled.add(tableKey);
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            payload: { tool: "sample_rows", table: predicate.table, probeError: error.code },
+          });
+        }
+      }
+
+      const distinctSql =
+        `SELECT DISTINCT ${quotedIdentifier(predicate.column)} ` +
+        `FROM ${quotedIdentifier(predicate.table)} LIMIT ${DIAGNOSTIC_DISTINCT_LIMIT}`;
+      const distinctGuard = await sqlGuard(distinctSql, catalog);
+      if (!distinctGuard.ok) {
+        notes.push(`guarded distinct ${predicate.table}.${predicate.column} was denied`);
+        continue;
+      }
+
+      const explainCheck = checkBudget(budget);
+      if (explainCheck.tripped) return { note: "", budgetTripped: explainCheck.reason };
+      try {
+        const started = Date.now();
+        const raw = await this.mcp.call("explain_query", {
+          ...identity,
+          sql: distinctSql,
+        });
+        const parsed = ExplainQueryOutputSchema.safeParse(raw);
+        if (!parsed.success) {
+          notes.push(`distinct ${predicate.table}.${predicate.column} explain returned an unexpected shape`);
+          continue;
+        }
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          durationMs: Date.now() - started,
+          payload: {
+            tool: "explain_query",
+            table: predicate.table,
+            column: predicate.column,
+            estimatedCost: parsed.data.estimatedCost,
+          },
+        });
+      } catch (thrown) {
+        const error = asDbToolError("explain_query", thrown);
+        notes.push(`distinct ${predicate.table}.${predicate.column} explain failed (${error.code})`);
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          payload: {
+            tool: "explain_query",
+            table: predicate.table,
+            column: predicate.column,
+            probeError: error.code,
+          },
+        });
+        continue;
+      }
+
+      const runCheck = checkBudget(budget);
+      if (runCheck.tripped) return { note: "", budgetTripped: runCheck.reason };
+      try {
+        const started = Date.now();
+        const raw = await this.mcp.call("run_query", {
+          ...identity,
+          sql: distinctSql,
+          maxRows: DIAGNOSTIC_DISTINCT_LIMIT,
+        });
+        const parsed = RunQueryOutputSchema.safeParse(raw);
+        if (!parsed.success) {
+          notes.push(`distinct ${predicate.table}.${predicate.column} returned an unexpected shape`);
+          continue;
+        }
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          durationMs: Date.now() - started,
+          payload: {
+            tool: "run_query",
+            table: predicate.table,
+            column: predicate.column,
+            rowCount: parsed.data.rowCount,
+          },
+        });
+        const repairFeedback = diagnosticMismatch(predicate, parsed.data.rows);
+        const resultNote =
+          `${sampleNote}; distinct ${predicate.table}.${predicate.column} ` +
+          `returned ${parsed.data.rowCount} values`;
+        if (repairFeedback) {
+          return {
+            note: `zero-row diagnostic: ${resultNote}; attempting one repair`,
+            repairFeedback,
+          };
+        }
+        notes.push(resultNote);
+      } catch (thrown) {
+        const error = asDbToolError("run_query", thrown);
+        notes.push(`distinct ${predicate.table}.${predicate.column} probe failed (${error.code})`);
+        this.span({
+          node: "diagnose",
+          type: "tool_call",
+          attempt,
+          payload: {
+            tool: "run_query",
+            table: predicate.table,
+            column: predicate.column,
+            probeError: error.code,
+          },
+        });
+      }
+    }
+    return {
+      note: `zero-row diagnostic: ${notes.join("; ")}; concluding no_data`,
+    };
   }
 }
 

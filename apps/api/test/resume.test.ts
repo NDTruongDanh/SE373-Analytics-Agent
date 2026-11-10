@@ -4,7 +4,7 @@
 // injected UC handler (interrupt from @langchain/langgraph directly) so no
 // agent internals beyond the registry contract are touched.
 
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
@@ -53,7 +53,21 @@ const stubEnv = {
 
 /** UC handler that pauses for approval, then answers from the resume value. */
 const pausingHandler: UcEntryHandler = async (state) => {
-  const verdict = interrupt({ action: "review_sql", sql: "SELECT 1" }) as string;
+  const clarification = state.question === "please clarify";
+  const verdict = interrupt(
+    clarification
+      ? {
+          action: "clarify_then_query",
+          pendingClarification: {
+            field: "timeRange",
+            question: "Select a time range",
+            options: ["2026-01-01/2026-04-01", "2026-04-01/2026-07-01"],
+            attempts: 0,
+            table: "orders",
+          },
+        }
+      : { action: "review_sql", sql: "SELECT 1" },
+  ) as string;
   return {
     answerText: `decided:${String(verdict)}`,
     status: "ok",
@@ -121,11 +135,27 @@ describe("buildApp resume", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects a resume body missing value or carrying null with 400", async () => {
+    const resEmpty = await fetch(`${apiBase}/api/runs/x/resume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const resNull = await fetch(`${apiBase}/api/runs/x/resume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: null }),
+    });
+    expect(resNull.status).toBe(400);
+  });
+
   it("pauses on interrupt then resumes on the same thread without re-running", async () => {
     const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
     expect(asked.status).toBe(200);
     const askBlocks = parseSse(asked.text);
-    expect(askBlocks.map((b) => b.event)).toEqual(["interrupt_waiting"]);
+    expect(askBlocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
     const runId = askBlocks[0].data["runId"] as string;
     const threadId = askBlocks[0].data["threadId"] as string;
     expect(threadId.startsWith("chat:sales_south:")).toBe(true);
@@ -135,9 +165,6 @@ describe("buildApp resume", () => {
     const resumeBlocks = parseSse(resumed.text);
     expect(resumeBlocks.map((b) => b.event)).toEqual([
       "intent_parsed",
-      "schema_retrieved",
-      "sql_generated",
-      "query_running",
       "completed",
     ]);
     expect(new Set(resumeBlocks.map((b) => b.data["threadId"]))).toEqual(new Set([threadId]));
@@ -149,6 +176,23 @@ describe("buildApp resume", () => {
     expect(completed.status).toBe("ok");
     expect(completed.answerText).toBe("decided:approve");
     expect(completed.toolsCalled).toEqual(["review_tool"]);
+  });
+
+  it("labels a direct UC clarification interrupt in its SSE and trace metadata", async () => {
+    const asked = await post("/api/ask", { question: "please clarify", persona: "sales_south" });
+    expect(asked.status).toBe(200);
+    const blocks = parseSse(asked.text);
+    expect(blocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
+    const block = blocks.find((b) => b.event === "interrupt_waiting");
+    expect(block?.data["data"]).toMatchObject({
+      pendingClarification: {
+        field: "timeRange",
+        options: ["2026-01-01/2026-04-01", "2026-04-01/2026-07-01"],
+      },
+    });
+    const runId = block?.data["runId"] as string;
+    const requested = eventsOf(readTraceEvents(tracesDir, runId), "approval_requested")[0];
+    expect((requested?.["payload"] as { kind?: unknown }).kind).toBe("clarification");
   });
 
   it("rehydrates the thread from the trace file after a host restart", async () => {
@@ -209,10 +253,93 @@ describe("buildApp resume", () => {
     expect(out.status).toBe(404);
   });
 
+  it("forwards plan payload in interrupt_waiting SSE event for UC-05 plan review", async () => {
+    const planReviewHandler: UcEntryHandler = async (state) => {
+      const mockPlan = {
+        question: state.question,
+        metricName: "net_revenue",
+        steps: [{ stepId: "s1", status: "todo" }],
+      };
+      const verdict = interrupt({
+        action: "review_analysis_plan",
+        plan: mockPlan,
+        currentPlan: mockPlan,
+      });
+      return {
+        answerText: `plan_reviewed:${JSON.stringify(verdict)}`,
+        status: "ok",
+      };
+    };
+
+    const localTraces = mkdtempSync(path.join(tmpdir(), "fullhost-plan-"));
+    const localApp = buildApp({
+      checkpointer: new MemorySaver(),
+      mcpUrl: "http://127.0.0.1:9",
+      tracesDir: localTraces,
+      env: stubEnv,
+      ucHandlers: {
+        "root-cause-analysis": planReviewHandler,
+      },
+    });
+
+    const server = localApp.listen(0);
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const asked = await fetch(`http://127.0.0.1:${port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: "Vì sao doanh thu tháng 9 giảm?",
+          persona: "sales_south",
+        }),
+      });
+      const text = await asked.text();
+      const blocks = parseSse(text);
+      expect(blocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
+
+      const interruptBlock = blocks.find((b) => b.event === "interrupt_waiting");
+      expect(interruptBlock).toBeDefined();
+
+      const eventData = interruptBlock!.data["data"] as Record<string, unknown>;
+      expect(eventData.action).toBe("review_analysis_plan");
+      expect(eventData.plan).toBeDefined();
+      expect(eventData.currentPlan).toBeDefined();
+
+      const runId = interruptBlock!.data["runId"] as string;
+
+      // Resuming with {} or { value: null } must be rejected with 400 and cannot execute plan
+      const resEmpty = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(resEmpty.status).toBe(400);
+
+      const resNull = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: null }),
+      });
+      expect(resNull.status).toBe(400);
+
+      const resumed = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: { action: "APPROVE" } }),
+      });
+      const resText = await resumed.text();
+      const resBlocks = parseSse(resText);
+      expect(resBlocks.map((b) => b.event)).toContain("completed");
+    } finally {
+      server.close();
+      rmSync(localTraces, { recursive: true, force: true });
+    }
+  });
+
   it("emits one approval_requested plus one approval_decided with metadata only", async () => {
     const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
     expect(asked.status).toBe(200);
-    expect(parseSse(asked.text).map((b) => b.event)).toEqual(["interrupt_waiting"]);
+    expect(parseSse(asked.text).map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
     const runId = parseSse(asked.text)[0].data["runId"] as string;
 
     // Interrupt leaves exactly one request and no terminal spans: the run
@@ -375,7 +502,7 @@ describe("buildResumeInvokeOptions", () => {
       });
       expect(askRes.status).toBe(200);
       const askBlocks = parseSse(await askRes.text());
-      expect(askBlocks.map((b) => b.event)).toEqual(["interrupt_waiting"]);
+      expect(askBlocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
       const runId = askBlocks[0].data["runId"] as string;
       const resumeRes = await fetch(`${base}/api/runs/${runId}/resume`, {
         method: "POST",

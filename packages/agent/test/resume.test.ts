@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { MemorySaver, StateGraph, StateSchema, START, END } from "@langchain/langgraph";
-import * as z from "zod";
+import { z } from "zod";
 import {
   isSameThread,
   makeThreadId,
@@ -57,28 +57,45 @@ describe("hitl helpers", () => {
     );
   });
 
-  it("returns the needs_clarification payload with options", () => {
+  it("returns the structured needs_clarification payload", () => {
     expect(
-      requestClarification({ reason: "pick a metric", options: ["a", "b"] }),
+      requestClarification({
+        field: "metric",
+        question: "pick a metric",
+        options: ["a", "b"],
+        attempts: 0,
+      }),
     ).toEqual({
       status: "needs_clarification",
       reason: "pick a metric",
       sql: null,
-      pendingClarification: ["a", "b"],
+      pendingClarification: {
+        field: "metric",
+        question: "pick a metric",
+        options: ["a", "b"],
+        attempts: 0,
+      },
     });
     expect(
       requestClarification({
-        reason: "which table",
-        options: ["orders"],
+        field: "timeRange",
+        question: "which time range",
+        options: ["q1", "q2"],
+        attempts: 1,
         table: "orders",
       }).table,
     ).toBe("orders");
-    expect(() => requestClarification({ reason: "", options: ["a"] })).toThrow(
-      /reason/,
+    expect(() =>
+      requestClarification({ field: "metric", question: "", options: ["a", "b"], attempts: 0 }),
+    ).toThrow(
+      /question/,
     );
     expect(() =>
-      requestClarification({ reason: "r", options: [] }),
-    ).toThrow(/option/);
+      requestClarification({ field: "metric", question: "r", options: ["a"], attempts: 0 }),
+    ).toThrow(/options/);
+    expect(() =>
+      requestClarification({ field: "metric", question: "r", options: ["a", "b"], attempts: 3 }),
+    ).toThrow(/attempts/);
   });
 });
 

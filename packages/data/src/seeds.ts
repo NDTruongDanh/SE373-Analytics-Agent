@@ -7,7 +7,7 @@
 // is only ever read by verify, never executed by the loader).
 import { readFileSync } from "node:fs";
 import { DEFAULT_SEEDS_PATH } from "./constants.js";
-import * as z from "zod";
+import { z } from "zod";
 
 export { DEFAULT_SEEDS_PATH };
 
