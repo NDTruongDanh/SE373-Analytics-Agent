@@ -7,7 +7,7 @@
 // version literals, missing columns, empty names and extra keys all throw.
 import { readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
-import * as z from "zod";
+import { z } from "zod";
 import {
   DEFAULT_SENSITIVE_COLUMNS,
   DEFAULT_SENSITIVE_COLUMNS_PATH,

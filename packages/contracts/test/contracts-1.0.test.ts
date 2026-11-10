@@ -152,7 +152,7 @@ describe("contracts 1.1.0", () => {
   });
 
   it("widens SQLAnswerStatus with needs_clarification and restricted", () => {
-    for (const status of ["ok", "no_data", "cannot_answer", "needs_clarification", "restricted", "error"]) {
+    for (const status of ["ok", "no_data", "cannot_answer", "needs_clarification", "restricted", "error", "false_premise"]) {
       expect(SQLAnswerStatusSchema.parse(status)).toBe(status);
       expect(SQLAnswerSchema.parse(validAnswer(status)).status).toBe(status);
     }
@@ -160,10 +160,82 @@ describe("contracts 1.1.0", () => {
 
   it("discriminates all five AgentResponse variants", () => {
     expect(AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer() }).kind).toBe("sql_answer");
-    for (const kind of ["insight_report", "analysis_plan", "root_cause", "anomaly_alert"]) {
-      const parsed = AgentResponseSchema.parse({ kind, status: "ok", summary: "Noted.", data: { n: 1 } });
-      expect(parsed.kind).toBe(kind);
-    }
+
+    // anomaly_alert still accepts loose data (z.unknown)
+    const parsedAlert = AgentResponseSchema.parse({ kind: "anomaly_alert", status: "ok", summary: "Noted.", data: { n: 1 } });
+    expect(parsedAlert.kind).toBe("anomaly_alert");
+
+    // analysis_plan requires strict AnalysisPlanSchema data
+    const validPlanData = {
+      question: "Vì sao doanh thu quý 3 giảm?",
+      metricName: "net_revenue",
+      metricType: "additive" as const,
+      currentPeriod: { start: "2026-07-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-04-01", end: "2026-06-30" },
+      baselineVal: 10000000,
+      currentVal: 8500000,
+      absDelta: -1500000,
+      pctDelta: -15.0,
+      isValidBaseline: true,
+      steps: [],
+      totalQueriesCount: 0,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      unexploredBranches: [],
+      residualOtherAbs: 0,
+    };
+    expect(
+      AgentResponseSchema.parse({ kind: "analysis_plan", status: "ok", summary: "Kế hoạch phân tích.", data: validPlanData }).kind,
+    ).toBe("analysis_plan");
+
+    // root_cause requires strict RootCauseAnswerSchema data
+    const validRcaData = {
+      question: "Vì sao doanh thu quý 3 giảm?",
+      metricName: "net_revenue",
+      metricType: "additive" as const,
+      currentPeriod: { start: "2026-07-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-04-01", end: "2026-06-30" },
+      baselineVal: 10000000,
+      currentVal: 8500000,
+      absDelta: -1500000,
+      pctDelta: -15.0,
+      mathVerified: true,
+      mathDiffRatio: 0.0,
+      primaryCauses: [],
+      residualOtherAbs: 0,
+      unexploredBranches: [],
+      totalQueriesCount: 0,
+      finalReportMarkdown: "# Báo cáo phân tích nguyên nhân",
+    };
+    expect(
+      AgentResponseSchema.parse({ kind: "root_cause", status: "ok", summary: "Nguyên nhân gốc.", data: validRcaData }).kind,
+    ).toBe("root_cause");
+
+    // insight_report requires strict InsightReportSchema data (UC-03)
+    const validInsightData = {
+      chartType: "bar" as const,
+      chartSpec: {
+        chart: "BarChart" as const,
+        labels: ["Nam", "Trung", "Bac"],
+        series: [{ category: "revenue", values: [5200, 3100, 2800] }],
+      },
+      chartReason: "Comparing revenue across three regions.",
+      insights: [
+        {
+          claim: "South revenue was 5,200M VND, up 8.0% vs August.",
+          evidence: [{ column: "revenue", rowKey: "Nam|2026-09", value: 5200 }],
+        },
+      ],
+      caveats: [],
+    };
+    expect(
+      AgentResponseSchema.parse({ kind: "insight_report", status: "ok", summary: "Verified insights.", data: validInsightData }).kind,
+    ).toBe("insight_report");
+    expect(() =>
+      AgentResponseSchema.parse({ kind: "insight_report", status: "ok", summary: "Noted.", data: { n: 1 } }),
+    ).toThrow();
+
     expect(() => AgentResponseSchema.parse({ kind: "nope", status: "ok", summary: "x", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "insight_report", status: "ok", data: null })).toThrow();
     expect(() => AgentResponseSchema.parse({ kind: "sql_answer", ...validAnswer("bogus") })).toThrow();
@@ -214,8 +286,29 @@ describe("contracts 1.1.0", () => {
       score: 0.9,
     };
     expect(SearchSemanticLayerOutputSchema.parse({ chunks: [chunk] }).chunks).toHaveLength(1);
-    expect(RenderChartInputSchema.parse({ chartType: "bar", spec: { x: "status" } }).chartType).toBe("bar");
-    expect(() => RenderChartInputSchema.parse({ chartType: "3d", spec: {} })).toThrow();
+    expect(
+      RenderChartInputSchema.parse({
+        chartType: "bar",
+        spec: {
+          chart: "BarChart",
+          labels: ["Nam", "Trung", "Bac"],
+          series: [{ category: "revenue", values: [5200, 3100, 2800] }],
+        },
+      }).chartType,
+    ).toBe("bar");
+    expect(() =>
+      RenderChartInputSchema.parse({
+        chartType: "3d",
+        spec: {
+          chart: "BarChart",
+          labels: ["Nam"],
+          series: [{ category: "revenue", values: [1] }],
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      RenderChartInputSchema.parse({ chartType: "bar", spec: { chart: "None" } }),
+    ).toThrow();
     const alert = {
       recipientId: "u1",
       severity: "critical",

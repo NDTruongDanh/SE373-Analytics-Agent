@@ -5,7 +5,7 @@ description: Cross-cutting safety for the Analytics Agent covering read-only con
 tags: [safety, access-control, rbac, pii-masking, read-only, security]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-01T07:02:11.362Z
+    at: 2026-11-06T15:32:05.739Z
 sources:
   - id: openwiki-source-a53a8de5929686354550dafa
     resource: repo://docs/prd.md

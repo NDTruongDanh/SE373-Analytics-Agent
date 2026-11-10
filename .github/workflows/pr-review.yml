@@ -1,0 +1,56 @@
+name: pr-review
+
+# Advisory architecture review on every PR into main — on creation AND on
+# every push (types include `synchronize`). Each run diffs the latest head
+# against docs/architecture.md and updates ONE living PR comment in place
+# (matched by `<!-- opencode-pr-review -->`, stamped with the reviewed
+# commit), so the visible review always matches the newest pushed code.
+# Uses the SAME OpenCode Go key as OpenWiki (no new secret):
+#   Settings → Secrets and variables → Actions → OPENCODE_GO_API_KEY
+# Model is Responses-only (Go serves muse-spark-1.3-contributor ONLY at
+# POST {base}/responses); effort xhigh is sent as `reasoning.effort`
+# (not a `#xhigh` model-ID suffix — `#` fails model-ID validation).
+# The reviewer diffs against docs/architecture.md as the source of truth.
+#
+# Non-blocking by design: this job is NOT part of the `gate` required check
+# (see ruleset-main.json + ci.yml), so API/key failures exit 0 with a skip
+# notice instead of failing the PR. Fork PRs have no secret access and get
+# the same skip notice.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JS + install
+        uses: ./.github/actions/setup-js
+
+      - name: Architecture review (muse-spark-1.3-contributor @ xhigh)
+        env:
+          # Same secret OpenWiki uses; empty on forks → script posts skip notice.
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+          OPENAI_COMPATIBLE_BASE_URL: https://opencode.ai/inference/go/openai/v1
+          PR_REVIEW_MODEL: muse-spark-1.3-contributor
+          PR_REVIEW_EFFORT: xhigh
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/pr-review.mjs

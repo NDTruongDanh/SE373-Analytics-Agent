@@ -23,7 +23,7 @@ import {
 } from "@shared/contracts";
 import { sqlGuard } from "@shared/access-policy";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
-import * as z from "zod";
+import { z } from "zod";
 import {
   checkBudget,
   createBudgetState,
@@ -106,6 +106,8 @@ export interface ExecutorPrincipal {
 
 export interface ExecutorRunInput {
   question: string;
+  /** User-supplied or clarification-selected range the SQL must honor. */
+  timeRange?: string | null;
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
   principal: ExecutorPrincipal;
@@ -122,6 +124,12 @@ export interface ExecutorRunInput {
    */
   catalog?: SchemaCatalog;
   /** Reused across calls to share one run budget; created when absent. */
+  budget?: BudgetState;
+}
+
+export interface TimeRangeOptionsInput {
+  principal: ExecutorPrincipal;
+  /** Reused across calls so metadata lookup respects the enclosing run budget. */
   budget?: BudgetState;
 }
 
@@ -282,6 +290,34 @@ function catalogFromDescribe(
       })),
     })),
   };
+}
+
+function isoDate(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const date = value.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined;
+}
+
+function quarterStart(date: string): Date {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  return new Date(Date.UTC(value.getUTCFullYear(), Math.floor(value.getUTCMonth() / 3) * 3, 1));
+}
+
+function formatIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** Two to four canonical [start, end) calendar quarters intersecting the data. */
+function quarterOptions(minDate: string, maxDate: string): string[] {
+  const minimum = quarterStart(minDate);
+  const maximum = quarterStart(maxDate);
+  const quarters: string[] = [];
+  for (let current = maximum; current >= minimum && quarters.length < 4; ) {
+    const end = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 3, 1));
+    quarters.push(`${formatIsoDate(current)}/${formatIsoDate(end)}`);
+    current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 3, 1));
+  }
+  return quarters.reverse();
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -519,6 +555,84 @@ export class ValidatedQueryExecutor {
     return this.emitSpan({ ...event });
   }
 
+  /**
+   * Read the actual orders date extent through the existing MCP boundary, then
+   * offer parseable calendar-quarter ranges. The fixed aggregate returns one
+   * row and never becomes part of checkpoint state or a synthesis prompt.
+   */
+  async timeRangeOptions(input: TimeRangeOptionsInput): Promise<string[]> {
+    const budget = input.budget ?? createBudgetState();
+    const sql =
+      'SELECT MIN("purchase_date") AS min_date, MAX("purchase_date") AS max_date ' +
+      'FROM "orders" WHERE "purchase_date" IS NOT NULL';
+    let check = checkBudget(budget);
+    if (check.tripped) return [];
+    const explainStarted = Date.now();
+    try {
+      const rawExplain = await this.mcp.call("explain_query", {
+        ...input.principal,
+        sql,
+      });
+      const parsedExplain = ExplainQueryOutputSchema.safeParse(rawExplain);
+      if (!parsedExplain.success) return [];
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - explainStarted,
+        payload: {
+          tool: "explain_query",
+          purpose: "time_range_options",
+          estimatedCost: parsedExplain.data.estimatedCost,
+        },
+      });
+    } catch (thrown) {
+      const error = asDbToolError("explain_query", thrown);
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - explainStarted,
+        payload: { tool: "explain_query", purpose: "time_range_options", probeError: error.code },
+      });
+      return [];
+    }
+
+    check = checkBudget(budget);
+    if (check.tripped) return [];
+    const runStarted = Date.now();
+    try {
+      const raw = await this.mcp.call("run_query", {
+        ...input.principal,
+        sql,
+        maxRows: 1,
+      });
+      const parsed = RunQueryOutputSchema.safeParse(raw);
+      if (!parsed.success) return [];
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - runStarted,
+        payload: { tool: "run_query", purpose: "time_range_options", rowCount: parsed.data.rowCount },
+      });
+      const row = parsed.data.rows[0];
+      const minDate = isoDate(row?.["min_date"]);
+      const maxDate = isoDate(row?.["max_date"]);
+      return minDate && maxDate ? quarterOptions(minDate, maxDate) : [];
+    } catch (thrown) {
+      const error = asDbToolError("run_query", thrown);
+      this.span({
+        node: "clarify",
+        type: "tool_call",
+        attempt: 0,
+        durationMs: Date.now() - runStarted,
+        payload: { tool: "run_query", purpose: "time_range_options", probeError: error.code },
+      });
+      return [];
+    }
+  }
+
   async run(input: ExecutorRunInput): Promise<ExecutorResult> {
     const budget = input.budget ?? createBudgetState();
     const { runId, userId, roleScope } = input.principal;
@@ -615,10 +729,13 @@ export class ValidatedQueryExecutor {
         let proposal: SqlProposal;
         let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
         let usageModel: string | undefined;
+        const timeRangeContext = input.timeRange?.trim()
+          ? `\n\n<user-selected-time-range>${JSON.stringify(input.timeRange.trim())}</user-selected-time-range>`
+          : "";
         const prompt =
           repairFeedback === null
-            ? input.question
-            : `${input.question}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
+            ? `${input.question}${timeRangeContext}`
+            : `${input.question}${timeRangeContext}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
         try {
           const out = await invokeWithUsage(this.model, SqlProposalSchema, prompt, {
             name: "sql_proposal",
@@ -720,6 +837,19 @@ export class ValidatedQueryExecutor {
         return { status: "restricted", error: gate.error, sql, attempts: attempt };
       }
       if (gate.verdict === "needs_clarification") {
+        if (input.timeRange?.trim() && attempt < this.maxAttempts) {
+          repairFeedback = [
+            "The user already supplied a time range, but the SQL did not include a valid conjunctive orders.purchase_date range predicate.",
+            "Use the selected range exactly as a [start, end) bound and preserve the requested metric.",
+          ].join(" ");
+          this.span({
+            node: "repair",
+            type: "node_done",
+            attempt,
+            payload: { strategy: "selected_time_range", nextAttempt: attempt + 1 },
+          });
+          continue;
+        }
         return {
           status: "needs_clarification",
           reason: gate.reason,

@@ -1,0 +1,1 @@
+{"runId":"uc01-benchmark-sanitized","threadId":"eval:uc01:benchmark","userId":"eval-runner","role":"sales_south","node":"query","type":"completed","ts":"2026-11-06T00:00:00.000Z","durationMs":42,"payload":{"status":"ok","rows":[{"status":"delivered","customerEmail":"[REDACTED_EMAIL]","customerPhone":"[REDACTED_PHONE]"}]},"spanId":"uc01-benchmark-span-1","attempt":1}

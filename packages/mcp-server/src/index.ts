@@ -30,6 +30,7 @@ export {
 } from "./catalog.js";
 export { TOOL_SCOPES, TOOL_SPECS, type ToolName, type ToolSpec } from "./tools.js";
 export {
+  EVAL_CLIENTS_ENV,
   McpClientsSchema,
   loadMcpClients,
   loadSensitiveColumns,

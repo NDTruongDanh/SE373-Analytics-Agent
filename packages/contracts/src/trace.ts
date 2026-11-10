@@ -1,4 +1,4 @@
-import * as z from "zod";
+import { z } from "zod";
 
 // Trace event envelope (PRD 4.4): every run carries a runId; each event
 // records who, which node, what happened, when, and how long it took.
