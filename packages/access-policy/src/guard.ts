@@ -500,6 +500,12 @@ export async function sqlGuard(
       // the name provably comes from that subquery's select list.
       // Unknown qualifiers fail closed.
       if (cteNames.has(q)) continue;
+      // A CTE can be given a FROM alias (`FROM first_orders fo`), and its
+      // column refs are then qualified by that alias rather than ctename.
+      // CTE outputs remain opaque at this guard stage, just as refs qualified
+      // by the ctename itself do; resolveColumns performs deeper resolution.
+      const cteSource = aliasToTable.get(q);
+      if (cteSource !== undefined && cteNames.has(cteSource.toLowerCase())) continue;
       const outputs = subqueryOutputs.get(q);
       if (outputs !== undefined) {
         if (!outputs.includes(ref.name.toLowerCase())) {

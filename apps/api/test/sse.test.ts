@@ -103,14 +103,24 @@ describe("sse contracts-schema gate (D-20)", () => {
     const payload = interruptPayload({
       action: "review_analysis_plan",
       reason: "Please review the proposed plan before execution",
-      pendingClarification: ["opt1", "opt2"],
+      pendingClarification: {
+        field: "timeRange",
+        question: "Select a time range",
+        options: ["opt1", "opt2"],
+        attempts: 0,
+      },
       plan: { metricName: "net_revenue" },
       currentPlan: { metricName: "net_revenue" },
     });
     expect(payload).toEqual({
       action: "review_analysis_plan",
       reason: "Please review the proposed plan before execution",
-      pendingClarification: ["opt1", "opt2"],
+      pendingClarification: {
+        field: "timeRange",
+        question: "Select a time range",
+        options: ["opt1", "opt2"],
+        attempts: 0,
+      },
       plan: { metricName: "net_revenue" },
       currentPlan: { metricName: "net_revenue" },
     });

@@ -71,6 +71,17 @@ describe("sqlGuard valid shapes", () => {
     }
   });
 
+  it("V5b accepts a qualified reference through a single-level CTE alias", async () => {
+    const result = await sqlGuard(
+      "WITH regional AS (SELECT status, sum(total) AS revenue FROM orders GROUP BY status) SELECT r.revenue FROM regional r",
+      fixtureCatalog,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.tables).toEqual(["orders"]);
+    }
+  });
+
   it("V6 accepts a subquery with alias", async () => {
     const result = await sqlGuard(
       "SELECT * FROM (SELECT id, total FROM orders) AS sub",

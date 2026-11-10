@@ -53,7 +53,21 @@ const stubEnv = {
 
 /** UC handler that pauses for approval, then answers from the resume value. */
 const pausingHandler: UcEntryHandler = async (state) => {
-  const verdict = interrupt({ action: "review_sql", sql: "SELECT 1" }) as string;
+  const clarification = state.question === "please clarify";
+  const verdict = interrupt(
+    clarification
+      ? {
+          action: "clarify_then_query",
+          pendingClarification: {
+            field: "timeRange",
+            question: "Select a time range",
+            options: ["2026-01-01/2026-04-01", "2026-04-01/2026-07-01"],
+            attempts: 0,
+            table: "orders",
+          },
+        }
+      : { action: "review_sql", sql: "SELECT 1" },
+  ) as string;
   return {
     answerText: `decided:${String(verdict)}`,
     status: "ok",
@@ -162,6 +176,23 @@ describe("buildApp resume", () => {
     expect(completed.status).toBe("ok");
     expect(completed.answerText).toBe("decided:approve");
     expect(completed.toolsCalled).toEqual(["review_tool"]);
+  });
+
+  it("labels a direct UC clarification interrupt in its SSE and trace metadata", async () => {
+    const asked = await post("/api/ask", { question: "please clarify", persona: "sales_south" });
+    expect(asked.status).toBe(200);
+    const blocks = parseSse(asked.text);
+    expect(blocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
+    const block = blocks.find((b) => b.event === "interrupt_waiting");
+    expect(block?.data["data"]).toMatchObject({
+      pendingClarification: {
+        field: "timeRange",
+        options: ["2026-01-01/2026-04-01", "2026-04-01/2026-07-01"],
+      },
+    });
+    const runId = block?.data["runId"] as string;
+    const requested = eventsOf(readTraceEvents(tracesDir, runId), "approval_requested")[0];
+    expect((requested?.["payload"] as { kind?: unknown }).kind).toBe("clarification");
   });
 
   it("rehydrates the thread from the trace file after a host restart", async () => {
