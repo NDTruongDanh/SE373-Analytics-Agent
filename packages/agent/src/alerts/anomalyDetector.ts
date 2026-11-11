@@ -179,12 +179,14 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   const absWoW = wowPercent !== null ? Math.abs(wowPercent) : 0;
 
   let severity: AlertSeverity | "none" = "none";
-  if (absZ >= 3.0 || absWoW >= 50.0 || breachedAbsolute) {
+  if (breachedAbsolute) {
     severity = "critical";
-  } else if (absZ >= 2.0 || absWoW >= 25.0) {
-    severity = "warning";
-  } else if (absZ >= 1.5) {
-    severity = "info";
+  } else if (!insufficientHistory) {
+    if (absZ >= 3.0 || absWoW >= 50.0) {
+      severity = "critical";
+    } else if (absZ >= 2.0) {
+      severity = "warning";
+    }
   }
 
   const isAnomaly = severity !== "none";
@@ -229,4 +231,3 @@ export function detectAnomalyFromSeries(
     ...options,
   });
 }
-

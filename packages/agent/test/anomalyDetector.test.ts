@@ -173,6 +173,76 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
     });
   });
 
+  describe("Severity thresholds and history gating", () => {
+    it("does not alert for a 25% WoW change or a z-score below 2.0", () => {
+      const history = Array.from({ length: 28 }, (_, i) => ({
+        date: `2026-09-${String(i + 1).padStart(2, "0")}`,
+        value: i === 21 ? 100 : i % 2 === 0 ? 80 : 120,
+        supportCount: 50,
+      }));
+
+      const result = detectAnomaly({
+        history,
+        current: { date: "2026-10-01", value: 130, supportCount: 50 },
+      });
+
+      expect(result.wowPercent).toBeCloseTo(30);
+      expect(Math.abs(result.zScore)).toBeLessThan(2);
+      expect(result.isAnomaly).toBe(false);
+      expect(result.severity).toBe("none");
+    });
+
+    it("classifies z-scores from 2.0 to below 3.0 as warning", () => {
+      const history = Array.from({ length: 28 }, (_, i) => ({
+        date: `2026-09-${String(i + 1).padStart(2, "0")}`,
+        value: i % 2 === 0 ? 90 : 110,
+        supportCount: 50,
+      }));
+
+      const result = detectAnomaly({
+        history,
+        current: { date: "2026-10-01", value: 125, supportCount: 50 },
+      });
+
+      expect(result.zScore).toBeGreaterThanOrEqual(2);
+      expect(result.zScore).toBeLessThan(3);
+      expect(result.isAnomaly).toBe(true);
+      expect(result.severity).toBe("warning");
+    });
+
+    it("suppresses statistical alerts when history is insufficient", () => {
+      const result = detectAnomaly({
+        history: Array.from({ length: 10 }, (_, i) => ({
+          date: `2026-09-${String(i + 1).padStart(2, "0")}`,
+          value: 100,
+          supportCount: 50,
+        })),
+        current: { date: "2026-09-11", value: 200, supportCount: 50 },
+      });
+
+      expect(result.isAnomaly).toBe(false);
+      expect(result.severity).toBe("none");
+      expect(result.direction).toBe("none");
+      expect(result.status).toBe("insufficient_history");
+    });
+
+    it("still alerts on an absolute-threshold breach with insufficient history", () => {
+      const result = detectAnomaly({
+        history: Array.from({ length: 10 }, (_, i) => ({
+          date: `2026-09-${String(i + 1).padStart(2, "0")}`,
+          value: 100,
+          supportCount: 50,
+        })),
+        current: { date: "2026-09-11", value: 200, supportCount: 50 },
+        absoluteThreshold: { operator: "above", value: 150 },
+      });
+
+      expect(result.isAnomaly).toBe(true);
+      expect(result.severity).toBe("critical");
+      expect(result.status).toBe("insufficient_history");
+    });
+  });
+
   // =========================================================================
   // 2. Statistical Contamination Resistance (Khử ô nhiễm chuỗi thời gian)
   // =========================================================================
