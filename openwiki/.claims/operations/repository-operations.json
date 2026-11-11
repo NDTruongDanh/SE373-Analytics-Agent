@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5ab5471341ca5984995115278a5a89b68203ce8aa744ef7bd54add1796281f99",
+  "pageVersion": "sha256:7b629f4fda887355b4dab8dc34eee8e7355b56d553a5721f29d9ac019ed4713a",
   "claims": [
     {
       "id": "claim_fb880a6112554a6c93dd71e222eca5d7",
@@ -529,10 +529,48 @@
           "version": "repo-lines-v1:sha256:a566d71fa979577ce4ed40d6959c8b1dc2abb77c89f62b9de6504130abe7f53e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkNjkzOWM5N2ZiMjlmMjFkODA1MGM5M2E5Njk0MmE3YzFkNGY1OTI4NTI2YWM5MDFlZTgwY2YwMzBmMjgxMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjN2RiMWE4Njk4MTZhMzFkOTRiMTNmNDRmYzFlYTUyN2QyOGIxNmRiMjE0YzYyYmRiODdmMmQyMWQxMGI1ZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2NDRjYzllMGNiMjcwYjY0ZGQ3NjIwNzVkZjBjYmY4MGVkMWUyMjNkMzk3YjUwZmQwYjRiN2YxYjU5YzBlNjkifQ"
         }
       ]
+    },
+    {
+      "id": "claim_91e3d962efd64e1eb5f5570a6b3dab10",
+      "statement": "Eval-only registry clients are validated for shape and uniqueness then dropped, so no persona resolves to them and boot never requires their bearer token; the eval scope token is only needed for pnpm eval gateways started with MCP_ENABLE_EVAL_CLIENTS=1.",
+      "evidence": [
+        {
+          "resource": "repo://.env.example#L90-L94",
+          "version": "repo-lines-v1:sha256:387610099a66f59ffc633ad4ece5e4949a3e4e42d4dcb3359a95b2bb7b434c0b:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDA5ZTVlMjg5ZWI0YjJkNzYxZDcwZjc0MGRkY2EwYmYxZGE4MGEwMjk5YWRjMjJjNmJkY2EyMWExMTI5YWFkZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWMyMjJjZGRjYmI4YmUyMmUzODkxODQ4OGE1YzkzMzYxYjBlNTc1OGM0NmU4YzFjNWUyMDJmNTUyZTIzNTU1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODVkNTY1MTY2MTU0NTBiODVhNjZjNjJiN2NhZmJmYTVlM2E0YjYyMmQ0NTk3YzU2MzlhNDEyNzYxOWQ4Y2IwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDljNzY2ZDQ1MWEyMzNjYzIzODZlMzU1ZmU1NTM5ZjRhZThjOGNjMWY1YTVlYWI4YjM5YjU1ODA3NzY4ZjFlNCJ9"
+        },
+        {
+          "resource": "repo://apps/api/src/principals.ts#L109-L153",
+          "version": "repo-lines-v1:sha256:253b68c54e3d678c5d68081ded6192ec803babf0aeaf51883af068ce804d9455:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZmQwYWRiNjhhMTBiYjNlZmY1NTQ4YTIyMDIxNzdmODBlMmViNTcyOTE2OGVhNzM5Zjg3NDhiNjYwOTJiYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNWNjNjVkOWJiNDQ2NGI3OTY5MzAxNmM2MjU2NGFhMjFmNWFjMWFmMDNmOWZlNmVlMzZkZmE3MTNhOTgxZDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmNjA5NTg3ZjNmYTIyZWY5YmU1NjBhNjZiOTU4MDY2MzBlYTMzNmExY2QwMDc2MjA0ODU4OTVhY2I4YjU0YjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmNzI5NzY2NWNkNzIxYzgxOWQxOTAzY2JhZDAzYTU2ZmExMDA0ZDVlMjRmZjMyNWQ3Y2UyZGM1MGI2ODU5OTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cbdbd0b4e4f94f0b89d8a67b24fd909a",
+      "statement": "AppStateStore owns a capped two-connection pool and treats a duplicate alert fingerprint primary-key violation (23505) as already-sent rather than a retryable transport error.",
+      "evidence": [
+        {
+          "resource": "repo://apps/api/src/store/alertStore.ts#L80-L88",
+          "version": "repo-lines-v1:sha256:c36ecfcbdcf0d933bad917d83a6448334a60de629ca785d5a299032da03c8f46:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjkxOGQ5OWNkYmQ1ZTRhNjFiMzgyZGRhZjI0ZmY4MWU4NzY5MzhlZDA3MDZhYzk1ZGI2OWU0Y2U0ZGUzNTlkNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjdmNjkzY2FiZTFkMDMyOGRlZjU2YzQ3NGNhODQxZDU2YmEwYzE5ZGEyNTE0OTJkMzFlZDA1YjExYmI4OGE1ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzE4NTNmZGVlMDRiZDU5Nzg2OWJmMWU3ZTFhNjlhYmM2Y2I3MTQ4NDFlZmU2ZDQxZGYzZWY5ODYyNjVmMWQ4MiJ9"
+        },
+        {
+          "resource": "repo://apps/api/src/store/alertStore.ts#L99-L120",
+          "version": "repo-lines-v1:sha256:8d3254bab1b843e30546321ceb18efd835575ef25e925bcb7b6b85303d1fc335:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1OWIyY2YwZTgwZWI5ODRkMDUzYzhiOWRjMWNkNGM3ZjcwZjYxOTZlOGRjZjEzOGViNDQxZTI1OWYyYWIxOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlOTgxNmZlYWJhODg1OWJlMjA4YWIxMjNiMTM2ZjQ1YWZlYjI5Y2M2NWI3YjAwMjQ1ZTlmYzcyMjc0NWFlMzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_12dd7e66db524f9685e5a78dd61f2ff7",
+      "statement": "Direct API host execution defaults to API_PORT 3001, MCP_PORT 8081, TRACES_DIR traces, and derives MCP_URL as http://127.0.0.1:{MCP_PORT}/mcp when MCP_URL is unset.",
+      "evidence": [
+        {
+          "resource": "repo://apps/api/src/index.ts#L985-L989",
+          "version": "repo-lines-v1:sha256:02e83a32892e364db1869c1722a2d951b309c7165c1a401a92bcb5c9a69de59a:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTIzMjc2NDUyYTEyMmUzNzIyZDI4NTVhODIwMDViNzgwZDJhYzEwY2RkNDczOWZjNDEyODJlYWM1OTI1YTBjOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDA0NzVmMWQ5MTdmYjAxYzc0ZWExYTA5YjMyNTBhMDE4NTcxNTA1ZjBlMjkwMTc5ODQyZTU4ZDQ1ZTEwMWViMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2FkZmJiNzZhNzUxZDFmZDg4YTFkNDVhNTYyM2M1NjEwMTFkZGFjMTJjZmQzYTNjZGEwNjQ2NmQ0YzhhYWVkMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjJlMDIyNzNlYWU4ZTIzMDVmMjVhZmI3NWIzZThlYzM3ZTI0YzkzMDU2OGZmYjk2ODU3ZjQyYzBhMzY3NzJkZCJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-10T15:59:31.941Z"
+    "at": "2026-11-11T15:45:43.966Z"
   }
 }

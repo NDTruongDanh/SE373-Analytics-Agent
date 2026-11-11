@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dffe71458d9c5680c3144521b551cc4fd658569569a3bb53c520b825f07cca01",
+  "pageVersion": "sha256:eb08e9eeb84ac9deb2b7155174626d45716d9920c9459f98867fba5caf70fd5c",
   "claims": [
     {
       "id": "claim_2690cff7ad3f4f6ead0c1c8fbb1132f9",
@@ -218,11 +218,15 @@
     },
     {
       "id": "claim_1e96f103323f4d7db169c490acca30af",
-      "statement": "Shared contracts are frozen additive-only at CONTRACTS_VERSION 1.1.0 with camelCase canonical, where breaking changes require a major bump plus approval from every affected owner; 1.1.0 added optional rowScopeApplied as the additive precedent.",
+      "statement": "Shared contracts are frozen additive-only at CONTRACTS_VERSION 1.1.0 with camelCase canonical, where breaking changes require a major bump plus approval from every affected owner; 1.1.0 added optional rowScopeApplied plus additive UC-10 alert schemas (AnomalyAlertResponseSchema.data remains z.unknown()) as the additive precedent.",
       "evidence": [
         {
-          "resource": "repo://packages/contracts/README.md#L21-L28",
-          "version": "repo-lines-v1:sha256:d648b61cf0865bdf032bd8248d20aae943329f14a6a18dc7c85726b559f75b1e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjQxMzI4MGRmZjkxYjM5ZDdkNjY5MWZjM2UzMGY1MmQwNzUxMGJmNWU4MGYyOGQwM2VkN2U0MWU3ZTRhMmQ5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDg0MWI5ZTMyYzhjMzBmNjI2MjEwNzNiODI3ODkxNjBhOTA0OTk4NzUxN2Q4YjRkMTgzOTk5OGVjZmUxYTM0OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDZhZmIyZmI3NmUxZTUwNWYwYjc3YTlhY2UyNjc3YTNiMzQ0YzIzNDY3ZTIxZTNlYjlmZjM3NTMwY2E0YTc3NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDE2ZDA3MGUxODkzZGY4MmU1NDdkNmE4Mjg1NGZiYjA1MGQxNGQ0ZWMwYzVkODRkNDZkZjRmM2Q1YmU1ZDcxNCJ9"
+          "resource": "repo://packages/contracts/README.md#L21-L31",
+          "version": "repo-lines-v1:sha256:359872fb784004558d57339e390b23010067e3f7ca5f73c62d3535a8df885ce3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0MTMyODBkZmY5MWIzOWQ3ZDY2OTFmYzNlMzBmNTJkMDc1MTBiZjVlODBmMjhkMDNlZDdlNDFlN2U0YTJkOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkNjQ3NWEwNDBhNDRkYzM5MmZjNTc4OWQ4N2IxNDFiOTliMjNlODdkNzVmYjJhMjdhZjIyYzlmNmZhYmRlNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2YWZiMmZiNzZlMWU1MDVmMGI3N2E5YWNlMjY3N2EzYjM0NGMyMzQ2N2UyMWUzZWI5ZmYzNzUzMGNhNGE3NzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxNmQwNzBlMTg5M2RmODJlNTQ3ZDZhODI4NTRmYmIwNTBkMTRkNGVjMGM1ZDg0ZDQ2ZGY0ZjNkNWJlNWQ3MTQifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/README.md#L33-L39",
+          "version": "repo-lines-v1:sha256:ab5ee4cd6a2720b10525eeedb05234959238afe4379d84efd575f7be1d98481e:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODczNTZjYzgyNzVhYTczYzI5N2UzNmNiZjY1ZGIwOTBjZDk0MTQwNWVhNzUxYzQ3MmFkODJhNzJmMDljNDBmNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I3YmY2YTg5OWJiZGFkMzk0ZjQyNmJmYzhiMDRhNGY1Mjk2MDc1MTljYzI0YjA2MWFkZTNkMjE5MmQ5NGU0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWIxMTgyYTNmOGE4NjhjY2FkNTk3MGI4YjY4MzQwNzc4ODAwZTIwOTIxOWQ2M2UwYTRmOTdiZGJiNzQzYTUzMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGQ4ZGQ5MDUwYmUyNGZhYmU0OGJlYmZjNGYzYjg5NzgwZWEzZjljNTA2ZWJhMTJiNGU5YjNhMjI3MWRlMjhmNiJ9"
         },
         {
           "resource": "repo://packages/contracts/README.md#L8-L19",
@@ -269,7 +273,7 @@
       "statement": "The harness uses 12 frozen ErrorCodes where only TIMEOUT, RATE_LIMITED, and INTERNAL_ERROR are retryable and only INVALID_SQL, UNKNOWN_TABLE, and SQL_EXECUTION_ERROR are repairable, routed via dbToolError into transport retry, bounded repair, or immediate hard abort.",
       "evidence": [
         {
-          "resource": "repo://packages/contracts/README.md#L63-L73",
+          "resource": "repo://packages/contracts/README.md#L66-L76",
           "version": "repo-lines-v1:sha256:b602fe08c99cd53dd2657d43f8d941bdd1124dc86a896764ad3be2799f2f19bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1OGI5MWE1NjJjMDM2OGZjODUzY2MxODlkNTQ1YjE5MTAwYjkwZTA5M2YxOGRiMzFhOWU3NjYyMDQ3ZjEwZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NjYzMjJmMDI3Yjc0NTQzN2MwYzNiYzBhOTE2N2Y3MTExNDY0NTdkNzQ5MTdmZWY5ZjQzMGYzMDRjM2JlZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExNTM1NjRhY2NjM2ZhMjMyNjA0ZGVhNGM0OTkwNTNmZWNjYzQ2ZWU2NDIxMDhiMDFjMDgyMjY4YmZkYTU0NWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhMzgzYjczMTYzZmQxZWViYjllZDZhZDc0NTZjNzQyMDFiZWZkNGRiOTk5YWQyYjY2N2Q4ZWFiYzg5NGRhMmUifQ"
         },
         {
@@ -569,6 +573,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-10T15:59:31.941Z"
+    "at": "2026-11-11T15:45:43.966Z"
   }
 }

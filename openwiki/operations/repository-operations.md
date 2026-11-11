@@ -7,7 +7,7 @@ description: Toolchain, workspace and quality gates, API SSE and resume host,
 tags: [operations, repository, openwiki-automation, configuration, ci]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-10T15:59:31.941Z
+    at: 2026-11-11T15:45:43.966Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -25,6 +25,12 @@ sources:
     resource: repo://.openwikiignore
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
+  - id: openwiki-source-d04d22ac02c0c45a07baad16
+    resource: repo://apps/api/src/index.ts
+  - id: openwiki-source-1c08bb216d9a5f9146a82fe7
+    resource: repo://apps/api/src/principals.ts
+  - id: openwiki-source-ec6a18eda977120fc72fe842
+    resource: repo://apps/api/src/store/alertStore.ts
   - id: openwiki-source-5be27729131e30130689f927
     resource: repo://docker/docker-compose.yml
   - id: openwiki-source-a684e234421714e27e69998b
@@ -77,7 +83,7 @@ sources:
     resource: repo://tsconfig.json
   - id: openwiki-source-b6f224d26b4ec604e90101e3
     resource: repo://vitest.workspace.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-10T15:59:31.941Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-11T15:45:43.966Z" }
 ---
 
 # Repository operations
@@ -287,7 +293,10 @@ sequenceDiagram
   `UnknownPersonaError` (400 `INVALID_PARAMS`, never a default role or admin);
   scopes and `rowScope` come only from `policies/mcp_clients.yaml`, and every
   `tokenEnv` named there must be present via `assertTokensPresent` or boot
-  throws before listening (`apps/api/src/principals.ts:199-247`).
+  throws before listening (`apps/api/src/principals.ts:199-247`). `evalOnly`
+  clients are validated for shape and uniqueness, then dropped: no persona
+  maps to them and the host never requires their token at boot
+  (`apps/api/src/principals.ts:109-153`).
 - Run identity mints `runId` with `randomUUID` on every ask; `threadId` is the
   validated client-supplied `chat:{userId}:{sessionId}` value or a minted
   `chat:{userId}:{runId}` value, capped at 255 characters
@@ -377,7 +386,10 @@ sequenceDiagram
   fingerprints are SHA-256 over canonical
   `recipientId|metric|dimensionKey|date|direction` field order through one
   helper so DAO rows and UC-10 dedup checks cannot diverge
-  (`apps/api/src/store/alertStore.ts:36-55`).
+  (`apps/api/src/store/alertStore.ts:36-55`). The owned pool is capped at two
+  connections, and a duplicate fingerprint violates the primary key (23505):
+  the caller treats that as already-sent, never as a retryable transport
+  error (`apps/api/src/store/alertStore.ts:87-120`).
 - Write-after-send contract: call `hasFingerprint(fp)` before sending (24-hour
   dedup check), then call `recordSent(row)` only after `send_alert` succeeds —
   never speculatively, never inside the send path — so retries of failed sends
@@ -575,7 +587,10 @@ Workflow file: [`.github/workflows/openwiki-update.yml`](../../.github/workflows
   Missing `HARNESS_STATE_DATABASE_URL` or any bearer token fails fast before
   listening — the host never falls back to `MemorySaver`
   (`apps/api/src/ports.ts:29-42`, `apps/api/src/index.ts:993-1002`,
-  `apps/api/src/principals.ts:199-211`).
+  `apps/api/src/principals.ts:199-211`). Direct execution defaults are
+  `API_PORT=3001`, `MCP_PORT=8081`, `TRACES_DIR=traces`, and
+  `MCP_URL=http://127.0.0.1:{MCP_PORT}/mcp` when `MCP_URL` is unset
+  (`apps/api/src/index.ts:985-989`).
 - Loopback bring-up order: `pnpm db:up`, then `pnpm data:load`
   (or `--scale=small` for CI), then `pnpm data:verify`; start the MCP gateway
   on `MCP_PORT=8081` and the API host on `API_PORT=3001`, and probe
