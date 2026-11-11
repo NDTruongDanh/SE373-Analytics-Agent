@@ -1,11 +1,8 @@
 ---
 type: use-case-pair-diagnostics
 title: Multi-step root-cause and scheduled anomaly alerts (UC-05, UC-10)
-description: Branching root-cause analysis with plan checkpoints and human review plus scheduled z-score anomaly detection with drill-down, deduplicated alert delivery, and eval gates.
+description: Branching root-cause analysis with plan checkpoints and human review plus scheduled anomaly detection with landed detector, subscription config, deduplicated alert delivery, and eval gates.
 tags: [root-cause-analysis, anomaly-detection, langgraph, checkpoint, human-in-the-loop, alerting, K4, K5, K2]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-10T15:59:31.941Z
 sources:
   - id: openwiki-source-d04d22ac02c0c45a07baad16
     resource: repo://apps/api/src/index.ts
@@ -15,6 +12,8 @@ sources:
     resource: repo://apps/api/src/store/alertStore.ts
   - id: openwiki-source-ad38dcb9040e51057192e02c
     resource: repo://apps/api/test/store.test.ts
+  - id: openwiki-source-511e4747b02819d0b325df0c
+    resource: repo://config/subscriptions.yaml
   - id: openwiki-source-7c9e4d2d1e688a959951f03b
     resource: repo://docker/initdb/04_semantic_state.sql
   - id: openwiki-source-a53a8de5929686354550dafa
@@ -23,6 +22,14 @@ sources:
     resource: repo://docs/UC-plan/UC05.md
   - id: openwiki-source-9105f66d602057324682b6be
     resource: repo://docs/UC-plan/UC10.md
+  - id: openwiki-source-5b54a58d1b51cd490b0e7162
+    resource: repo://package.json
+  - id: openwiki-source-fbbf097aa0b71ef141eda07c
+    resource: repo://packages/agent/src/alerts/anomalyDetector.ts
+  - id: openwiki-source-ecfc68f8ab3809438e0c2d9d
+    resource: repo://packages/agent/src/alerts/index.ts
+  - id: openwiki-source-757241ccbe3d8df451db1ccc
+    resource: repo://packages/agent/src/alerts/subscription.ts
   - id: openwiki-source-bfb9871db1c11a0b91b0e3c3
     resource: repo://packages/agent/src/constants.ts
   - id: openwiki-source-7a382cb67515f2241c13f47e
@@ -45,13 +52,26 @@ sources:
     resource: repo://packages/agent/src/telemetry/spans.ts
   - id: openwiki-source-408f45a62f1908cd7c20780f
     resource: repo://packages/agent/src/traces/writer.ts
+  - id: openwiki-source-d9bea5644f73fbe45a48299e
+    resource: repo://packages/agent/test/anomalyDetector.test.ts
   - id: openwiki-source-b33cafc7f408ad2b3b67b5b4
     resource: repo://packages/agent/test/resume.test.ts
   - id: openwiki-source-dbd7dfed3198d9725afa2776
     resource: repo://packages/agent/test/rootCauseAnalysis.test.ts
+  - id: openwiki-source-2c611444442dfdc49cbeaa13
+    resource: repo://packages/agent/test/subscription.test.ts
+  - id: openwiki-source-ecf75c1e230ea5ecfa39a891
+    resource: repo://packages/contracts/src/alert.ts
   - id: openwiki-source-d006acea924ff58491311536
     resource: repo://scripts/test-uc05-live.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-10T15:59:31.941Z" }
+  - id: openwiki-source-461ba77110e75c428e75b18b
+    resource: repo://skills/anomaly-alert/SKILL.md
+  - id: openwiki-source-2514bbb3649879e10184120f
+    resource: repo://skills/root-cause-analysis/SKILL.md
+generated: { by: "openwiki/0.7.2", at: "2026-11-11T15:45:43.966Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-11T15:45:43.966Z
 ---
 
 # Multi-step root-cause and scheduled anomaly alerts (UC-05, UC-10)
@@ -60,7 +80,7 @@ This page owns the submitted UC-05 / UC-10 pair: on-demand hierarchical diagnosi
 
 The shared runtime and safety contract lives in [Agent workflow and harness architecture](../agent/workflow-architecture.md). The shared validated SQL loop lives in [Natural-language query with self-repair](./text-to-sql.md). Seeded fixtures and load rules live in [Business database and seeding](../data/database-and-seeding.md). Grading, regression, and safety cases live in [Eval runner, metrics, and regression](../evals/eval-and-safety-harness.md).
 
-> Implementation status: the frozen root graph, registry seam, redacted trace writer, hierarchical span emitter, validated SQL path, durable HITL, checkpoint, host-resume, and alert-dedup persistence seams exist in code. The RCA and alert zod contracts have also landed, and the UC-05 drill-down orchestrator has now landed as `packages/agent/src/subgraphs/rootCauseAnalysis.ts` (intent parsing, baseline validation, plan creation, HITL review gate, budgeted execute/evaluate loop, waterfall synthesis, date-guarded MCP, per-step checkpoint writes, and resume rehydration) registered under `RCA_UC_ID` and routed by `routeQuestionToUc`. The UC-10 statistical runner and sender (`packages/agent/src/alerts/*`, `config/subscriptions.yaml`, `pnpm alert:run`) and both domain skill directories are still the planned contract in `repo://docs/architecture.md#L258-L259` and have no implementation files yet.
+> Implementation status: the frozen root graph, registry seam, redacted trace writer, hierarchical span emitter, validated SQL path, durable HITL, checkpoint, host-resume, and alert-dedup persistence seams exist in code. The RCA and alert zod contracts have also landed, and the UC-05 drill-down orchestrator has now landed as `packages/agent/src/subgraphs/rootCauseAnalysis.ts` (intent parsing, baseline validation, plan creation, HITL review gate, budgeted execute/evaluate loop, waterfall synthesis, date-guarded MCP, per-step checkpoint writes, and resume rehydration) registered under `RCA_UC_ID` and routed by `routeQuestionToUc`. On the UC-10 side the pure-code statistical detector (`packages/agent/src/alerts/anomalyDetector.ts`), subscription loader (`packages/agent/src/alerts/subscription.ts` plus re-export in `packages/agent/src/alerts/index.ts`), validated `config/subscriptions.yaml` with five ANOM-01..05 subscriptions, and both domain skill directories have also landed. Still planned with no implementation files are the scheduled runner (`node-cron` 07:00 plus `pnpm alert:run --manual`), the MCP series fetcher, the LLM drill-down node, severity routing/digest, and the `sendAlert` channel sender with retry and queue.
 
 ## 1. Responsibilities
 
@@ -138,13 +158,13 @@ A failing query step retries with a bound, then is marked `failed` and the run c
 
 ### 3.1 Schedule, subscriptions, and isolation
 
-Subscriptions declare `metric_id`, primary and suggested secondary dimensions, `recipient_id` and role, channel, digest preference, `absolute_threshold`, and `min_support`, validated with `zod` (`repo://docs/UC-plan/UC10.md#L68-L68`). The planned runner is `node-cron` at 07:00 daily plus a manual CLI such as `pnpm alert:run --manual [--date X] [--flush-digest]` (`repo://docs/UC-plan/UC10.md#L15-L15`, `repo://docs/UC-plan/UC10.md#L69-L69`). Data is fetched as a 28-plus-7-day series through the shared `db-tools` MCP server without opening a separate pool, inheriting SQL guards, column scope policy, and audit (`repo://docs/UC-plan/UC10.md#L17-L17`, `repo://docs/UC-plan/UC10.md#L69-L69`). No `config/subscriptions.yaml`, scheduler, or `packages/agent/src/alerts/*` runner exists yet; the engine remains the Phase 5 planned row in `repo://docs/architecture.md#L259-L259`.
+Subscriptions declare `metric_id`, primary and suggested secondary dimensions, `recipient_id` and role, channel, digest preference, `absolute_threshold`, and `min_support`, validated with `zod` (`repo://docs/UC-plan/UC10.md#L68-L68`). That config has landed as `config/subscriptions.yaml` (version 1 with five subscriptions: return-rate, net-revenue, cancellation-rate, order-count, and review-score daily slices, each with `absoluteThreshold` and `minSupport`): `SubscriptionsConfigSchema` validates the file shape with camelCase defaults plus snake_case preprocessing, `MinSupportSchema` accepts either an integer floor of 15 or a `{ minOrders, minMetricTrimmedMean }` object, and `AlertChannelSchema` allowlists `webhook`, `email`, `telegram`, and `slack` (`repo://config/subscriptions.yaml#L1-L88`, `repo://packages/contracts/src/alert.ts#L13-L93`). `loadSubscriptionsConfig` parses YAML text through that schema with an explicit syntax error, and `loadSubscriptionsConfigFile` resolves `filePath ?? SUBSCRIPTIONS_PATH ?? DEFAULT_SUBSCRIPTIONS_PATH` (repo-root-relative) before reading (`repo://packages/agent/src/alerts/subscription.ts#L15-L33`); legs pin default-path loading, explicit-path override, env override, and malformed-YAML failure (`repo://packages/agent/test/subscription.test.ts#L8-L31`). The planned runner is still `node-cron` at 07:00 daily plus a manual CLI such as `pnpm alert:run --manual [--date X] [--flush-digest]` (`repo://docs/UC-plan/UC10.md#L15-L15`, `repo://docs/UC-plan/UC10.md#L69-L69`); no scheduler, runner script, or `alert:run` package script exists yet. Data is planned to be fetched as a 28-plus-7-day series through the shared `db-tools` MCP server without opening a separate pool, inheriting SQL guards, column scope policy, and audit (`repo://docs/UC-plan/UC10.md#L17-L17`, `repo://docs/UC-plan/UC10.md#L69-L69`).
 
 The LangGraph workflow checkpoints per metric and per slice: one slice SQL or computation error is recorded as `failed` with a trace and the run continues on remaining slices (`repo://docs/prd.md#L470-L470`, `repo://docs/UC-plan/UC10.md#L74-L74`, `repo://docs/UC-plan/UC10.md#L142-L142`). The per-slice state tracks `subscriptionId`, `metric`, `dimensionKey`, `date`, `direction`, recipient, and `todo` / `doing` / `done` / `failed` / `skipped` status (`repo://docs/UC-plan/UC10.md#L50-L59`).
 
 ### 3.2 Statistical engine
 
-Detection is plain code so normal days cost no language-model calls (`repo://docs/UC-plan/UC10.md#L40-L40`). The normative methods are z-score versus the prior 28 days, week-over-week comparison, or an absolute threshold (`repo://docs/prd.md#L461-L461`). This engine is still planned code; the formulas below are the single normative source from the UC-10 plan.
+Detection is plain code so normal days cost no language-model calls (`repo://docs/UC-plan/UC10.md#L40-L40`). The normative methods are z-score versus the prior 28 days, week-over-week comparison, or an absolute threshold (`repo://docs/prd.md#L461-L461`). That engine has landed as pure-code `detectAnomaly` in `packages/agent/src/alerts/anomalyDetector.ts` (re-exported from `packages/agent/src/alerts/index.ts`): trimmed 5–95% baseline, `sigma_eff` floor, `WoW%` with epsilon guard, support gating, and severity mapping per the UC-10 formulas below, operating only on numeric aggregates so hostile dimension labels cannot execute (`repo://packages/agent/src/alerts/anomalyDetector.ts#L125-L213`, `repo://packages/agent/src/alerts/index.ts#L1-L2`).
 
 Robust z-score over a trimmed 28-day window (`repo://docs/UC-plan/UC10.md#L85-L96`):
 
@@ -159,7 +179,7 @@ Trimming removes contamination from prior anomalies that would otherwise inflate
 
 Week-over-week change is `(x_t - x_t-7) / max(abs(x_t-7), EPS) * 100%`, which absorbs day-of-week seasonality (`repo://docs/UC-plan/UC10.md#L100-L104`).
 
-Small-sample guard (`repo://docs/UC-plan/UC10.md#L106-L113`): a slice is only tested when it has enough support, for example daily orders at least 15 or slice trimmed mean above a per-metric floor such as 500k VND per day for revenue. Under-supported slices are marked `skipped_insufficient_support` and do not count as false positives. All divisions use `max(denominator, EPS)`, and `sigma_eff` keeps the `0.05 * abs(mu)` floor.
+Small-sample guard (`repo://docs/UC-plan/UC10.md#L106-L113`): a slice is only tested when it has enough support, for example daily orders at least 15 or slice trimmed mean above a per-metric floor such as 500k VND per day for revenue. Under-supported slices are marked `skipped_insufficient_support` and do not count as false positives. All divisions use `max(denominator, EPS)`, and `sigma_eff` keeps the `0.05 * abs(mu)` floor. The landed mapping is exact: helpers `trimmedMean`/`trimmedStd` sort and cut `max(1, floor(n * trimRatio))` from each end, `calculateEffectiveSigma` returns `max(sigmaRaw, eps, 0.05 * abs(muTrim))`, `calculateWoW` divides by `max(abs(weekAgo), eps)`, and `isAbsoluteThresholdBreached` applies the `above`/`below` operator (`repo://packages/agent/src/alerts/anomalyDetector.ts#L41-L113`). `detectAnomaly` checks `supportCount < minSupport` (default 15) first and returns `skipped_insufficient_support` with `severity: none`, flags fewer than 14 history points as `insufficient_history` (statistical alert suppressed, absolute-threshold breach still `critical`), classifies `absZ >= 3.0` or `absWoW >= 50` as `critical` and `2.0 <= absZ < 3.0` as `warning`, and `detectAnomalyFromSeries` treats the last point as current (`repo://packages/agent/src/alerts/anomalyDetector.ts#L125-L233`).
 
 ### 3.3 Severity and routing
 
@@ -208,7 +228,7 @@ flowchart TD
 
 *Caption: Branching diagnosis from baseline through human plan review and pruned execution into scheduled detection and severity-routed delivery.*
 
-The UC-05 branch of the diagram is interactive and budget-capped; the UC-10 branch is scheduled and per-slice fault-isolated. Both persist checkpoints so resume skips completed work (`repo://docs/prd.md#L341-L341`, `repo://docs/prd.md#L470-L470`). Only the UC-05 orchestrator plus the generic checkpoint and dedup boxes have implementations today; the UC-10 detection, drill-down, routing, and sender nodes are still UC-plan contracts.
+The UC-05 branch of the diagram is interactive and budget-capped; the UC-10 branch is scheduled and per-slice fault-isolated. Both persist checkpoints so resume skips completed work (`repo://docs/prd.md#L341-L341`, `repo://docs/prd.md#L470-L470`). The UC-05 orchestrator plus the generic checkpoint and dedup boxes and the UC-10 statistical detector plus subscription loader have implementations today; the UC-10 series fetcher, LLM drill-down, severity router/digest, scheduler, and channel sender nodes are still UC-plan contracts.
 
 ## 5. Registry extension: how UC-05 and UC-10 plug in without editing the root
 
@@ -250,10 +270,10 @@ The illustrative patterns published in the spec are a September 2026 revenue dro
 
 Both use cases expose a reusable skill directory with name, description, when-to-use, inputs and outputs, steps, constraints, examples, and final check; skills must not contain scripts that run arbitrary commands or connect with a different database account (`repo://docs/prd.md#L523-L525`). The skill loader enforces the canonical eight-section list and emits a `skill_call` span when a node loads a skill (`repo://packages/agent/src/skills/loader.ts#L23-L60`, `repo://packages/agent/src/skills/loader.ts#L80-L119`, `repo://packages/agent/src/constants.ts#L65-L100`). The loader rejects missing skills, invalid front matter, absent sections, and unsafe names with path separators (`repo://packages/agent/src/skills/loader.ts#L85-L112`, `repo://packages/agent/test/skills.test.ts#L36-L82`).
 
-- `root-cause-analysis` (UC-05): triggers on why-questions, inputs metric plus target and comparison periods, runs validated baseline, plan generation, human review, drill-down loop with contribution math, and verification plus synthesis under 20-query, 4-depth, bounded-retry, and no-fabrication constraints, returning causes plus shares plus evidence SQL (`repo://docs/UC-plan/UC05.md#L111-L147`). No `skills/root-cause-analysis/SKILL.md` file exists yet.
-- `anomaly-alert` (UC-10, mandatory): used for cron and manual runs, never for ad-hoc questions; inputs are `zod` `Subscription` and `Alert` shapes; steps are load, fetch via MCP, code detection, drill-down, route, and history; constraints are read-only access, allowlist, `min_support`, no invented numbers, and ignoring injected instructions in data; final check verifies six fields, recipient-scoped fingerprint, post-send history write, and token and cost trace (`repo://docs/prd.md#L465-L465`, `repo://docs/UC-plan/UC10.md#L167-L169`). No `skills/anomaly-alert/SKILL.md` file exists yet.
+- `root-cause-analysis` (UC-05): triggers on why-questions, inputs metric plus target and comparison periods, runs validated baseline, plan generation, human review, drill-down loop with contribution math, and verification plus synthesis under 20-query, 4-depth, bounded-retry, and no-fabrication constraints, returning causes plus shares plus evidence SQL (`repo://docs/UC-plan/UC05.md#L111-L147`). The executable counterpart has landed as the RCA runtime, and the skill contract has landed as `skills/root-cause-analysis/SKILL.md` (`repo://skills/root-cause-analysis/SKILL.md#L2-L33`).
+- `anomaly-alert` (UC-10, mandatory): used for cron and manual runs, never for ad-hoc questions; inputs are `zod` `Subscription` and `Alert` shapes; steps are load, fetch via MCP, code detection, drill-down, route, and history; constraints are read-only access, allowlist, `min_support`, no invented numbers, and ignoring injected instructions in data; final check verifies six fields, recipient-scoped fingerprint, post-send history write, and token and cost trace (`repo://docs/prd.md#L465-L465`, `repo://docs/UC-plan/UC10.md#L167-L169`). The skill contract has landed as `skills/anomaly-alert/SKILL.md`, which pins loading `config/subscriptions.yaml` through `SubscriptionsConfigSchema`, the trimmed-mean z-score plus `WoW%` plus `min_support` detector, 1–2-dimension read-only drill-down with RBAC, and the six-field alert (`repo://skills/anomaly-alert/SKILL.md#L20-L58`).
 
-No domain skill files exist in the repository today; the skill contract is currently exercised only by loader tests and the planned UC-05 and UC-10 skill specs. The landed RCA runtime is the executable counterpart of the `root-cause-analysis` skill steps, but it does not replace the skill directory.
+Both skill directories now exist in the repository; the loader contract is exercised by loader tests plus the landed UC-05 and UC-10 skill specs. The landed RCA runtime remains the executable counterpart of the `root-cause-analysis` skill steps, and the landed `detectAnomaly` plus subscription loader are the executable counterpart of the `anomaly-alert` load-and-detect steps, but neither runtime replaces its skill directory.
 
 ## 10. Focused evals and acceptance
 
@@ -263,10 +283,12 @@ The landed unit suite already covers the deterministic half of that matrix witho
 
 UC-10 needs at least 5 cases: spike up, drop down, normal day with no alert, same-day rerun, and channel failure (`repo://docs/prd.md#L481-L481`, `repo://docs/UC-plan/UC10.md#L159-L164`). Acceptance is detection of at least 4 of 5 seeded points, at most 3 false alarms over a normal week, six-field alerts, no duplicate resend on same-day rerun, bounded retry then queue with trace on channel errors, and recipient-scoped data with zero PII leak (`repo://docs/prd.md#L475-L479`). Detection rate and false-alarm counts plus token, cost, and latency averages are reported per run (`repo://docs/prd.md#L580-L581`, `repo://docs/UC-plan/UC10.md#L165-L165`).
 
+The deterministic detector half is already pinned offline by `packages/agent/test/anomalyDetector.test.ts`: five ANOM-01..05 scenarios (return-rate spike, net-revenue drop, cancellation-rate spike, order-count spike, review-score drop) assert `critical` severity plus direction and z bounds, severity gating pins no-alert below `|z| < 2.0`, `warning` for `2.0–3.0`, suppression to `insufficient_history` under 14 points with absolute-threshold breach still alerting, trimmed-baseline resistance to a 10x contaminating outlier, `sigma_eff` flooring on flat series, injection-laden metadata producing pure-math results only, `skipped_insufficient_support` under `minSupport`, and zero-division plus `detectAnomalyFromSeries` edge cases (`repo://packages/agent/test/anomalyDetector.test.ts#L41-L438`). Same-day-rerun dedup, channel retry/queue, and PII/RBAC legs remain eval-plan contracts covered today only by the `AppStateStore` fingerprint/history legs.
+
 ## 11. Configuration and operations
 
-- Scheduler: `node-cron` schedule plus manual CLI flags for date override and digest flush (`repo://docs/UC-plan/UC10.md#L69-L69`). Not implemented yet.
-- Subscriptions: `config/subscriptions.yaml` validated by `zod`, including metric identifiers from the semantic layer, candidate drill dimensions, recipient and role, channel, and thresholds (`repo://docs/UC-plan/UC10.md#L68-L68`). Not implemented yet.
+- Scheduler: `node-cron` schedule plus manual CLI flags for date override and digest flush (`repo://docs/UC-plan/UC10.md#L69-L69`). Not implemented yet (no `alert:run` script or scheduler file).
+- Subscriptions: `config/subscriptions.yaml` (version 1, five ANOM subscriptions) validated by `SubscriptionsConfigSchema`/`SubscriptionSchema`, including metric identifiers, candidate drill dimensions, recipient and role, channel, digest preference, and absolute plus support thresholds (`repo://docs/UC-plan/UC10.md#L68-L68`, `repo://config/subscriptions.yaml#L1-L88`, `repo://packages/contracts/src/alert.ts#L70-L93`). Loader is `loadSubscriptionsConfig`/`loadSubscriptionsConfigFile` with repo-root default path plus `SUBSCRIPTIONS_PATH` override (`repo://packages/agent/src/alerts/subscription.ts#L11-L33`).
 - Semantic re-index: `POST /api/semantic/reindex` is admin-only. It resolves the caller through the same persona map, then requires `data_admin` with an `admin` role and returns `403 SCOPE_DENIED` otherwise; on success it delegates to the injected `reindex` hook or the default MCP `POST /reindex` forwarder and returns `{ added, updated, skipped, deleted }` counts (`repo://apps/api/src/index.ts#L104-L133`, `repo://apps/api/src/index.ts#L528-L567`).
 - Persistence: LangGraph checkpointer on PostgreSQL for both the RCA plan and per-slice alert state; `app_state.alert_history` keyed by fingerprint replaces a separate SQLite store to avoid dual sources of truth (`repo://docs/UC-plan/UC10.md#L142-L143`). The checkpointer factory plus `AppStateStore` DAO plus `app_state.alert_history` DDL are the landed part of this bullet (`repo://packages/agent/src/ports/checkpoints.ts#L54-L72`, `repo://apps/api/src/store/alertStore.ts#L77-L120`, `repo://docker/initdb/04_semantic_state.sql#L74-L82`).
 - Observability: every run records run ID, per-slice and per-run prompt and completion tokens, estimated cost, latency, tool calls, SQL versions, policy decisions, and approval or digest outcomes in JSONL traces; traces must not retain unmasked PII (`repo://docs/prd.md#L540-L542`, `repo://docs/UC-plan/UC10.md#L151-L151`).

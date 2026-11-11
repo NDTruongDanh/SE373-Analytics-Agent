@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b797edc42d83de13515cbcd5fa2e8ecd6f3f8775e366444cbc6188c39558b23f",
+  "pageVersion": "sha256:12bdadcdb89ebd3950d922f54e173348ebcb1be5453ad7c18d7716c19c324aea",
   "claims": [
     {
       "id": "claim_8fca3bcc0e394ef8930dcc7c5279815c",
@@ -425,10 +425,56 @@
           "version": "repo-lines-v1:sha256:4dd89953f343e1ad5bbe4a3658d237cb74dc659f2f51ea679bdcfb65569e378e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExNzIyMjk4MWY1NTg0MGU0YzAzYTUwOGE1ODVjMWM2MGMzYWZiMmQ1Mjk4OTM2N2VmYTU5ZDUyYTMwODkyMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4OTgxMTlkNzIxN2I0NTkyOTRiNjNkZTI2YzIwMzdjOWZiYjA3NmVmYmUxMTI5ODZhMzE0MTUxMzdlNGVkZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiMzQwNzA3YzkxZGQ5MWViOGRkYjMzZDFhYWEzNmU0ZjY1NWQ4YzE5NDhhZGZkOWExYjM1YjRiZGM1YmExNDcifQ"
         }
       ]
+    },
+    {
+      "id": "claim_c44976d4f9b9433781556f47eb58fbc8",
+      "statement": "The frozen 12-code contract routes TIMEOUT, RATE_LIMITED and INTERNAL_ERROR as retryable, INVALID_SQL, UNKNOWN_TABLE and SQL_EXECUTION_ERROR as repairable (at most 3 total attempts), and UNAUTHORIZED, SCOPE_DENIED, INVALID_PARAMS, FORBIDDEN_STATEMENT, FORBIDDEN_FUNCTION and SENSITIVE_COLUMN_DENIED as hard restricted aborts.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts",
+          "version": "repo-file-v1:sha256:053f7fbff7843968cb904a1a2b3093c5880832642746e7b50cc8301e76e1324f"
+        },
+        {
+          "resource": "repo://packages/contracts/README.md",
+          "version": "repo-file-v1:sha256:f5c7cbc7f66580f206dd79cd3765f91d1db6d65286c1a569b29631afc56cadb3"
+        },
+        {
+          "resource": "repo://packages/contracts/src/constants.ts",
+          "version": "repo-file-v1:sha256:285dffe01056ea561a578376892df5bd1d15b48cb8e6df154f450347778a6573"
+        }
+      ]
+    },
+    {
+      "id": "claim_97822744073b4bde9f4c82b1a2716614",
+      "statement": "explain_query returns estimatedCost and estimatedRows from EXPLAIN (FORMAT JSON) on the policy-rewritten SQL with no server-side cost threshold; the agent always calls explain_query before run_query so the estimate is observable, and any costly-query approval is a caller/workflow decision.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts",
+          "version": "repo-file-v1:sha256:053f7fbff7843968cb904a1a2b3093c5880832642746e7b50cc8301e76e1324f"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts",
+          "version": "repo-file-v1:sha256:2bba19a30654d3bc8a01cbdaaff93a73395a4aaba10dd07b670921a6975ccd30"
+        }
+      ]
+    },
+    {
+      "id": "claim_69cd904362fa44a1beda70fb484a9375",
+      "statement": "The MCP boundary forbids pg, pg-cursor and mcp-server internals in packages/agent, packages/access-policy and apps/api except the apps/api AppStateStore DAO and its test, forcing the agent to reach the database only through the MCP client.",
+      "evidence": [
+        {
+          "resource": "repo://eslint.config.mjs",
+          "version": "repo-file-v1:sha256:640d863d1dda1dbcaad6cc5f8e8eb8998141c7d05806b0b079082a055846a1b6"
+        },
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts",
+          "version": "repo-file-v1:sha256:053f7fbff7843968cb904a1a2b3093c5880832642746e7b50cc8301e76e1324f"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-10T15:59:31.941Z"
+    "at": "2026-11-11T15:45:43.966Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5e46bf2b45669343ffeca7805f478181838894b5760b406c4d2665de9548ea07",
+  "pageVersion": "sha256:959df4b7ac5e420e5ae3e8bc9a0935b73848feda81298c4a547b988a2e7f16fb",
   "claims": [
     {
       "id": "claim_67cb28f975154c3dab2eee2e110ffe62",
@@ -523,10 +523,20 @@
           "version": "repo-file-v1:sha256:53003af1925830e8508277e75827ea04e296fd5c96266e38046d44764bd040f1"
         }
       ]
+    },
+    {
+      "id": "claim_d2f6f3d31f694716974346f5ae81a8f2",
+      "statement": "x",
+      "evidence": [
+        {
+          "resource": "repo://semantic/tables.yaml",
+          "version": "repo-file-v1:sha256:152f85b814df87e994adea13a323fab49c991733a402c713ea692c8efe0f4962"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-10T15:59:31.941Z"
+    "at": "2026-11-11T15:45:43.966Z"
   }
 }

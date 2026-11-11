@@ -1,8 +1,11 @@
 ---
 type: semantic-layer
 title: Semantic layer and retrieval
-description: Versioned semantic corpus, incremental indexing, three-way hybrid retrieval, LangGraph grounding gate, and deterministic citation validation.
+description: Versioned semantic corpus, incremental indexing, three-way hybrid retrieval, LangGraph grounding gate, skill contracts, and deterministic citation and claim validation.
 tags: [semantic-layer, retrieval, rag, citations, knowledge-base, text-to-sql]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-11T15:45:43.966Z
 sources:
   - id: openwiki-source-4912fb87763cb10856716453
     resource: repo://docker/initdb/02_schemas.sql
@@ -52,17 +55,14 @@ sources:
     resource: repo://semantic/metrics.yaml
   - id: openwiki-source-d2c7e7764edc89333a818b3e
     resource: repo://semantic/tables.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-10T15:59:31.941Z
+generated: { by: "openwiki/0.7.2", at: "2026-11-11T15:45:43.966Z" }
 ---
 
 # Semantic layer and retrieval
 
-This page owns the versioned semantic corpus, the chunking and incremental-indexing pipeline, the hybrid retrieval path that grounds business language in tables, metrics, and join warnings before SQL generation, and the LangGraph grounding and citation gates that decide what may proceed to SQL synthesis. Runtime, data, and verification details live in [Workflow Architecture](./workflow-architecture.md), [Database and Seeding](../data/database-and-seeding.md), and [Text to SQL](../use-cases/text-to-sql.md).
+This page owns the versioned semantic corpus, the chunking and incremental-indexing pipeline, the hybrid retrieval path that grounds business language in tables, metrics, and join warnings before SQL generation, the LangGraph grounding and citation gates that decide what may proceed to SQL synthesis, the file-based skill contracts injected into prompts, and the deterministic numeric and causal claim checks on generated insights. Runtime, data, and verification details live in [Workflow Architecture](./workflow-architecture.md), [Database and Seeding](../data/database-and-seeding.md), and [Text to SQL](../use-cases/text-to-sql.md).
 
-> Implementation status: the YAML plus Markdown indexer, embedder, three-way retriever (dense plus BM25 plus alias), weighted RRF helper, join-rule expansion, hot-reload catalog, chunk table, gateway tool, gateway resources, LangGraph `retrieveSemantic` node with the two-tier grounding gate, deterministic citation validator, and text-to-SQL entry wiring are built. Recall, execution-accuracy lift, and reindex acceptance thresholds remain eval criteria, not runtime checks.
+> Implementation status: the YAML plus Markdown indexer, embedder, three-way retriever (dense plus BM25 plus alias), weighted RRF helper, join-rule expansion, hot-reload catalog, chunk table, gateway tool, gateway resources, LangGraph `retrieveSemantic` node with the two-tier grounding gate, deterministic citation validator, numeric and causal claim validator, skill loader, and text-to-SQL entry wiring are built. Recall, execution-accuracy lift, and reindex acceptance thresholds remain eval criteria, not runtime checks.
 
 ## 1. Responsibility and position in the loop
 
@@ -85,7 +85,7 @@ The two versioned Markdown files at the repository root are retained as fallback
 - `semantic/data_dictionary.md` — twelve seeded business tables (`regions`, `channels`, `categories`, `sellers`, `products`, `customers`, `employees`, `promotions`, `orders`, `order_items`, `payments`, `reviews`) with grain, primary keys, aliases, and join rules. It carries no row counts, no example values, and no query fragments.
 - `semantic/metrics.md` — six canonical metric definitions (`revenue_vnd`, `order_count`, `average_order_value`, `freight_share`, `review_score_avg`, `compensation_cost`) with the tables each derives from and Vietnamese plus English aliases. It carries no formulas, no thresholds, and no query fragments.
 
-Markdown chunking is by section: every `## ` heading starts one self-contained chunk, and preamble text before the first heading is skipped. The leading `Table:` / `Tables:` / `Metric:` / `Aliases:` lines populate metadata columns and stay in the stored content so lexical search still matches them. A header ending in `[restricted_pii]` marks the whole section restricted — currently `employees` in the dictionary and `compensation_cost` in metrics — while the YAML corpus marks restriction per entry (`table:employees`, `metric:compensation_cost`, and the four restricted columns `customers.phone`, `customers.email`, `customers.address`, `employees.salary`). The dictionary additionally marks `order_items` as the `large` table that must be filtered before a full scan, and marks review text as untrusted user input wrapped in untrusted-data delimiters.
+Markdown chunking is by section: every `## ` heading starts one self-contained chunk, and preamble text before the first heading is skipped. The leading `Table:` / `Tables:` / `Metric:` / `Aliases:` lines populate metadata columns and stay in the stored content so lexical search still matches them. A header ending in `[restricted_pii]` marks the whole section restricted — currently `employees` in the dictionary and `compensation_cost` in metrics — while the YAML corpus marks restriction per entry (`table:employees`, `metric:compensation_cost`, and the four restricted columns `customers.phone`, `customers.email`, `customers.address`, `employees.salary`). The dictionary and YAML corpus mark `orders` and `order_items` as `large` tables that must be filtered (for example by `purchase_date`) before a full scan, and mark review text as untrusted user input wrapped in untrusted-data delimiters.
 
 ```mermaid
 flowchart TD
@@ -167,7 +167,7 @@ flowchart TD
 
 Automatic join-rule graph expansion runs after fusion: `expandJoinRules` collects tables from the top-5 fused chunks, finds `join_rule` rows whose tables overlap with at least two of those tables, and injects them while keeping the result within `topK` — appending when there is room, otherwise replacing the lowest non-join tail entry. Candidates sort by overlap descending, then fused score, then id.
 
-The BM25 catalog is cross-process hot-reloaded. Before each search, `hybridSearch` probes `MAX(updated_at)` plus `COUNT(*)`; when either differs from the cache it reloads the full catalog, rebuilds the in-memory BM25 index, and refreshes the citation catalog (`chunk_id`, `metric:`, `table:`, bare table, and `column:`-stripped ids). A mockable query function plus a vector-row fallback keeps unit tests DB-free when the watermark probe is unavailable.
+The BM25 catalog is cross-process hot-reloaded. Before each search, `hybridSearch` probes `MAX(updated_at)` plus `COUNT(*)`; when either differs from the cache it reloads the full catalog, rebuilds the in-memory BM25 index, and refreshes the citation catalog (`chunk_id`, `metric:`, bare table, and `column:`-stripped ids). A mockable query function plus a vector-row fallback keeps unit tests DB-free when the watermark probe is unavailable.
 
 ## 8. Gateway exposure
 
@@ -175,9 +175,15 @@ The `search_semantic_layer` tool is registered in `TOOL_SPECS`/`TOOL_SCOPES` (de
 
 The two resources `semantic://data-dictionary` and `semantic://metrics` are served from the checked-in Markdown files. Resource reads require the `schema:read` scope, withhold every `## ` section whose header ends in `[restricted_pii]` unless the principal holds `data:sensitive`, then apply the same PII redaction and audit as tool calls.
 
-## 9. Agent grounding and citation contract
+## 9. Skill contracts
 
-The UC-02 grounding contract is implemented in `packages/agent`: `semantic/retrieveSemantic.ts` owns the retrieve node, `validators/citationValidator.ts` owns deterministic citations, and `subgraphs/textToSql.ts` owns entry-time re-gating plus header injection. The root graph stays generic: its `retrieve` node delegates to the injected `RootGraphDeps.retrieve` seam, and the text-to-SQL entry is registered through the UC registry.
+Prompt contracts are file-based skills, not inline strings. `loadSkill(name, { skillsDir, emit })` reads `skills/<name>/SKILL.md`, parses the `name` plus optional `description` front matter with zod, validates the body against the eight canonical D-14 sections (name/metadata, description, when-to-use/triggers, inputs/outputs, steps, constraints/guardrails, examples, final-check — case-insensitive ATX heading match), and returns the body text as the injection contract. It throws on path traversal (`/`, `\`, `..`), on a missing file, on invalid front matter, and on any missing D-14 section; on success only it emits one `skill_call` span with the skill name.
+
+The text-to-SQL `understand` node loads the `text-to-sql` skill on every turn and interpolates its contract into the intent-extraction prompt alongside the user question, so requested metrics versus schema entities, `definition_lookup` routing, and the no-invention rule travel with the model call without hard-coding them in TypeScript. The same loader serves siblings such as `answer-synthesis`; malformed fixtures and unsafe names are covered by DB-free loader tests.
+
+## 10. Agent grounding and citation contract
+
+The UC-02 grounding contract is implemented in `packages/agent`: `semantic/retrieveSemantic.ts` owns the retrieve node, `validators/citationValidator.ts` owns deterministic citations, `validators/claimValidator.ts` owns numeric and causal claim checks, and `subgraphs/textToSql.ts` owns entry-time re-gating plus header injection. The root graph stays generic: its `retrieve` node delegates to the injected `RootGraphDeps.retrieve` seam, and the text-to-SQL entry is registered through the UC registry.
 
 ### Retrieve node
 
@@ -215,9 +221,20 @@ Intent extraction splits `requestedMetrics` (business KPIs) from `schemaEntities
 
 On success it deterministically prepends (or replaces) a sorted, deduped `-- @citations: id1, id2` first-line header via `ensureCitationHeader` (`parseCitationHeader` reads it back). `deriveCitations` builds the minimal valid set from retrieved ids — preferring retrieved `metric:*` (up to 5), else top retrieved ids — so the harness fills omissions from grounding rather than letting the model invent ids. `repairCitations` retries at most `CITATION_REPAIR_LIMIT = 2` times, and only for `citation_unknown`/`citation_not_retrieved` by swapping bad ids for derived ones; `citation_missing_metric` never repairs when no `metric:*` was retrieved.
 
-The entry seam `withCitationHeader` applies this per turn without a fake full catalog: it derives citations from `state.semanticChunks` ids, validates retrieved-this-turn plus `metric:*` coverage, repairs up to twice, and returns `null` on persistent failure so the caller fails closed to `cannot_answer` instead of shipping an unverified header. A column-only retrieval on a metric query therefore still runs the executor once but then refuses to answer. Downstream, the UC-03 claim validator consumes retrieved `event:*` chunk ids as `eventIds` for causal gating: causal language passes only with an `event:*` evidence pointer, an event id named in the claim, or a row-backed non-time dimension value.
+The entry seam `withCitationHeader` applies this per turn without a fake full catalog: it derives citations from `state.semanticChunks` ids, validates retrieved-this-turn plus `metric:*` coverage, repairs up to twice, and returns `null` on persistent failure so the caller fails closed to `cannot_answer` instead of shipping an unverified header. A column-only retrieval on a metric query therefore still runs the executor once but then refuses to answer.
 
-## 10. Configuration, invariants, and focused tests
+### Deterministic claim checks
+
+`validators/claimValidator.ts` is pure (no model, no I/O) and runs one deterministic pass over draft insights against the transient query buffer (full ≤ 1,000-row buffer in production, `resultPreview` when only the preview is available):
+
+- Number extraction covers thousands separators, K/M/B plus Vietnamese nghìn/triệu/tỷ/tỉ scale suffixes, `%` deltas, and VND/₫/đồng markers, skipping date spans such as `2026-09` or `05/09/2026`.
+- Every non-label number must trace to an `EvidencePointer` `{ column, rowKey, value }` cell in the buffer within 1% relative tolerance (`CLAIM_NUMBER_TOLERANCE = 0.01`); both the bare digits and the scale-multiplied value match, and percentage deltas recompute from the cited evidence pair.
+- Causal gating passes claims with causal language (`due to`, `do …`, `vì`, `bởi`, `nguyên nhân`, `dẫn đến`, and related forms) only with an `event:*` evidence pointer, an event id named in the claim, or a row-backed non-time dimension value; bare time values and metric magnitudes never ground a cause.
+- Unverified numbers and causes are stripped from `insights` (never repaired by the LLM) and each removal is returned for the trace; the response ships whatever verified claims remain plus `caveats`.
+
+Downstream, the text-to-SQL and RCA entries consume retrieved `event:*` chunk ids as `eventIds` for that causal gate: causal language passes only with an `event:*` evidence pointer, an event id named in the claim, or a row-backed non-time dimension value.
+
+## 11. Configuration, invariants, and focused tests
 
 Key configuration is the six YAML corpus files plus two Markdown fallback and resource files, the `INDEXER_DATABASE_URL` write URL, the embedder environment (`EMBEDDING_MODEL_ID`, `OPENAI_COMPATIBLE_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_DIM`), the retrieve default `topK = 8` versus the gateway contract default 5 and cap 20, the grounding threshold `0.6`, the repair limit `2`, the closest-metrics limit `5`, the fixed `RRF_K = 60` with weights `[1.0, 1.0, 1.5]`, the BM25 parameters `k1 = 1.2` and `b = 0.75`, and the HNSW build parameters.
 
@@ -231,8 +248,10 @@ Invariants to preserve when changing this area:
 - Never bypass the snake_case to camelCase boundary mapper; storage text with commas must split into clean arrays, and `aliasMatched` plus `denseScore` must only appear when the fusion path sets them.
 - Never persist semantic chunks without their trust signals; dropping `aliasMatched`/`denseScore` from `semanticChunks` blinds the unknown-term gate.
 - Never let a metric query ship SQL without a verified `metric:*` citation; fail closed to `cannot_answer` on persistent `citation_missing_metric`.
+- Never strip or repair numeric and causal claims with the model; unverified numbers and ungrounded causes are removed deterministically and logged.
+- Never load a skill without D-14 validation; missing sections or unsafe names must throw before prompt injection.
 - Never assume Postgres FTS is the lexical leg; the GIN/`fts` column is reserve DDL while `hybridSearch` uses in-memory BM25 plus the alias matcher.
 
 Common failures are an unset indexer URL, an OpenAI embedder missing model or key, dimension mismatch after an endpoint change, missing MCP transport identity at retrieve time, and assuming join-rule expansion or alias matching can be skipped for short queries.
 
-Focused tests live in the DB-free semantic unit suite: fake-embedder shape, determinism, and normalization; weighted RRF ordering at `k = 60` with stable tie-breaking and `topK` truncation plus alias-weight boost; BM25 diacritic folding, sub-token expansion, Okapi scoring, and `allowRestricted` filtering; alias exact-versus-substring ranking and `aliasMatched` propagation through `hybridSearch`; join-rule injection and tail replacement at `topK`; cross-process hot-reload of the BM25 index and citation catalog on watermark change; resource section filtering with and without `data:sensitive`; storage-to-contract mapping; corpus chunking with metadata parsing and restricted-header tagging; and the 6-type YAML corpus suite proving canonical discovery order, per-type chunk counts and sensitivities, deterministic `canonicalJson` and `contentHash` behavior, first-run bulk insert plus second-run full skip, single-chunk re-embed on metric edit, and stale-delete reporting via `chunk_id = ANY($1)`. The live suite replays the same incremental index and fused retrieval plus the `data:sensitive` split against real role grants when database URLs are present. Agent tests pin the grounding gate (`uc02retrieve`: threshold value, no-search passthrough, alias and dense grounding, multi-term attribution, NPS and forced-guess short-circuits with zero SQL, definition passthrough, fail-closed transport and empty-retrieval cases), the citation validator (`uc02citation`: header injection and parsing, column-variant interop, three rejection codes, `<= 2` repair, unrepairable metric-missing case), and entry integration (`uc02entry`: NPS short-circuit with zero executor calls, definition answer with zero executor calls, SQL header plus validator pass, empty-chunk and column-only fail-closed paths).
+Focused tests live in the DB-free semantic unit suite: fake-embedder shape, determinism, and normalization; weighted RRF ordering at `k = 60` with stable tie-breaking and `topK` truncation plus alias-weight boost; BM25 diacritic folding, sub-token expansion, Okapi scoring, and `allowRestricted` filtering; alias exact-versus-substring ranking and `aliasMatched` propagation through `hybridSearch`; join-rule injection and tail replacement at `topK`; cross-process hot-reload of the BM25 index and citation catalog on watermark change; resource section filtering with and without `data:sensitive`; storage-to-contract mapping; skill loading (seed contracts, D-14 rejection, unsafe-name and missing-skill throws, single `skill_call` emission); corpus chunking with metadata parsing and restricted-header tagging; and the 6-type YAML corpus suite proving canonical discovery order, per-type chunk counts and sensitivities, deterministic `canonicalJson` and `contentHash` behavior, first-run bulk insert plus second-run full skip, single-chunk re-embed on metric edit, and stale-delete reporting via `chunk_id = ANY($1)`. The live suite replays the same incremental index and fused retrieval plus the `data:sensitive` split against real role grants when database URLs are present. Agent tests pin the grounding gate (`uc02retrieve`: threshold value, no-search passthrough, alias and dense grounding, multi-term attribution, NPS and forced-guess short-circuits with zero SQL, definition passthrough, fail-closed transport and empty-retrieval cases), the citation validator (`uc02citation`: header injection and parsing, column-variant interop, three rejection codes, `<= 2` repair, unrepairable metric-missing case), the claim validator (number extraction, 1% tolerance matching, delta recomputation, label-number exemption, event-gated causal pass versus strip), and entry integration (`uc02entry`: NPS short-circuit with zero executor calls, definition answer with zero executor calls, SQL header plus validator pass, empty-chunk and column-only fail-closed paths).

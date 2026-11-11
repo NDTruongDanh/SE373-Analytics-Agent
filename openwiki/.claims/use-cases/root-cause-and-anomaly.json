@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1cc045d2de48887786442e1e3642309c46c3fbc245b8dd380fc629c9ce0b047a",
+  "pageVersion": "sha256:c444282412ac0767903d24a839a0042c4f3f844ef2beafe5d71e125f498ebe95",
   "claims": [
     {
       "id": "claim_c092349b60ee43fdab0b26417119585d",
@@ -611,10 +611,108 @@
           "version": "repo-lines-v1:sha256:ec4bcb2f61ef01f5afdb3105a3758d2799f44ca7a3230d2184a646b444dc519e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1OWFmYTViM2I3YjM4MWYwNmY1MGRlMjdjZDYzN2ZkMWRjOTBhOTE0NzUyZjMzMmQ4ODJjN2IyNWRkYzk5ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4YTg0ODRhOGY2NWI4MThjYmFiZDFkYzE2NGJiZmY3MzI0YzAzMDMzNTIxODNjMmJhNjk0OGQ0ZmRiMTQyMDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_769aa56aa16a49e19c2c79d03a673dfa",
+      "statement": "UC-10 subscription configuration has landed as config/subscriptions.yaml version 1 with five daily subscriptions (return-rate, net-revenue, cancellation-rate, order-count, review-score), each carrying primary/suggested dimensions, recipient and role, channel, digest preference, absoluteThreshold and minSupport, validated by SubscriptionsConfigSchema with snake_case preprocessing, MinSupport floor of 15, and a four-member AlertChannel allowlist.",
+      "evidence": [
+        {
+          "resource": "repo://config/subscriptions.yaml#L1-L88",
+          "version": "repo-lines-v1:sha256:d506cfc374d464570bf7deac30475edce1a374fb8d4420c157a4e99d76f91980:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5YmZjYzZhMTRiODNlMjE5MmI4NjczNjc3NzI1Yzg0ODgzZWU5Y2QwYzcwZTQ1YzllYzA5ZGFhOGYyYjI4NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmZmMzYzc2ZGE2M2U3YTliMDFlN2YxNWM0NjkzYmE2NjZmZmI3MWY4NTI4NjY1Njc0YTYyMTc5ODdmYzA2ZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/alert.ts#L70-L93",
+          "version": "repo-lines-v1:sha256:35b0732d2f299700e196496e769848ee251308e6835a39de821de7794cd7130f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMGUzMGE3YjI2ODQ4NzY2ZTNiZGQ2YmQ2YWE0ZWIxMzM3NmY5NTIwNjNiNWZjNzZiNTAwMTEzZGYxY2FhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExNTczNDViNmYyMDk4MjE3ZGYyNzY4YmJlYTZlNjc4NzkwMzEyMjZlNzNlNjg2MjA1Njk4Nzg0YTRhMTc3ZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyNzliNjgwNTIwZWQ1MjZkY2M0YzhhYTM3MzUyNzU5MGUyODE5NWU0MGZiZTYxMDdlMWU1YjQ5NWE0NTc3MzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxZmNmNTM1MjE0ODI3NjU1OTIwOWE3NWMyYjQwMzE1MWY5MWUyMDAwMWYwZTNhOTc3NDNhZjc0OTFjNjBmYmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0432ade04a0a411494b8d54605cc2029",
+      "statement": "The UC-10 subscription loader resolves the config from an explicit path, SUBSCRIPTIONS_PATH override, or repo-root-relative DEFAULT_SUBSCRIPTIONS_PATH, parses YAML text through SubscriptionsConfigSchema with an explicit syntax error, and its legs pin default loading, overrides, and malformed-YAML failure.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/alerts/subscription.ts#L11-L33",
+          "version": "repo-lines-v1:sha256:61ad3ad25c33d3af249b7463fa662739e0ff8af48a7cb2249a28130d7e6375fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyZmRjMTE5ZTExMWY3NmNjNDk3NDJmOWY2N2ViZmQ2YTQwZTg5ZmE3ZDZmYTcyYjZmZWFkOTMwZTE0ZjE5ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0NDNmYTJkZDg3NmRlZmY3ZjhmMDM5MGE4NzVkZmI4YTQ4YjRlMjAyYjE5NGQxNTY4MTQ5MWM3MWU2MjYyYTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5OTRjZTk0MDViZmQ2NDdiNzY2YjcxY2Q2YTBiNTU1MTM1MWM2MTA4ZWQ4YzM5MDgxZmJkNGIxMDMwOGU1ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/agent/test/subscription.test.ts#L8-L31",
+          "version": "repo-lines-v1:sha256:cd5e7965bc2a566690d34248c1cf46fe7beafee5156d41005f7e235c300bd183:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNWRmYzI1MzQ0NzFiOTdjNWQ0ZTE4ODJiNGE1YTljNTcyODUyOGNiZmMwNGI1OTJjZmVkNDI3NDNmMjgwZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyNWM3OGQ2MDI2ZWVhNmMzN2FiNGM4NjBjYzgxOWY1ZmFmMTk2N2VmN2I1ODFhMzM2OTMyNWRjNmI0MGRmOWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3f49abf6154a4c0591b9908bfe73ebaa",
+      "statement": "UC-10 anomaly detection has landed as pure-code detectAnomaly with trimmedMean/trimmedStd helpers, calculateEffectiveSigma as max(sigmaRaw, eps, 0.05*|muTrim|), calculateWoW with max(|weekAgo|, eps) guard, isAbsoluteThresholdBreached above/below check, support-count gating, insufficient-history handling, and direction classification, operating only on numeric aggregates so hostile metadata cannot execute.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L125-L213",
+          "version": "repo-lines-v1:sha256:befeef6a42cbab20d732289128ada30bc61a6de11fc28f59b6ad1736da08dcfe:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNjYwNmE2YWJlNjQ4ODIxMjk2ZWY3NWEwMGQ5YzkyODcwY2Y2MjExMDJiMWRjNzk0YmNiMGYxODA2NzAzNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTdmYWY2MDVkZDAyOTg2YzAxZTFiNzFlZDA2OTVlMjYxZmVlMzdlNDRhZmUzODcyNGFiZTJjNGEzNmZkZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxZjI0MTU0NmExMWEzMTM5ZjI2MDE2ZGFhZTNkYjZhYTA0NjY2OTNjYmQ2ZTUxNWMyZWIxOTIzZTZjMjQxOTEifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L41-L113",
+          "version": "repo-lines-v1:sha256:60b64fd6143421401a1e0d2fdadd3000174f18736655153ffb564b1403694190:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1NDcyMWU0MTIxMmRlOTE4NmMzZWRmM2JlZWRjZjI2NjgwYTIyOTFhMTkyMTUzNjE3NWI4MDMxODQxMTA1ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4ZDVjODZjMWEyMWNjZjUwNDZhNjJlOTQ1MTU2ZmRiOTU3ZDM5YWNiNzYwOTc5MDEyNGFjYjA4MmZkYjViMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmOGU2OTRjMDJjMjMyNGE2NzkyNGJmODhlYzMyMDE3NzEwZDVjYTQzMzJiZjc2ZTRmYTMyNTYxOTBhZDg5MDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_56390d196e5c43b4a60b6825d9cef7f2",
+      "statement": "detectAnomaly maps severity as critical on absolute-threshold breach or absZ>=3.0 or absWoW>=50, warning for 2.0<=absZ<3.0, returns skipped_insufficient_support when supportCount is below minSupport (default 15), and returns insufficient_history with statistical suppression on fewer than 14 history points while still alerting critical on an absolute-threshold breach.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L125-L213",
+          "version": "repo-lines-v1:sha256:befeef6a42cbab20d732289128ada30bc61a6de11fc28f59b6ad1736da08dcfe:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNjYwNmE2YWJlNjQ4ODIxMjk2ZWY3NWEwMGQ5YzkyODcwY2Y2MjExMDJiMWRjNzk0YmNiMGYxODA2NzAzNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTdmYWY2MDVkZDAyOTg2YzAxZTFiNzFlZDA2OTVlMjYxZmVlMzdlNDRhZmUzODcyNGFiZTJjNGEzNmZkZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxZjI0MTU0NmExMWEzMTM5ZjI2MDE2ZGFhZTNkYjZhYTA0NjY2OTNjYmQ2ZTUxNWMyZWIxOTIzZTZjMjQxOTEifQ"
+        },
+        {
+          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L176-L244",
+          "version": "repo-lines-v1:sha256:a14fa06aafeb6e28c7e05888bc219e0bb1a5f215b50818a788f8711739703b54:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZjFmMGVhZTJjZmI4OGRjMTJkYTU0ZTAwMzgyZGY1ZTA5MmJlYWZlMzlhYWRmNWRiZWE3ZDc4OGQ3Y2I3ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNjQ4YmMyYWEyODlkNmM2YzcwZmQ2ZjIxMmY1OGQwMDU5YmYzMjUzMWU0YTQ1M2RlNzc2NjMyOTZmZDE1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0MTZhZWFjMDAxNzY1OTFjYzk3OGU2MTdkOTIyZGIzZDZkYmU3MGRmMDM2YmM1YmU5NzkyZjgzZDU1YTgxODgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_844ae8d1772f431ebc70538ed8ee61c0",
+      "statement": "The offline detector suite pins five ANOM-01..05 critical scenarios with direction and z bounds, contamination resistance of the trimmed baseline to a 10x outlier, sigma_eff flooring on flat series, injection-laden metadata yielding pure-math results, low-support suppression, and zero-division plus detectAnomalyFromSeries edge cases.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L249-L438",
+          "version": "repo-lines-v1:sha256:9df511da2e07d60e059c294b337c8b8ef3204d756a6bfa8798f6539910ba2bfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTkwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjYzQwNTEwZDgyODU1ZjExZjlkMDJlYzlkODBjMGRhNjA5MTYzZjJjMGU0MTljMWRhNGYyY2VkN2U4YzczZGQzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmNmY1YjQwYjE1ODQ1N2QxNzg2NGYyMTc5MDc4NmRkNWEyZWNkYjY0YjY2YTY1MWY3ODhkNGUyNWNkMzMwM2QyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Mjc2MTg0NmQ1ODBkMDg1MjM1MmMxZjZkY2E3NTVjOWViYWRkOWEyZmFiOWM5NDUzMjRlMzgzY2RlNjgzNDI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L41-L173",
+          "version": "repo-lines-v1:sha256:6047d03177d17198cf1603c615700cef05d9fe94c6c35212550e2170e72167e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmZDEyZTZkOWVlY2Q4ZDlkOTkzODdiMjNlYTExOTZiMDY5NTUzZWY3MDYyYzY1YjBlNThjOWJhNGY3MzM4YTg4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyMmQxMWNhZjQzZTk3ZWYzNjllNmJlZWQxYTI2OGJkMDU4MzhmMjliOWRkMjU0YmY2OWJhNjQ4ODQxNDcyMzRhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyM2E0NTYyZjE5Zjg2ODM4YjQ1MGIxZWMwZWE1MTBlMDNiYWE4OTViMjQ4ZDY1NWUxYWEzYWE1M2Q4MTI3Mjg4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzN2E3MDFiYTE1MjJkNTM4ZWMwMjJkMTIyNjQ5MjhmY2U2ODA5OTMzMzdhYTY0MDdlYzQ1MmQ5MGRkZGRjYmIwIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_b262e3c136004835a3ff2bbccc564c3b",
+      "statement": "Both domain skill contracts have landed: skills/root-cause-analysis/SKILL.md for the UC-05 diagnostic workflow and skills/anomaly-alert/SKILL.md pinning subscription loading via SubscriptionsConfigSchema, trimmed z-score plus WoW plus min_support detection, 1-2-dimension read-only drill-down with RBAC, and six-field alert composition.",
+      "evidence": [
+        {
+          "resource": "repo://skills/anomaly-alert/SKILL.md#L20-L58",
+          "version": "repo-lines-v1:sha256:a7ae7cbbe7d3f439a8aaa9bf0e0b8e809053e46bedf48d0f5a4e6bdbb0fdec54:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiMDk3ZWEzZWFiNTI1N2ExNTE5NmJjMWE4MjE5ZDgyZGRjODc4MmE1YWQwMGRlNmVkNzQ0ZDU2MzQ4ODAyZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYWIwY2Y3MmU2YmIyZTcwY2Y1OTAyZGQ2MDEyMDA5NjYyNzY5MWIzNDhlMjZkOTdjODgyM2I5NTJmYzgxODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjMWU4OWYyNDZmNzFmNmJkZDc4N2MxZjVjZGZmYzM3NjA2NjEyYzEzNDkxZDNlNTU4YzFlZDgyZDU0MDcyYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzOTk0NmYwZDlhN2EyYjA3YWQxNjg4Yzg2NDViYWQ1YmRjNmNlNmI0ZjUyMWMxM2I2NDY0ZGMyMTA1Mzk0NjcifQ"
+        },
+        {
+          "resource": "repo://skills/root-cause-analysis/SKILL.md#L2-L33",
+          "version": "repo-lines-v1:sha256:cc11d9d553d1fad3f246e1ede6d025e35b0d291d4ca4fb6e85bd6a6e54b6e30e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwY2RjMDg5Mjk0MjAxMjY0NDRlYjE3NDkwODMyOTA2Yjg0OTBlZWIwOTkzYjliOWZjMTc5M2U0YzlkYTY2YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmMzI2OTE5ODBmZTQyYWNhZWZjZTY3MWU4ZjMxZWU3MjA5MDA3ODI3MDE2MmI0MGY4ZWIwN2E3NWNhYTA5ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1MmQ3MTExMDNkNTBhNDM3ODMwYzZmYmNkMDRmYjRiYWI0OWEwZjgyZjZkMjZkMWM3OTFjNmU4NDg4ZGQwOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5NTcwOWMwYzM1Y2RlZjZlOTgyY2U3NDYxNGQ4Njg2ZGJjMjIyNTQwZTQzN2VjNmU1ZTFkZGM4OTRhMTdhODUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bf75b85df9b6486798486db524ad986a",
+      "statement": "The UC-10 scheduled runner, MCP series fetcher, LLM drill-down node, severity router/digest, and channel sender remain unimplemented: the alerts barrel only re-exports the detector and no alert:run package script or sendAlert implementation exists.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L13-L36",
+          "version": "repo-lines-v1:sha256:5c409dc5fa82125c4e61a16366c21ac15aa60218bad8a1242d6843f707638272:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ODMzZDU5NDljMDNhNDBjYTk1MjQ5MTYxMGE2NjU5NjQ0YjNhYTQ2NjM2MmY3OTkwMjBkYmYxOTgxNTQ3ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MGM3Mjc5YTJiZTM2ZDJhZjU5ZGZkZThiMzM4M2Q5OWRkMWU4NDJhNGVjNThiMjQ3MjZlMGVkY2ZhNzkxMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmMWE1YTNmOWY3NTZhOGU3NDllOWEzZThhNGU2NmNlZDI1Mzg1MjViNWQyYTBlOGM0MDQ3ODg1ZTllMDAyNzUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/alerts/index.ts#L1-L2",
+          "version": "repo-lines-v1:sha256:23aaf7cb23abbecf7922d24a797c0e03a53c2ea613f5bf95ce45c62fa1369ebf:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmM5NzJlYTg4ODBiMGM4MTFhYmUzMjQzNjdhYzY5MTY5MTVjZDA5N2QxYmE4M2ZhMDE3NWQ2OWU4NTU5MjkyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-11-10T15:59:31.941Z"
+    "at": "2026-11-11T15:45:43.966Z"
   }
 }
