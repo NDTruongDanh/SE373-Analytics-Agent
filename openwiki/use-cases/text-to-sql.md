@@ -3,9 +3,6 @@ type: use-case
 title: Text-to-SQL use case
 description: Text-to-SQL subgraph wiring validated generation into AgentState through table normalization, definition fast-path, executor update mapping, and fail-closed citations.
 tags: [text-to-sql, self-repair, sql-validation, read-only-queries, structured-output, K1, K2]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-10T15:59:31.941Z
 sources:
   - id: openwiki-source-a55e0aedff6bc7c1b180ad4e
     resource: repo://packages/access-policy/src/constants.ts
@@ -40,6 +37,9 @@ sources:
   - id: openwiki-source-9ca63c47cf2805e788ed5fdb
     resource: repo://packages/mcp-server/src/tools.ts
 generated: { by: "openwiki/0.7.2", at: "2026-11-10T15:59:31.941Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-11-11T15:45:43.966Z
 ---
 
 # Text-to-SQL use case

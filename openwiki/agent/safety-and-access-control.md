@@ -1,11 +1,11 @@
 ---
 type: safety-guide
 title: Safety and access control
-description: Cross-cutting safety for the Analytics Agent covering read-only connections, SQL validation, agent pre-checks, RBAC with masking, PII redaction, budgets, and HITL approval.
+description: Cross-cutting safety for the Analytics Agent covering read-only connections, SQL validation, agent pre-checks, RBAC with masking, PII redaction, error-code routing, budgets, and human approval.
 tags: [safety, access-control, rbac, pii-masking, read-only, security]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-11-10T15:59:31.941Z
+    at: 2026-11-11T15:45:43.966Z
 sources:
   - id: openwiki-source-a53a8de5929686354550dafa
     resource: repo://docs/prd.md
@@ -33,6 +33,10 @@ sources:
     resource: repo://packages/agent/src/queryExecutor/executor.ts
   - id: openwiki-source-7405bf10324bacfc1a6b7abd
     resource: repo://packages/agent/src/queryExecutor/safetyGate.ts
+  - id: openwiki-source-f2db2c9ab36ff7be6949082d
+    resource: repo://packages/contracts/README.md
+  - id: openwiki-source-3e1ec54e40c3b23967c408a1
+    resource: repo://packages/contracts/src/constants.ts
   - id: openwiki-source-4c4499ad1e842a81b6f27cfc
     resource: repo://packages/contracts/src/tools.ts
   - id: openwiki-source-a21c007774a13621a14b7859
@@ -51,12 +55,12 @@ sources:
     resource: repo://packages/mcp-server/src/executor.ts
   - id: openwiki-source-c6764c62ef243702a1e271ac
     resource: repo://packages/mcp-server/src/pipeline.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-10T15:59:31.941Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-11-11T15:45:43.966Z" }
 ---
 
 # Safety and access control
 
-This page owns the cross-cutting safety rules every query path must satisfy: read-only connections, SQL validation, role-based access with masking, PII redaction, run budgets, and human-in-the-loop approval. Enforcement lives in the shared `access-policy` package, the agent `ValidatedQueryExecutor` pre-checks described in [Workflow Architecture](./workflow-architecture.md), the gateway pipeline described in [MCP Server](../integrations/mcp-server.md), and the generation path in [Text to SQL](../use-cases/text-to-sql.md).
+This page owns the cross-cutting safety rules every query path must satisfy: read-only connections, SQL validation, role-based access with masking, PII redaction, run budgets, error-code routing with retryable versus repairable handling, and human-in-the-loop approval including the costly-query decision. Enforcement lives in the shared `access-policy` package, the agent `ValidatedQueryExecutor` pre-checks described in [Workflow Architecture](./workflow-architecture.md), the gateway pipeline described in [MCP Server](../integrations/mcp-server.md), and the generation path in [Text to SQL](../use-cases/text-to-sql.md).
 
 > Core invariant: prompting alone is never a safety layer. Every guarantee below is enforced in code — in the validator, in the agent gate, in the policy rewrite, at the connection, in the budget check, in the approval interrupt, or in the redaction choke-point — so disabling or tricking the prompt does not lift the restriction.
 
@@ -74,7 +78,7 @@ Turning off any one layer still leaves the others blocking: a validator bypass s
 
 ## 2. Read-only connections
 
-The agent never opens its own database handle. All access goes through the `db-tools` MCP server over an authenticated client, and the agent, policy, and app packages are forbidden by lint from importing `pg`, `pg-cursor`, or `mcp-server` internals — only the gateway and its operator loader plus the `apps/api` state-store DAO may touch the driver.
+The agent never opens its own database handle. All access goes through the `db-tools` MCP server over an authenticated client, and lint forbids `pg`, `pg-cursor`, and `mcp-server` internals in `packages/agent`, `packages/access-policy`, and `apps/api` — except the `apps/api` state-store DAO and its test, which legitimately own `pg`. Only the gateway and its operator loader plus that DAO may touch the driver.
 
 Each execution borrows a pooled `agent_ro` client and follows a fixed contract:
 
@@ -111,7 +115,7 @@ Error behavior is part of the guard: parse failures return `INVALID_SQL` with a 
 
 - **Sensitive columns:** denies with `SENSITIVE_COLUMN_DENIED` when any catalog-marked sensitive column of a scanned table appears in `guard.columns`, which already collects named refs from every clause (projection, `WHERE`, `JOIN ON`, `GROUP BY`, `HAVING`, `ORDER BY`, function and aggregate args). This is intentionally stricter than the server: the agent gate blocks even projection reads that the server would mask.
 - **Joins:** denies any `JoinExpr` with no `ON`/`USING` condition (both `CROSS JOIN` and condition-less inner joins parse this way) and any comma-separated `FROM` list, which is an implicit cross join. `NATURAL JOIN` is left to the server-side guard.
-- **Large tables:** when a scanned table has any `large`-flagged column (the gateway catalog marks `order_items` and `orders` large; agent tests inject the flag via catalog override), and the query is not an aggregate and lacks an indexed time bound, the gate returns `needs_clarification` asking for a time range before running. An aggregate is a known aggregate call in the root `targetList` (for example `COUNT(*)`) or a root `GROUP BY`/`HAVING`; scalar functions such as `LOWER(status)` and aggregates hidden inside a CTE do not exempt an outer detail scan. The time bound must be a direct conjunctive comparison on `purchase_date` (`>`, `>=`, `<`, `<=`, `BETWEEN`), qualified refs and `CURRENT_DATE` windows included; string literals, `IS NOT NULL`, and predicates hidden behind `OR` do not satisfy it. `order_items` satisfies the policy through its required join to `orders` when the parent `purchase_date` filter is present; province or status filters narrow but never replace it.
+- **Large tables:** when a scanned table has any `large`-flagged column (the gateway catalog marks `order_items` and `orders` large; agent tests inject the flag via catalog override), and the query is not an aggregate and lacks an indexed time bound, the gate returns `needs_clarification` asking for a time range before running. An aggregate is a known aggregate call in the root `targetList` (for example `COUNT(*)`) or a root `GROUP BY`/`HAVING`; scalar functions such as `LOWER(status)` and aggregates hidden inside a CTE do not exempt an outer detail scan. The time bound must be a direct conjunctive comparison on `purchase_date` (`>`, `>=`, `<`, `<=`, `BETWEEN`), qualified refs and `CURRENT_DATE` windows included; string literals, `IS NOT NULL`, and predicates hidden behind `OR` do not satisfy it. `order_items` satisfies the policy through the required join to `orders` when the parent `purchase_date` filter is present; province or status filters narrow but never replace it.
 - **Detail-query clamp:** non-aggregate queries pass with `clampLimit(sql, 200)` — an existing `LIMIT` at or under the cap is untouched, a larger or `ALL` limit is tightened, an offset-only query gains a `LIMIT 200`, otherwise `LIMIT 200` is appended. Non-numeric limits are left for the server rather than producing invalid SQL.
 - **Timeout simplification:** a `TIMEOUT` gets exactly one forced rewrite that drops the `ORDER BY` tail and tightens the limit to 50, then re-passes guard plus gate before any MCP call.
 
@@ -140,6 +144,18 @@ Concretely:
 - `run_query` and `sample_rows` run the shared `runSqlStages` (guard, policy, `executeReadOnly` on the rewritten SQL, `redactRow` per row, `maskedColumns` echoed back). `sample_rows` is synthesized as `SELECT * FROM "table" LIMIT n` with `n <= 5`.
 - `explain_query` runs guard plus policy, then `EXPLAIN (FORMAT JSON)` on the rewritten SQL and returns `estimatedCost` plus `estimatedRows`. Inputs containing `ANALYZE` are rejected without running; unparseable plans are `INTERNAL_ERROR`. There is no server-side cost threshold or automatic human pause — cost-driven approval, if any, is a caller/workflow decision made from the returned estimate.
 - The agent executor describes only the candidate tables (budget-checked per call; describe failures return immediately), proposes SQL, then runs the local `sqlGuard` plus safety-gate pre-check with no MCP call past a failure. It calls `explain_query` before `run_query` on the gate-approved SQL (both budget-checked), then `run_query` with `maxRows: 1000` as the transient in-process validation buffer (checkpoint previews keep only 50 rows). A gate `needs_clarification` returns immediately unless the user already supplied a `timeRange`, which triggers one `selected_time_range` repair instead. An empty result at attempt one with a `WHERE` filter runs a single-pass zero-row diagnostic — resolve direct string-literal filters to table/column pairs, re-describe and `sample_rows` (`n=5`) each relevant table once, then run guarded `DISTINCT` probes capped at 20 rows — and only a concrete near-match retries; otherwise it concludes `no_data`.
+
+### 5.1 Frozen error contract and retry routing
+
+The 12 frozen contract codes are the single authority for retry versus repair decisions. `retryable` and `repairable` are computed by `dbToolError()` from `RETRYABLE_CODES` and `REPAIRABLE_CODES`; truncation is the `truncated` flag rather than an error, and `RATE_LIMITED` remains reserved.
+
+| Category | Codes | Handling |
+|---|---|---|
+| Transport / transient | `TIMEOUT`, `RATE_LIMITED`, `INTERNAL_ERROR` | MCP client retries with backoff; `TIMEOUT` allows one simplification rewrite |
+| SQL / schema diagnostic | `INVALID_SQL`, `UNKNOWN_TABLE`, `SQL_EXECUTION_ERROR` | `ValidatedQueryExecutor` repairs with sanitized code plus `cursorPosition`, at most 3 attempts total |
+| Hard security / policy | `UNAUTHORIZED`, `SCOPE_DENIED`, `INVALID_PARAMS`, `FORBIDDEN_STATEMENT`, `FORBIDDEN_FUNCTION`, `SENSITIVE_COLUMN_DENIED` | Immediate hard abort on attempt 1 as `restricted`, never a repair loop |
+
+`SQL_EXECUTION_ERROR` covers runtime data errors from valid-parse SQL (PostgreSQL classes `22` and residual `42`): repairable by the SQL generator, never retried by the transport.
 
 ## 6. RBAC and PII masking in code
 
@@ -194,6 +210,7 @@ Leak prevention is centralized:
 Safety also bounds how long a run may try and when a human must decide.
 
 - **Run budgets:** `createBudgetState` builds per-run counters (`llmCalls`, `tokensUsed`) plus an absolute `deadlineMs` from `BUDGET_LIMITS` (`maxLlmCalls: 20`, `maxTokens: 60000`, `runDeadlineMs: 120000`). `checkBudget` is pure and never mutates state — it returns `{ tripped: false }` or `{ tripped: true, reason, state }` with reason `llm-calls`, `tokens`, or `deadline`. The executor calls it before every LLM and MCP call (selective describe, propose, guard, `explain_query`, `run_query`, zero-row probe); a trip stops further calls and degrades to synthesis with partial findings, surfacing `cannot_answer` with `budgetExceeded: true`, the `tripReason`, and `partials` (`tablesDescribed`, `lastSql`, `rowsFetched`). `recordLlmCall` records count plus token usage after each proposal, with `estimateTokens` (length divided by 4) as the conservative fallback when the provider omits usage.
+- **Costly-query approval:** `explain_query` is the cost gate. The server returns `estimatedCost` and `estimatedRows` from `EXPLAIN (FORMAT JSON)` on the policy-rewritten SQL, but enforces no threshold itself. Approval policy lives with the caller or workflow: the agent path always explains before running so the estimate is observable in spans and audit, the large-table clarification path forces a time range before expensive scans, run budgets bound total attempts, and any hard human pause uses the HITL primitive below. Lightweight queries must never request approval.
 - **Clarification vs approval:** the large-table gate returns `needs_clarification` (ask for a time range, an aggregate, or a smaller table) via `requestClarification`, which requires a non-empty question, two to four options, and an `attempts` count from `0` to `2`, and carries `pendingClarification` with `sql: null`. True human approval uses a different primitive: `pauseForApproval` wraps LangGraph `interrupt` and must be called inside a node — the graph suspends there and resumes only when the host invokes the `resumeDecision` command (`new Command({ resume: value })`) on the same thread id. Resuming with a fresh input object is forbidden because it would re-run generation and risk double-executing side effects.
 - **Thread identity:** `makeThreadId(userId, sessionId)` builds the stable `chat:{userId}:{sessionId}` key, throwing on empty parts or ids at or over the 255-character limit so resume never lands in a truncated thread; `isSameThread` is strict equality. The interrupt plus same-thread resume pattern is proven DB-free on `MemorySaver`: completed nodes are not re-run, while a fresh thread starts clean.
 
