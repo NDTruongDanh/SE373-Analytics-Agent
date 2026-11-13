@@ -1,0 +1,54 @@
+# CI-only database stack. Used by the `db` job in .github/workflows/ci.yml.
+#
+# Why a separate file: the full stack (docker-compose.yml) hard-requires
+# ../.env because the whole app needs real tokens/keys. A CI checkout has
+# no `.env`, and the `db` job only needs Postgres on 127.0.0.1:5433 — so
+# this file defines just `db`, with no `env_file` and no app services.
+# `docker compose -f docker/docker-compose.ci.yml up db -d --wait` must work
+# on a clean checkout with no `.env` present.
+#
+# SYNC NOTICE: the `db` service below mirrors the `db` service in
+# docker-compose.yml (image, environment defaults, ports, volumes,
+# healthcheck). Keep them in sync — the literals MUST also match
+# docker/initdb/01_roles.sql dev defaults. Deliberately NOT kept DRY via
+# `extends`/`include`: referencing the full stack would reintroduce the
+# hard `.env` requirement this file exists to avoid.
+#
+# LOCAL-ONLY dev defaults (never reuse in deployed environments):
+#   POSTGRES_PASSWORD      = chosen_postgres_dev   (superuser `postgres`)
+#   OWNER_PASSWORD         = chosen_owner_dev      (DDL/load role `owner`)
+#   AGENT_RO_PASSWORD      = chosen_agent_ro_dev   (read-only role `agent_ro`)
+#   INDEXER_PASSWORD       = chosen_indexer_dev    (RAG CLI role `indexer`)
+#   HARNESS_STATE_PASSWORD = chosen_harness_state_dev (state role `harness_state`)
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chosen}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chosen_postgres_dev}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-chosen_owner_dev}
+      AGENT_RO_PASSWORD: ${AGENT_RO_PASSWORD:-chosen_agent_ro_dev}
+      INDEXER_PASSWORD: ${INDEXER_PASSWORD:-chosen_indexer_dev}
+      HARNESS_STATE_PASSWORD: ${HARNESS_STATE_PASSWORD:-chosen_harness_state_dev}
+    ports:
+      # Loopback only: the dev roles use committed default passwords, so the
+      # DB must never be reachable from other machines on the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-chosen}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata: {}

@@ -60,6 +60,7 @@ x-app-environment: &app-environment
   HARNESS_STATE_DATABASE_URL: postgresql://harness_state:${HARNESS_STATE_PASSWORD:-chosen_harness_state_dev}@db:5432/${POSTGRES_DB:-chosen}
 
 services:
+  # NOTE: mirrored in docker-compose.ci.yml (db-only, no env_file) — keep in sync.
   db:
     image: pgvector/pgvector:0.8.7-pg16
     environment:

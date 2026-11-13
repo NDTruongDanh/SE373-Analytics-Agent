@@ -11,8 +11,8 @@
     "pnpm": ">=10"
   },
   "scripts": {
-    "db:up": "docker compose -f docker/docker-compose.yml up -d",
-    "db:reset": "docker compose -f docker/docker-compose.yml down -v && docker compose -f docker/docker-compose.yml up -d",
+    "db:up": "docker compose -f docker/docker-compose.yml up db -d",
+    "db:reset": "docker compose -f docker/docker-compose.yml down -v && docker compose -f docker/docker-compose.yml up db -d",
     "docker:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d --build",
     "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
     "docker:ps": "docker compose --env-file .env -f docker/docker-compose.yml ps",
