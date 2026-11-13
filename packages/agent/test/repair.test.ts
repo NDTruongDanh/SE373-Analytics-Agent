@@ -2,6 +2,7 @@
 // input-recording FakeListChatModel plus a scripted stub McpToolCaller. No
 // API key, no DB, no network.
 import { describe, expect, it } from "vitest";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { dbToolError } from "@shared/contracts";
 import {
@@ -36,6 +37,18 @@ class RepairFakeModel implements ChatModelLike {
 
   constructor(responses: string[]) {
     this.inner = new FakeListChatModel({ responses });
+  }
+
+  invoke(input: string, config?: { callbacks?: Callbacks }): Promise<unknown> {
+    return this.inner.invoke(input, config);
+  }
+
+  stream(
+    input: string,
+    config?: { callbacks?: Callbacks; signal?: AbortSignal; runName?: string },
+  ): AsyncIterable<unknown> {
+    this.inputs.push(input);
+    return this.inner.stream(input, config);
   }
 
   withStructuredOutput(

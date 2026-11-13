@@ -34,7 +34,7 @@ import {
 } from "./budgets.js";
 import {
   estimateCostUsd,
-  invokeWithUsage,
+  invokeJsonWithUsage,
   type LlmUsage,
 } from "../telemetry/usage.js";
 import {
@@ -61,9 +61,17 @@ export type SqlProposal = z.infer<typeof SqlProposalSchema>;
 
 /**
  * Narrow model seam 01-12 satisfies with the real factory (or the fake in
- * tests): structured output returning a parsed SqlProposal.
+ * tests): plain text invoke returning the model message (parsed client-side
+ * against SqlProposalSchema — no response_format on the wire), plus the
+ * structured-output entry retained so existing implementations keep
+ * satisfying the seam.
  */
 export interface ChatModelLike {
+  invoke(input: string, config?: { callbacks?: Callbacks }): Promise<unknown>;
+  stream(
+    input: string,
+    config?: { callbacks?: Callbacks; signal?: AbortSignal; runName?: string },
+  ): AsyncIterable<unknown> | Promise<AsyncIterable<unknown>>;
   withStructuredOutput(
     schema: typeof SqlProposalSchema,
     opts?: { name?: string; includeRaw?: boolean },
@@ -753,7 +761,10 @@ export class ValidatedQueryExecutor {
             ? `${input.question}${timeRangeContext}`
             : `${input.question}${timeRangeContext}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
         try {
-          const out = await invokeWithUsage(this.model, SqlProposalSchema, prompt, {
+          // Plain-JSON proposal: no response_format on the wire (the
+          // provider's strict json_schema path is far slower than the
+          // model timeout); fail-closed schema validation still applies.
+          const out = await invokeJsonWithUsage(this.model, SqlProposalSchema, prompt, {
             name: "sql_proposal",
             callbacks: input.callbacks,
           });

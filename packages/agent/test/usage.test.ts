@@ -19,6 +19,7 @@ import { createBudgetState } from "../src/queryExecutor/budgets.js";
 import { loadModelPricing } from "../src/telemetry/pricing.js";
 import {
   estimateCostUsd,
+  invokeJsonWithUsage,
   invokeWithUsage,
   modelFromMessage,
   usageFromMessage,
@@ -188,6 +189,125 @@ describe("invokeWithUsage", () => {
   });
 });
 
+describe("invokeJsonWithUsage", () => {
+  const PARSED = {
+    sql: "SELECT status FROM orders",
+    tablesUsed: ["orders"],
+  };
+  const USAGE = { input_tokens: 100, output_tokens: 50, total_tokens: 150 };
+
+  function plainModel(content: unknown): {
+    invoke: () => Promise<unknown>;
+    stream: () => AsyncIterable<unknown>;
+  } {
+    const message = () => ({
+      content,
+      usage_metadata: USAGE,
+      response_metadata: { model: KNOWN_MODEL },
+    });
+    return {
+      invoke: async () => message(),
+      stream: async function* () {
+        yield message();
+      },
+    };
+  }
+
+  it("parses verbatim JSON text and reads usage plus model", async () => {
+    const out = await invokeJsonWithUsage(
+      plainModel(JSON.stringify(PARSED)),
+      SqlProposalSchema,
+      "q",
+      { name: "sql_proposal" },
+    );
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.inputTokens).toBe(100);
+    expect(out.outputTokens).toBe(50);
+    expect(out.model).toBe(KNOWN_MODEL);
+  });
+
+  it("parses a fenced json block and content-block arrays", async () => {
+    const fenced = await invokeJsonWithUsage(
+      plainModel(`here you go:\n\`\`\`json\n${JSON.stringify(PARSED)}\n\`\`\``),
+      SqlProposalSchema,
+      "q",
+    );
+    expect(fenced.parsed).toEqual(PARSED);
+    const blocked = await invokeJsonWithUsage(
+      plainModel([{ type: "text", text: JSON.stringify(PARSED) }]),
+      SqlProposalSchema,
+      "q",
+    );
+    expect(blocked.parsed).toEqual(PARSED);
+  });
+
+  it("throws not-valid-JSON without echoing raw output", async () => {
+    const raw = `sorry, cannot comply (${CANARY_PHONE})`;
+    const error = await invokeJsonWithUsage(
+      plainModel(raw),
+      SqlProposalSchema,
+      "q",
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SyntaxError);
+    expect(String((error as Error).message)).toMatch(/not valid JSON/i);
+    expect(String((error as Error).message)).not.toContain(CANARY_PHONE);
+  });
+
+  it("fails closed on schema violations and degrades fakes to zero usage", async () => {
+    await expect(
+      invokeJsonWithUsage(
+        plainModel(JSON.stringify({ nope: true })),
+        SqlProposalSchema,
+        "q",
+      ),
+    ).rejects.toThrow();
+    const fake = new FakeListChatModel({
+      responses: [JSON.stringify(PARSED)],
+    });
+    const out = await invokeJsonWithUsage(fake, SqlProposalSchema, "q", {
+      name: "sql_proposal",
+    });
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.inputTokens).toBe(0);
+    expect(out.outputTokens).toBe(0);
+    expect(out.model).toBeUndefined();
+  });
+
+  it("counts reasoning chunks as progress and records firstTokenMs", async () => {
+    const reasoning = async function* () {
+      yield { content: "", additional_kwargs: { reasoning_content: "thinking" } };
+      await new Promise((r) => setTimeout(r, 10));
+      yield { content: JSON.stringify(PARSED), usage_metadata: USAGE };
+    };
+    const out = await invokeJsonWithUsage(
+      { invoke: async () => ({}), stream: () => reasoning() },
+      SqlProposalSchema,
+      "q",
+      { name: "sql_proposal", idleMs: 1000 },
+    );
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.firstTokenMs).toBeDefined();
+    expect(out.firstTokenMs as number).toBeLessThan(1000);
+  });
+
+  it("aborts a stalled stream on the idle budget with a TimeoutError", async () => {
+    const stalled = async function* () {
+      yield { content: "" };
+      await new Promise(() => {});
+      yield { content: "" };
+    };
+    const error = await invokeJsonWithUsage(
+      { invoke: async () => ({}), stream: () => stalled() },
+      SqlProposalSchema,
+      "q",
+      { idleMs: 50 },
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe("TimeoutError");
+    expect(String((error as Error).message)).toMatch(/stalled/);
+  });
+});
+
 describe("executor real-token llm_call plus RBAC run_query span", () => {
   const PRINCIPAL = {
     runId: "run-usage-1",
@@ -228,7 +348,19 @@ describe("executor real-token llm_call plus RBAC run_query span", () => {
   }
 
   function realUsageModel(): ChatModelLike {
+    const message = () => ({
+      content: JSON.stringify({
+        sql: "SELECT status FROM orders",
+        tablesUsed: ["orders"],
+      }),
+      usage_metadata: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+      response_metadata: { model: KNOWN_MODEL },
+    });
     return {
+      invoke: async () => message(),
+      stream: async function* () {
+        yield message();
+      },
       withStructuredOutput: () => ({
         invoke: async () => ({
           raw: rawMessage(

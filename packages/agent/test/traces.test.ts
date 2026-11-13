@@ -353,6 +353,14 @@ describe("run_done totals", () => {
     });
     const executor = new ValidatedQueryExecutor({
       model: {
+        invoke: async () => ({
+          content: JSON.stringify({ sql: E2E_SQL, tablesUsed: ["orders"] }),
+        }),
+        stream: async function* () {
+          yield {
+            content: JSON.stringify({ sql: E2E_SQL, tablesUsed: ["orders"] }),
+          };
+        },
         withStructuredOutput: () => ({
           invoke: async () => ({
             sql: E2E_SQL,
@@ -522,6 +530,18 @@ describe("run_query attempt accounting", () => {
     const queue = [...modelResponses];
     return new ValidatedQueryExecutor({
       model: {
+        invoke: async (input: string) => {
+          void input;
+          const next = queue.shift();
+          if (next === undefined) throw new Error("model responses exhausted");
+          return { content: next };
+        },
+        stream: async function* (input: string) {
+          void input;
+          const next = queue.shift();
+          if (next === undefined) throw new Error("model responses exhausted");
+          yield { content: next };
+        },
         withStructuredOutput: () => ({
           invoke: async (input: string) => {
             void input;

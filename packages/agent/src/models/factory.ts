@@ -13,6 +13,7 @@ import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  invokeJsonWithUsage,
   invokeWithUsage,
   modelFromMessage,
   usageFromMessage,
@@ -166,7 +167,10 @@ function buildRealModel(profile: ModelProfile, override?: string, tracer = false
   return new ChatOpenAI({
     model: resolveModelId(profile, override),
     temperature: 0,
-    ...(tracer ? { timeout: 30000, maxRetries: 0 } : {}),
+    // Total cap only: reasoning models stream for 40s+ before the first
+    // answer token, so per-chunk progress (reasoning or content) resets the
+    // 30s idle budget inside invokeJsonWithUsage; only silence fails here.
+    ...(tracer ? { timeout: 300000, maxRetries: 0 } : {}),
     configuration: {
       baseURL,
       apiKey,
@@ -186,8 +190,9 @@ export class ProfileTracerModel implements TracerChatModel {
     question: string,
     opts?: { callbacks?: Callbacks },
   ): Promise<InvokeUsageResult<SqlProposal>> {
-    // Routed through the shared usage helper so includeRaw-capable models
-    // keep working and fakes degrade to zero-usage instead of throwing.
+    // Routed through the plain-JSON usage helper: no response_format on the
+    // wire (the provider's strict json_schema path is far slower than the
+    // 30s model timeout), with fail-closed schema validation.
     const prompt = [
       "You are a read-only PostgreSQL analytics assistant.",
       "Propose one SELECT or WITH query and the tables it uses.",
@@ -198,7 +203,7 @@ export class ProfileTracerModel implements TracerChatModel {
     ].join("\n");
     let out: InvokeUsageResult<SqlProposal>;
     try {
-      out = await invokeWithUsage(this.model, SqlProposalSchema, prompt, {
+      out = await invokeJsonWithUsage(this.model, SqlProposalSchema, prompt, {
         name: "sql_proposal",
         callbacks: opts?.callbacks,
       });

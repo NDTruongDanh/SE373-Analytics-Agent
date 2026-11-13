@@ -2,6 +2,7 @@
 // only: FakeListChatModel canned proposals plus a stub McpToolCaller recording
 // call order. No API key, no DB, no network.
 import { describe, expect, it } from "vitest";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { dbToolError } from "@shared/contracts";
 import {
@@ -37,6 +38,17 @@ class FakeChatModel implements ChatModelLike {
 
   constructor(responses: string[]) {
     this.inner = new FakeListChatModel({ responses });
+  }
+
+  invoke(input: string, config?: { callbacks?: Callbacks }): Promise<unknown> {
+    return this.inner.invoke(input, config);
+  }
+
+  stream(
+    input: string,
+    config?: { callbacks?: Callbacks; signal?: AbortSignal; runName?: string },
+  ): AsyncIterable<unknown> {
+    return this.inner.stream(input, config);
   }
 
   withStructuredOutput(
@@ -431,6 +443,26 @@ describe("ValidatedQueryExecutor core path", () => {
     // estimate fallback (~40) would not trip — proving the trip runs on
     // real counts.
     const realUsageModel = {
+      invoke: async () => ({
+        content: proposalFor(TRACER_SQL, ["orders"]),
+        usage_metadata: {
+          input_tokens: 100,
+          output_tokens: 50,
+          total_tokens: 150,
+        },
+        response_metadata: { model: "openai/gpt-oss-120b" },
+      }),
+      stream: async function* () {
+        yield {
+          content: proposalFor(TRACER_SQL, ["orders"]),
+          usage_metadata: {
+            input_tokens: 100,
+            output_tokens: 50,
+            total_tokens: 150,
+          },
+          response_metadata: { model: "openai/gpt-oss-120b" },
+        };
+      },
       withStructuredOutput: () => ({
         invoke: async () => ({
           raw: {

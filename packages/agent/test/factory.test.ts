@@ -174,14 +174,24 @@ describe("chat-model factory", () => {
 
   it("asks the tracer model for a JSON SQL proposal instead of ordinary chat", async () => {
     const model = createChatModel("sql", { fake: { responses: [JSON.stringify(TRACER_SQL_PROPOSAL)] } });
-    const invoke = vi.spyOn(model, "invoke");
+    const stream = vi.spyOn(model, "stream");
     const answer = await new ProfileTracerModel(model).proposeSql("How many orders?");
     expect(answer).toEqual(TRACER_SQL_PROPOSAL);
-    expect(JSON.stringify(invoke.mock.calls)).toContain("Return only a JSON object");
+    expect(JSON.stringify(stream.mock.calls)).toContain("Return only a JSON object");
   });
 
   it("withholds malformed model output from the tracer error", async () => {
     const model = createChatModel("sql", { fake: { responses: ["Sensitive model output, not JSON"] } });
     await expect(new ProfileTracerModel(model).proposeSql("q")).rejects.toThrow("đúng định dạng JSON");
+  });
+
+  it("parses a fenced JSON proposal without response_format", async () => {
+    const model = createChatModel("sql", {
+      fake: {
+        responses: [`\`\`\`json\n${JSON.stringify(TRACER_SQL_PROPOSAL)}\n\`\`\``],
+      },
+    });
+    const answer = await new ProfileTracerModel(model).proposeSql("How many orders?");
+    expect(answer).toEqual(TRACER_SQL_PROPOSAL);
   });
 });
