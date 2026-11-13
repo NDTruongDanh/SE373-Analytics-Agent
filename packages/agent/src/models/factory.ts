@@ -10,6 +10,7 @@
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ChatOpenAI } from "@langchain/openai";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
+import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   invokeWithUsage,
@@ -78,14 +79,99 @@ function resolveModelId(profile: ModelProfile, override?: string): string {
   );
 }
 
+/**
+ * OpenCode Go session header (mandatory on every Go request).
+ *
+ * Mirrors `scripts/openwiki-fetch-patch.mjs`: Go 400s with `MissingSessionID`
+ * ("Request is missing x-opencode-session and cannot be routed efficiently")
+ * when the header is absent. The header is routing + prompt-cache hint, not
+ * auth: same conversation => same value, different conversations =>
+ * different values. Never PII; opaque `ses_` + 32 hex chars.
+ *
+ * The web UI (`apps/web` -> `apps/api` -> agent) hits this path when
+ * `AGENT_MODEL_BASE_URL` points at Go. Without the header every web question
+ * 400s, even though the CLI OpenWiki path already injects it via the
+ * `--import` fetch patch (the API server never loads that preload).
+ *
+ * Only sent for Go URLs (`opencode.ai` / `inference/go` / `zen/go`); local
+ * providers such as 9Router never see it.
+ */
+export const OPENCODE_SESSION_HEADER = "x-opencode-session";
+export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{32}$/;
+
+export function isOpencodeGoUrl(url: string | null | undefined): boolean {
+  return (
+    typeof url === "string" &&
+    (url.includes("opencode.ai") ||
+      url.includes("inference/go") ||
+      url.includes("zen/go"))
+  );
+}
+
+function deriveCiSessionId(env: NodeJS.ProcessEnv): string | null {
+  const runId = env.GITHUB_RUN_ID ?? "";
+  if (!runId) return null;
+  const repo = env.GITHUB_REPOSITORY ?? "local";
+  const sha = env.GITHUB_SHA ?? "";
+  const job = env.GITHUB_JOB ?? "agent";
+  const digest = createHash("sha256")
+    .update(`agent|${repo}|${runId}|${sha}|${job}`, "utf8")
+    .digest("hex")
+    .slice(0, 32);
+  return `ses_${digest}`;
+}
+
+export function resolveOpencodeSessionId(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = (
+    env.AGENT_OPENCODE_SESSION_ID ??
+    env.OPENWIKI_OPENCODE_SESSION_ID ??
+    ""
+  ).trim();
+  if (override) {
+    if (!OPENCODE_SESSION_RE.test(override)) {
+      throw new Error(
+        "Invalid AGENT_OPENCODE_SESSION_ID (or OPENWIKI_OPENCODE_SESSION_ID fallback): expected `ses_` followed by 32 lowercase hex chars.",
+      );
+    }
+    return override;
+  }
+  return (
+    deriveCiSessionId(env) ?? `ses_${randomBytes(16).toString("hex").slice(0, 32)}`
+  );
+}
+
+// Stable for the process lifetime (one API-server process = one cached value,
+// exactly like the CLI fetch patch caches one value per run). Per-request
+// randomness would pass the 400 check but destroy Go prompt-cache reuse.
+let cachedSessionId: string | null = null;
+
+export function getOpencodeSessionId(): string {
+  if (!cachedSessionId) cachedSessionId = resolveOpencodeSessionId();
+  return cachedSessionId;
+}
+
+/** Test seam: drop the cached value so env-override tests stay isolated. */
+export function resetOpencodeSessionCache(): void {
+  cachedSessionId = null;
+}
+
 function buildRealModel(profile: ModelProfile, override?: string, tracer = false): ChatOpenAI {
   const baseURL = (process.env.AGENT_MODEL_BASE_URL ?? "").replace(/\/+$/, "");
   const apiKey = process.env.AGENT_MODEL_API_KEY ?? "";
+  const defaultHeaders = isOpencodeGoUrl(baseURL)
+    ? { [OPENCODE_SESSION_HEADER]: getOpencodeSessionId() }
+    : undefined;
   return new ChatOpenAI({
     model: resolveModelId(profile, override),
     temperature: 0,
     ...(tracer ? { timeout: 30000, maxRetries: 0 } : {}),
-    configuration: { baseURL, apiKey },
+    configuration: {
+      baseURL,
+      apiKey,
+      ...(defaultHeaders ? { defaultHeaders } : {}),
+    },
   });
 }
 

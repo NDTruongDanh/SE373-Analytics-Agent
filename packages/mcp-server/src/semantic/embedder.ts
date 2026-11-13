@@ -1,7 +1,8 @@
 // Embedding providers (MCP-02, D-12, D-17): a shared Embedder interface
 // returning fixed-dim vectors, an OpenAI-compatible implementation for the
-// operator endpoint, and a deterministic seeded-hash fake (1536-dim,
-// L2-normalized) used by every test and CI run so no key is ever needed.
+// operator endpoint (Gemini via its OpenAI-compatible base URL), and a
+// deterministic seeded-hash fake (1536-dim, L2-normalized) used by every
+// test and CI run so no key is ever needed.
 import OpenAI from "openai";
 
 export interface Embedder {
@@ -77,9 +78,9 @@ export function createOpenAIEmbedder(options: OpenAIEmbedderOptions = {}): Embed
   };
 }
 
-// Operator selection: the OpenAI-compatible endpoint when a model and key
-// are configured, otherwise the deterministic fake (with a boot warning so
-// fake embeddings in production are always a conscious choice).
+// Operator selection: the OpenAI-compatible endpoint (Gemini) when a model
+// and key are configured, otherwise the deterministic fake (with a boot
+// warning so fake embeddings in production are always a conscious choice).
 export function selectEmbedderFromEnv(): { embedder: Embedder; source: "openai" | "fake" } {
   if (
     process.env["EMBEDDING_MODEL_ID"] &&
