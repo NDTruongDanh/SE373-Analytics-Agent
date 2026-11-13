@@ -1,0 +1,22 @@
+# Root convenience wrapper: `docker compose up -d --build` / `docker compose down`
+# from the repo root, without the `-f docker/docker-compose.yml` flag.
+#
+# Single source of truth stays in docker/docker-compose.yml (db + mcp + api +
+# web + profile-gated data loader). This file only includes it, so there is
+# no duplicated service definition to drift.
+#
+# Usage:
+#   cp .env.example .env   # once, then fill in tokens/keys (never commit .env)
+#   docker compose up -d --build   # start full stack (db + mcp + api + web)
+#   docker compose ps              # status
+#   docker compose logs -f --tail=100
+#   docker compose down            # stop all services
+#   docker compose down -v         # stop + wipe pgdata (fresh DB next boot)
+#   docker compose --profile data run --rm data   # one-off seed load
+#
+# Equivalents via pnpm (same stack, explicit -f):
+#   pnpm docker:up / pnpm docker:down / pnpm docker:ps / pnpm docker:logs
+#   pnpm db:up                     # database only
+
+include:
+  - path: docker/docker-compose.yml
