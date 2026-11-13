@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:12bdadcdb89ebd3950d922f54e173348ebcb1be5453ad7c18d7716c19c324aea",
+  "pageVersion": "sha256:a61c7419737b88696511f73f34a1821fc5dad10a29798f86cbff0e6cf9e7e24b",
   "claims": [
     {
       "id": "claim_8fca3bcc0e394ef8930dcc7c5279815c",
@@ -335,15 +335,15 @@
       "statement": "ValidatedQueryExecutor describes only candidate tables, runs sqlGuard then the safety gate locally with no MCP call past a failure, calls explain_query before run_query with maxRows 1000 transient buffer, retries only repairable codes within three attempts with one TIMEOUT simplification that drops ORDER BY and tightens LIMIT to 50, and routes hard security codes to a restricted terminal status.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L1090-L1129",
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L1109-L1148",
           "version": "repo-lines-v1:sha256:a95208d01c13e85135db6534483db1c96cb502be9eb4ce45f56a08426c2e32a9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5ZmFkNDliOGFjY2ZmYjM3ZjJkZDczNDAxMjczZTFhYjNhNTU1NmViNWE0OWMxMzM2ZmQ2ODY2NjRiZmViZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhMGQ0YzMzMDlkODY4NjZlYTNmNGYyZGIyN2QyZTVlNTQxMTNmNWE3ZmI5ZTY1ZDAxOGMwMTFiZTRkYWZlM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxNjIyZDFiMGJkNzhkYTVjNTRmMjY2Y2M2ZDJjODg5YjE3ZDA3MGYzOWFmODQ2Yzk4NWI3MTY5MzE0MTNkNTIifQ"
         },
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L204-L216",
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L218-L230",
           "version": "repo-lines-v1:sha256:6bdd2fa47ae082461c0ff6ae0d3ed813b4f2dee7a44622433504f26fd3fddbaa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjZWU2NTkyMDA0MGM5YzdlOTJlZTNkY2VjNzI0NWE2MDk2YTYxNzBmNGVhNmY4ZWI2OTIxMmZkODVmNjBhY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5OGEyZmZjMzM4NGZhM2QyNTg0NzhhZjQzMmIzZGEzZTU3NjcxMGU2NWZkYTg4ZTQ3YzdkMTJmNjJiZDEyY2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiYmQzZGE0YmUzMzc1MWVmNzgxMDRjMGZiMzczNDNhZWE2MjIzNTZkYmZmMzQ1NTYwODJiZmQwNWRjNzU3Y2QifQ"
         },
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L262-L271",
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L276-L285",
           "version": "repo-lines-v1:sha256:28b022fbe390ab3154cf3bb80a4f60a6e25cdd74d41667fd7b3312b6adbf964d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllNTRlMjA5YjlhYjlhNDVkNzc4ZjhmZWVmOWQ2MjBmOGI5ZTAyZDZkYjg2NDJmODdmZGJjOTA3ZDU1MDZkY2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkMjM3NWNmYWQzNzU1NTRjZDY0ODQwMmEwYWJkNjM3MWJkNjg0NTE0YjRmZGRjZGY5OWE4NzUzNjQxOTIwNjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhZTBhZTMxMjFiMmIwNzgxNTVmNWUwNWU5Yzg2MGI5ZGFiYzdlNDU3NTAzZjZjYzgyODljZTYzNzc0ZWMyMWYifQ"
         },
         {
@@ -351,15 +351,15 @@
           "version": "repo-lines-v1:sha256:ff0b7fceb6053a86b75ae4d49c782954f6172fddfe5ff1b5b9716b064913542e:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTNjNThkMzYxZWM5ZjIxNDVmMTJjZWIzOTRmNTk1YjhhMThhZTZlZDU4YWUwODE1MWFlYjdmMzViM2VkNzI3MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdmMmQ3NGYyNWZkOGRhOGYwMmVjMjJiZTUzOTI1NTA1MTNkZDNkNjU2MTU1YzQ3MTVmMjFlYTliZTQ1ZDY5NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2NlMThjOWNkODkzNWZkZWM3MTk1YjQxOTllYmMyMDQxZDI4MmQ2ZTEwNTgzMmVhZmEyZGIzN2Y3NDEyNGNmZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTUzNzk5NzFmZmExZDRjOTg5YzU2MjZlYjdiYzE3MjIzNTUyNTlmNzBhZGE3OTVhNzEyZmJhNTA1YzY2MzU1NSJ9"
         },
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L664-L709",
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L678-L723",
           "version": "repo-lines-v1:sha256:b7d4fa25e47602b508fc3b505c0a615a4195a4883579a8f069c0bdd467f02b14:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MzhjYmQ4Y2M1MDEyNjUxZjkwYmQxNzU2YTFhMmNhNmM3MjE0MTUwOTUzY2M1OTlkYTgxMTBlODViNmExZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NGUwNmFkMDllYTUzMWUxZmVhMjUxNzIzZWQ3Y2ZkZTExZjY4ZDUzNjExMzEzNTM0NWU1NzUxOWJlNGJhNWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0MTAwZTkxZDU3NDIwZjcyMjUwNTgxZTgyNGI4Y2JkMDAyZmE1YWIwOTgzMjI1NzhkMTY0N2JhNTllMDFkMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliZDQ3MGY2NmUwNjIxZWUzZTA2ZWFiMGFmZTM1NzE2NjFmMzM0OGE0MzBhNmVmYzZkNTIzZWMzMGI3Y2Q4MjIifQ"
         },
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L811-L869",
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L829-L887",
           "version": "repo-lines-v1:sha256:59f374a9a297fe8c96ec51ce6919152c7601e851e00661a1be78b5869cef3597:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZTliYzk4Yjg3MTU1ZjA1ZWI0YzliMjlmMThhOTViOTVlODliNmVlMzg0NGJjMzAyMTZmYzk1OGQ3YjhkMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3MzAxZTA0ODZlYWJmYTc0MmJmMzg0Njc4NWJiMTEwY2UyNzc4ZGVhNGZiZDMxZTBhNmFiNTk5ODRkZGIwYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2ZTQ0NWJjNTM2NTY1MjYwMjdmZmRiMzdiMmU4YmEzYzIwYjcyOTBiMGE3Y2QwM2M3ODg1ODZmNWYyZTZmYWUifQ"
         },
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L936-L946",
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L955-L965",
           "version": "repo-lines-v1:sha256:3f0250a5cfc26112adf86eb13c1109ddbc3cb7a4e5d0b1d3d768dab3c03e8e97:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzhhMjkwYmFjM2Q4MTRkMWYwNjFhY2U4ZmI1MTZlNWY3NzMwNDRmY2RjODRhZDFkZWJjOWQxYWZjYmVlOGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzEzNTkwNjY1NjMyM2QxYzVlYTQxNjU0ZWU2NmFmYjU4NWFjZGNmYWVhY2ExMjFkNWUzMGJmMTkzZWVkZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3NWYwOTQxNmQ0ZmUzZjhjM2ZkMDc5MzEwMWRlMjNhMmVhNTk3NTA4OGFlM2RhNDAxMzE3Nzk0NjBjZWVhYzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2NGI5NTQwYmY0YTYyNDM4ODk5MWIwMDhhYTVmYjFjOWIxMDYzMjJjMzliMTJkZWE5OTg2NzYxNDQ4ZWQ1YjYifQ"
         }
       ]
@@ -403,7 +403,7 @@
           "version": "repo-lines-v1:sha256:5ea75b39d7ee5c2d0d1e8f3339f0923e0b2b494877545d80db0ec0efc768d519:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNzUzY2YzNDJmNDgyOGM2YTRlYTQwN2Y2NTM1MzU1NDExYjA4NDRhOWFkNGY3OGY3MDEzZGZiZTU2ZTIxMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjYTJjMjdhYjhlYTY2NWE5MGMyNTY0NDUyZDc3ZTBiOTBjMzNkMzMzZTBhNTRhYTMxMmI5ZGM4ZTYyN2I1ZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2NTkzOGE1Njg0ZjNkZTYxNGU2MDczZjZmNzAzMTFmMzE0NDNlMjg4MTEyOGI4N2I5ZWY0OGEzMTUwMmVlMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         },
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L652-L678",
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L666-L692",
           "version": "repo-lines-v1:sha256:df4ca42acb7a302a337a422817820e846ca5e81ed865f3d0444d9a166be991c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2N2U5ZDg3MGFmZTBlYzc2NGU1ZWIyNjE1OTQ3YjA4MjM0NTBjMGRmZWZmZWQxMTBmMGY2NWI2ZTUzMDkzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4ZGY2MzFmOGRiNDY3MjA0MWM1YzQwN2YwZTYzNzI3YzkwMGYzOWY4NzMzZWNlY2JjNTFkZjk1NGNjY2QwMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2NTVhM2E4OTk5ZDE5OWZlYWRiMDM3YTQ1N2ZhNzk4MjhjMGM0MDRlMWFmNTE0YjE5MzkyM2NjZTk4ZWVhMDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZGIwMzVkNmQ3ZGI1Nzg2NzRmMTljMjhiZTllYjhmYzI0YTBjNzJjNjZkMTQ2NTEyNThlNWZkYTU3MzA5ZDIifQ"
         }
       ]
@@ -428,19 +428,27 @@
     },
     {
       "id": "claim_c44976d4f9b9433781556f47eb58fbc8",
-      "statement": "The frozen 12-code contract routes TIMEOUT, RATE_LIMITED and INTERNAL_ERROR as retryable, INVALID_SQL, UNKNOWN_TABLE and SQL_EXECUTION_ERROR as repairable (at most 3 total attempts), and UNAUTHORIZED, SCOPE_DENIED, INVALID_PARAMS, FORBIDDEN_STATEMENT, FORBIDDEN_FUNCTION and SENSITIVE_COLUMN_DENIED as hard restricted aborts.",
+      "statement": "The frozen 12-code contract marks TIMEOUT, RATE_LIMITED and INTERNAL_ERROR retryable and INVALID_SQL, UNKNOWN_TABLE and SQL_EXECUTION_ERROR repairable within at most MAX_ATTEMPTS=3 total attempts; UNAUTHORIZED, SCOPE_DENIED, INVALID_PARAMS, FORBIDDEN_STATEMENT, FORBIDDEN_FUNCTION and SENSITIVE_COLUMN_DENIED are non-repairable hard aborts, of which the executor surfaces UNAUTHORIZED, SCOPE_DENIED, FORBIDDEN_STATEMENT, FORBIDDEN_FUNCTION and SENSITIVE_COLUMN_DENIED as restricted and remaining hard codes such as INVALID_PARAMS as error.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/queryExecutor/executor.ts",
-          "version": "repo-file-v1:sha256:053f7fbff7843968cb904a1a2b3093c5880832642746e7b50cc8301e76e1324f"
+          "resource": "repo://packages/agent/src/constants.ts#L23-L24",
+          "version": "repo-lines-v1:sha256:f28cf5b44b2b6669a6275bdefac0bfcd83e1284a39dd28736cea574a060d1204:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjNkMDIyZDI0NzYzZDllNjU3ZmViYTU4ZDVmMGM0YjU0NGQyNGMyN2M4YzA1OTVlMmNkZjBhNWYwMTcwOTdkNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmRmZDkxMzk3ZDM5YjUyM2NmNDJiYWI1ODVkMjNlMzExM2EzOTU4MWQyZTc3NzNhMWI1YmRiZDJhNTU5Yjc0YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjllOTZlYzg2MzAwYjE5Njk1Y2VjNGM5YTZmZjY5Y2EwODQ4MDA1MzBiZDk5MTc0ZWI3ZTlmY2IxYzgyYjg3NSJ9"
         },
         {
-          "resource": "repo://packages/contracts/README.md",
-          "version": "repo-file-v1:sha256:f5c7cbc7f66580f206dd79cd3765f91d1db6d65286c1a569b29631afc56cadb3"
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L217-L229",
+          "version": "repo-lines-v1:sha256:073546d552832d8a7e1713f728c42f187b6a54d024aba4491595f348812c6c7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhYmUwOGZkNzkxNjQ0OTg1N2Y2ODMyMGM5OGU3ZTVjMjkzMDc4YzNjYjdmZWU5ZDMwNTM2MDliMjU2ODQyZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgifQ"
         },
         {
-          "resource": "repo://packages/contracts/src/constants.ts",
-          "version": "repo-file-v1:sha256:285dffe01056ea561a578376892df5bd1d15b48cb8e6df154f450347778a6573"
+          "resource": "repo://packages/agent/src/queryExecutor/executor.ts#L255-L258",
+          "version": "repo-lines-v1:sha256:4cb3ddf3e9bc1f300f3f35ec21510643ab4284838167e1077aaff252891345d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWVkMTQzYTgxMDc4ZGE2YjkxNmRmMDE2MzYwM2I0NGZhOWZmMjQ3ZDgxYWJmMTlkMzZiMzY5NDA5MjExYWZiOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTVmZTJiZTUzNzI3ZWFkZjdiNjA0MDg5YTQ5ODEyNjA5ZWM0YzcwNmY3YTA2NjMzMTgzNTViNTJkMWM3MGRmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTVmZTNhZTM1ZmUzNzc4OTliNWRiMThjZTM0YmJhZWQxOGNmNGUzMjg5MWZjNTA3ZWEyODZlZGNjMzVjNTI1MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzMxMDRjZGFhODQxYzRiZmI2YTUzNjIxZTdlNDYxZGEzODA3ZTYwOThkNDAzMWFiMGFmM2Q0NDY1Y2RlMThhOCJ9"
+        },
+        {
+          "resource": "repo://packages/contracts/README.md#L38-L54",
+          "version": "repo-lines-v1:sha256:6eae9ea15109d2898944ab25924906ee242d1984eb0688e90e451e8815696c2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZGEwMmNmYjBmNmQxNGM5ZTAwN2FhY2Y4OGQ4YmM3ZTVhYjRhMTE3ZDM3MDc0Zjc4YWI3YjBjZWZlOWZlODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NGM5NjcyMWMzZTQ4YWQ1Njc5MzExNjBkZjk3NjFkMWYyYWY1NTkyYzIwN2E0Yzk0NWQzYTQzODc4YjFkMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlNzg3YWE4OWFlNTNkN2EyMmNhOTZlYTI0MmUwZmQ5NTA0Y2U2NTZiZWQ3NjE3MDZmNTZlMmQ0ZTE0M2U4NDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4OTk1NDUzZjU2Y2M5OTcyNjM1OGI4NDdjMTk5YzU1NzMyOWE1ODQ3MTc5YjIyY2QwM2JjYWEyOWMyNjMyMDQifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/constants.ts#L12-L35",
+          "version": "repo-lines-v1:sha256:00d05666da02be5458fd2bb237c8fa29697519c81f6df2e303eaecb657aa03fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViMmIzYjE3ZDA2Y2RmNzA3NGY5N2YyZWQ2MTc3MzQzZDY0ZDFiN2FmNWVhYThmMjI0MjYwZGQxNjQ1MTcyMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2Njk2OWJiMGRiOGUxNTRmYWZkYTU2OTIyOGNjYWIzYWI3OWVlMzZlMTE0MDBhNjlkYjNkZjMzZmZlY2NkMTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4MjAzYTVhOWUzMjZmODdlYmU1ODVkNWE3YzY5MWY5YzExNjdkNThmZTNhNDkyZTAzNWYxZjQxMTJhNDVlOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjYzFmODQ3MDEzN2U0NGZjYjZiZDgzZWUzMzUzYWYwYWU1YzE2ZjQ3N2NkN2ZhN2I1MDVjNTM0YzFiZDdkYzYifQ"
         }
       ]
     },
@@ -450,7 +458,7 @@
       "evidence": [
         {
           "resource": "repo://packages/agent/src/queryExecutor/executor.ts",
-          "version": "repo-file-v1:sha256:053f7fbff7843968cb904a1a2b3093c5880832642746e7b50cc8301e76e1324f"
+          "version": "repo-file-v1:sha256:df722e312ce8ef4c8c541281165dd9db8253fba73f8b37565396ac74f9beab92"
         },
         {
           "resource": "repo://packages/mcp-server/src/pipeline.ts",
@@ -468,13 +476,13 @@
         },
         {
           "resource": "repo://packages/agent/src/queryExecutor/executor.ts",
-          "version": "repo-file-v1:sha256:053f7fbff7843968cb904a1a2b3093c5880832642746e7b50cc8301e76e1324f"
+          "version": "repo-file-v1:sha256:df722e312ce8ef4c8c541281165dd9db8253fba73f8b37565396ac74f9beab92"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-11T15:45:43.966Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-13T15:50:35.780Z"
   }
 }

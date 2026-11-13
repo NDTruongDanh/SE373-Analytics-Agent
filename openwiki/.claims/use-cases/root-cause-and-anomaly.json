@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c444282412ac0767903d24a839a0042c4f3f844ef2beafe5d71e125f498ebe95",
+  "pageVersion": "sha256:09753ba95704ea4e36fe525335a49e110920555484d971cc49c0cc5fe0b3e732",
   "claims": [
     {
       "id": "claim_c092349b60ee43fdab0b26417119585d",
@@ -144,29 +144,37 @@
     },
     {
       "id": "claim_99bb00732c5b4630a2848afed04e8d90",
-      "statement": "UC-10 deduplicates by SHA256 of recipient plus metric plus dimension key plus date plus direction within 24 hours and writes PostgreSQL alert_history only after successful send.",
+      "statement": "Alert deduplication uses SHA-256 over recipientId|metric|dimensionKey|date|direction, checks the fingerprint before send, and inserts into PostgreSQL app_state.alert_history only after successful delivery, with a 24-hour dedup window.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC10.md#L137-L143",
-          "version": "repo-lines-v1:sha256:bb4fc643a1c6f4d70d784f489244c28eae3f4443cd4a2e8eea1cdc8fd8c05fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGRmYmMxYWZkY2Y4MWE2ZmU4ZjM4MzkxMDVjZDNjYWUzYTUwODY1ZjYzNWQwMzAyMGMwMzA4ZjcyZDc1OTk0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTFhYzliNTI3NTdmNTg1YmNkYTlhOTk0M2RkMGFmNmIyMTE4ODFhNmQxOTVkMmM3MzNhNDZiNDBjMTc0MTA0YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjdkMmQ5OGQyNWY0ZGYwODNkZGM5NzFjODQwNDk1MmI1NTBkMGI3MDlhODljYTM4YzI1ZjZlOGEzMjYzZjhmNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzcwOTA5MzA1MDVhNzM4Y2VjMDhjZDlmMGE1MjBiNzc2ZTk5ODYyNjcyZmZkOGQyNjQ3NjFiYjc0Yzg0NmM1MSJ9"
+          "resource": "repo://apps/api/src/store/alertStore.ts#L90-L120",
+          "version": "repo-lines-v1:sha256:534d923c0785ce03d5b146b7b1bfb64436b78e56c40d3dd1501bd7e6f8bdf8ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZjljMzIzNDI3MzQ2MDg5NjRkMGQzYTUwMDIwNDljNzRmNmYzOGJkNjk2YmFiYjZmOTA1ZDhjYmM5NzQ3YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiZDkyYWFjNzJjNjVkZjQ0ZmRlMjJmY2JmZDVkNzMzY2JlNzFkMGVkYTdiMGI1ZjMxZmFjZWJhNjg3ZTNjZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4NmFlNDViNmNmYTQ0NWI1YmFkMDMzODI3NjA1MTg2NGQzYjVhNzQ1MThlYzI2ODBiZWRhZTYyNDRlMmE4ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkODQzYzA4ZTFiOTQwZWU5YjYxMjAyYzg3NmUyOTZlM2M1YWI4YWQwMzNjMDQ4NTkwMGE0ZTZhYjE2MmY0NDcifQ"
         },
         {
-          "resource": "repo://docs/prd.md#L469-L470",
-          "version": "repo-lines-v1:sha256:4826e1e4930d1832b7e2b62ccd063e74a09dc66270f718060e3266a2efa7e97c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0NWNiOGU4MTI0YjdhMzJkMzBlNzNlM2NjM2FkOGY2ODA2YWZiNGMxZTdhYTA3YzdkNTU1ZmZiNGI3MmZmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTJmMWY2ZjdkMDQ4MjI2Yjg1ZDUxNzVlYWNiOTM3Y2Y0MjZiOWI5YmU2NzIzZGQ5NmRmNTQyNDg4YTkzM2NmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVhNTRiMGU3ZDUyNjc5YTAyZWQ5NDkzMDZlOWJiYjRjODk4MTk5OGEzOGYwZDBlZTU4OGZiZDhhYjE2NTRhZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFmYTRiMzYzMWFlYWUyMDIzMjg3YWI0ZGUxNTdmMjU1YjBmMmNhZmU5NGYwN2FlMmIwMzIzMmI4MmUzY2RmZiJ9"
+          "resource": "repo://packages/agent/src/alerts/dispatcher.ts#L210-L280",
+          "version": "repo-lines-v1:sha256:1b008d55427d663027d35d8f46e97356a291eef2ee08cc0615cc0fe1d3104e3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwNjFhNzIxYmVkODg4MmMzYjcyODJjNmNmYTZiMzUwZDdkNmYwODU3NDdhOTg2MmM0ZDE5MmQ0NTVkNjMxMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMDI0YWU2NDBjOTQxZTkzYzY0ZWIzNjg2NGE0NTk4ZTJkZDZhOTVhMjY3YzhkNTZmMjkwMDRmYmNkMjExMTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjZTYyNjM4OWRhYWQxZDc0OWUyOTk2NWM5MDJhOWZjYzQ4M2Y1YzFmZmU5N2UyYjBjOWU2ZWM4YzM3Zjg5NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxOWE4MTNkMjQ2NzNmMWZjMjExNTZlMDc3YjU2OGUyNGU2YzQ0MmZlMTM2NmI5NWQ4NzM5MWE4MDQwY2Y4ODUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/alerts/fingerprint.ts#L12-L31",
+          "version": "repo-lines-v1:sha256:0395a4830f30716fb8c256426d9c3a2c4d143b1c8f23c7a09285e6ef098225c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwYjNiYzkyNGRiN2YyYzdkNTljMmNlMTE5ZjA4NDIyZmMxZjFhNzRlNWExNmVkYjdkZTdkYzRlNjgzZTBjZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
     {
       "id": "claim_bfb31e5fc1454d59ac5f7336c7708a68",
-      "statement": "UC-10 channel sends use timeout with bounded exponential-backoff retry and fall back to a failed-alerts queue with trace when retries are exhausted.",
+      "statement": "Alert channel sends use a 10-second timeout with at most 3 attempts and exponential backoff, retry only retryable 5xx/429/408/timeout/network failures, and append exhausted retries to failed_alerts_queue.jsonl without writing dedup history.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC10.md#L141-L141",
-          "version": "repo-lines-v1:sha256:01baaac1dd77d043b7fd85176be3b0e09175f76ab5efcd3a821cb372f1184af2:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYWFhYzFkZDc3ZDA0M2I3ZmQ4NTE3NmJlM2IwZTA5MTc1Zjc2YWI1ZWZjZDNhODIxY2IzNzJmMTE4NGFmMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYWFhYzFkZDc3ZDA0M2I3ZmQ4NTE3NmJlM2IwZTA5MTc1Zjc2YWI1ZWZjZDNhODIxY2IzNzJmMTE4NGFmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTQ5YjgyOTgwNzI1YmYwOWQ5ZjZjYzZkNWNhMTI1ODFhMGZhN2ZjYWY0MWYxMTBhYjdjYWU0NDBkYjFlNzU4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzc1ZGI3NzJlNTg1OTI4YjU3YWNjZWRmOTYxOWQ2NjBmMWI4YjdkN2NmOTEyZjY2MjViYTkzZDAyMGI1MGEzZiJ9"
+          "resource": "repo://packages/agent/src/alerts/dispatcher.ts#L100-L145",
+          "version": "repo-lines-v1:sha256:22e18ac42096edfa418f8d0175cef672d9169d2141cecf3a009d4ae3c116b5a3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5Y2I2Y2QzMTYwYTM3ZWM4M2NmMzFhZWRlNTRhMTUzYjNiYWFiZTE1YzI3ZWIzYmVmNWE4NTlhZGQ0ZTVhNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1YzNjMzk0ODQ3MDgyMDc0NmNhMDU2MjEwMzNmMWY1YzQwYTNlZDlmYjQ1NzVhZDQ3OTNlZjFmYWU0OGMyN2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1MjIzMDZkYmFhMzAzYzllMjBhNWExZDFmOGYyZjkxYTA5NDllODNkMzYwYzNhYjJjYjY0NjBmMmYyMDZlODIifQ"
         },
         {
-          "resource": "repo://docs/prd.md#L469-L470",
-          "version": "repo-lines-v1:sha256:4826e1e4930d1832b7e2b62ccd063e74a09dc66270f718060e3266a2efa7e97c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0NWNiOGU4MTI0YjdhMzJkMzBlNzNlM2NjM2FkOGY2ODA2YWZiNGMxZTdhYTA3YzdkNTU1ZmZiNGI3MmZmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTJmMWY2ZjdkMDQ4MjI2Yjg1ZDUxNzVlYWNiOTM3Y2Y0MjZiOWI5YmU2NzIzZGQ5NmRmNTQyNDg4YTkzM2NmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVhNTRiMGU3ZDUyNjc5YTAyZWQ5NDkzMDZlOWJiYjRjODk4MTk5OGEzOGYwZDBlZTU4OGZiZDhhYjE2NTRhZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFmYTRiMzYzMWFlYWUyMDIzMjg3YWI0ZGUxNTdmMjU1YjBmMmNhZmU5NGYwN2FlMmIwMzIzMmI4MmUzY2RmZiJ9"
+          "resource": "repo://packages/agent/src/alerts/dispatcher.ts#L280-L340",
+          "version": "repo-lines-v1:sha256:fa5ad1c29d62091378479ba4372168aef116adce835e4be437ee5aba324660a7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMDI0YWU2NDBjOTQxZTkzYzY0ZWIzNjg2NGE0NTk4ZTJkZDZhOTVhMjY3YzhkNTZmMjkwMDRmYmNkMjExMTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzYzQ5ZDZhZDk1ZTZiYzNiZjE3Mzc5MTJjZDFhYTg5YzA3YTI4ZTM4ZjIzZTgwMDI1NTQyYTYyNmUxZDI5OGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhMGNmMjBjNjlkZmUwNDgxOGMzN2MyOTkyNTQ3MTNjMjI3MjkzNzVjNzk0MDdmNTdmZDE5YzM4ZTJmNDQxN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2OTE5MTA4ODE2MTE3ZWFmNWUxNDI1MDRmYmRhMmRmZTE2YTFiOTAwZTQzNTU5ZmI1NzA0YTg3NWQxODI1NWIifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/alerts/dispatcher.ts#L340-L456",
+          "version": "repo-lines-v1:sha256:9c190e27c52a32bc5eacaa5fa05bd1d03c3232806693e19aa00f6804d73a61ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhM2M0OWQ2YWQ5NWU2YmMzYmYxNzM3OTEyY2QxYWE4OWMwN2EyOGUzOGYyM2U4MDAyNTU0MmE2MjZlMWQyOThiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiZTA4MmE0NWZiNzQ0ODY2MThjYjY5ZDAyNjhkZjE0NGJiM2MzMjA1NWIyOTM2YjZkODRlZjY5YWMwOGMxOWYwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -214,19 +222,19 @@
     },
     {
       "id": "claim_377a4ce3ed57475c84d3dc44d906d1c1",
-      "statement": "UC-05 is an interactive hierarchical diagnostic flow (validate baseline delta, build decomposition plan, HITL plan review, budgeted drill-down with branching/pruning, attribution synthesis) while UC-10 is a scheduled code-first scan (28-day z-score / WoW / absolute threshold, LLM drill-down only on anomalies, severity routing, deduped delivery).",
+      "statement": "UC-10 is a scheduled code-first scan (pure-code detection over daily series, model-assisted drill-down only on anomalies, severity routing, deduped delivery), distinct from interactive multi-step root-cause diagnosis.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC05.md",
-          "version": "repo-file-v1:sha256:5b6cbce7cbae73e29dc4b8472326d2061f3c33e7229f02d33aeaf4f1b784740c"
+          "resource": "repo://docs/UC-plan/UC10.md#L40-L44",
+          "version": "repo-lines-v1:sha256:41c2205aad1b0b39264510f5aebd5a93f2ce1e08bd1ea60963963840fdaedbdf:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTkwZmZlM2M4MjNiODNhM2QxNTQ5ZDhiY2M1ZjIxZjRkZDdkN2M2NmU4NGNjYTFlMzU2NTI3YmQ5YzYxMzVmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdmNDM5YTFkYzI0OTU3M2Y2MTFhMGU5YmRlODIzYTdjMDEyNWZlMDY3ODg2YzkwZDcxYzkyNWRkZGIxZDQ1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODVmMmQ3ODAwZDMyYjIxZjc0ZGNiZDhiNTNhMjY2MDA0ODVmYjdhZDI0YzIyNDg0ZWU1YjI5MmY4NjMyYjkwOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGExM2VlN2MwYmFiZWUyZWIyZTU1ZDYyNzNmMWNjNzExMGEwNTNlZjBhOTBkNmNmYjRlMmY3ZDRjODY1Y2E0NyJ9"
         },
         {
-          "resource": "repo://docs/UC-plan/UC10.md",
-          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L140-L263",
+          "version": "repo-lines-v1:sha256:73aed10af7952878bf05670bece9df54ece5c7986ae77f8d6e96ec43c0b76f67:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMjY2MDZhNmFiZTY0ODgyMTI5NmVmNzVhMDBkOWM5Mjg3MGNmNjIxMTAyYjFkYzc5NGJjYjBmMTgwNjcwMzU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YWU3ZmFmNjA1ZGQwMjk4NmMwMWUxYjcxZWQwNjk1ZTI2MWZlZTM3ZTQ0YWZlMzg3MjRhYmUyYzRhMzZmZGVkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
-          "resource": "repo://docs/prd.md",
-          "version": "repo-file-v1:sha256:defd5a8bd93f7855a52c6e986b3d860b4498fe482033314870f850201df23951"
+          "resource": "repo://packages/agent/src/alerts/runner.ts#L195-L330",
+          "version": "repo-lines-v1:sha256:c53fb7d2b522a76aad706f9934ad9a0c9d65ea1e0dc2c058fc455f15cb5e1a6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ZTI1NTU0NmJiNWY0MDQzZDk2MTY2YzQyODNlOThjMmYxNDk4ZmMwNmVmZDYwZGVjYWU4NmQxNjQ5NjRhZTQyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMTc2YjIxNDQyZjc5ZGQ0ZmQxY2RkNmM5YWJhOGZlOWNjNzcwMmE3OWExYzMyN2E0NmVhMzQzNDAwM2MxODBmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlNmVlYjU0NmQ1ZjliNzkwMDQ1MDY3MDNhOTYwMjE2OTYzMTYxZjJmNWQxNjM4YTc2YzliNDBkYmQ4ZDg2YTdiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyNDIyYmY0Yzk5YzdiYzkzNjcyNGFkZTgwZGRmZTk5YzFkNTI0MzNjMmY3NzJiNDU4NTgzNDQwZWFmYzljNDY0In0"
         }
       ]
     },
@@ -246,11 +254,15 @@
     },
     {
       "id": "claim_70d655f8bd6244ac87930d06edfd2abf",
-      "statement": "UC-10 detection uses trimmed 28-day mean/std with sigma_eff floor, WoW% with EPS guard, min_support gating with skipped_insufficient_support, and critical/warning/info severity routing where normal days emit no alert.",
+      "statement": "Detection uses a trimmed 28-day mean and standard deviation with an effective-sigma floor, week-over-week change with an EPS guard, minimum-support gating with skipped_insufficient_support, and critical/warning severity routing where normal days emit no alert.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC10.md",
-          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L140-L263",
+          "version": "repo-lines-v1:sha256:73aed10af7952878bf05670bece9df54ece5c7986ae77f8d6e96ec43c0b76f67:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMjY2MDZhNmFiZTY0ODgyMTI5NmVmNzVhMDBkOWM5Mjg3MGNmNjIxMTAyYjFkYzc5NGJjYjBmMTgwNjcwMzU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YWU3ZmFmNjA1ZGQwMjk4NmMwMWUxYjcxZWQwNjk1ZTI2MWZlZTM3ZTQ0YWZlMzg3MjRhYmUyYzRhMzZmZGVkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L41-L113",
+          "version": "repo-lines-v1:sha256:545b6b6b2b2427bd18523baa2f2bae3c70a321e7067baac66405d2148efba637:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NjQ0MGRhZDc4ZjlmY2E1ZjQwNmE4ZjFmYmYzYjU2Mjk5ZjM5OTg1YWJlNTNiNjQ2NzI3MWJhYWNkMGQ3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1ZGUzM2E3NDlmMzg5MTE4Nzc1NWUyNzNjMjUwYmZhODY5MzZiODQ5ODkzNmM2MzAyZGZjZDUyYzgzNWI5ZWEifQ"
         }
       ]
     },
@@ -296,7 +308,7 @@
     },
     {
       "id": "claim_5edafdd4c01e4fbd80225e28850f4350",
-      "statement": "Alert dedup persistence has landed with write-after-send semantics: canonical sha256Fingerprint over recipientId|metric|dimensionKey|date|direction, hasFingerprint pre-send SELECT, recordSent single INSERT only after send success with 23505 treated as already-sent, over app_state.alert_history owned by harness_state.",
+      "statement": "Dedup persistence uses canonical SHA-256 fingerprints, a pre-send hasFingerprint SELECT with a 24-hour window, and a single write-after-send INSERT into app_state.alert_history with conflict refresh only for expired fingerprints.",
       "evidence": [
         {
           "resource": "repo://apps/api/src/store/alertStore.ts#L42-L55",
@@ -304,15 +316,11 @@
         },
         {
           "resource": "repo://apps/api/src/store/alertStore.ts#L90-L120",
-          "version": "repo-lines-v1:sha256:21d5fb850c3982daa4ebe1937d3aa0f47375b0c4b5d2eadc09a5b3436acfe19a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZjljMzIzNDI3MzQ2MDg5NjRkMGQzYTUwMDIwNDljNzRmNmYzOGJkNjk2YmFiYjZmOTA1ZDhjYmM5NzQ3YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4NmFlNDViNmNmYTQ0NWI1YmFkMDMzODI3NjA1MTg2NGQzYjVhNzQ1MThlYzI2ODBiZWRhZTYyNDRlMmE4ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlOTgxNmZlYWJhODg1OWJlMjA4YWIxMjNiMTM2ZjQ1YWZlYjI5Y2M2NWI3YjAwMjQ1ZTlmYzcyMjc0NWFlMzcifQ"
+          "version": "repo-lines-v1:sha256:534d923c0785ce03d5b146b7b1bfb64436b78e56c40d3dd1501bd7e6f8bdf8ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZjljMzIzNDI3MzQ2MDg5NjRkMGQzYTUwMDIwNDljNzRmNmYzOGJkNjk2YmFiYjZmOTA1ZDhjYmM5NzQ3YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiZDkyYWFjNzJjNjVkZjQ0ZmRlMjJmY2JmZDVkNzMzY2JlNzFkMGVkYTdiMGI1ZjMxZmFjZWJhNjg3ZTNjZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4NmFlNDViNmNmYTQ0NWI1YmFkMDMzODI3NjA1MTg2NGQzYjVhNzQ1MThlYzI2ODBiZWRhZTYyNDRlMmE4ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkODQzYzA4ZTFiOTQwZWU5YjYxMjAyYzg3NmUyOTZlM2M1YWI4YWQwMzNjMDQ4NTkwMGE0ZTZhYjE2MmY0NDcifQ"
         },
         {
-          "resource": "repo://apps/api/test/store.test.ts#L45-L66",
-          "version": "repo-lines-v1:sha256:ec10817ec9fc0025d8492db22cfa5b4377aadbf4368604455ff9a4fde5a173e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZDZjMDE1NGVhZWM2MTY2ZjA0Y2Q5MzNmNWRkYThjODAzNWZkZGQ1MTMwYzlhYTZjMDlhMWRmMDM5MWQ3ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyNjI3NmE5N2FkNmI4OTQ5MWJlMzgyOWQ0MTgwY2ViNWNlNmQ5OTRiZmVlMDQ5MGQ5NzFhMzA5NWFjODU3YmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjMzU2MmE1MWI4NjViOGIyZjk5ZjY4Mzg5ODQ1NGViNGFmM2YyZWNiNGIwZjE1YWQyYTdiM2QxZjYzN2YxOTgifQ"
-        },
-        {
-          "resource": "repo://docker/initdb/04_semantic_state.sql#L74-L82",
-          "version": "repo-lines-v1:sha256:e3d9cd81f4e757d05e8252530336714d09e21bbb6b530bc4df01c92187a68a66:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzk5ZTNjM2EwZjA4OWY0YTFjZmU0ZTI0YjY4MjgwM2I2ZmIwYzdjNmUxNmU0MDc1NzkyODU3NDE2Njc4YWU4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk5NjdlYzFlZDM4MzZmOGViMTdhZmYxNzJiNWJmZWY3ZGU2MDQ4NWE0MzljNmNhMTFjNTkxZTE3NTU3MzlhZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjBhYTg5NWIxZTJlZTYwNDU3OWE5NWMxNzQ0NjIwMTE1M2JmYTE3MDQwMGQ0MWZkYWVmZmM4ZjU1NjI2NmNhNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGExZjAyOTQwNmYxZDYzNGRlZTUxYzY4MGZlMWFlZTIzM2M4ZDA0NTMxMmJjOTk1ZTU3NDIwNmJkYzIxNjYwNCJ9"
+          "resource": "repo://docker/initdb/04_semantic_state.sql#L68-L82",
+          "version": "repo-lines-v1:sha256:396af7c7fd6d06fa3cec2c1023fd8fc1cd60ae68e7d14b7bc8e9690c7999d33f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwM2RjZjdhNDBmMWQ1ODlkZGVhZjk0MzY2Nzg4ZTI0YzY1YjQ2ZjQ1MTM3ODhlNTQ0MWExZmMzNTFjYTE1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwNjU1MGYyYTFkNTczMzY0ZTUxYWRkYzY1Nzk5MzNhOGU5N2JjYzgzNjI5NjAyMThkMDNkYTE2NWVjMjNlMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhMWYwMjk0MDZmMWQ2MzRkZWU1MWM2ODBmZTFhZWUyMzNjOGQwNDUzMTJiYzk5NWU1NzQyMDZiZGMyMTY2MDQifQ"
         }
       ]
     },
@@ -340,25 +348,33 @@
     },
     {
       "id": "claim_efc9a024e78542efa09742874031d712",
-      "statement": "UC-10 applies recipient policy at SQL build time via row predicates and MCP scope tokens with column denial/masking, plus a second PII regex scan before send that blocks delivery with PII_BLOCKED.",
+      "statement": "Recipient policy is applied at SQL build time through role-derived row predicates and catalog-gated columns, and a second PII regex scan before send blocks delivery with PII_BLOCKED.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC10.md",
-          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+          "resource": "repo://packages/agent/src/alerts/dispatcher.ts#L240-L280",
+          "version": "repo-lines-v1:sha256:1b652b10446a9d2811fb37e2e145b21142f900d120c934efde69b745d5799106:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjYTQ2Njg3MzQ1MzllMjk1N2RkY2MwYmUzMjA1ZDExNDA4ODk3NjBiODFmMzM3Yjg3MDk2YmYyOWY3ZTk3MDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMDI0YWU2NDBjOTQxZTkzYzY0ZWIzNjg2NGE0NTk4ZTJkZDZhOTVhMjY3YzhkNTZmMjkwMDRmYmNkMjExMTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYjhlOTU0ZDJjMDI2ODAzYjY2MzEwZmIwZTc1Y2JiYWZhZDI4MmU0MzNlOWZlMTg4ZGQzMGY5N2RmOWU1NTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxOWE4MTNkMjQ2NzNmMWZjMjExNTZlMDc3YjU2OGUyNGU2YzQ0MmZlMTM2NmI5NWQ4NzM5MWE4MDQwY2Y4ODUifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/alerts/drillDown.ts#L280-L411",
+          "version": "repo-lines-v1:sha256:ddd4f7bb3bbd78512bd3a3eb2df65be46e1d78500ea9a03a695123c376ee5214:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3OThkYjk4ODY5Y2EyNjhmOTRhYjAxOWE5MDUzMjNkZDFhYjNjYjUyZDM5OWMwMTYyYjhkYjk3MTdiYmE5Yjg3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmYzEyMzdkN2M2Y2M3NTI1NmNjZjVlZmE3NzBkYzVlOTZlMzdkZjM0NmM2OTQwMzQ3NmE4ZDkzZWZhNmRjNzkxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://packages/agent/src/alerts/runner.ts#L105-L192",
+          "version": "repo-lines-v1:sha256:46be0b2010d359745f6de50b8251091a2c42b298e04c2360b27d1deeba8816ac:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZjM1Yjc5ZWMzY2NlYzFlNWMwYTE0Yjk0ZWM0YTY3YjFmNzJiNzlhOTA1NDgzMDMxMzc5MTEzODkyMTVmNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyMDYzZDQwNzBhNjg5MDE1YWM1MmI2NjNhYWNlMzg0YWRlYzg5ZGY4MzA2NTRhMmFhMWZkNGM2ZDAxOWYzODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxODNkMjRiYjZlMGQxYTczYTk5ZmQzMmMwNmEzZTUzOTY1OTE3MGM4N2I4YTFlYTRlNGFkNjJiOWM1MTIwMjAifQ"
         }
       ]
     },
     {
       "id": "claim_42f6301f8d0e4afa846ee573a06dbb90",
-      "statement": "UC-05/UC-10 acceptance requires at least 5 eval cases each with 2/3 seeded RCA accuracy and 5% attribution tolerance, 4/5 anomaly detection with at most 3 false alarms per normal week, no same-day duplicate resend, queued retry on channel failure, and zero PII leak with token/cost/latency reporting.",
+      "statement": "UC-10 acceptance covers spike-up, drop-down, normal-day no-alert with false-positive measurement, same-day rerun deduplication across recipients, channel-failure retry into a failed queue with later resend, and zero PII leakage with token/cost/latency reporting.",
       "evidence": [
         {
-          "resource": "repo://docs/UC-plan/UC10.md",
-          "version": "repo-file-v1:sha256:feaffd619c9c762b21a6a009f3dc48c39ee8ff98aa928c59e7f213c4e7c7818c"
+          "resource": "repo://docs/UC-plan/UC10.md#L140-L170",
+          "version": "repo-lines-v1:sha256:7c2439d65aeaf2f5b6bb2f6f05a9174091c972de728e7b59baa582f13cbc3e6d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxNDA0ZmVlZDFiNmM0NTNiZjM2YWUyYWMxYTg4YjI4MTcyNWIzNTJkYjJhMDhkYzBjMWRhYWE0ZWRiY2MwNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiNDMyODhjNTE4MTdmMjBmZWVjOGNlOWU2OTgzYzE0ZTNjZmYxMGM4ZjQxMGI2NTRjNDM0MjYyODhiODZhZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlOGJiYmQyY2FiNjhhYzA1ZjIzZjFiYjU4ZTY1OTc5NTgwOTg3OWUwNDk1ZDJhZjUwODE1MzhmMmU4NTU4N2UifQ"
         },
         {
-          "resource": "repo://docs/prd.md",
-          "version": "repo-file-v1:sha256:defd5a8bd93f7855a52c6e986b3d860b4498fe482033314870f850201df23951"
+          "resource": "repo://packages/agent/test/runner.test.ts#L60-L270",
+          "version": "repo-lines-v1:sha256:383641e980a166a69aabb548d9198a907889aa31d2be2ad51bdf92c065dd999d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwYzJlZTlmOGEwY2JhZmIzZTc1NTc4Mjg4ZjFlYjQ0OTE2MjIyMjc5ZTI0ZjViM2VkY2ZlYmFmMjEyM2FjMzU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmNmY1YjQwYjE1ODQ1N2QxNzg2NGYyMTc5MDc4NmRkNWEyZWNkYjY0YjY2YTY1MWY3ODhkNGUyNWNkMzMwM2QyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxYjhhYzAyMTEwNTVhZWJkNzlmNWRiZDNmMjIyN2Q0YzM5ODA0MDE4OThmNWJiMTAzZWJkODdjNmUxZGU1YjcwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -614,25 +630,25 @@
     },
     {
       "id": "claim_769aa56aa16a49e19c2c79d03a673dfa",
-      "statement": "UC-10 subscription configuration has landed as config/subscriptions.yaml version 1 with five daily subscriptions (return-rate, net-revenue, cancellation-rate, order-count, review-score), each carrying primary/suggested dimensions, recipient and role, channel, digest preference, absoluteThreshold and minSupport, validated by SubscriptionsConfigSchema with snake_case preprocessing, MinSupport floor of 15, and a four-member AlertChannel allowlist.",
+      "statement": "UC-10 subscription configuration is config/subscriptions.yaml version 1 with five daily subscriptions (return-rate, net-revenue, cancellation-rate, order-count, review-score), each carrying primary/suggested dimensions, recipient and role, channel, digest preference, absoluteThreshold and minSupport, validated by SubscriptionsConfigSchema with snake_case preprocessing, MinSupport floor of 15, and a four-member AlertChannel allowlist.",
       "evidence": [
         {
-          "resource": "repo://config/subscriptions.yaml#L1-L88",
-          "version": "repo-lines-v1:sha256:d506cfc374d464570bf7deac30475edce1a374fb8d4420c157a4e99d76f91980:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5YmZjYzZhMTRiODNlMjE5MmI4NjczNjc3NzI1Yzg0ODgzZWU5Y2QwYzcwZTQ1YzllYzA5ZGFhOGYyYjI4NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmZmMzYzc2ZGE2M2U3YTliMDFlN2YxNWM0NjkzYmE2NjZmZmI3MWY4NTI4NjY1Njc0YTYyMTc5ODdmYzA2ZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://config/subscriptions.yaml#L1-L86",
+          "version": "repo-lines-v1:sha256:356fc4ac2c41c895e6dddf12490b5ade6f63b2125dba0145ffbae256f3f82c5d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5YmZjYzZhMTRiODNlMjE5MmI4NjczNjc3NzI1Yzg0ODgzZWU5Y2QwYzcwZTQ1YzllYzA5ZGFhOGYyYjI4NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmZmMzYzc2ZGE2M2U3YTliMDFlN2YxNWM0NjkzYmE2NjZmZmI3MWY4NTI4NjY1Njc0YTYyMTc5ODdmYzA2ZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://packages/contracts/src/alert.ts#L70-L93",
-          "version": "repo-lines-v1:sha256:35b0732d2f299700e196496e769848ee251308e6835a39de821de7794cd7130f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiMGUzMGE3YjI2ODQ4NzY2ZTNiZGQ2YmQ2YWE0ZWIxMzM3NmY5NTIwNjNiNWZjNzZiNTAwMTEzZGYxY2FhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExNTczNDViNmYyMDk4MjE3ZGYyNzY4YmJlYTZlNjc4NzkwMzEyMjZlNzNlNjg2MjA1Njk4Nzg0YTRhMTc3ZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyNzliNjgwNTIwZWQ1MjZkY2M0YzhhYTM3MzUyNzU5MGUyODE5NWU0MGZiZTYxMDdlMWU1YjQ5NWE0NTc3MzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxZmNmNTM1MjE0ODI3NjU1OTIwOWE3NWMyYjQwMzE1MWY5MWUyMDAwMWYwZTNhOTc3NDNhZjc0OTFjNjBmYmQifQ"
+          "resource": "repo://packages/contracts/src/alert.ts#L13-L93",
+          "version": "repo-lines-v1:sha256:6245022ec2d9970cd84a70a45c9d91e836b16c792e533a744ef077104d192244:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZDk3YzdkZjI0OGU2YjNlY2JlNDY4ZjIxMzY0YmU0ZDFlYTQ5YzM3MGYwNDJkZTBjMzNlYjAzNjkzMTM3YmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExNTczNDViNmYyMDk4MjE3ZGYyNzY4YmJlYTZlNjc4NzkwMzEyMjZlNzNlNjg2MjA1Njk4Nzg0YTRhMTc3ZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmYzhmZDM4MTE2ZWMwODRjYjgyYzgzZGM3OThhN2U1MDRhOTYzMGViYTJlZThjMTQ4Zjk5OWM1YjhmMWUzYTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxZmNmNTM1MjE0ODI3NjU1OTIwOWE3NWMyYjQwMzE1MWY5MWUyMDAwMWYwZTNhOTc3NDNhZjc0OTFjNjBmYmQifQ"
         }
       ]
     },
     {
       "id": "claim_0432ade04a0a411494b8d54605cc2029",
-      "statement": "The UC-10 subscription loader resolves the config from an explicit path, SUBSCRIPTIONS_PATH override, or repo-root-relative DEFAULT_SUBSCRIPTIONS_PATH, parses YAML text through SubscriptionsConfigSchema with an explicit syntax error, and its legs pin default loading, overrides, and malformed-YAML failure.",
+      "statement": "The subscription loader resolves configuration from an explicit file path or the repo-root-relative DEFAULT_SUBSCRIPTIONS_PATH, parses YAML through SubscriptionsConfigSchema, and throws an explicit syntax error on malformed YAML.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/alerts/subscription.ts#L11-L33",
-          "version": "repo-lines-v1:sha256:61ad3ad25c33d3af249b7463fa662739e0ff8af48a7cb2249a28130d7e6375fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyZmRjMTE5ZTExMWY3NmNjNDk3NDJmOWY2N2ViZmQ2YTQwZTg5ZmE3ZDZmYTcyYjZmZWFkOTMwZTE0ZjE5ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0NDNmYTJkZDg3NmRlZmY3ZjhmMDM5MGE4NzVkZmI4YTQ4YjRlMjAyYjE5NGQxNTY4MTQ5MWM3MWU2MjYyYTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5OTRjZTk0MDViZmQ2NDdiNzY2YjcxY2Q2YTBiNTU1MTM1MWM2MTA4ZWQ4YzM5MDgxZmJkNGIxMDMwOGU1ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "resource": "repo://packages/agent/src/alerts/subscription.ts#L9-L31",
+          "version": "repo-lines-v1:sha256:e99c37a5a81f127f1651041842f01f738152e9651fba8c77ec53da1273e9fdbe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxNjdmYjA1MmIxNWNkNGM2OWU2ZjkyZWM3NjcyOTMxYmMyOGQwMDk1MmE3MTk2MTUyZjgzYTMxZjQ0YzhlZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5MTYxNDU1YmJhZjFmZjRjNzQ3OTBmMDE2OWRiY2JjOTJkY2NkYTQ4NDFkMGQwM2Y3Yzk0OWE4YjdhYTg4M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://packages/agent/test/subscription.test.ts#L8-L31",
@@ -642,43 +658,43 @@
     },
     {
       "id": "claim_3f49abf6154a4c0591b9908bfe73ebaa",
-      "statement": "UC-10 anomaly detection has landed as pure-code detectAnomaly with trimmedMean/trimmedStd helpers, calculateEffectiveSigma as max(sigmaRaw, eps, 0.05*|muTrim|), calculateWoW with max(|weekAgo|, eps) guard, isAbsoluteThresholdBreached above/below check, support-count gating, insufficient-history handling, and direction classification, operating only on numeric aggregates so hostile metadata cannot execute.",
+      "statement": "Anomaly detection is pure-code detectAnomaly with trimmed mean/standard-deviation helpers, effective-sigma floor, week-over-week guard, absolute-threshold check, support-count gating, insufficient-history handling, and direction classification over numeric aggregates only.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L125-L213",
-          "version": "repo-lines-v1:sha256:befeef6a42cbab20d732289128ada30bc61a6de11fc28f59b6ad1736da08dcfe:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNjYwNmE2YWJlNjQ4ODIxMjk2ZWY3NWEwMGQ5YzkyODcwY2Y2MjExMDJiMWRjNzk0YmNiMGYxODA2NzAzNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTdmYWY2MDVkZDAyOTg2YzAxZTFiNzFlZDA2OTVlMjYxZmVlMzdlNDRhZmUzODcyNGFiZTJjNGEzNmZkZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxZjI0MTU0NmExMWEzMTM5ZjI2MDE2ZGFhZTNkYjZhYTA0NjY2OTNjYmQ2ZTUxNWMyZWIxOTIzZTZjMjQxOTEifQ"
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L140-L263",
+          "version": "repo-lines-v1:sha256:73aed10af7952878bf05670bece9df54ece5c7986ae77f8d6e96ec43c0b76f67:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMjY2MDZhNmFiZTY0ODgyMTI5NmVmNzVhMDBkOWM5Mjg3MGNmNjIxMTAyYjFkYzc5NGJjYjBmMTgwNjcwMzU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YWU3ZmFmNjA1ZGQwMjk4NmMwMWUxYjcxZWQwNjk1ZTI2MWZlZTM3ZTQ0YWZlMzg3MjRhYmUyYzRhMzZmZGVkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L41-L113",
-          "version": "repo-lines-v1:sha256:60b64fd6143421401a1e0d2fdadd3000174f18736655153ffb564b1403694190:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1NDcyMWU0MTIxMmRlOTE4NmMzZWRmM2JlZWRjZjI2NjgwYTIyOTFhMTkyMTUzNjE3NWI4MDMxODQxMTA1ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4ZDVjODZjMWEyMWNjZjUwNDZhNjJlOTQ1MTU2ZmRiOTU3ZDM5YWNiNzYwOTc5MDEyNGFjYjA4MmZkYjViMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmOGU2OTRjMDJjMjMyNGE2NzkyNGJmODhlYzMyMDE3NzEwZDVjYTQzMzJiZjc2ZTRmYTMyNTYxOTBhZDg5MDcifQ"
+          "version": "repo-lines-v1:sha256:545b6b6b2b2427bd18523baa2f2bae3c70a321e7067baac66405d2148efba637:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NjQ0MGRhZDc4ZjlmY2E1ZjQwNmE4ZjFmYmYzYjU2Mjk5ZjM5OTg1YWJlNTNiNjQ2NzI3MWJhYWNkMGQ3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1ZGUzM2E3NDlmMzg5MTE4Nzc1NWUyNzNjMjUwYmZhODY5MzZiODQ5ODkzNmM2MzAyZGZjZDUyYzgzNWI5ZWEifQ"
         }
       ]
     },
     {
       "id": "claim_56390d196e5c43b4a60b6825d9cef7f2",
-      "statement": "detectAnomaly maps severity as critical on absolute-threshold breach or absZ>=3.0 or absWoW>=50, warning for 2.0<=absZ<3.0, returns skipped_insufficient_support when supportCount is below minSupport (default 15), and returns insufficient_history with statistical suppression on fewer than 14 history points while still alerting critical on an absolute-threshold breach.",
+      "statement": "Severity is critical on absolute-threshold breach or absZ>=3.0 or absWoW>=50, warning for 2.0<=absZ<3.0, with support-count suppression first and insufficient-history suppression that still allows absolute-threshold critical alerts.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L125-L213",
-          "version": "repo-lines-v1:sha256:befeef6a42cbab20d732289128ada30bc61a6de11fc28f59b6ad1736da08dcfe:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNjYwNmE2YWJlNjQ4ODIxMjk2ZWY3NWEwMGQ5YzkyODcwY2Y2MjExMDJiMWRjNzk0YmNiMGYxODA2NzAzNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTdmYWY2MDVkZDAyOTg2YzAxZTFiNzFlZDA2OTVlMjYxZmVlMzdlNDRhZmUzODcyNGFiZTJjNGEzNmZkZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxZjI0MTU0NmExMWEzMTM5ZjI2MDE2ZGFhZTNkYjZhYTA0NjY2OTNjYmQ2ZTUxNWMyZWIxOTIzZTZjMjQxOTEifQ"
+          "resource": "repo://packages/agent/src/alerts/anomalyDetector.ts#L140-L263",
+          "version": "repo-lines-v1:sha256:73aed10af7952878bf05670bece9df54ece5c7986ae77f8d6e96ec43c0b76f67:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMjY2MDZhNmFiZTY0ODgyMTI5NmVmNzVhMDBkOWM5Mjg3MGNmNjIxMTAyYjFkYzc5NGJjYjBmMTgwNjcwMzU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YWU3ZmFmNjA1ZGQwMjk4NmMwMWUxYjcxZWQwNjk1ZTI2MWZlZTM3ZTQ0YWZlMzg3MjRhYmUyYzRhMzZmZGVkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
-          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L176-L244",
-          "version": "repo-lines-v1:sha256:a14fa06aafeb6e28c7e05888bc219e0bb1a5f215b50818a788f8711739703b54:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZjFmMGVhZTJjZmI4OGRjMTJkYTU0ZTAwMzgyZGY1ZTA5MmJlYWZlMzlhYWRmNWRiZWE3ZDc4OGQ3Y2I3ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNjQ4YmMyYWEyODlkNmM2YzcwZmQ2ZjIxMmY1OGQwMDU5YmYzMjUzMWU0YTQ1M2RlNzc2NjMyOTZmZDE1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0MTZhZWFjMDAxNzY1OTFjYzk3OGU2MTdkOTIyZGIzZDZkYmU3MGRmMDM2YmM1YmU5NzkyZjgzZDU1YTgxODgifQ"
+          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L41-L120",
+          "version": "repo-lines-v1:sha256:722fe8d1780615300759e047ee84b0bafd1211ee3ab3ef9928747ee783c1b35e:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkMTJlNmQ5ZWVjZDhkOWQ5OTM4N2IyM2VhMTE5NmIwNjk1NTNlZjcwNjJjNjViMGU1OGM5YmE0ZjczMzhhODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkYjMzNzhiNjM1NGI5Y2JhNjkwZmFkNWIwYTBlNmE0NmYzNTg5ODA0Zjc5MGZhYjUyNTdjYjU0YzMwYmNlMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzYTQ1NjJmMTlmODY4MzhiNDUwYjFlYzBlYTUxMGUwM2JhYTg5NWIyNDhkNjU1ZTFhYTNhYTUzZDgxMjcyODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjZjVjZmQ5MTllMDUyMTkyZjdkNTNjYWY0MzZhZTFhYTNhZjgzM2EyZTg1ZmVjMTQyN2Q5YzdiMjExNDliOGMifQ"
         }
       ]
     },
     {
       "id": "claim_844ae8d1772f431ebc70538ed8ee61c0",
-      "statement": "The offline detector suite pins five ANOM-01..05 critical scenarios with direction and z bounds, contamination resistance of the trimmed baseline to a 10x outlier, sigma_eff flooring on flat series, injection-laden metadata yielding pure-math results, low-support suppression, and zero-division plus detectAnomalyFromSeries edge cases.",
+      "statement": "The offline detector suite pins spike/drop scenarios with severity and direction bounds, trimmed-baseline contamination resistance, sigma-floor behavior on flat series, injection-laden metadata producing pure-math results, low-support suppression, and zero-division plus from-series edge cases.",
       "evidence": [
         {
-          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L249-L438",
-          "version": "repo-lines-v1:sha256:9df511da2e07d60e059c294b337c8b8ef3204d756a6bfa8798f6539910ba2bfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTkwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjYzQwNTEwZDgyODU1ZjExZjlkMDJlYzlkODBjMGRhNjA5MTYzZjJjMGU0MTljMWRhNGYyY2VkN2U4YzczZGQzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmNmY1YjQwYjE1ODQ1N2QxNzg2NGYyMTc5MDc4NmRkNWEyZWNkYjY0YjY2YTY1MWY3ODhkNGUyNWNkMzMwM2QyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Mjc2MTg0NmQ1ODBkMDg1MjM1MmMxZjZkY2E3NTVjOWViYWRkOWEyZmFiOWM5NDUzMjRlMzgzY2RlNjgzNDI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L120-L300",
+          "version": "repo-lines-v1:sha256:fcf7adc96cd2b5c6d668fc1964d4c03956ad8e198e76c631aa3965f06ecff82b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlZGIzMzc4YjYzNTRiOWNiYTY5MGZhZDViMGEwZTZhNDZmMzU4OTgwNGY3OTBmYWI1MjU3Y2I1NGMzMGJjZTE4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjMDIxOTEzN2EzNzZjZmY0NjFkNWY5YzFkNzM5ZjYwNDg5NDAyMDJkMzJjZjk3MzIyMDA5MDFlMzlkMjlkMzYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxYjBiZWY2MGJhZWM2ODk4ZjNjMzA0YTE5YTBiOWI1Njc1OTIyM2UxYzk4MzE1MjgwOTU2NWIwNzAwZWI1OTkzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiNmRkZmFmOGRiMDVmYzAwZTIwZDAwNDFkNzMxMTViYTI1ZDg2OTE2MjZjODMxOWMzMGYwZWFiNzkxNTVlM2RlIn0"
         },
         {
-          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L41-L173",
-          "version": "repo-lines-v1:sha256:6047d03177d17198cf1603c615700cef05d9fe94c6c35212550e2170e72167e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmZDEyZTZkOWVlY2Q4ZDlkOTkzODdiMjNlYTExOTZiMDY5NTUzZWY3MDYyYzY1YjBlNThjOWJhNGY3MzM4YTg4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyMmQxMWNhZjQzZTk3ZWYzNjllNmJlZWQxYTI2OGJkMDU4MzhmMjliOWRkMjU0YmY2OWJhNjQ4ODQxNDcyMzRhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyM2E0NTYyZjE5Zjg2ODM4YjQ1MGIxZWMwZWE1MTBlMDNiYWE4OTViMjQ4ZDY1NWUxYWEzYWE1M2Q4MTI3Mjg4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzN2E3MDFiYTE1MjJkNTM4ZWMwMjJkMTIyNjQ5MjhmY2U2ODA5OTMzMzdhYTY0MDdlYzQ1MmQ5MGRkZGRjYmIwIn0"
+          "resource": "repo://packages/agent/test/anomalyDetector.test.ts#L41-L120",
+          "version": "repo-lines-v1:sha256:722fe8d1780615300759e047ee84b0bafd1211ee3ab3ef9928747ee783c1b35e:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkMTJlNmQ5ZWVjZDhkOWQ5OTM4N2IyM2VhMTE5NmIwNjk1NTNlZjcwNjJjNjViMGU1OGM5YmE0ZjczMzhhODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkYjMzNzhiNjM1NGI5Y2JhNjkwZmFkNWIwYTBlNmE0NmYzNTg5ODA0Zjc5MGZhYjUyNTdjYjU0YzMwYmNlMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzYTQ1NjJmMTlmODY4MzhiNDUwYjFlYzBlYTUxMGUwM2JhYTg5NWIyNDhkNjU1ZTFhYTNhYTUzZDgxMjcyODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjZjVjZmQ5MTllMDUyMTkyZjdkNTNjYWY0MzZhZTFhYTNhZjgzM2EyZTg1ZmVjMTQyN2Q5YzdiMjExNDliOGMifQ"
         }
       ]
     },
@@ -687,7 +703,7 @@
       "statement": "Both domain skill contracts have landed: skills/root-cause-analysis/SKILL.md for the UC-05 diagnostic workflow and skills/anomaly-alert/SKILL.md pinning subscription loading via SubscriptionsConfigSchema, trimmed z-score plus WoW plus min_support detection, 1-2-dimension read-only drill-down with RBAC, and six-field alert composition.",
       "evidence": [
         {
-          "resource": "repo://skills/anomaly-alert/SKILL.md#L20-L58",
+          "resource": "repo://skills/anomaly-alert/SKILL.md#L14-L52",
           "version": "repo-lines-v1:sha256:a7ae7cbbe7d3f439a8aaa9bf0e0b8e809053e46bedf48d0f5a4e6bdbb0fdec54:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiMDk3ZWEzZWFiNTI1N2ExNTE5NmJjMWE4MjE5ZDgyZGRjODc4MmE1YWQwMGRlNmVkNzQ0ZDU2MzQ4ODAyZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYWIwY2Y3MmU2YmIyZTcwY2Y1OTAyZGQ2MDEyMDA5NjYyNzY5MWIzNDhlMjZkOTdjODgyM2I5NTJmYzgxODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjMWU4OWYyNDZmNzFmNmJkZDc4N2MxZjVjZGZmYzM3NjA2NjEyYzEzNDkxZDNlNTU4YzFlZDgyZDU0MDcyYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzOTk0NmYwZDlhN2EyYjA3YWQxNjg4Yzg2NDViYWQ1YmRjNmNlNmI0ZjUyMWMxM2I2NDY0ZGMyMTA1Mzk0NjcifQ"
         },
         {
@@ -695,24 +711,10 @@
           "version": "repo-lines-v1:sha256:cc11d9d553d1fad3f246e1ede6d025e35b0d291d4ca4fb6e85bd6a6e54b6e30e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwY2RjMDg5Mjk0MjAxMjY0NDRlYjE3NDkwODMyOTA2Yjg0OTBlZWIwOTkzYjliOWZjMTc5M2U0YzlkYTY2YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmMzI2OTE5ODBmZTQyYWNhZWZjZTY3MWU4ZjMxZWU3MjA5MDA3ODI3MDE2MmI0MGY4ZWIwN2E3NWNhYTA5ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1MmQ3MTExMDNkNTBhNDM3ODMwYzZmYmNkMDRmYjRiYWI0OWEwZjgyZjZkMjZkMWM3OTFjNmU4NDg4ZGQwOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5NTcwOWMwYzM1Y2RlZjZlOTgyY2U3NDYxNGQ4Njg2ZGJjMjIyNTQwZTQzN2VjNmU1ZTFkZGM4OTRhMTdhODUifQ"
         }
       ]
-    },
-    {
-      "id": "claim_bf75b85df9b6486798486db524ad986a",
-      "statement": "The UC-10 scheduled runner, MCP series fetcher, LLM drill-down node, severity router/digest, and channel sender remain unimplemented: the alerts barrel only re-exports the detector and no alert:run package script or sendAlert implementation exists.",
-      "evidence": [
-        {
-          "resource": "repo://package.json#L13-L36",
-          "version": "repo-lines-v1:sha256:5c409dc5fa82125c4e61a16366c21ac15aa60218bad8a1242d6843f707638272:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ODMzZDU5NDljMDNhNDBjYTk1MjQ5MTYxMGE2NjU5NjQ0YjNhYTQ2NjM2MmY3OTkwMjBkYmYxOTgxNTQ3ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MGM3Mjc5YTJiZTM2ZDJhZjU5ZGZkZThiMzM4M2Q5OWRkMWU4NDJhNGVjNThiMjQ3MjZlMGVkY2ZhNzkxMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmMWE1YTNmOWY3NTZhOGU3NDllOWEzZThhNGU2NmNlZDI1Mzg1MjViNWQyYTBlOGM0MDQ3ODg1ZTllMDAyNzUifQ"
-        },
-        {
-          "resource": "repo://packages/agent/src/alerts/index.ts#L1-L2",
-          "version": "repo-lines-v1:sha256:23aaf7cb23abbecf7922d24a797c0e03a53c2ea613f5bf95ce45c62fa1369ebf:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmM5NzJlYTg4ODBiMGM4MTFhYmUzMjQzNjdhYzY5MTY5MTVjZDA5N2QxYmE4M2ZhMDE3NWQ2OWU4NTU5MjkyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiJ9"
-        }
-      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-11T15:45:43.966Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-13T15:50:35.780Z"
   }
 }
