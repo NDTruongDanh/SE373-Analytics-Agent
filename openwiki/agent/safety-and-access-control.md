@@ -4,8 +4,8 @@ title: Safety and access control
 description: Cross-cutting safety for the Analytics Agent covering read-only connections, SQL validation, agent pre-checks, RBAC with masking, PII redaction, error-code routing, budgets, and human approval.
 tags: [safety, access-control, rbac, pii-masking, read-only, security]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-11T15:45:43.966Z
+  - by: openwiki/0.9.0
+    at: 2026-11-13T15:50:35.780Z
 sources:
   - id: openwiki-source-a53a8de5929686354550dafa
     resource: repo://docs/prd.md
@@ -55,7 +55,7 @@ sources:
     resource: repo://packages/mcp-server/src/executor.ts
   - id: openwiki-source-c6764c62ef243702a1e271ac
     resource: repo://packages/mcp-server/src/pipeline.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-11T15:45:43.966Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-13T15:50:35.780Z" }
 ---
 
 # Safety and access control
@@ -153,7 +153,7 @@ The 12 frozen contract codes are the single authority for retry versus repair de
 |---|---|---|
 | Transport / transient | `TIMEOUT`, `RATE_LIMITED`, `INTERNAL_ERROR` | MCP client retries with backoff; `TIMEOUT` allows one simplification rewrite |
 | SQL / schema diagnostic | `INVALID_SQL`, `UNKNOWN_TABLE`, `SQL_EXECUTION_ERROR` | `ValidatedQueryExecutor` repairs with sanitized code plus `cursorPosition`, at most 3 attempts total |
-| Hard security / policy | `UNAUTHORIZED`, `SCOPE_DENIED`, `INVALID_PARAMS`, `FORBIDDEN_STATEMENT`, `FORBIDDEN_FUNCTION`, `SENSITIVE_COLUMN_DENIED` | Immediate hard abort on attempt 1 as `restricted`, never a repair loop |
+| Hard security / policy | `UNAUTHORIZED`, `SCOPE_DENIED`, `INVALID_PARAMS`, `FORBIDDEN_STATEMENT`, `FORBIDDEN_FUNCTION`, `SENSITIVE_COLUMN_DENIED` | Immediate hard abort on attempt 1, never a repair loop; `UNAUTHORIZED`, `SCOPE_DENIED`, `FORBIDDEN_STATEMENT`, `FORBIDDEN_FUNCTION` and `SENSITIVE_COLUMN_DENIED` surface as `restricted`, while other hard codes such as `INVALID_PARAMS` surface as `error` |
 
 `SQL_EXECUTION_ERROR` covers runtime data errors from valid-parse SQL (PostgreSQL classes `22` and residual `42`): repairable by the SQL generator, never retried by the transport.
 
@@ -229,6 +229,6 @@ Safety also bounds how long a run may try and when a human must decide.
 - **Connection proof:** attempt a write as the agent identity directly and assert the database rejects it with its native read-only error.
 - **Scope matrix:** `schema:read` calling `run_query`, missing or bad tokens, masked versus raw salary access by role, `ANALYZE` in `explain_query`, and wildcard selects over sensitive tables.
 - **Indirect-leak cases:** filtered, aggregated, concatenated, and alias-renamed sensitive columns, plus unresolvable shapes over sensitive tables asserting fail-closed denial.
-- **Agent-gate cases:** large-table scans with and without `purchase_date` bounds and aggregates (including `OR`-hidden, literal, `IS NOT NULL`, scalar-function, and CTE-aggregate bypass attempts), unconditioned and comma joins, `LIMIT` clamping (including `ALL`, oversized, offset-only, and parameter forms), and the single TIMEOUT simplification.
+- **Agent-gate cases:** large-table scans with and without `purchase_date` bounds and aggregates (including `OR`-hidden, literal, `IS NOT NULL`, scalar-function, and CTE-aggregate bypass attempts), unconditioned and comma joins, `LIMIT` clamping (including `ALL`, oversized, offset-only, and parameter forms), and the single TIMEOUT simplification (matrix covered DB-free in `packages/agent/test/safetyGate.test.ts`).
 - **Budget and HITL cases:** tripped `llm-calls`, `tokens`, and `deadline` budgets degrading to `cannot_answer` with partials preserved; stable thread-id validation and same-thread resume without re-running completed nodes versus a fresh thread starting clean.
 - **Leak scan:** pattern plus policy cross-check over every result, chunk, trace, and audit line asserting zero raw leaks while in-scope accuracy stays above target.

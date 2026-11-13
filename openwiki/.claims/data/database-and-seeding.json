@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9d8400514a43251f90be88459cd7ada030f0094fa3fe93d4e653c03acaae7c17",
+  "pageVersion": "sha256:3b09ec7666d05c7abe80e9cfc4314213a745873264722ac1c1205c9139121fa2",
   "claims": [
     {
       "id": "claim_7900d07fa59e42b2827a0c0d856025b0",
@@ -226,7 +226,7 @@
       "evidence": [
         {
           "resource": "repo://docker/docker-compose.yml",
-          "version": "repo-file-v1:sha256:a65c651bdcd24c73f88860157a7caa965af0be7fa239ff624843c8631bdf926f"
+          "version": "repo-file-v1:sha256:d0d29a1f4cc2e50abdf21ff37f92190d04c788ee91c1ae42e304219c6fd751a2"
         }
       ]
     },
@@ -323,10 +323,24 @@
           "version": "repo-file-v1:sha256:b00c953098cc6930b83f8776e450d7bf90e0a72932632ea0f0bc5ffb9db3c938"
         }
       ]
+    },
+    {
+      "id": "claim_bc3a518b203f443b912387e5527446b5",
+      "statement": "The business database derives from the Brazilian E-Commerce (Olist) dataset under CC BY-NC-SA 4.0, fetched at load time from olist/work-at-olist-data into git-ignored cache and never committed.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L70-L70",
+          "version": "repo-lines-v1:sha256:81055013890d2ec51e6c6a875164149bd7d0375a0cbd1c17a8cc26d3d397acdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODEwNTUwMTM4OTBkMmVjNTFlNmM2YTg3NTE2NDE0OWJkN2QwMzc1YTBjYmQxYzE3YThjYzI2ZDNkMzk3YWNkZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODEwNTUwMTM4OTBkMmVjNTFlNmM2YTg3NTE2NDE0OWJkN2QwMzc1YTBjYmQxYzE3YThjYzI2ZDNkMzk3YWNkZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzRhYzc3NDAwYmZkMmNlMTRhZmE5ODQ2ZWNjYmQxNWE3ZTRjMzcyZGM1NDViNGNiOGI4NjRhODJjNDg4MTZkYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTM3NDUxNTJkZmM3YTE1NjRjMzQyNmM1NTg5ODU1NmZmZTUzZmQ0NDA3NDQzZTVkYjQ1NmE2ODFiNDA4MGFhNyJ9"
+        },
+        {
+          "resource": "repo://packages/data/src/download.ts#L41-L42",
+          "version": "repo-lines-v1:sha256:178431676743b74782f13740b81b29b77621221a65d9851133bfc5260f29268e:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZiNTg4NzJkZDAxZmMzMmFhZDIzMTEwZDMzZTQwNDVjYzQxODI1YWFlYTBlMjYyYzc2NmE4MTY1NWYwMDk0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWJjMzZkOTZjZWJkMTMwYTBlNzQxNjMyOTVlYmY1NWZjNThjZDhhYjhjYjg1N2Q4NjBlOWVlMmJhNzUzN2UxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGU5MjkwYWYxNTU4N2MwODE1Y2EzYmFlMDUxYTkxOTE3MDkxYzM5NmQzMDcyM2QwZTQ2YmI2MzZmYWRjMGIxNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWZhMTMyNDUwNTMxMjExNmRkMjBlY2JmYTk5ZWJjNzQyZGU1ZmFkMDM1NTZiMjhiYWM5ZjkwMDNjODBjNGFlYSJ9"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-07T14:35:23.411Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-13T15:50:35.780Z"
   }
 }

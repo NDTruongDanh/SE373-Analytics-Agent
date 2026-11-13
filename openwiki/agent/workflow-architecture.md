@@ -1,8 +1,11 @@
 ---
 type: workflow-architecture
-title: Agent workflow and harness architecture
-description: Reference agent loop and shared harness with frozen LangGraph root, registry seam, ValidatedQueryExecutor, memory ports, trace, and import boundaries.
-tags: [agent-workflow, langgraph, harness, tools, skills, memory, guardrails, trace]
+title: Agent workflow architecture
+description: Root LangGraph topology, UC registry, router, run budgets, text-to-SQL runtime, HITL resume, and checkpointing.
+tags: [agent-workflow, langgraph, harness, budgets, checkpointing, hitl, trace]
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-13T15:50:35.780Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -46,8 +49,6 @@ sources:
     resource: repo://packages/agent/test/graph.test.ts
   - id: openwiki-source-b33cafc7f408ad2b3b67b5b4
     resource: repo://packages/agent/test/resume.test.ts
-  - id: openwiki-source-3bf32d17acb1209db727f646
-    resource: repo://packages/agent/test/safetyGate.test.ts
   - id: openwiki-source-f2db2c9ab36ff7be6949082d
     resource: repo://packages/contracts/README.md
   - id: openwiki-source-7e0040da42161d36a3d5b9e7
@@ -66,140 +67,106 @@ sources:
     resource: repo://packages/contracts/test/schemas.test.ts
   - id: openwiki-source-5ce0b28a6cb6c2f639298bc1
     resource: repo://packages/contracts/test/tools.test.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-11T15:45:43.966Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-11T15:45:43.966Z
+generated: { by: "openwiki/0.9.0", at: "2026-11-13T15:50:35.780Z" }
 ---
 
-# Agent workflow and harness architecture
+# Agent workflow architecture
 
-This page owns the reference agent loop and the shared harness that makes it safe and observable. The normative product contract is the reference diagram in PRD §2.4 and the tool, skill, safety, and observability contracts in PRD §4.1–§4.4.
+This page owns the agent runtime: the frozen LangGraph root, the use-case (UC) registry overlay, the router, run budgets, the text-to-SQL runtime, human-in-the-loop (HITL) resume, checkpointing, and span emission from question to synthesized answer.
 
-Detailed ownership of neighboring concerns lives in [Semantic Layer](./semantic-layer.md), [MCP Server](../integrations/mcp-server.md), [Safety and Access Control](./safety-and-access-control.md), and [Quickstart](../quickstart.md).
+Detailed ownership of neighboring concerns lives in [Semantic Layer](./semantic-layer.md), [MCP Server](../integrations/mcp-server.md), [Safety and Access Control](./safety-and-access-control.md), [Text to SQL](../use-cases/text-to-sql.md), and [Quickstart](../quickstart.md).
 
-## 1. Ownership: agent equals model plus harness
+## 1. Ownership: agent owns the graph and the executor
 
-The system is defined as `agent = model + harness`: the model proposes, the harness disposes. The model supplies language understanding, planning, SQL drafting, chart choice, and prose. The harness supplies everything that makes those outputs trustworthy:
+The system is `agent = model + harness`: the model proposes, the harness disposes. The model supplies language understanding, planning, SQL drafting, and prose. The harness supplies the LangGraph workflow with typed state and bounded retries, database access through MCP, skills, semantic retrieval, checkpointer and memory, role-based access control, trace and audit output, and guardrails.
 
-- LangGraph workflow with typed state, branching, and bounded retries.
-- Database tools over a read-only connection, exposed through MCP.
-- Reusable skills, semantic index, checkpointer and memory, role-based access control plus PII policy, trace and audit log, guardrails, and eval runner.
+Package ownership is fixed: `agent` owns the root graph plus the shared `ValidatedQueryExecutor`; it never imports `pg`, `pg-cursor`, or MCP server internals directly, so all database I/O flows through the MCP client. The checkpointer port takes only a connection string for the same reason: checkpoint payloads stay plain JSON and serializable (`packages/agent/src/state.ts:16-21`, `packages/agent/src/ports/checkpoints.ts:1-30`).
 
-Course rules reinforce this split: the team must build its own agent and must not wrap a hosted text-to-SQL or BI agent product; LangGraph is the recommended workflow framework; prompting alone is never accepted as a safety layer.
+## 2. Frozen root topology and dependency seams
 
-Package ownership is fixed: `contracts` owns shared validation shapes, `mcp-server` owns all database I/O, `access-policy` owns pure policy and redaction, `agent` owns the graph plus the shared `ValidatedQueryExecutor`, `api` owns run and thread identity plus persistence, and `web` owns the UI.
-
-## 2. Public surface: shell marker plus state, graph, and registry
-
-`packages/agent` exposes the shell marker plus the frozen shared modules (`packages/agent/src/constants.ts:111-112`, `packages/agent/src/index.ts:1-13`):
-
-```ts
-export const AGENT_SHELL =
-  "Agent shell: LangGraph.js root graph skeleton (AGENT-01) with registry seam; services land in sibling plans";
-export * from "./state.js";
-export * from "./graph.js";
-export * from "./subgraphs/registry.js";
-```
-
-`AGENT_SHELL` records the skeleton stage and lives in `constants.ts`, re-exported through the barrel. `AgentShellError` re-exports the contracts `DbToolError`, and the barrel comment assigns ownership: shared state, the frozen root builder with its dependency-injection point, and the registry seam are owned here, while sibling plans satisfy the `RootGraphDeps` hooks without editing `graph.ts`.
-
-Upstream callers of the graph are the API host and scheduled triggers; downstream callees are the model through structured output and the MCP server through the MCP client. Until every UC subgraph lands, callers depend on the frozen contract shapes and the registry seam, not on UC node internals.
-
-## 3. Implemented root graph and registry seam
-
-The frozen root builder compiles `START -> budgetGuard -> understand -> retrieve -> router -> (ucEntry | defaultEntry) -> statusCheck -> (vizSeam -> answer | answer) -> END` (`packages/agent/src/graph.ts:114-205`). The router dispatches only to registry overlay entries by allowlist: when `overlay.has(state.ucId)` it takes `ucEntry`, otherwise it takes `defaultEntry`. Explicit `ucId` values stick when registered; otherwise `routeQuestionToUc` classifies the question — definitional and formula lookups stay on the default route, Why and variance questions with directional change or comparison route to `root-cause-analysis`, and everything else falls back to the default route (`packages/agent/src/graph.ts:154-197`, `packages/agent/src/router.ts:59-75`). `ok` and `no_data` continue to the VIZ seam; `needs_clarification`, `restricted`, `cannot_answer`, and `error` synthesize with partial findings. A tripped `budgetGuard` short-circuits directly to `answer` so no model or MCP I/O runs after the trip.
+The frozen root builder compiles `START -> budgetGuard -> understand -> retrieve -> router -> (ucEntry | defaultEntry) -> statusCheck -> (vizSeam | answer) -> END` (`packages/agent/src/graph.ts:114-205`). UC owners must not edit this topology; they extend it through the registry and injected seams.
 
 Injection stays explicit through `RootGraphDeps` (`packages/agent/src/graph.ts:35-50`):
 
 - `checkpointer` defaults to in-memory `MemorySaver`; the durable `PostgresSaver` is injected by the host and never falls back silently.
 - `retrieve` defaults to a no-op; the executor describe path is injected.
 - `ucHandlers` merges over the registry table at build time and never edits `graph.ts`.
-- `viz` defaults to a no-op; the VIZ owner injects the renderer.
+- `viz` defaults to a no-op; the visualization owner injects the renderer.
 - `synthesize` defaults to keep-or-derive; the model factory injects the zero-tools writer.
 - `emitSpan` defaults to a no-op sink; the tracer wires the redacted writer.
-- `textToSql` carries the intent/SQL model plus executor seams; production uses real models, tests inject fakes.
+- `textToSql` carries the intent and SQL model plus executor seams; production uses real models, tests inject fakes.
 
-The registry is the sole file the frozen builder reads for UC wiring (`packages/agent/src/subgraphs/registry.ts:31-50`). `registerUC`, `getUcEntry`, `isKnownUc`, and `listUcIds` manage the table, `DEFAULT_ROUTE_ID` is `tracer`, and the build fails when no default route is present (`packages/agent/src/graph.ts:80-97`). The per-graph text-to-SQL entry always overwrites the import-time registry entry so production transport and trace dependencies come from run time. Transport identity comes from `RunnableConfig.configurable` populated by the host, never from prompt text; the tracer default entry fails closed when any of `mcpUrl`, `token`, `runId`, `userId`, `roleScope`, `threadId`, or `tracesDir` is missing (`packages/agent/src/subgraphs/registry.ts:140-164`).
+Edges encode the governance rules. A tripped `budgetGuard` short-circuits directly to `answer`, so no model or MCP I/O runs after the trip. The router dispatches only to registry overlay entries by allowlist: when `overlay.has(state.ucId)` it takes `ucEntry`, otherwise it takes `defaultEntry`. The `statusCheck` sends `ok` and `no_data` through the VIZ seam and synthesizes `needs_clarification`, `restricted`, `cannot_answer`, and `error` with partial findings.
+
+## 3. Registry overlay and router
+
+The registry is the sole file the frozen root builder reads for UC wiring (`packages/agent/src/subgraphs/registry.ts:31-50`). `registerUC`, `getUcEntry`, `isKnownUc`, and `listUcIds` manage the table, `DEFAULT_ROUTE_ID` is `tracer`, and the build fails when no default route is present (`packages/agent/src/graph.ts:80-97`). The per-graph text-to-SQL entry always overwrites the import-time registry entry so production transport and trace dependencies come from run time.
+
+Explicit `ucId` values stick when registered; otherwise `routeQuestionToUc` classifies the question (`packages/agent/src/graph.ts:154-197`, `packages/agent/src/router.ts:59-75`). Definitional and formula lookups stay on the default route, diagnostic Why and variance questions with directional change or comparison route to `root-cause-analysis`, and everything else falls back to the default route. Transport identity comes from `RunnableConfig.configurable` populated by the host, never from prompt text; the tracer default entry fails closed when any of `mcpUrl`, `token`, `runId`, `userId`, `roleScope`, `threadId`, or `tracesDir` is missing (`packages/agent/src/subgraphs/registry.ts:140-164`).
 
 The tracer default route preserves the demo chain — propose SQL, `list_tables`, `run_query` capped to the preview limit, deterministic answer — writing the same span events so the demo path keeps passing while real subgraphs land (`packages/agent/src/subgraphs/registry.ts:174-294`). `runTracerGraph` builds the frozen root and invokes it on the demo question with per-call run identity headers (`packages/agent/src/graph.ts:228-269`).
+
+## 4. Ask-to-synthesize flow with span emission
+
+A text-to-SQL run flows from question to synthesized answer through budgeted, traced steps:
+
+1. `budgetGuard` seeds one persistent absolute deadline and stops before any I/O when already tripped.
+2. `understand` loads the `text-to-sql` skill contract and proposes a serializable intent with one budgeted LLM call, emitting an `llm_call` span with model, token counts, and cost.
+3. `retrieve` supplies semantic chunks through the injected retriever.
+4. `router` resolves the UC entry by allowlist.
+5. `ucEntry` runs definition fast-path, unknown-term, and clarification gates, then the executor (`describe_table`, `explain_query`, `run_query`, bounded repair), forwarding executor spans through the root emitter with tool names collected.
+6. `statusCheck` routes `ok` and `no_data` through `vizSeam`; all other statuses skip visualization.
+7. `answer` synthesizes from handler output or derives from the capped preview.
+
+Span emission is uniform: every implementation receives a `RootRuntime` with a span sink plus the LangGraph runnable config, and `SpanEvent` plus `SpanEmitter` standardize node, type, duration, payload, parent span, and attempt (`packages/agent/src/state.ts:182-198`). The text-to-SQL entry copies live counters into an executor-local `BudgetState`, runs, then writes back only the deltas so the root reducer stays additive (`packages/agent/src/subgraphs/textToSql.ts:561-638`).
 
 ```mermaid
 flowchart TD
   A["Budget guard"] --> B["Understand"] --> C["Retrieve"] --> D["Router"] --> E["UC entry or default entry"] --> F["Status check"] --> G["VIZ seam or answer"]
 ```
 
-*Caption: Implemented root request flow from budget governance through routed entry to gated synthesis.*
+*Caption: Root request flow from budget governance through routed entry to gated synthesis.*
 
-## 4. State, budgets, and memory ports
+## 5. State, invariants, and bounds
 
-Shared root state is plain JSON only: no pool, class instance, function, or `pg` import may enter the schema because checkpoint payloads serialize verbatim into `PostgresSaver` rows (`packages/agent/src/state.ts:16-21`). Checkpointed preview rows are capped at `RESULT_PREVIEW_MAX = 50`; the full up-to-1000-row buffer lives in transient RAM outside state (`packages/agent/src/constants.ts:8-9`, `packages/agent/src/queryExecutor/executor.ts:49-52`).
+Shared root state is plain JSON only: no pool, class instance, function, or `pg` import may enter the schema because checkpoint payloads serialize verbatim into `PostgresSaver` rows (`packages/agent/src/state.ts:16-21`). Checkpointed preview rows are capped at `RESULT_PREVIEW_MAX = 50`; the full up-to-1000-row buffer lives in transient RAM outside state (`packages/agent/src/constants.ts:8-9`).
 
-Run-level budgets default to 20 LLM calls, 60000 tokens, and a 120000 ms creation window (`packages/agent/src/constants.ts:11-19`). `AgentStateSchema` carries question, `ucId`, structured intent with metric, dimensions, filters, time range, requested metrics, schema entities, and query mode, semantic chunks, capped `resultPreview`, columns, SQL, tables used, tools called, answer status defaulting to `no_data`, answer text, additive budget and telemetry reducers, run and thread identity, nullable VIZ spec, nullable pending clarification with a 0-to-2 clarification-attempts counter, and nullable UC-05 `analysisPlan` plus `rootCauseAnswer` (`packages/agent/src/state.ts:115-172`). Budget and telemetry use `ReducedValue` reducers so concurrent node writes add counters instead of overwriting limits and deadlines.
+`AgentStateSchema` carries question, `ucId`, structured intent with metric, dimensions, filters, time range, requested metrics, schema entities, and query mode, semantic chunks, capped `resultPreview`, columns, SQL, tables used, tools called, answer status defaulting to `no_data`, answer text, additive budget and telemetry reducers, run and thread identity, nullable VIZ spec, nullable pending clarification with a 0-to-2 clarification-attempts counter, and nullable UC-05 `analysisPlan` plus `rootCauseAnswer` (`packages/agent/src/state.ts:115-172`). Budget and telemetry use `ReducedValue` reducers so concurrent node writes add counters instead of overwriting limits and deadlines.
 
-Runtime wiring is injected ports, not owned tables. `RootRuntime` hands every implementation a span sink plus the LangGraph runnable config; `RetrieveFn`, `UcEntryHandler`, `VizFn`, and `SynthesizeFn` share one `(state, runtime)` signature, and `SpanEvent` plus `SpanEmitter` standardize node, type, duration, payload, parent span, and attempt (`packages/agent/src/state.ts:182-198`).
+Run-level budgets default to 20 LLM calls, 60000 tokens, and a 120000 ms creation window (`packages/agent/src/constants.ts:11-19`). The executor budget module is pure and DB-free: `createBudgetState` builds the mutable counters plus the absolute deadline epoch, `checkBudget` trips on `llm-calls`, `tokens`, or `deadline` without mutating state, `recordLlmCall` records a completed call, and `estimateTokens` supplies the conservative fallback when the provider omits usage (`packages/agent/src/queryExecutor/budgets.ts:28-81`).
 
-The text-to-SQL path bridges state and executor budgets: `guardTextToSqlBudget` seeds one persistent absolute deadline on entry and stops before any I/O when already tripped, while generic UCs get an inline llm-calls, tokens, and deadline trip check in `budgetGuard` (`packages/agent/src/subgraphs/textToSql.ts:73-94`, `packages/agent/src/graph.ts:114-132`). The entry then copies the live counters into an executor-local `BudgetState`, runs, and writes back only the deltas so the root reducer stays additive (`packages/agent/src/subgraphs/textToSql.ts:561-638`).
+## 6. Text-to-SQL runtime
 
-Durable memory is built by the host through `createCheckpointer`, which takes only a connection string, pins the schema to `langgraph`, runs `setup()` exactly once so the four checkpoint tables exist before first invoke, and throws at factory time on unreachable hosts, bad credentials, or missing schema rights — never catching and continuing to `MemorySaver` (`packages/agent/src/ports/checkpoints.ts:42-72`). The factory rejects the read-only `agent_ro` URL before touching the network because checkpoints require the `harness_state` owner (`packages/agent/src/ports/checkpoints.ts:80-93`).
+The text-to-SQL overlay is the first real UC overlay. Its `understand` node loads the skill contract and proposes the intent with one budgeted LLM call; its entry handles `definition_lookup` from retrieved chunks with no executor or MCP, short-circuits unknown requested metrics before any MCP, normalizes schema entities to bare table names, and maps every executor outcome onto `AgentState` with the preview capped to 50 rows (`packages/agent/src/subgraphs/textToSql.ts:236-297`, `packages/agent/src/subgraphs/textToSql.ts:428-483`). Production MCP calls strip identity from tool arguments and send it as transport headers; fakes keep observing it inside arguments (`packages/agent/src/subgraphs/textToSql.ts:138-157`).
 
-Human-in-the-loop state rides the same checkpointer. `pendingClarification` carries the offered options for `needs_clarification`; `requestClarification` requires a non-empty question and two to four options with attempts 0 to 2, `makeThreadId` builds `chat:{userId}:{sessionId}` fail-closed on empty parts or over-length ids, `isSameThread` gates resume to the same thread, and `pauseForApproval` plus `resumeDecision` wrap LangGraph `interrupt` and `Command({ resume })` so approval suspends inside the node and resumes only on the same thread id (`packages/agent/src/hitl.ts:20-36`, `packages/agent/src/hitl.ts:58-95`, `packages/agent/src/hitl.ts:111-122`, `packages/agent/src/state.ts:164-167`).
+The entry order is definition lookup, unknown-term gate, ambiguous-metric clarification (at most two turns), identity and transport check, candidate-table normalization, executor run, large-query time-range clarification, and result mapping with budget deltas. Unknown MCP failure shapes fail closed as non-repairable errors, and the zero-row path runs only on the first attempt with a filter present before concluding `no_data`.
 
-## 5. Shared execution primitive: ValidatedQueryExecutor and safety gate
+## 7. HITL resume and checkpointing
 
-Every agent SQL query uses the same primitive: selective describe, generation, local pre-check, `explain_query`, `run_query`, then bounded repair (`packages/agent/src/queryExecutor/executor.ts:1-10`). The model seam is a narrow structured-output interface returning `SqlProposal` with SQL plus tables used, and the MCP seam is one `call(tool, args)` method that throws `DbToolError` on tool failure with per-call run identity inside args (`packages/agent/src/queryExecutor/executor.ts:66-83`).
+Human-in-the-loop state rides the same checkpointer. `pendingClarification` carries the offered options for `needs_clarification`; `requestClarification` requires a non-empty question and two to four options with attempts 0 to 2, `makeThreadId` builds `chat:{userId}:{sessionId}` fail-closed on empty parts or over-length ids, and `isSameThread` gates resume to the same thread (`packages/agent/src/hitl.ts:20-36`, `packages/agent/src/hitl.ts:58-95`, `packages/agent/src/state.ts:164-167`).
 
-Total attempts are hard-capped at `MAX_ATTEMPTS = 3`, and a `TIMEOUT` retry tightens to `TIMEOUT_RETRY_LIMIT = 50` rows after dropping the `ORDER BY` tail, always re-passing the local gates before any MCP call (`packages/agent/src/constants.ts:21-25`, `packages/agent/src/queryExecutor/executor.ts:266-272`). The safety-gate cap for non-aggregate detail queries is `DETAIL_QUERY_LIMIT = 200` (`packages/agent/src/constants.ts:27-28`).
+`pauseForApproval` and `pauseForClarification` wrap LangGraph `interrupt` so approval suspends inside the node, and `resumeDecision` builds `Command({ resume: value })` for invocation on the same `thread_id` — never a fresh input object, because fresh inputs re-run generation and can double-execute side effects (`packages/agent/src/hitl.ts:111-122`). A resume response is accepted only when it exactly matches a presented option, and metric disambiguation is limited to two selections.
 
-Order inside the executor is selective `describe_table` for candidate tables only, structured SQL proposal, local `sqlGuard` plus `LocalQuerySafetyGate`, `explain_query` and `run_query`, then the repair loop with one `TIMEOUT` simplification and a single-pass zero-row diagnostic (`packages/agent/src/queryExecutor/executor.ts:664-709`, `packages/agent/src/queryExecutor/executor.ts:811-870`). Describe failures return immediately because the catalog they would build is the repair loop ground truth. Unknown MCP failure shapes fail closed as non-repairable `INTERNAL_ERROR`; the server `cursorPosition` is preserved so repair feedback can point at it (`packages/agent/src/queryExecutor/executor.ts:223-255`). Policy-restricted codes (`SCOPE_DENIED`, `SENSITIVE_COLUMN_DENIED`, `FORBIDDEN_STATEMENT`, `FORBIDDEN_FUNCTION`, `UNAUTHORIZED`) map to `restricted`; everything else maps to `error` (`packages/agent/src/queryExecutor/executor.ts:204-216`). The zero-row path runs only on attempt 1 with a `WHERE` filter present: it resolves up to three direct string-literal table and column predicates, re-describes each table once, calls `sample_rows` with `n=5`, then runs guarded `DISTINCT ... LIMIT 20` probes; only a concrete near-match triggers attempt 2, otherwise it concludes `no_data` with probe failures recorded as notes (`packages/agent/src/queryExecutor/executor.ts:1014-1050`, `packages/agent/src/queryExecutor/executor.ts:1137-1345`).
+Durable memory is built by the host through `createCheckpointer`, which takes only a connection string, pins the schema to `langgraph`, runs `setup()` exactly once so the four checkpoint tables exist before the first invoke, and throws at factory time on unreachable hosts, bad credentials, or missing schema rights — never catching and continuing to `MemorySaver` (`packages/agent/src/ports/checkpoints.ts:42-72`). The factory rejects the read-only `agent_ro` URL before touching the network because checkpoints require the `harness_state` owner (`packages/agent/src/ports/checkpoints.ts:80-93`). `MemorySaver` remains the default for unit tests and the demo path; `PostgresSaver` is the crash-safe host path with identical JSON state.
 
-The agent-side gate runs after `sqlGuard` and before any MCP call: server-side access policy remains authoritative (`packages/agent/src/queryExecutor/safetyGate.ts:1-7`). It denies any catalog-marked sensitive column referenced in any clause, denies `JoinExpr` nodes with no `ON` or `USING` condition and comma-separated `FROM` lists as implicit cross joins, and routes large-table scans without a conjunctive `orders.purchase_date` bound to clarification (`packages/agent/src/queryExecutor/safetyGate.ts:64-112`, `packages/agent/src/queryExecutor/safetyGate.ts:225-306`). Non-aggregate queries that pass get a top-level `LIMIT` clamp; aggregates pass through untouched (`packages/agent/src/queryExecutor/safetyGate.ts:308-312`).
+## 8. Failure behavior and extension seams
 
-The text-to-SQL overlay is the first real UC overlay. Its `understand` node loads the `text-to-sql` skill contract and proposes a serializable intent with one budgeted LLM call; its entry handles `definition_lookup` from retrieved chunks with no executor or MCP, short-circuits unknown requested metrics before any MCP, normalizes schema entities to bare table names, and maps every executor outcome onto `AgentState` with the preview capped to 50 rows (`packages/agent/src/subgraphs/textToSql.ts:236-297`, `packages/agent/src/subgraphs/textToSql.ts:428-483`). Production MCP calls strip identity from tool args and send it as transport headers; fakes keep observing it inside args (`packages/agent/src/subgraphs/textToSql.ts:138-157`).
+Characteristic failures the harness is designed to contain: fan-out double counting on multi-row joins, wrong metric definitions, PII leakage, runaway cartesian queries, hallucinated numbers for unanswerable questions, and injected instructions in data. The corresponding mitigations are join rules with pre-aggregation, semantic citations, code-enforced access control and masking, `EXPLAIN` gating with timeouts, `cannot_answer` with explicit missing-table reasons, and treating retrieved rows as data.
 
-## 6. Shared frozen contracts
+Planned extension seams, with the registry and port seams already usable:
 
-Contracts evolve additive-only after the freeze: adding optional fields, schemas, or widening enum members needs one code-owner review, while removing or renaming fields, tightening types, changing enum members, or changing error codes needs a `CONTRACTS_VERSION` major bump plus approval from every affected UC owner (`packages/contracts/README.md:8-19`). The single version constant is `CONTRACTS_VERSION = "1.1.0"` (`packages/contracts/src/constants.ts:1`, `packages/contracts/src/index.ts:13`). Version 1.1.0 is the additive precedent: `RunQueryOutputSchema` gains optional `rowScopeApplied` carrying the server-minted row-scope record (strict table plus column, column names only), with pre-1.1.0 payloads still parsing via default, plus additive UC-10 schemas in `src/alert.ts` (`SubscriptionsConfigSchema`, `SubscriptionSchema`, `AnomalyAlertSchema`, `AlertChannelSchema`, and others) for periodic anomaly detection without breaking existing envelopes (`AnomalyAlertResponseSchema.data` remains `z.unknown()`) (`packages/contracts/README.md:21-31`). All fields are canonical `camelCase`; snake-case variants are not added and consumers map them at their own boundary (`packages/contracts/README.md:30-36`).
-
-Errors are 12 frozen codes. Only `TIMEOUT`, `RATE_LIMITED`, and `INTERNAL_ERROR` are retryable; only `INVALID_SQL`, `UNKNOWN_TABLE`, and `SQL_EXECUTION_ERROR` are repairable, computed by `dbToolError()` from `RETRYABLE_CODES` and `REPAIRABLE_CODES` with an optional non-negative `cursorPosition` (`packages/contracts/src/constants.ts:8-33`, `packages/contracts/src/errors.ts:26-38`). Routing is transport retry with backoff for transient codes with one `TIMEOUT` simplification rewrite, bounded repair with sanitized code plus cursor for SQL diagnostics (at most 3 attempts), and immediate hard abort on attempt 1 for hard security and policy codes (`packages/contracts/README.md:54-64`).
-
-`SQLAnswer` carries structured intent with metric, dimensions, filters, and time range, nullable SQL, tables used, citations defaulting to empty, attempts capped at 3, result preview capped at 50 rows, non-empty answer text, a seven-value status enum (`ok`, `no_data`, `cannot_answer`, `needs_clarification`, `restricted`, `error`, `false_premise`), and telemetry with prompt, completion, and embedding tokens plus cost and latency. The schema test rejects a fourth attempt and a 51-row preview. The `AgentResponse` union adds `insight_report`, `analysis_plan`, `root_cause`, and `anomaly_alert` envelope variants around the same status core.
-
-Frozen tool schemas keep scope filtering server-side (`ListTablesInputSchema` is a strict empty object, so clients cannot claim scope), keep per-column `sensitive` flags on describe output, cap `run_query` with `maxRows` 1–1000 (default 200) plus `maskedColumns` and server-minted `rowScopeApplied` reporting (column names only), and cap `sample_rows` at `n <= 5` (default 5).
-
-Trace identity is `runId`, `threadId`, `userId`, `role`, node, type, timestamp, and duration, with optional `spanId`, `parentSpanId`, and `attempt` so older writers stay valid. The schema test rejects an empty run ID. Trace and audit sinks must remain redacted of raw PII values.
-
-## 7. Boundaries, identity, trace, and skills
-
-Import boundaries make bypass structurally harder. ESLint forbids `pg`, `pg-cursor`, and MCP server internals in `packages/agent`, `packages/access-policy`, and `apps/api` (with only the `apps/api` store DAO and its test excepted because that DAO legitimately owns `pg`), forcing all database access through the MCP client. The web UI carries the driver ban plus the MCP server ban plus a contracts-only workspace rule, so it imports shared types from `@shared/contracts` only.
-
-Per-call MCP identity travels as headers, not tool arguments: the long-lived client forks `Authorization Bearer` plus `X-Run-Id`, `X-User-Id`, and `X-Role-Scope` from `RunnableConfig.configurable` through a hook, so prompt-injected headers can never reach the transport (`packages/agent/src/mcpClient.ts:1-10`, `packages/agent/src/mcpClient.ts:73-100`).
-
-Every span is stamped with a random UUID and delegated to the redacted trace writer; payloads carry counts and column names only, never cell values. `appendTraceEvent` redacts row payloads, validates against `TraceEventSchema`, scans the serialized line for residual PII, appends one JSON line per event under `traces/<runId>.jsonl`, and returns the span ID plus file and redaction flag (`packages/agent/src/traces/writer.ts:73-87`). `writeTraceEvent` keeps the graph and tracer call sites on the same redacted path (`packages/agent/src/traces/writer.ts:94-99`).
-
-Skills stay declarative Markdown contracts validated against canonical sections, loaded at node entry and emitted as `skill_call` spans with no runnable scripts, database connections, or credentials.
-
-## 8. Extension seams and failure behavior
-
-Planned extension seams, with the contract and policy seams already usable:
-
-- Add a new skill directory following the skill contract without changing the core loop.
-- Add a corpus document type or metric alias and reindex only the changed chunk.
 - Add a new UC handler through `registerUC` without editing the frozen root builder.
-- Add a new role scope or sensitive column in the policy file; the rewrite and masking layers pick it up without prompt changes.
-- Add a cheaper-alternative strategy to the approval gate or a new chart type behind `render_chart` validation.
+- Add a new skill directory following the skill contract without changing the core loop.
+- Inject a new retriever, VIZ renderer, or synthesizer through `RootGraphDeps`.
+- Add a new role scope or sensitive column in the policy; the rewrite and masking layers pick it up without prompt changes.
 - Add an additive contract field or schema with one owner review; breaking changes need a version bump and all affected owners.
-
-Characteristic failures the harness is designed to contain: fan-out double counting on multi-row joins, wrong metric definitions, PII leakage, runaway cartesian queries, hallucinated numbers for unanswerable questions, and injected instructions in data. The corresponding mitigations are canonical join rules with pre-aggregation, semantic citations, code-enforced RBAC and masking, `EXPLAIN` gating with timeouts, `cannot_answer` with explicit missing-table reasons, and treating retrieved rows as data.
 
 ## 9. Focused tests
 
 Representative focused tests pin each seam without live credentials:
 
-- Root graph seam and allowlist routing with injected doubles (`packages/agent/test/graph.test.ts:32-95`).
-- Executor core path with canned proposals and a stub MCP caller (`packages/agent/test/executor.test.ts:1-80`).
-- Local safety-gate matrix for sensitive columns, aggregates, and joins (`packages/agent/test/safetyGate.test.ts:83-100`).
-- Twelve-code error surface and retryability (`packages/contracts/test/errors.test.ts:34-36`).
-- Answer attempt and preview bounds plus trace identity rejection.
-- Checkpointer factory fail-fast and `agent_ro` rejection (`packages/agent/test/ports.test.ts`).
-- HITL interrupt plus resume on `MemorySaver` without re-running completed work (`packages/agent/test/resume.test.ts:85-118`).
+- Root graph seam and allowlist routing with injected doubles (`packages/agent/test/graph.test.ts:40-103`).
+- Executor core path with canned proposals and a stub MCP caller (`packages/agent/test/executor.test.ts:108-200`).
+- Local safety-gate matrix for sensitive columns, aggregates, and joins.
+- Checkpointer factory fail-fast and `agent_ro` rejection.
+- HITL interrupt plus resume on `MemorySaver` without re-running completed work.

@@ -1,8 +1,11 @@
 ---
 type: business-database
 title: Business database and seeded scenarios
-description: Olist-VN PostgreSQL database, Vietnamesization transforms, loader and verifier pipeline, and hidden seeded scenarios for coding agents.
-tags: [database, seeding, vietnamesization, olist, pii, eval-fixtures]
+description: Olist-VN PostgreSQL database, Vietnamization transforms, loader and verifier pipeline, and hidden seeded scenarios for coding agents.
+tags: [database, seeding, vietnamization, olist, pii, eval-fixtures]
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-13T15:50:35.780Z
 sources:
   - id: openwiki-source-e119253b3c3737247dc63f2a
     resource: repo://.openwikiignore
@@ -38,15 +41,14 @@ sources:
     resource: repo://packages/data/test/seedHiding.test.ts
   - id: openwiki-source-b7ac2104581a67282056d573
     resource: repo://policies/sensitive_columns.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-11-06T15:32:05.739Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-07T14:35:23.411Z
+  - id: openwiki-source-23775c3de52f3ab95a13cb8b
+    resource: repo://README.md
+generated: { by: "openwiki/0.9.0", at: "2026-11-13T15:50:35.780Z" }
 ---
 
 # Business database and seeded scenarios
 
-This page owns the Olist-VN business database the Analytics Agent queries: where the source bytes come from, how they are Vietnamesized, what the `public.*` schema and role grants look like, how `packages/data` loads and verifies the database, and how seeded drift, anomaly, and injection fixtures stay hidden from the agent.
+This page owns the Olist-VN business database the Analytics Agent queries: where the source bytes come from, how they are Vietnamized, what the `public.*` schema and role grants look like, how `packages/data` loads and verifies the database, and how seeded drift, anomaly, and injection fixtures stay hidden from the agent.
 
 > Read boundary: this page documents loader scripts and schema files only. It never reproduces ignored data dumps (`data/*.csv`, `data/*.parquet`, `data/*.db`, `data/*.sqlite`, `data/*.duckdb`), `packages/data/src/seeds.json` payloads, `data/seed_manifest*.json` checksums, `data/seeded_scenarios.md`, or `evals/**` gold content. Trace, log, and result payloads (`traces/**`, `logs/*.jsonl`, `results/**`) are likewise never reproduced. See `.openwikiignore` for the full boundary.
 
@@ -57,7 +59,7 @@ The business database is a fictional Vietnamese e-commerce database derived from
 Key boundaries:
 
 - Single implemented target is PostgreSQL 16 with `pgvector` in Docker (`docker/docker-compose.yml`), database `chosen`. DuckDB and SQLite remain allowed spec targets, but the loader, grants, and verifier described here target PostgreSQL.
-- Agent access is read-only by connection grants, not by prompt. The agent connects as `agent_ro` (`SELECT` on `public.*` plus `semantic.chunks` only); validators and prompts are additional layers.
+- Agent access is read-only by connection grants, not by prompt. The agent connects as `agent_ro` (`SELECT` on `public.*` plus `semantic.semantic_chunks` only); validators and prompts are additional layers.
 - All personal data is synthetic output of a seeded Faker instance. Real customer PII must never enter the repository.
 - Seeded scenario causes and expected results are hidden from the agent, its retrieval index, and its few-shot examples.
 
@@ -65,7 +67,7 @@ Related behavior lives in [Semantic Layer](../agent/semantic-layer.md), [Eval an
 
 ## 2. Source datasets and pinned download
 
-The build starts from eight Olist publisher CSVs — seven business datasets plus the category-translation CSV — fetched at load time over HTTPS from `olist/work-at-olist-data` into the git-ignored `data/.cache/`. No Kaggle token or browser step is required, and no CSV is ever committed.
+The build starts from eight Olist publisher CSVs — seven business datasets plus the category-translation CSV — fetched at load time over HTTPS from `olist/work-at-olist-data` into the git-ignored `data/.cache/`. No Kaggle token or browser step is required, and no CSV is ever committed. The upstream is the Brazilian E-Commerce (Olist) dataset, used under the CC BY-NC-SA 4.0 license for non-commercial course use.
 
 `packages/data/src/download.ts` is the trust boundary:
 
@@ -74,7 +76,7 @@ The build starts from eight Olist publisher CSVs — seven business datasets plu
 - Cache resolution follows explicit-argument beats `OLIST_CACHE_DIR` beats compiled-in default; `cachePathFor` rejects any name outside the registry so a caller cannot be tricked into reading or writing an arbitrary path.
 - The 61 MB geolocation dump is intentionally excluded; sellers already carry city and state.
 
-## 3. Vietnamesization transforms
+## 3. Vietnamization transforms
 
 `packages/data/src/transform.ts` holds pure data-in, data-out transforms with no `pg` or filesystem imports, so use-case owners can read every mapping without touching loader or database code. The only randomness in the pipeline flows through `createSeededFaker(seed)`; `Math.random` and `Date.now` are never used.
 
@@ -127,7 +129,7 @@ Entry points are `pnpm data:load` (`tsx packages/data/src/load.ts`) for the load
 
 ```mermaid
 flowchart TD
-  A["download eight Olist CSVs to data cache"] --> B["Vietnamesize rows in memory"]
+  A["download eight Olist CSVs to data cache"] --> B["Vietnamize rows in memory"]
   B --> C["COPY twelve tables as owner"]
   C --> D["expand to one million order items"]
   D --> E["inject seeded scenarios as data mutations"]
@@ -183,6 +185,6 @@ Use `pnpm db:reset` (`down -v` plus `up -d`) only when intentionally wiping the 
 ## 10. Extension points and focused tests
 
 - Add a scenario by appending to `seeds.json` and teaching `verify.ts` its assertion band; the strict Zod schema enforces shape, minima, and `SELECT`-only reference SQL at load time.
-- Change a Vietnamesization mapping in `transform.ts` (`PROVINCES`, `STATE_TO_PROVINCE`, category map, rate, shift days, status fold) and both the loader and verifier pick it up; `REGION_ROWS` in `load.ts` must stay in sync with `PROVINCES`.
+- Change a Vietnamization mapping in `transform.ts` (`PROVINCES`, `STATE_TO_PROVINCE`, category map, rate, shift days, status fold) and both the loader and verifier pick it up; `REGION_ROWS` in `load.ts` must stay in sync with `PROVINCES`.
 - Adjust grants only in `docker/initdb/02_schemas.sql` with the matching default-privileges entries; the live role-proof tests assert the full allow and deny matrix.
 - Focused tests: `packages/data/test/verify.test.ts` covers manifest hashing and gating, the seeds validation matrix, province-list sync, stub-client verifier helpers, and a skipped-if-no-DB live leg; `shell.test.ts` guards the package shell marker; `roles.live.test.ts` proves the grant matrix against a live database.
