@@ -14,7 +14,7 @@
     "test": "tsc -b && vitest run"
   },
   "dependencies": {
-    "@pgsql/traverse": "^18.8.1",
+    "@pgsql/traverse": "^18.8.5",
     "@shared/contracts": "workspace:*",
     "pgsql-parser": "^18.3.1",
     "yaml": "catalog:",

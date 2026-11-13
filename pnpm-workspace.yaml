@@ -33,7 +33,7 @@ catalog:
   "@types/react-dom": ^18.3.7
   "@vitejs/plugin-react": ^6.2.1
   "@testing-library/react": ^16.3.3
-  "@testing-library/dom": ^10.4.1
+  "@testing-library/dom": ^10.4.2
   express: ^5.3.0
   jsdom: 29.1.1
   pg: ^8.23.1
@@ -44,5 +44,25 @@ catalog:
   yaml: ^2.9.1
   zod: ^4.6.7
 
+# Security pins for transitive dependencies whose upstream range has no patched
+# release. Each pin is covered by the workspace typecheck/lint/test gate.
+overrides:
+  # GHSA-238p-pmpm-9mq7 (low): KaTeX prototype pollution, patched in 0.18.2.
+  # mermaid 12 already asks for ^0.18; rehype-katex 7 (web) declares ^0.16 but
+  # only uses the stable katex.renderToString API, so it is pinned too.
+  katex: 0.18.10
+  # GHSA-g3hv-75wg-m249 (moderate): minimatch globpart amplification DoS,
+  # patched in 11.0.1. ESLint 10 + typescript-eslint still declare ^10; the
+  # minimatch()/Minimatch API they use is unchanged in v11.
+  minimatch: 11.0.8
+  # GHSA-mrhx-c7xc-m3w5 (high): zod < 4.6.6 memory exhaustion. @ag-ui/core
+  # 0.0.53 pins vulnerable zod 3 with no v3 patch; 1.0.4 drops zod entirely.
+  # @openuidev/react-headless only imports EventType, still exported by 1.0.4.
+  "@ag-ui/core": 1.0.4
+
 minimumReleaseAgeExclude:
   - '@openuidev/react-ui@0.18.5'
+  - '@pgsql/traverse@18.8.5'
+  - libpg-query@18.2.4
+  - pgsql-deparser@18.4.4
+  - plpgsql-deparser@18.3.4
