@@ -56,11 +56,14 @@ export interface OpenAIEmbedderOptions {
 
 export function createOpenAIEmbedder(options: OpenAIEmbedderOptions = {}): Embedder {
   const model = options.model ?? process.env["EMBEDDING_MODEL_ID"];
-  const baseURL = options.baseURL ?? process.env["OPENAI_COMPATIBLE_BASE_URL"];
+  const baseURL =
+    options.baseURL ??
+    process.env["EMBEDDING_BASE_URL"] ??
+    process.env["OPENAI_COMPATIBLE_BASE_URL"];
   const apiKey = options.apiKey ?? process.env["EMBEDDING_API_KEY"];
   if (!model || !baseURL || !apiKey) {
     throw new Error(
-      "OpenAI embedder needs EMBEDDING_MODEL_ID, OPENAI_COMPATIBLE_BASE_URL and EMBEDDING_API_KEY",
+      "OpenAI embedder needs EMBEDDING_MODEL_ID, EMBEDDING_API_KEY and EMBEDDING_BASE_URL (or OPENAI_COMPATIBLE_BASE_URL fallback)",
     );
   }
   const client = new OpenAI({ baseURL, apiKey });
@@ -68,7 +71,7 @@ export function createOpenAIEmbedder(options: OpenAIEmbedderOptions = {}): Embed
   return {
     dimensions,
     async embed(texts: string[]): Promise<number[][]> {
-      const response = await client.embeddings.create({ model, input: texts });
+      const response = await client.embeddings.create({ model, input: texts, dimensions });
       return response.data.map((entry) => entry.embedding);
     },
   };
