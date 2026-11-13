@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Pool } from "pg";
 import { parse as parseYaml } from "yaml";
-import { SemanticChunkMetadataSchema, type SemanticChunkMetadata } from "@shared/contracts";
+import {
+  SemanticChunkMetadataSchema,
+  type SemanticChunkMetadata,
+} from "@shared/contracts";
 import { selectEmbedderFromEnv, type Embedder } from "./embedder.js";
 
 export interface CorpusFile {
@@ -91,10 +94,16 @@ export function chunkMarkdown(
       const [key, value] = meta;
       if (key === "Table") table = value;
       else if (key === "Tables") {
-        tables = value.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+        tables = value
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
       } else if (key === "Metric") metricName = value;
       else if (key === "Aliases") {
-        aliases = value.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+        aliases = value
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
       }
     }
     if (table === null && tables.length === 1) table = tables[0] as string;
@@ -143,7 +152,10 @@ const STRUCTURED_FIELDS: StructuredField[] = [
   { keys: ["startDate", "start_date"], label: "Start Date" },
   { keys: ["endDate", "end_date"], label: "End Date" },
   { keys: ["affectedRegions", "affected_regions"], label: "Affected Regions" },
-  { keys: ["affectedChannels", "affected_channels"], label: "Affected Channels" },
+  {
+    keys: ["affectedChannels", "affected_channels"],
+    label: "Affected Channels",
+  },
   { keys: ["grain"], label: "Grain" },
   { keys: ["primaryKey", "primary_key"], label: "Primary Key" },
   { keys: ["rowCountScale", "row_count_scale"], label: "Row Count Scale" },
@@ -236,7 +248,10 @@ export function chunkYaml(
         .filter((value) => value.length > 0);
     }
     let table: string | null = null;
-    if (typeof record["table"] === "string" && (record["table"] as string).trim()) {
+    if (
+      typeof record["table"] === "string" &&
+      (record["table"] as string).trim()
+    ) {
       table = (record["table"] as string).trim();
     }
     if (table === null && tables.length === 1) table = tables[0] as string;
@@ -253,7 +268,11 @@ export function chunkYaml(
       chunkId = idRaw.trim();
     } else {
       const titleRaw =
-        record["title"] ?? record["name"] ?? metricName ?? table ?? `chunk-${index}`;
+        record["title"] ??
+        record["name"] ??
+        metricName ??
+        table ??
+        `chunk-${index}`;
       chunkId = `${source}:${slug(String(titleRaw))}`;
     }
     const docTypeRaw = record["docType"] ?? record["doc_type"] ?? docType;
@@ -277,7 +296,11 @@ export function chunkYaml(
       let found = false;
       let rawValue: unknown;
       for (const key of field.keys) {
-        if (record[key] !== undefined && record[key] !== null && String(record[key]).trim().length > 0) {
+        if (
+          record[key] !== undefined &&
+          record[key] !== null &&
+          String(record[key]).trim().length > 0
+        ) {
           rawValue = record[key];
           structuredExtras[key] = record[key];
           found = true;
@@ -288,7 +311,10 @@ export function chunkYaml(
       const rendered = structuredFieldToString(rawValue);
       if (rendered.length === 0) continue;
       if (!content.includes(rendered)) {
-        content = content.length > 0 ? `${content}\n${field.label}: ${rendered}` : `${field.label}: ${rendered}`;
+        content =
+          content.length > 0
+            ? `${content}\n${field.label}: ${rendered}`
+            : `${field.label}: ${rendered}`;
       }
     }
     if (!content) return;
@@ -401,18 +427,30 @@ export async function indexCorpus(options: {
     const currentIds = new Set(chunks.map((chunk) => chunk.chunkId));
     const toDelete = [...known.keys()].filter((id) => !currentIds.has(id));
     if (toDelete.length > 0) {
-      await queryFn(`DELETE FROM semantic.semantic_chunks WHERE chunk_id = ANY($1)`, [
-        toDelete,
-      ]);
+      await queryFn(
+        `DELETE FROM semantic.semantic_chunks WHERE chunk_id = ANY($1)`,
+        [toDelete],
+      );
       counts.deleted = toDelete.length;
     }
-    const dirty = chunks.filter((chunk) => known.get(chunk.chunkId) !== contentHash(chunk));
-    const vectors = dirty.length > 0 ? await options.embedder.embed(dirty.map((chunk) => chunk.content)) : [];
+    const dirty = chunks.filter(
+      (chunk) => known.get(chunk.chunkId) !== contentHash(chunk),
+    );
+    const vectors =
+      dirty.length > 0
+        ? await options.embedder.embed(dirty.map((chunk) => chunk.content))
+        : [];
     const embeddingTokens =
       dirty.length === 0
         ? 0
-        : dirty.reduce((sum, chunk) => sum + Math.max(1, Math.ceil(chunk.content.length / 4)), 0);
-    const estimatedCostUsd = Number(((embeddingTokens / 1_000_000) * 0.02).toFixed(8));
+        : dirty.reduce(
+            (sum, chunk) =>
+              sum + Math.max(1, Math.ceil(chunk.content.length / 4)),
+            0,
+          );
+    const estimatedCostUsd = Number(
+      ((embeddingTokens / 1_000_000) * 0.02).toFixed(8),
+    );
     for (let index = 0; index < dirty.length; index++) {
       const chunk = dirty[index] as ParsedChunk;
       const vector = vectors[index] as number[];
@@ -429,11 +467,18 @@ export async function indexCorpus(options: {
                embedding = $12::vector, updated_at = now()
            WHERE chunk_id = $1`,
           [
-            chunk.chunkId, chunk.docType, chunk.table,
-            chunk.tables.join(","), chunk.metricName,
-            chunk.aliases.join(","), chunk.sensitivity, additiveValue,
-            metadataJson, chunk.content,
-            hash, `[${vector.join(",")}]`,
+            chunk.chunkId,
+            chunk.docType,
+            chunk.table,
+            chunk.tables.join(","),
+            chunk.metricName,
+            chunk.aliases.join(","),
+            chunk.sensitivity,
+            additiveValue,
+            metadataJson,
+            chunk.content,
+            hash,
+            `[${vector.join(",")}]`,
           ],
         );
         counts.updated += 1;
@@ -444,11 +489,18 @@ export async function indexCorpus(options: {
               sensitivity, additive, metadata, content, content_hash, embedding, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12::vector, now())`,
           [
-            chunk.chunkId, chunk.docType, chunk.table,
-            chunk.tables.join(","), chunk.metricName,
-            chunk.aliases.join(","), chunk.sensitivity, additiveValue,
-            metadataJson, chunk.content,
-            hash, `[${vector.join(",")}]`,
+            chunk.chunkId,
+            chunk.docType,
+            chunk.table,
+            chunk.tables.join(","),
+            chunk.metricName,
+            chunk.aliases.join(","),
+            chunk.sensitivity,
+            additiveValue,
+            metadataJson,
+            chunk.content,
+            hash,
+            `[${vector.join(",")}]`,
           ],
         );
         counts.added += 1;
@@ -480,9 +532,18 @@ function inferDocType(fileBase: string, fallback: string): string {
   return fallback;
 }
 
-const CANONICAL_YAML_ORDER = ["tables", "columns", "metrics", "joins", "examples", "events"];
+const CANONICAL_YAML_ORDER = [
+  "tables",
+  "columns",
+  "metrics",
+  "joins",
+  "examples",
+  "events",
+];
 
-export function discoverDefaultFiles(dirPath = path.resolve("semantic")): CorpusFile[] {
+export function discoverDefaultFiles(
+  dirPath = path.resolve("semantic"),
+): CorpusFile[] {
   try {
     if (!existsSync(dirPath)) return [...DEFAULT_FILES];
     const entries = readdirSync(dirPath).filter(
@@ -523,7 +584,9 @@ if (
     process.env["INDEXER_DATABASE_URL"] ??
     `postgresql://indexer:${process.env["INDEXER_PASSWORD"] ?? "chosen_indexer_dev"}@127.0.0.1:${process.env["POSTGRES_PORT"] ?? "5433"}/${process.env["POSTGRES_DB"] ?? "chosen"}`;
   const selection = selectEmbedderFromEnv();
-  console.log(`[semantic-index] embedder: ${selection.source}`);
+  console.log(
+    `[semantic-index] model=${selection.model} dim=${selection.embedder.dimensions}`,
+  );
   const counts = await indexCorpus({
     dbUrl,
     embedder: selection.embedder,

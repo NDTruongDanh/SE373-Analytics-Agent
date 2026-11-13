@@ -87,11 +87,17 @@ function defaultDocuments(): ResourceDocument[] {
       uri: "semantic://data-dictionary",
       text: read(path.resolve("semantic/data_dictionary.md")),
     },
-    { uri: "semantic://metrics", text: read(path.resolve("semantic/metrics.md")) },
+    {
+      uri: "semantic://metrics",
+      text: read(path.resolve("semantic/metrics.md")),
+    },
   ];
 }
 
-function mcpErrorPayload(message: string, code: string): {
+function mcpErrorPayload(
+  message: string,
+  code: string,
+): {
   content: { type: "text"; text: string }[];
   isError: true;
   _gatewayErrorCode: string;
@@ -113,7 +119,11 @@ const PASS_THROUGH_INPUT = z.looseObject({});
 // tools/list still advertises the strict contract schemas: the pass-through
 // above is a dispatch detail, not the public tool interface.
 function listToolsResult(): {
-  tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+  tools: {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  }[];
 } {
   return {
     tools: TOOL_SPECS.map((spec) => ({
@@ -158,8 +168,14 @@ export async function createGatewayApp(
   await warmupSqlGuard();
 
   const selection = selectEmbedderFromEnv();
-  if (selection.source === "fake") {
-    console.warn("[mcp-gateway] no embedding endpoint configured — serving deterministic fake embeddings");
+  if (selection.model === "fake") {
+    console.warn(
+      `[mcp-gateway] no embedding endpoint configured — serving deterministic fake embeddings model=${selection.model} dim=${selection.embedder.dimensions}`,
+    );
+  } else {
+    console.log(
+      `[mcp-gateway] model=${selection.model} dim=${selection.embedder.dimensions}`,
+    );
   }
   const searchPool = pool ?? getAgentRoPool();
 
@@ -223,7 +239,9 @@ export async function createGatewayApp(
             );
           }
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+            content: [
+              { type: "text" as const, text: JSON.stringify(result.data) },
+            ],
           };
         },
       );

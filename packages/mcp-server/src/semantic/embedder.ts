@@ -39,8 +39,13 @@ export function createFakeEmbedder(dimensions = 1536): Embedder {
     async embed(texts: string[]): Promise<number[][]> {
       return texts.map((text) => {
         const random = mulberry32(fnv1a(text));
-        const vector = Array.from({ length: dimensions }, () => random() * 2 - 1);
-        const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+        const vector = Array.from(
+          { length: dimensions },
+          () => random() * 2 - 1,
+        );
+        const norm = Math.sqrt(
+          vector.reduce((sum, value) => sum + value * value, 0),
+        );
         if (norm === 0) return vector;
         return vector.map((value) => value / norm);
       });
@@ -55,7 +60,9 @@ export interface OpenAIEmbedderOptions {
   dimensions?: number;
 }
 
-export function createOpenAIEmbedder(options: OpenAIEmbedderOptions = {}): Embedder {
+export function createOpenAIEmbedder(
+  options: OpenAIEmbedderOptions = {},
+): Embedder {
   const model = options.model ?? process.env["EMBEDDING_MODEL_ID"];
   const baseURL =
     options.baseURL ??
@@ -64,15 +71,20 @@ export function createOpenAIEmbedder(options: OpenAIEmbedderOptions = {}): Embed
   const apiKey = options.apiKey ?? process.env["EMBEDDING_API_KEY"];
   if (!model || !baseURL || !apiKey) {
     throw new Error(
-      "OpenAI embedder needs EMBEDDING_MODEL_ID, EMBEDDING_API_KEY and EMBEDDING_BASE_URL (or OPENAI_COMPATIBLE_BASE_URL fallback)",
+      "embedder needs EMBEDDING_MODEL_ID, EMBEDDING_API_KEY and EMBEDDING_BASE_URL (or OPENAI_COMPATIBLE_BASE_URL fallback)",
     );
   }
   const client = new OpenAI({ baseURL, apiKey });
-  const dimensions = options.dimensions ?? Number(process.env["EMBEDDING_DIM"] ?? 1536);
+  const dimensions =
+    options.dimensions ?? Number(process.env["EMBEDDING_DIM"] ?? 1536);
   return {
     dimensions,
     async embed(texts: string[]): Promise<number[][]> {
-      const response = await client.embeddings.create({ model, input: texts, dimensions });
+      const response = await client.embeddings.create({
+        model,
+        input: texts,
+        dimensions,
+      });
       return response.data.map((entry) => entry.embedding);
     },
   };
@@ -81,12 +93,16 @@ export function createOpenAIEmbedder(options: OpenAIEmbedderOptions = {}): Embed
 // Operator selection: the OpenAI-compatible endpoint (Gemini) when a model
 // and key are configured, otherwise the deterministic fake (with a boot
 // warning so fake embeddings in production are always a conscious choice).
-export function selectEmbedderFromEnv(): { embedder: Embedder; source: "openai" | "fake" } {
-  if (
-    process.env["EMBEDDING_MODEL_ID"] &&
-    process.env["EMBEDDING_API_KEY"]
-  ) {
-    return { embedder: createOpenAIEmbedder(), source: "openai" };
+export interface EmbedderSelection {
+  embedder: Embedder;
+  model: string;
+}
+
+export function selectEmbedderFromEnv(): EmbedderSelection {
+  const configuredModel = process.env["EMBEDDING_MODEL_ID"];
+  if (configuredModel && process.env["EMBEDDING_API_KEY"]) {
+    const embedder = createOpenAIEmbedder();
+    return { embedder, model: configuredModel };
   }
-  return { embedder: createFakeEmbedder(), source: "fake" };
+  return { embedder: createFakeEmbedder(), model: "fake" };
 }
