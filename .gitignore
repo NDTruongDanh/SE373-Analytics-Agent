@@ -21,6 +21,8 @@ dist/
 traces/*.jsonl
 logs/*.jsonl
 results/
+failed_alerts_queue.jsonl
+pending_alert_digests.jsonl
 # Olist publisher CSVs (01-07 loader cache — 61 MB, pinned-SHA verified at
 # load time, never committed per T-01-07-01)
 data/.cache/

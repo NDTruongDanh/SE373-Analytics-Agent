@@ -177,7 +177,7 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
     it("does not alert for a 25% WoW change or a z-score below 2.0", () => {
       const history = Array.from({ length: 28 }, (_, i) => ({
         date: `2026-09-${String(i + 1).padStart(2, "0")}`,
-        value: i === 21 ? 100 : i % 2 === 0 ? 80 : 120,
+        value: i === 23 ? 100 : i % 2 === 0 ? 80 : 120,
         supportCount: 50,
       }));
 
@@ -189,6 +189,21 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
       expect(result.wowPercent).toBeCloseTo(30);
       expect(Math.abs(result.zScore)).toBeLessThan(2);
       expect(result.isAnomaly).toBe(false);
+      expect(result.severity).toBe("none");
+    });
+
+    it("finds t-7 by date even when history is not in chronological array order", () => {
+      const history = generateBaseline(28, 100, 0, "2026-09-03");
+      const weekAgo = history.find((point) => point.date === "2026-09-24");
+      expect(weekAgo).toBeDefined();
+      weekAgo!.value = 80;
+
+      const result = detectAnomaly({
+        history: [...history].reverse(),
+        current: { date: "2026-10-01", value: 100, supportCount: 50 },
+      });
+
+      expect(result.wowPercent).toBeCloseTo(25);
       expect(result.severity).toBe("none");
     });
 
@@ -208,6 +223,23 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
       expect(result.zScore).toBeLessThan(3);
       expect(result.isAnomaly).toBe(true);
       expect(result.severity).toBe("warning");
+    });
+
+    it("does not emit info for statistical deviations below the warning threshold", () => {
+      const history = Array.from({ length: 28 }, (_, i) => ({
+        date: `2026-09-${String(i + 1).padStart(2, "0")}`,
+        value: i % 2 === 0 ? 90 : 110,
+        supportCount: 50,
+      }));
+      const result = detectAnomaly({
+        history,
+        current: { date: "2026-10-01", value: 117, supportCount: 50 },
+      });
+
+      expect(result.zScore).toBeGreaterThanOrEqual(1.5);
+      expect(result.zScore).toBeLessThan(2);
+      expect(result.isAnomaly).toBe(false);
+      expect(result.severity).toBe("none");
     });
 
     it("suppresses statistical alerts when history is insufficient", () => {
@@ -304,7 +336,7 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
 
       const result = detectAnomaly({
         history: flatValues.map((v, i) => ({ date: `2026-09-0${i + 1}`, value: v })),
-        current: { date: "2026-09-10", value: 102 },
+        current: { date: "2026-09-10", value: 102, supportCount: 50 },
       });
 
       // 102 vs 100 with sigmaEff=5 gives z = 0.4 (normal day, no division by 0)
@@ -362,6 +394,18 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
   // 4. Low-Support Suppression (Chống False-Positive ở tỉnh/kênh ít đơn)
   // =========================================================================
   describe("Low-Support Suppression (minSupport Rule)", () => {
+    it("skips alert when current supportCount is missing", () => {
+      const result = detectAnomaly({
+        history: generateBaseline(28, 100, 2),
+        current: { date: "2026-09-12", value: 200 },
+      });
+
+      expect(result.isAnomaly).toBe(false);
+      expect(result.severity).toBe("none");
+      expect(result.status).toBe("skipped_insufficient_support");
+      expect(result.deviationSummary).toContain("supportCount is missing");
+    });
+
     it("skips alert when sample size is below minSupport (e.g. province with 3 orders)", () => {
       const history = generateBaseline(28, 0.05, 0.01);
 
@@ -387,6 +431,16 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
       expect(result.status).toBe("skipped_insufficient_support");
       expect(result.severity).toBe("none");
       expect(result.direction).toBe("none");
+    });
+
+    it("allows a low order count when the configured metric support floor is met", () => {
+      const result = detectAnomaly({
+        history: generateBaseline(28, 600_000, 10_000),
+        current: { date: "2026-09-12", value: 700_000, supportCount: 5 },
+        minSupport: { minOrders: 15, minMetricTrimmedMean: 500_000 },
+      });
+
+      expect(result.status).toBe("ok");
     });
   });
 
@@ -414,10 +468,21 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
       expect(Number.isFinite(result.zScore)).toBe(true);
     });
 
-    it("safely handles zero in week-ago (t-7) value for WoW calculation", () => {
+    it("does not calculate WoW when the date-matched t-7 value is zero", () => {
       const wow = calculateWoW(100, 0, 1e-6);
-      expect(Number.isFinite(wow)).toBe(true);
-      expect(wow).toBeGreaterThan(0);
+      expect(wow).toBeNull();
+
+      const history = generateBaseline(28, 100, 0, "2026-09-06");
+      const weekAgo = history.find((point) => point.date === "2026-10-03");
+      expect(weekAgo).toBeDefined();
+      weekAgo!.value = 0;
+      const result = detectAnomaly({
+        history,
+        current: { date: "2026-10-10", value: 100, supportCount: 50 },
+      });
+
+      expect(result.wowPercent).toBeNull();
+      expect(result.isAnomaly).toBe(false);
     });
 
     it("detectAnomalyFromSeries works cleanly with chronological array", () => {

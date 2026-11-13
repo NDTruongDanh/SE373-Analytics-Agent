@@ -110,13 +110,12 @@ export type CoreAnomalyFields = z.infer<typeof CoreAnomalyFieldsSchema>;
 // Strict AnomalyAlert schema with mandatory routing and deduplication fields.
 // Deduplication fingerprint: SHA256(recipient_id|metric|dimension_key|date|direction).
 export const AnomalyAlertSchema = CoreAnomalyFieldsSchema.extend({
-  dimensionKey: z.string().min(1),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be formatted as YYYY-MM-DD"),
-  direction: AlertDirectionSchema,
-  recipientId: z.string().min(1),
-  severity: AlertSeveritySchema,
   subscriptionId: z.string().min(1).optional(),
+  recipientId: z.string().min(1),
   recipientRole: z.string().min(1).optional(),
+  severity: AlertSeveritySchema,
+  direction: AlertDirectionSchema.optional(),
+  date: z.string().optional(),
   fingerprint: z.string().min(1).optional(),
   message: z.string().min(1).optional(),
 });

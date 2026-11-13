@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
+import type { AlertHistoryStore } from "@shared/agent";
 import {
   AppStateStore,
   sha256Fingerprint,
@@ -66,6 +67,13 @@ describe("sha256Fingerprint", () => {
 });
 
 describe("AppStateStore (stub pool)", () => {
+  it("satisfies the alert runner's durable history-store port", () => {
+    const { pool } = makeStub();
+    const store = new AppStateStore("******/chosen", pool);
+    const historyStore: AlertHistoryStore = store;
+    expect(historyStore).toBe(store);
+  });
+
   it("throws fail-fast on an empty connection string", () => {
     const { pool, state } = makeStub();
     expect(() => new AppStateStore("", pool)).toThrow(/non-empty/);
@@ -82,7 +90,8 @@ describe("AppStateStore (stub pool)", () => {
     expect(empty.state.calls).toHaveLength(1);
     const select = empty.state.calls[0] as Call;
     expect(select.text).toBe(
-      "SELECT 1 FROM app_state.alert_history WHERE fingerprint = $1",
+      "SELECT 1 FROM app_state.alert_history " +
+        "WHERE fingerprint = $1 AND sent_at >= NOW() - INTERVAL '24 hours'",
     );
     expect(select.params).toEqual(["abc"]);
     expect(select.text).not.toContain("abc");
@@ -108,6 +117,10 @@ describe("AppStateStore (stub pool)", () => {
     const insert = state.calls[0] as Call;
     expect(insert.text).toContain("INSERT INTO app_state.alert_history");
     expect(insert.text).toContain("VALUES ($1, $2, $3, $4, $5, $6)");
+    expect(insert.text).toContain("ON CONFLICT (fingerprint) DO UPDATE");
+    expect(insert.text).toContain(
+      "WHERE app_state.alert_history.sent_at < NOW() - INTERVAL '24 hours'",
+    );
     expect(insert.params).toEqual([
       sha256Fingerprint(ROW),
       ROW.recipientId,
@@ -174,16 +187,20 @@ describeLive("AppStateStore live (requires HARNESS_STATE_DATABASE_URL)", () => {
     await expect(store.hasFingerprint(LIVE_FP)).resolves.toBe(true);
   });
 
-  it("rejects a duplicate fingerprint with a PRIMARY KEY conflict", async () => {
-    const dup = new AppStateStore(LIVE_URL as string);
-    opened.push(dup);
-    const err = await dup
-      .recordSent({ ...ROW, fingerprint: LIVE_FP })
-      .then(
-        () => null,
-        (e: unknown) => e as { code?: string },
-      );
-    expect(err?.code).toBe("23505");
+  it("allows a sent fingerprint to be reused after the 24h dedup window", async () => {
+    const maintenancePool = new Pool({ connectionString: LIVE_URL, max: 1 });
+    await maintenancePool.query(
+      "UPDATE app_state.alert_history " +
+        "SET sent_at = NOW() - INTERVAL '25 hours' WHERE fingerprint = $1",
+      [LIVE_FP],
+    );
+    await maintenancePool.end();
+
+    const store = new AppStateStore(LIVE_URL as string);
+    opened.push(store);
+    await expect(store.hasFingerprint(LIVE_FP)).resolves.toBe(false);
+    await store.recordSent({ ...ROW, fingerprint: LIVE_FP });
+    await expect(store.hasFingerprint(LIVE_FP)).resolves.toBe(true);
   });
 
   it("createHostPorts builds both ports from env", async () => {

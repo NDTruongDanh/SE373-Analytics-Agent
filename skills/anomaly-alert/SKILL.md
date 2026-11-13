@@ -1,19 +1,13 @@
 ---
 name: anomaly-alert
 description: Periodic metric anomaly detection, drill-down diagnosis, and governed alerting contract.
-metadata:
-  name: Periodic Anomaly Detection and Governed Alerting
-  version: 1.0.0
-  owner: UC-10 Owner
 ---
 
 # anomaly-alert
 
-## Skill Name & Metadata
+## Skill Name
 
-- **Name:** anomaly-alert — periodic metric monitoring, anomaly detection, and drill-down alerting contract.
-- **Version:** 1.0.0
-- **Owner:** UC-10 Owner
+anomaly-alert — the periodic metric monitoring, anomaly detection, and drill-down alerting contract.
 
 ## Description
 
@@ -90,13 +84,6 @@ Alert Payload:
 Input Slice: `metric:net_revenue`, date: `2026-09-14`
 Detection: Current = 150M VND, Expected = 145M VND, z = +0.3, WoW = +3.4%
 Action: No alert dispatched; emit telemetry trace with latency and token usage.
-
-### Example 3: Same-Day Re-Run (Deduplication Check)
-
-Input Slice: `metric:return_rate`, date: `2026-09-12`, province: `Đà Nẵng`
-Fingerprint: `SHA256("ops_lead|metric:return_rate|Đà Nẵng|2026-09-12|spike")`
-History Check: An entry with this fingerprint already exists in `app_state.alert_history` for `date = 2026-09-12`.
-Action: Alert delivery is skipped (`skipped_duplicate`), preventing alert spam across multiple cron runs on the same day.
 
 ## Final Check
 

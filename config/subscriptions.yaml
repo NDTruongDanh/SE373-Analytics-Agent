@@ -10,7 +10,7 @@ subscriptions:
     recipientId: "ops_lead"
     recipientRole: "operations"
     channel: webhook
-    digestPreference: realtime
+    digestPreference: digest
     absoluteThreshold:
       operator: above
       value: 0.10
@@ -26,17 +26,15 @@ subscriptions:
       - orders.channel_id
     recipientId: "finance_lead"
     recipientRole: "finance"
-    channel: slack
+    channel: webhook
     digestPreference: digest
     absoluteThreshold:
       operator: below
       value: 10000000
       unit: vnd
-    minSupport:
-      minOrders: 15
-      minMetricTrimmedMean: 500000
+    minSupport: 15
 
-  # ANOM-03: Tỉ lệ huỷ đơn (Ops spike monitoring: Telegram realtime)
+  # ANOM-03: Tỉ lệ huỷ đơn
   - id: cancel-rate-daily
     metricId: metric:cancellation_rate
     primaryDimension: orders.purchase_date
@@ -62,7 +60,7 @@ subscriptions:
       - sellers.seller_id
     recipientId: "sales_director"
     recipientRole: "sales_lead"
-    channel: email
+    channel: webhook
     digestPreference: digest
     absoluteThreshold:
       operator: above

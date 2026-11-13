@@ -1,3 +1,5 @@
+import type { MinSupport } from "@shared/contracts";
+
 export type AlertSeverity = "info" | "warning" | "critical";
 export type AlertDirection = "spike" | "drop";
 
@@ -16,7 +18,7 @@ export interface AnomalyDetectorInput {
   history: TimeSeriesPoint[]; // historical window (t-28 .. t-1)
   current: TimeSeriesPoint; // current point to evaluate (t)
   metricId?: string;
-  minSupport?: number; // default 15
+  minSupport?: MinSupport; // default 15 orders; metric floors are an explicit alternative
   absoluteThreshold?: AbsoluteThreshold;
   eps?: number; // default 1e-6 (or floor for small numbers/currency)
   trimRatio?: number; // default 0.05 (5% - 95% trimming)
@@ -89,10 +91,23 @@ export function calculateWoW(
   currentValue: number,
   weekAgoValue: number,
   eps = 1e-6,
-): number {
+): number | null {
+  if (weekAgoValue === 0) return null;
   return (
     ((currentValue - weekAgoValue) / Math.max(Math.abs(weekAgoValue), eps)) * 100
   );
+}
+
+function dateDaysBefore(date: string, days: number): string | undefined {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== date
+  ) {
+    return undefined;
+  }
+  parsed.setUTCDate(parsed.getUTCDate() - days);
+  return parsed.toISOString().slice(0, 10);
 }
 
 /**
@@ -132,8 +147,21 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
     trimRatio = 0.05,
   } = input;
 
+  const minOrders =
+    typeof minSupport === "number" ? minSupport : minSupport.minOrders;
+  const minMetricTrimmedMean =
+    typeof minSupport === "number" ? undefined : minSupport.minMetricTrimmedMean;
+  const historyValues = history.map((h) => h.value);
+  const insufficientHistory = historyValues.length < 14;
+
   // 1. Min support check (chống FP ở tỉnh/kênh có quá ít đơn hàng)
-  if (current.supportCount !== undefined && current.supportCount < minSupport) {
+  const muTrim = trimmedMean(historyValues, trimRatio);
+  const hasMetricFloor =
+    minMetricTrimmedMean !== undefined && muTrim >= minMetricTrimmedMean;
+  if (
+    current.supportCount === undefined ||
+    (current.supportCount < minOrders && !hasMetricFloor)
+  ) {
     return {
       isAnomaly: false,
       severity: "none",
@@ -142,16 +170,15 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
       expectedValue: current.value,
       zScore: 0,
       wowPercent: null,
-      deviationSummary: `Insufficient support: sample=${current.supportCount} < minSupport=${minSupport}`,
+      deviationSummary:
+        current.supportCount === undefined
+          ? `Insufficient support: supportCount is missing; minOrders=${minOrders}`
+          : `Insufficient support: sample=${current.supportCount} < minOrders=${minOrders}`,
       status: "skipped_insufficient_support",
     };
   }
 
-  const historyValues = history.map((h) => h.value);
-  const insufficientHistory = historyValues.length < 14;
-
   // 2. Contamination-resistant baseline calculation
-  const muTrim = trimmedMean(historyValues, trimRatio);
   const sigmaRaw = trimmedStd(historyValues, trimRatio);
   const sigmaEff = calculateEffectiveSigma(sigmaRaw, muTrim, eps);
 
@@ -160,9 +187,12 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
 
   // 4. Week-over-Week (t-7) calculation if available
   let wowPercent: number | null = null;
-  if (history.length >= 7) {
-    const valT7 = history[history.length - 7].value;
-    wowPercent = calculateWoW(current.value, valT7, eps);
+  const weekAgoDate = dateDaysBefore(current.date, 7);
+  if (weekAgoDate !== undefined) {
+    const weekAgoPoint = history.find((point) => point.date === weekAgoDate);
+    if (weekAgoPoint !== undefined) {
+      wowPercent = calculateWoW(current.value, weekAgoPoint.value, eps);
+    }
   }
 
   // 5. Direction classification

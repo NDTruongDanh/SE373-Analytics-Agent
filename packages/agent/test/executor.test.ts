@@ -101,6 +101,41 @@ const TRACER_SQL =
   "SELECT status, COUNT(*) AS n FROM orders GROUP BY status ORDER BY status";
 
 describe("ValidatedQueryExecutor core path", () => {
+  it("runs deterministic initial SQL through the same describe and safety path", async () => {
+    const model = new FakeChatModel([]);
+    const mcp = new StubMcpCaller({
+      describe_table: describeHandler,
+      explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 4 }),
+      run_query: () => ({
+        columns: ["status", "n"],
+        rows: [{ status: "completed", n: 7 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 4,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+
+    const result = await executor.run({
+      question: "Count orders by status",
+      initialSql: TRACER_SQL,
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.sql).toBe(TRACER_SQL);
+    expect(result.tablesUsed).toEqual(["orders"]);
+    expect(mcp.calls.map((call) => call.tool)).toEqual([
+      "describe_table",
+      "explain_query",
+      "run_query",
+    ]);
+    expect(mcp.calls[2].args["sql"]).toBe(TRACER_SQL);
+  });
+
   it("runs describe-propose-precheck-explain-run in order for candidates only", async () => {
     const model = new FakeChatModel([proposalFor(TRACER_SQL, ["orders"])]);
     const mcp = new StubMcpCaller({
