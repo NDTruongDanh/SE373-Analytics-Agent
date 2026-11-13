@@ -13,6 +13,11 @@
   "scripts": {
     "db:up": "docker compose -f docker/docker-compose.yml up -d",
     "db:reset": "docker compose -f docker/docker-compose.yml down -v && docker compose -f docker/docker-compose.yml up -d",
+    "docker:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d --build",
+    "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
+    "docker:ps": "docker compose --env-file .env -f docker/docker-compose.yml ps",
+    "docker:logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f --tail=100",
+    "docker:data": "docker compose --env-file .env -f docker/docker-compose.yml run --rm data",
     "demo:tracer": "tsx scripts/demo-tracer.ts",
     "trace:show": "tsx scripts/trace-show.ts",
     "external-client": "tsx scripts/externalClient.ts",

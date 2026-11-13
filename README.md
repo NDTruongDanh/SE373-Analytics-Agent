@@ -19,6 +19,7 @@ corepack prepare pnpm@11.25.0 --activate
 pnpm install --frozen-lockfile
 cp .env.example .env   # then fill in role URLs, bearer tokens, model key
 pnpm db:up             # Postgres 16 + pgvector on 127.0.0.1:5433 (loopback only)
+pnpm docker:up         # or the whole stack (db + mcp + api + web) in containers
 pnpm data:load         # full Olist-VN seed (~1M order_items, a few minutes)
 pnpm data:load --scale=small  # CI-speed seed: same FK graph, ~53 s + verify
 pnpm data:verify       # pins the loaded volume to data/seed_manifest.json

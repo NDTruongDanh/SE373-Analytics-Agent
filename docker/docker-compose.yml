@@ -1,11 +1,21 @@
-# Full D-08 database (01-04): PostgreSQL 16 + pgvector on loopback only.
-# Adapted from the v1 compose (origin/feat/phase-2-db:docker/docker-compose.yml):
-# image pinned, DB name chosen, strict loopback port, pgdata volume,
-# initdb bind-mount, pg_isready healthcheck.
+# Full local stack: PostgreSQL + pgvector, MCP gateway, API host, web UI.
 #
-# A clean clone boots with no .env file: every POSTGRES_* and *_PASSWORD
-# variable below has a `:-` dev default. Copy `.env.example` to `.env` only
-# for key-holding runs; custom passwords are picked up via environment.
+# Run everything:
+#   pnpm docker:up        # docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+#   pnpm docker:ps
+#   pnpm docker:logs
+#   pnpm docker:down
+#
+# Database only (same behaviour as before):
+#   pnpm db:up
+#
+# One-off seed load into a fresh volume (profile service, never started by up):
+#   docker compose --env-file .env -f docker/docker-compose.yml run --rm data
+#   ... run --rm data node packages/data/dist/load.js --scale=small
+#
+# A clean clone boots with no .env file for the DB alone: every POSTGRES_*
+# and *_PASSWORD variable has a `:-` dev default. The api/mcp/web services do
+# require .env because they carry the MCP tokens and model key.
 #
 # LOCAL-ONLY dev defaults (never reuse in deployed environments):
 #   POSTGRES_PASSWORD      = chosen_postgres_dev   (superuser `postgres`)
@@ -15,15 +25,40 @@
 #   HARNESS_STATE_PASSWORD = chosen_harness_state_dev (state role `harness_state`)
 # These literals MUST match docker/initdb/01_roles.sql (pure SQL initdb
 # cannot read compose env, so the SQL carries the same dev defaults).
-# 01-03 mirrors them into .env.example; operator secrets (tokens, keys)
-# stay in local `.env` only, never in the repo.
 #
-# Client-URL shapes (loopback-only, password from the matching *_PASSWORD):
+# Client-URL shapes from the host (loopback-only):
 #   postgres:      postgresql://postgres:${POSTGRES_PASSWORD:-chosen_postgres_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
 #   owner:         postgresql://owner:${OWNER_PASSWORD:-chosen_owner_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
 #   agent_ro:      postgresql://agent_ro:${AGENT_RO_PASSWORD:-chosen_agent_ro_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
 #   indexer:       postgresql://indexer:${INDEXER_PASSWORD:-chosen_indexer_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
 #   harness_state: postgresql://harness_state:${HARNESS_STATE_PASSWORD:-chosen_harness_state_dev}@127.0.0.1:${POSTGRES_PORT:-5433}/chosen
+# Inside the compose network the same roles connect to `db:5432` (see the
+# x-app-environment anchor below); .env's 127.0.0.1:5433 URLs are overridden
+# so the API and MCP containers never try to reach their own loopback.
+
+x-app-base: &app-base
+  image: se373-analytics-agent:local
+  build:
+    context: ..
+    dockerfile: Dockerfile
+    target: app
+  env_file:
+    - ../.env
+  restart: unless-stopped
+  # Reach a model/embedding server running on the host (e.g. 9Router) with
+  # AGENT_MODEL_BASE_URL=http://host.docker.internal:<port>/v1.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+# Shared container-side DSNs. Values mirror the host URLs in .env but point
+# at the `db` service and its internal port.
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql://owner:${OWNER_PASSWORD:-chosen_owner_dev}@db:5432/${POSTGRES_DB:-chosen}
+  OWNER_DATABASE_URL: postgresql://owner:${OWNER_PASSWORD:-chosen_owner_dev}@db:5432/${POSTGRES_DB:-chosen}
+  AGENT_RO_DATABASE_URL: postgresql://agent_ro:${AGENT_RO_PASSWORD:-chosen_agent_ro_dev}@db:5432/${POSTGRES_DB:-chosen}
+  INDEXER_DATABASE_URL: postgresql://indexer:${INDEXER_PASSWORD:-chosen_indexer_dev}@db:5432/${POSTGRES_DB:-chosen}
+  HARNESS_STATE_DATABASE_URL: postgresql://harness_state:${HARNESS_STATE_PASSWORD:-chosen_harness_state_dev}@db:5432/${POSTGRES_DB:-chosen}
+
 services:
   db:
     image: pgvector/pgvector:0.8.7-pg16
@@ -53,5 +88,102 @@ services:
       retries: 10
       start_period: 10s
 
+  mcp:
+    <<: *app-base
+    command: ["node", "packages/mcp-server/dist/server.js"]
+    environment:
+      <<: *app-environment
+      # Fixed in-container ports; host mappings below are configurable.
+      MCP_PORT: "8081"
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8081}:8081"
+    volumes:
+      # Audit JSONL (redacted) stays visible on the host.
+      - ../logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8081/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  api:
+    <<: *app-base
+    command: ["node", "apps/api/dist/index.js"]
+    environment:
+      <<: *app-environment
+      API_PORT: "3001"
+      # Containers talk over the compose network, never 127.0.0.1.
+      MCP_URL: http://mcp:8081/mcp
+      TRACES_DIR: traces
+    ports:
+      - "127.0.0.1:${API_PORT:-3001}:3001"
+    volumes:
+      # Redacted per-run traces stay visible on the host.
+      - ../traces:/app/traces
+    depends_on:
+      db:
+        condition: service_healthy
+      mcp:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    image: se373-analytics-agent-web:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: web
+    ports:
+      # Same URL as the Vite dev server: http://127.0.0.1:5173
+      - "127.0.0.1:${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # One-shot seed loader. Never started by `up` (profile-gated); run it with:
+  #   docker compose --env-file .env -f docker/docker-compose.yml run --rm data
+  data:
+    <<: *app-base
+    profiles: ["data"]
+    restart: "no"
+    command: ["node", "packages/data/dist/load.js"]
+    environment:
+      <<: *app-environment
+    volumes:
+      # Keep the downloaded publisher CSVs between runs (~61 MB).
+      - datacache:/app/data/.cache
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata: {}
+  datacache: {}

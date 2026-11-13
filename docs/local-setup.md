@@ -27,6 +27,53 @@ This guide uses PowerShell in VS Code. Run each command from the repository root
 
 6. To use 9Router as the model provider, run it separately and configure `AGENT_MODEL_BASE_URL`, `AGENT_MODEL_API_KEY`, and `AGENT_MODEL_ID`. A local base URL may look like `http://127.0.0.1:20128/v1`; use the actual address provided by your 9Router instance. The model must support the JSON output required by the application. If `AGENT_MODEL_API_KEY` is unset, the tracer uses a canned fake model for testing rather than calling a real model.
 
+## Run everything in Docker (alternative)
+
+The whole stack can run in containers instead of four terminals. This uses
+the same `.env`, the same host ports, and the same `pgdata` volume as the
+manual flow.
+
+1. Complete first-time setup above (dependencies, `.env`, MCP tokens).
+2. Build and start the stack:
+
+   ```powershell
+   corepack pnpm docker:up
+   ```
+
+   This builds one app image for the API and MCP gateway and one nginx image
+   for the web UI, then starts `db`, `mcp`, `api`, and `web`. The first build
+   takes a few minutes; later runs reuse the layer cache.
+3. Open <http://127.0.0.1:5173>. The web container proxies `/api/*` to the API
+   container, so the browser never talks to the API directly.
+4. Useful commands:
+
+   ```powershell
+   corepack pnpm docker:ps     # health and ports
+   corepack pnpm docker:logs   # follow all service logs
+   corepack pnpm docker:down   # stop the stack (keeps volumes)
+   ```
+
+5. Code changes require a rebuild, because the images are immutable:
+
+   ```powershell
+   corepack pnpm docker:up
+   ```
+
+6. Only for a new, empty database, seed it through the one-shot `data`
+   service (it is never started by `up`):
+
+   ```powershell
+   corepack pnpm docker:data
+   docker compose --env-file .env -f docker/docker-compose.yml run --rm data node packages/data/dist/load.js --scale=small
+   ```
+
+   Traces and MCP audit logs stay visible on the host because `traces/` and
+   `logs/` are bind-mounted into the containers. Inside the compose network
+   the services use `db:5432`; the `127.0.0.1:5433` URLs in `.env` remain for
+   host-side tools. If the model provider runs on the host (9Router), set
+   `AGENT_MODEL_BASE_URL=http://host.docker.internal:<port>/v1` — `127.0.0.1`
+   inside a container is the container itself.
+
 ## Start the services
 
 ### 1. Database
