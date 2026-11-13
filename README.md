@@ -1,106 +1,77 @@
-# SE373-Analytics-Agent
+# SE373 Analytics Agent
 
-Initial setup for main branch.
+AI analytics agent for a fictional Vietnamese business. Users ask questions in Vietnamese/English; the agent looks up the semantic dictionary, generates `SELECT`/`WITH`, self-repairs on error, then returns tables, charts, and cited insights.
 
-**Start here:** [`docs/architecture.md`](docs/architecture.md) — harness
-architecture, package boundaries, shared contracts, and where each UC's code goes.
+Mental model: **LLM proposes, harness disposes.** Policy, SQL validation, RBAC/masking, verification, and audit live in TypeScript code, not prompts. See `docs/architecture.md` (layers) and `docs/prd.md` (requirements).
 
-For a step-by-step local startup guide, including Docker, MCP, API, web, and
-troubleshooting, see [`docs/local-setup.md`](docs/local-setup.md).
+Stack: TypeScript, LangGraph.js, MCP (`db-tools` gateway), Postgres 16 + pgvector, React + Vite.
 
-## Operator setup (harness)
+- `apps/api` — HTTP/SSE host, mints `runId`/`threadId`, persists to `harness_state`.
+- `apps/web` — chat UI, SQL drawer, charts, role switcher.
+- `packages/agent` — graph + `ValidatedQueryExecutor`; no direct DB imports.
+- `packages/mcp-server` — sole DB caller (`agent_ro`); auth → scope → zod → sqlGuard → AccessPolicy → read-only executor → PII scan → audit.
+- `packages/contracts` — shared Zod schemas. `packages/access-policy` — pure RBAC/masking. `packages/data` — Olist loader.
 
-Prerequisites: Node `>= 24`, `pnpm >= 10` (repo pins `pnpm@11.25.0`;
-`corepack enable` activates it), Docker for the loopback database.
+## Prerequisites
 
-```sh
-corepack enable
-corepack prepare pnpm@11.25.0 --activate
-pnpm install --frozen-lockfile
-cp .env.example .env   # then fill in role URLs, bearer tokens, model key
-pnpm db:up             # Postgres 16 + pgvector on 127.0.0.1:5433 (loopback only)
-pnpm docker:up         # or the whole stack (db + mcp + api + web) in containers
-pnpm data:load         # full Olist-VN seed (~1M order_items, a few minutes)
-pnpm data:load --scale=small  # CI-speed seed: same FK graph, ~53 s + verify
-pnpm data:verify       # pins the loaded volume to data/seed_manifest.json
-                       #   (after a small load: pnpm data:verify --scale=small,
-                       #    pinned to data/seed_manifest.small.json)
-pnpm demo:tracer       # end-to-end proof: gateway + host, 7 PII-clean trace events
-pnpm eval --uc uc09    # live harness eval (or --all); needs the DB + gateway env
-pnpm skills:check      # declarative-skills invariant (no scripts/credentials)
-```
+- Docker + Docker Compose
+- Node >= 24, pnpm 11.25 (`corepack enable`)
+- Ports free (loopback-only): `5433` (db), `8081` (mcp), `3001` (api), `5173` (web)
 
-External MCP clients (MCP Inspector, `scripts/externalClient.ts`) connect to
-the gateway over Streamable HTTP with a per-role bearer token from
-`policies/mcp_clients.yaml` (token values stay in `.env`, never in the repo).
-
-Dataset attribution: the seeded business data derives from the
-[Olist Brazilian E-Commerce](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
-dataset (localized to Vietnamese, synthetic `vi_VN` PII), used under the
-**CC BY-NC-SA** license — non-commercial course use only, share-alike.
-
-## OpenWiki docs (pnpm + GitHub Actions + OpenCode Go)
-
-Repository wiki lives in `openwiki/` and is maintained by
-[langchain-ai/openwiki](https://github.com/langchain-ai/openwiki) (`0.7.2`,
-pinned in `package.json` + `pnpm-lock.yaml`). Runs use your OpenCode Go API
-key (you paste it yourself — it is never committed).
-
-### 1. Prerequisites
-
-- Node.js `>=24.0.0` (latest major tested by upstream OpenWiki CI: 22 + 24),
-  pnpm `>=10` (repo pins `pnpm@11.25.0` via `packageManager`; Corepack
-  activates it: `corepack enable`).
-- An OpenCode Go API key (subscribe in the
-  [OpenCode Console](https://opencode.ai/console), Go or Go Plus).
-
-### 2. Local runs
+## Setup
 
 ```sh
 corepack enable
 corepack prepare pnpm@11.25.0 --activate
 pnpm install --frozen-lockfile
-cp .env.example .env   # then fill in OPENAI_COMPATIBLE_API_KEY with your key
-pnpm wiki:update:print # non-interactive; same command CI runs
+cp .env.example .env   # fill in tokens locally; never commit .env
 ```
 
-Other scripts: `pnpm wiki:init` (first generation), `pnpm wiki:update`,
-`pnpm wiki:dry-run`, `pnpm wiki:visualize`
-(`openwiki visualize openwiki --export docs/openwiki-visualizer` for a static
-site). The brief OpenWiki reads every run is `openwiki/INSTRUCTIONS.md`; the
-read boundary is `.openwikiignore`.
+`.env` carries DB URLs, `MCP_PORT`/`API_PORT`, MCP bearer tokens (`MCP_TOKEN_*`), and optional model/embedding keys. Without an agent model key the agent runs on the deterministic fake model.
 
-### 3. Provider + session-header caveat (researched)
+## Run with Docker
 
-- Provider: `OPENWIKI_PROVIDER=openai-compatible`,
-  `OPENAI_COMPATIBLE_BASE_URL=https://opencode.ai/inference/go/openai/v1`,
-  `OPENWIKI_MODEL_ID=muse-spark-1.3-contributor`,
-  `OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API=true`. Go serves this model
-  **only** on the Responses API (`POST {base}/responses`); `false` routes to
-  `/chat/completions` and Go answers `ModelProtocolUnsupported` (surfaced as
-  HTTP 401, looks like bad auth).
-- OpenCode Go **requires** `x-opencode-session` on every request (else
-  `400 MissingSessionID`). OpenWiki sends no such header, so
-  `scripts/openwiki-fetch-patch.mjs` (Node `--import` preload, used by every
-  `pnpm wiki:*` script and the workflow) injects a stable opaque
-  `ses_<32 hex>` value for `opencode.ai` requests only: deterministic per
-  GitHub run (`repo|run_id|sha|job` hash), random per process locally, never
-  overwriting an existing value, never containing PII. Same conversation →
-  same value (cache reuse); different runs → different values.
-
-## PR architecture review (OpenCode Go, advisory)
-
-Every non-draft PR into `main` gets an architecture review from
-`muse-spark-1.3-contributor` @ `xhigh` (`.github/workflows/pr-review.yml`
-→ `scripts/pr-review.mjs`), judged against [`docs/architecture.md`](docs/architecture.md)
-as the source of truth. It runs on PR creation **and every push**, and updates
-one living PR comment in place (stamped with the reviewed commit) so the visible
-review always matches the latest code. It reuses the OpenWiki secret — no new secret needed
-(`Settings → Secrets and variables → Actions → OPENCODE_GO_API_KEY`); fork PRs
-without secret access get a skip notice. Reviews post as a PR comment and are
-**advisory only** (never part of the `gate` branch-protection check).
+Full stack (db + mcp + api + web):
 
 ```sh
-node scripts/pr-review.mjs --dry-run        # print what would be sent (no API call)
-node scripts/pr-review.mjs --dry-run --base HEAD~1  # dry-run with a real diff
+docker compose up -d --build
+docker compose ps
+docker compose logs -f --tail=100
+docker compose down        # stop
+docker compose down -v     # stop + wipe pgdata (fresh DB next boot)
 ```
+
+Same via pnpm wrappers: `pnpm docker:up` / `pnpm docker:down` / `pnpm docker:ps` / `pnpm docker:logs`.
+
+Load seed data (one-off, profile-gated):
+
+```sh
+docker compose --profile data run --rm data
+# or: pnpm docker:data
+```
+
+DB only (for local `pnpm dev` iteration):
+
+```sh
+pnpm db:up   # compose db service only
+```
+
+| Service | URL                           | Notes                                                                                    |
+| ------- | ----------------------------- | ---------------------------------------------------------------------------------------- |
+| web     | http://127.0.0.1:5173         | nginx static + `/api` → api proxy, SSE streaming                                         |
+| api     | http://127.0.0.1:3001/healthz | Express + SSE                                                                            |
+| mcp     | http://127.0.0.1:8081/healthz | Streamable HTTP `db-tools`                                                               |
+| db      | `127.0.0.1:5433/chosen`       | `pgvector/pgvector:0.8.7-pg16`, roles `owner` / `agent_ro` / `indexer` / `harness_state` |
+
+Verify: open the web URL, ask a question, check `traces/` (per-run) and `logs/mcp_audit.jsonl` (PII-redacted).
+
+## Dataset
+
+Vietnamized [Brazilian E-Commerce (Olist)](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (CC BY-NC-SA 4.0): Brazilian states → 34 VN provinces (Bắc/Trung/Nam), categories → Vietnamese, BRL → VND (×5150), dates shifted +2905d to 2025–2026. `order_items` expanded to ~1M rows; PII is `vi_VN` Faker fake data. Seeded variance/anomaly/injection scenarios are hidden from the agent.
+
+`pnpm data:load` (full, ~6 min) / `pnpm data:load --scale=small` (CI, <2 min) + `pnpm data:verify`. See `packages/data/`.
+
+## Docs
+
+- `docs/architecture.md`, `docs/prd.md`, `docs/mcp_interface.md` (generated via `pnpm docs:interface`)
+- `AGENTS.md` — contributor rules, boundaries, gates (`pnpm typecheck && pnpm lint && pnpm test`)
