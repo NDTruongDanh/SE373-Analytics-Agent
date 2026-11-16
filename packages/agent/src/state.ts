@@ -62,6 +62,8 @@ const SemanticChunkSchema = z.object({
   text: z.string().optional(),
   aliasMatched: z.boolean().optional(),
   denseScore: z.number().optional(),
+  /** Physical tables the chunk documents; candidate tables for text-to-SQL (#104). */
+  tables: z.array(z.string()).optional(),
 });
 
 const BudgetStateSchema = z
