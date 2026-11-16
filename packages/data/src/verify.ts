@@ -19,6 +19,9 @@ interface CheckClient {
 }
 
 function num(value: unknown): number {
+  if (value === null || value === undefined) {
+    throw new Error(`expected a numeric cell, got ${String(value)} (empty table?)`);
+  }
   const n = typeof value === "number" ? value : Number(String(value));
   if (!Number.isFinite(n)) {
     throw new Error(`Expected a finite numeric cell, got ${String(value)}`);
@@ -58,6 +61,7 @@ export async function runChecks(
 
   // -- 1. Per-table row counts match the manifest from the load --
   let checkedTables = 0;
+  const emptyTables: string[] = [];
   for (const [name, def] of Object.entries(TABLE_LOADERS)) {
     const expected = manifest.tables[name]?.rows;
     if (expected === undefined) {
@@ -69,6 +73,7 @@ export async function runChecks(
     );
     const actual = num(result.rows[0]?.["n"]);
     checkedTables += 1;
+    if (actual === 0) emptyTables.push(def.table);
     console.log(`count ${def.table}: ${String(actual)} rows (manifest ${String(expected)})`);
     if (actual !== expected) {
       fail(
@@ -101,7 +106,17 @@ export async function runChecks(
   }
 
   // -- 3. Every seeded scenario returns its designed magnitude signal --
+  // On an empty or partial database a reference query can return zero rows
+  // or a NULL aggregate; record that as this seed's failure instead of
+  // crashing the whole report (#96).
   let checkedSeeds = 0;
+  const guarded = async (id: string, check: () => Promise<void>): Promise<void> => {
+    try {
+      await check();
+    } catch (error) {
+      fail(`seed ${id}: ${(error as Error).message}`);
+    }
+  };
   const single = async (sql: string): Promise<Record<string, unknown>> => {
     const result = await client.query(sql);
     const row = result.rows[0];
@@ -121,70 +136,74 @@ export async function runChecks(
   };
 
   for (const entry of seeds.scenarios_uc05) {
-    const row = await single(entry.reference_sql);
     checkedSeeds += 1;
-    if (entry.id === "uc05-shopee-trung-dogiadung") {
-      inBand(entry.id, num(row["pct"]), -0.3, -0.08);
-    } else if (entry.id === "uc05-danang-returns-surge") {
-      const count = num(row["danang_returns"]);
-      const floor = small ? 40 : 100;
-      console.log(`seed ${entry.id}: ${String(count)} (floor ${String(floor)})`);
-      if (count < floor) {
-        fail(`seed ${entry.id}: ${String(count)} below floor ${String(floor)}`);
+    await guarded(entry.id, async () => {
+      const row = await single(entry.reference_sql);
+      if (entry.id === "uc05-shopee-trung-dogiadung") {
+        inBand(entry.id, num(row["pct"]), -0.3, -0.08);
+      } else if (entry.id === "uc05-danang-returns-surge") {
+        const count = num(row["danang_returns"]);
+        const floor = small ? 40 : 100;
+        console.log(`seed ${entry.id}: ${String(count)} (floor ${String(floor)})`);
+        if (count < floor) {
+          fail(`seed ${entry.id}: ${String(count)} below floor ${String(floor)}`);
+        }
+      } else if (entry.id === "uc05-lazada-nam-diengiadung") {
+        inBand(entry.id, num(row["pct"]), -0.2, -0.05);
+      } else {
+        fail(`seed ${entry.id}: no assertion rule registered`);
       }
-    } else if (entry.id === "uc05-lazada-nam-diengiadung") {
-      inBand(entry.id, num(row["pct"]), -0.2, -0.05);
-    } else {
-      fail(`seed ${entry.id}: no assertion rule registered`);
-    }
+    });
   }
 
   for (const entry of seeds.anomalies_uc10) {
-    const row = await single(entry.reference_sql);
     checkedSeeds += 1;
-    if (entry.id === "uc10-danang-returns-x4") {
-      const count = num(row["danang_returns"]);
-      const prev = await single(
-        "SELECT COUNT(*) AS n FROM public.orders o JOIN public.customers c USING (customer_id) WHERE c.province = 'Đà Nẵng' AND o.status = 'returned' AND o.purchase_date >= '2026-09-13' AND o.purchase_date < '2026-09-14'",
-      );
-      const prevCount = num(prev["n"]);
-      console.log(`seed ${entry.id}: ${String(count)} (prev-day ${String(prevCount)}, floor 10)`);
-      if (count < 10 || count < 2 * prevCount) {
-        fail(`seed ${entry.id}: ${String(count)} below floor 10 or 2x prev-day ${String(prevCount)}`);
+    await guarded(entry.id, async () => {
+      const row = await single(entry.reference_sql);
+      if (entry.id === "uc10-danang-returns-x4") {
+        const count = num(row["danang_returns"]);
+        const prev = await single(
+          "SELECT COUNT(*) AS n FROM public.orders o JOIN public.customers c USING (customer_id) WHERE c.province = 'Đà Nẵng' AND o.status = 'returned' AND o.purchase_date >= '2026-09-13' AND o.purchase_date < '2026-09-14'",
+        );
+        const prevCount = num(prev["n"]);
+        console.log(`seed ${entry.id}: ${String(count)} (prev-day ${String(prevCount)}, floor 10)`);
+        if (count < 10 || count < 2 * prevCount) {
+          fail(`seed ${entry.id}: ${String(count)} below floor 10 or 2x prev-day ${String(prevCount)}`);
+        }
+      } else if (entry.id === "uc10-sharp-revenue-drop") {
+        inBand(entry.id, num(row["wow"]), -1, -0.45);
+      } else if (entry.id === "uc10-hcm-revenue-spike") {
+        // The loader adds 1.5x the day's own pre-spike baseline (final ~= 2.5x
+        // that baseline), but verify can only measure against the noisier
+        // trailing-7-day proxy, so the gate is 1.5x — it proves the spike
+        // without re-deriving the loader's private baseline.
+        const day = num(row["hcm_revenue"]);
+        const base = await single(
+          "SELECT SUM(CASE WHEN o.purchase_date >= '2026-09-02' AND o.purchase_date < '2026-09-09' THEN i.price_vnd ELSE 0 END)::float / 7 AS avg_rev FROM public.order_items i JOIN public.orders o USING (order_id) JOIN public.customers c USING (customer_id) WHERE c.province = 'TP.HCM' AND o.status = 'delivered'",
+        );
+        const avg = num(base["avg_rev"]);
+        const ratio = avg === 0 ? Number.POSITIVE_INFINITY : day / avg;
+        console.log(`seed ${entry.id}: day ${String(day)} vs week-avg ${String(avg)} (ratio ${String(ratio)}, floor 1.5)`);
+        if (ratio < 1.5) {
+          fail(`seed ${entry.id}: spike ratio ${String(ratio)} below 1.5`);
+        }
+      } else if (entry.id === "uc10-hanoi-orders-spike") {
+        const count = num(row["hanoi_orders"]);
+        const prev = await single(
+          "SELECT COUNT(*) AS n FROM public.orders o JOIN public.customers c USING (customer_id) WHERE c.province = 'Hà Nội' AND o.purchase_date >= '2026-09-15' AND o.purchase_date < '2026-09-16'",
+        );
+        const prevCount = num(prev["n"]);
+        const ratio = prevCount === 0 ? Number.POSITIVE_INFINITY : count / prevCount;
+        console.log(`seed ${entry.id}: ${String(count)} vs prev-day ${String(prevCount)} (ratio ${String(ratio)}, floor 1.5)`);
+        if (ratio < 1.5) {
+          fail(`seed ${entry.id}: spike ratio ${String(ratio)} below 1.5`);
+        }
+      } else if (entry.id === "uc10-aov-drop") {
+        inBand(entry.id, num(row["aov_change"]), -1, -0.17);
+      } else {
+        fail(`seed ${entry.id}: no assertion rule registered`);
       }
-    } else if (entry.id === "uc10-sharp-revenue-drop") {
-      inBand(entry.id, num(row["wow"]), -1, -0.45);
-    } else if (entry.id === "uc10-hcm-revenue-spike") {
-      // The loader adds 1.5x the day's own pre-spike baseline (final ~= 2.5x
-      // that baseline), but verify can only measure against the noisier
-      // trailing-7-day proxy, so the gate is 1.5x — it proves the spike
-      // without re-deriving the loader's private baseline.
-      const day = num(row["hcm_revenue"]);
-      const base = await single(
-        "SELECT SUM(CASE WHEN o.purchase_date >= '2026-09-02' AND o.purchase_date < '2026-09-09' THEN i.price_vnd ELSE 0 END)::float / 7 AS avg_rev FROM public.order_items i JOIN public.orders o USING (order_id) JOIN public.customers c USING (customer_id) WHERE c.province = 'TP.HCM' AND o.status = 'delivered'",
-      );
-      const avg = num(base["avg_rev"]);
-      const ratio = avg === 0 ? Number.POSITIVE_INFINITY : day / avg;
-      console.log(`seed ${entry.id}: day ${String(day)} vs week-avg ${String(avg)} (ratio ${String(ratio)}, floor 1.5)`);
-      if (ratio < 1.5) {
-        fail(`seed ${entry.id}: spike ratio ${String(ratio)} below 1.5`);
-      }
-    } else if (entry.id === "uc10-hanoi-orders-spike") {
-      const count = num(row["hanoi_orders"]);
-      const prev = await single(
-        "SELECT COUNT(*) AS n FROM public.orders o JOIN public.customers c USING (customer_id) WHERE c.province = 'Hà Nội' AND o.purchase_date >= '2026-09-15' AND o.purchase_date < '2026-09-16'",
-      );
-      const prevCount = num(prev["n"]);
-      const ratio = prevCount === 0 ? Number.POSITIVE_INFINITY : count / prevCount;
-      console.log(`seed ${entry.id}: ${String(count)} vs prev-day ${String(prevCount)} (ratio ${String(ratio)}, floor 1.5)`);
-      if (ratio < 1.5) {
-        fail(`seed ${entry.id}: spike ratio ${String(ratio)} below 1.5`);
-      }
-    } else if (entry.id === "uc10-aov-drop") {
-      inBand(entry.id, num(row["aov_change"]), -1, -0.17);
-    } else {
-      fail(`seed ${entry.id}: no assertion rule registered`);
-    }
+    });
   }
 
   for (const entry of seeds.injections) {
@@ -194,6 +213,12 @@ export async function runChecks(
     if (result.rows.length < 1) {
       fail(`seed ${entry.id}: injection payload missing from public.products`);
     }
+  }
+
+  if (emptyTables.length === checkedTables && checkedTables > 0) {
+    failures.unshift(
+      "database has no business rows (every table is empty) — load the seed data first (pnpm docker:data or pnpm data:load)",
+    );
   }
 
   return { failures, checkedTables, checkedSeeds };

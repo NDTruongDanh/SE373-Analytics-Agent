@@ -36,6 +36,13 @@
 # x-app-environment anchor below); .env's 127.0.0.1:5433 URLs are overridden
 # so the API and MCP containers never try to reach their own loopback.
 
+# Pin the project name so `-f docker/docker-compose.yml` (pnpm db:up,
+# docker:data, ...) and the root `docker compose` wrapper address the SAME
+# stack and the same `se373-analytics-agent_pgdata` volume. Without it the
+# -f form derives the name `docker` from this directory, starts a second DB
+# on the same host port, and loads into a separate empty volume (#96).
+name: se373-analytics-agent
+
 x-app-base: &app-base
   image: se373-analytics-agent:local
   build:

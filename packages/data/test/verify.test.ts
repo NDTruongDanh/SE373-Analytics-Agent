@@ -341,6 +341,41 @@ describe("runChecks exit contract", () => {
       ),
     ).toBe(true);
   });
+
+  it("reports FAIL instead of crashing on an empty database (#96)", async () => {
+    const emptySeeds = {
+      ...seeds,
+      scenarios_uc05: [
+        // NULL aggregate over empty tables.
+        { ...VALID_ENTRY, id: "uc05-shopee-trung-dogiadung", reference_sql: "SELECT NULL AS pct" },
+        // Zero rows back from the reference query.
+        { ...VALID_ENTRY, id: "uc05-lazada-nam-diengiadung", reference_sql: "SELECT nothing" },
+      ],
+      anomalies_uc10: [],
+      injections: [],
+    };
+    const empty = {
+      query: async (sql: string) => {
+        if (sql === "SELECT NULL AS pct") return { rows: [{ pct: null }] };
+        if (sql === "SELECT nothing") return { rows: [] };
+        return { rows: [{ n: 0 }] };
+      },
+    };
+    const report = await runChecks(
+      empty,
+      { tables: manifestFor(10) },
+      emptySeeds,
+      "olist-vi-2025-2026-v1-small",
+    );
+    expect(report.failures[0]).toContain("database has no business rows");
+    expect(report.checkedSeeds).toBe(2);
+    expect(
+      report.failures.some((m) => m.startsWith("seed uc05-shopee-trung-dogiadung:")),
+    ).toBe(true);
+    expect(
+      report.failures.some((m) => m.startsWith("seed uc05-lazada-nam-diengiadung:")),
+    ).toBe(true);
+  });
 });
 
 describe.skipIf(!process.env["OWNER_DATABASE_URL"])(
