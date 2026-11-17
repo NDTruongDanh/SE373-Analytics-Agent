@@ -2101,19 +2101,21 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(routeQuestionToUc("Why did revenue decrease in September?")).toBe(RCA_UC_ID);
     expect(routeQuestionToUc("Root cause of return rate variance")).toBe(RCA_UC_ID);
 
-    // Standard queries route to default
-    expect(routeQuestionToUc("Top 5 sản phẩm bán chạy nhất tháng 8")).toBe("tracer");
+    // Standard queries use UC-01; explicit tracer requests remain supported.
+    expect(routeQuestionToUc("Tổng doanh thu tháng hiện tại")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Top 5 sản phẩm bán chạy nhất tháng 8")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Tổng doanh thu tháng hiện tại", "tracer")).toBe("tracer");
 
-    // Regression tests for UC-01/UC-02 overlap: definition lookups and column-level reasons must route to default
-    expect(routeQuestionToUc("Giải thích định nghĩa doanh thu thuần")).toBe("tracer");
-    expect(routeQuestionToUc("Giải thích công thức tính AOV")).toBe("tracer");
-    expect(routeQuestionToUc("Khách hàng hoạt động nghĩa là gì?")).toBe("tracer");
-    expect(routeQuestionToUc("Khách hàng hoạt động được tính thế nào?")).toBe("tracer");
-    expect(routeQuestionToUc("Lý do hủy đơn hàng phổ biến nhất trong quý 3 là gì?")).toBe("tracer");
-    expect(routeQuestionToUc("Top 3 lý do khách hàng đổi trả hàng")).toBe("tracer");
-    expect(routeQuestionToUc("Explain net revenue definition")).toBe("tracer");
-    expect(routeQuestionToUc("Reason for cancelled orders in Q3")).toBe("tracer");
-    expect(routeQuestionToUc("What is the formula for customer lifetime value?")).toBe("tracer");
+    // Definitions and column-level reasons belong to UC-01/UC-02, not RCA.
+    expect(routeQuestionToUc("Giải thích định nghĩa doanh thu thuần")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Giải thích công thức tính AOV")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Khách hàng hoạt động nghĩa là gì?")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Khách hàng hoạt động được tính thế nào?")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Lý do hủy đơn hàng phổ biến nhất trong quý 3 là gì?")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Top 3 lý do khách hàng đổi trả hàng")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Explain net revenue definition")).toBe("text-to-sql");
+    expect(routeQuestionToUc("Reason for cancelled orders in Q3")).toBe("text-to-sql");
+    expect(routeQuestionToUc("What is the formula for customer lifetime value?")).toBe("text-to-sql");
 
     // Root graph automatically routes question to RCA handler when ucId is empty
     let rcaCalled = false;
