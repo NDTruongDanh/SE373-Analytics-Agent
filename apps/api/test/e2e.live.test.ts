@@ -159,7 +159,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     }
   });
 
-  it("runs the demo question end to end with redacted trace and clean SSE", async () => {
+  it("runs the explicit tracer demo end to end with redacted trace and clean SSE", async () => {
     // Live PII literals for the leak assertions: real phone/email cells
     // fetched through the pipeline as admin (never through the SSE path).
     const probe = (await mcpCall(
@@ -178,7 +178,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     const res = await fetch(`${apiBase}/api/ask`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south" }),
+      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south", ucId: "tracer" }),
     });
     expect(res.status).toBe(200);
     const sseText = await res.text();
