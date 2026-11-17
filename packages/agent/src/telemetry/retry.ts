@@ -155,10 +155,10 @@ const QUOTA_EXHAUSTED_PATTERNS = [
 ];
 
 const RATE_LIMIT_TEXT_RE =
-  /(?:^\s*429(?:\b|$)|\bHTTP\s*429\b|\bstatus(?:\s+code)?\s*[:=]?\s*429\b|\b429\s+too\s+many\s+requests\b|\btoo\s+many\s+requests\b|\brate[_ -]?limit(?:ed|ing| exceeded| reached)?\b|\btokens? per minute\b|\brequests? per minute\b|\bTPM\b|\bRPM\b)/i;
+  /(?:^|[^0-9])429(?:$|[^0-9])|too many requests|rate[- _]?limit(?:ed|ing| exceeded| reached)?|tokens? per minute|requests? per minute|\btpm\b|\brpm\b/i;
 
 const OVERLOAD_503_TEXT_RE =
-  /(?:^\s*503(?:\b|$)|\bHTTP\s*503\b|\bstatus(?:\s+code)?\s*[:=]?\s*503\b|\b503\s+service\s+unavailable\b|\bservice\s+unavailable\b|\boverloaded_error\b|\b(?:engine|server|model|provider)\s+(?:is\s+)?(?:currently\s+)?overloaded\b)/i;
+  /(?:^|[^0-9])503(?:$|[^0-9])|service unavailable|overloaded_error|(?:engine|server|model|provider) (?:is )?(?:currently )?overloaded/i;
 
 // Message hints require an explicit unit so ambiguous unitless text (e.g.
 // "try again in 5") never guesses ms vs s vs m.
