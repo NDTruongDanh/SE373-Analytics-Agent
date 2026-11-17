@@ -26,7 +26,12 @@ import {
   type InsightReport,
 } from "@shared/contracts";
 import { createChatModel } from "../../models/factory.js";
-import { estimateTokens } from "../../queryExecutor/budgets.js";
+import {
+  checkBudget,
+  estimateTokens,
+  type BudgetState,
+} from "../../queryExecutor/budgets.js";
+import { isRateLimitFailure } from "../../telemetry/retry.js";
 import { estimateCostUsd } from "../../telemetry/usage.js";
 import type {
   AgentState,
@@ -34,7 +39,7 @@ import type {
   RootRuntime,
   VizFn,
 } from "../../state.js";
-import { RESULT_PREVIEW_MAX } from "../../constants.js";
+import { BUDGET_LIMITS, RESULT_PREVIEW_MAX } from "../../constants.js";
 import {
   RENDER_REPAIR_LIMIT,
   buildTableSpec,
@@ -172,57 +177,96 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           : baseCaveats;
       report = fallbackReport(buffer, selection.chartType, selection.reason, caveats);
     } else {
-      const promptInput = {
-        question: state.question,
-        chartType: selection.chartType,
-        chartReasonHint: selection.reason,
-        columns: state.columns,
-        preview: state.resultPreview,
-        truncated,
+      const startCalls = state.budget?.llmCalls ?? 0;
+      const budget: BudgetState = {
+        llmCalls: startCalls,
+        tokensUsed: state.budget?.tokensUsed ?? 0,
+        maxLlmCalls: state.budget?.maxLlmCalls ?? BUDGET_LIMITS.maxLlmCalls,
+        maxTokens: state.budget?.maxTokens ?? BUDGET_LIMITS.maxTokens,
+        deadlineMs:
+          state.budget?.deadlineMs && state.budget.deadlineMs > 0
+            ? state.budget.deadlineMs
+            : Date.now() + BUDGET_LIMITS.runDeadlineMs,
       };
-      const promptText = buildInsightPrompt(promptInput);
-      try {
-        const outcome = await runVizDraft(model, promptInput, buffer);
-        repairs = outcome.repairs;
-        llmCalls = 1 + outcome.repairs;
-        promptTokens = outcome.usage.inputTokens;
-        completionTokens = outcome.usage.outputTokens;
-        modelId = outcome.usage.model;
-        const priced = estimateCostUsd(modelId, promptTokens, completionTokens);
-        estimatedCostUsd = priced.estimatedCostUsd;
-        const eventIds = state.semanticChunks.map((chunk) => chunk.chunkId);
-        const checked = verifyNumericClaims(outcome.draft.insights, buffer, { eventIds });
-        stripped = checked.stripped;
-        const caveats = [...outcome.draft.caveats, ...baseCaveats];
-        // Stripped claims are always surfaced: the user sees what was
-        // removed and why (the trace carries the per-claim reason).
-        if (stripped.length > 0) {
-          caveats.push(
-            `${stripped.length} draft claim(s) failed numeric verification and were removed.`,
-          );
-        }
-        if (checked.verified.length === 0 && stripped.length === 0) {
-          caveats.push("No verifiable claims could be grounded in the query results.");
-        }
-        report = InsightReportSchema.parse({
-          ...outcome.draft,
-          insights: checked.verified,
-          caveats,
-        });
-      } catch {
-        // Model or repair failure: deterministic fallback, traced below.
-        // The failed attempts still spent budget — account for all of them.
-        repairs = RENDER_REPAIR_LIMIT;
-        llmCalls = 1 + RENDER_REPAIR_LIMIT;
-        promptTokens = estimateTokens(promptText, "fallback");
+      const preCheck = checkBudget(budget);
+      if (preCheck.tripped) {
         report = fallbackReport(buffer, selection.chartType, selection.reason, [
           ...baseCaveats,
-          "Draft validation failed after 2 repairs; showing the result table instead.",
+          `Insight synthesis skipped: run budget exceeded (${preCheck.reason}).`,
         ]);
-      }
-      if (promptTokens === 0 && completionTokens === 0) {
-        const estimate = estimateTokens(promptText, JSON.stringify(report));
-        promptTokens = estimate;
+      } else {
+        const promptInput = {
+          question: state.question,
+          chartType: selection.chartType,
+          chartReasonHint: selection.reason,
+          columns: state.columns,
+          preview: state.resultPreview,
+          truncated,
+        };
+        const promptText = buildInsightPrompt(promptInput);
+        let rateLimitedFallback = false;
+        try {
+          const outcome = await runVizDraft(model, promptInput, buffer, {
+            budget,
+            deadlineMs: budget.deadlineMs,
+            emit: rt.emit,
+            node: UC03_VIZ_NODE,
+          });
+          repairs = outcome.repairs;
+          llmCalls = budget.llmCalls - startCalls;
+          promptTokens = outcome.usage.inputTokens;
+          completionTokens = outcome.usage.outputTokens;
+          modelId = outcome.usage.model;
+          const priced = estimateCostUsd(modelId, promptTokens, completionTokens);
+          estimatedCostUsd = priced.estimatedCostUsd;
+          const eventIds = state.semanticChunks.map((chunk) => chunk.chunkId);
+          const checked = verifyNumericClaims(outcome.draft.insights, buffer, { eventIds });
+          stripped = checked.stripped;
+          const caveats = [...outcome.draft.caveats, ...baseCaveats];
+          // Stripped claims are always surfaced: the user sees what was
+          // removed and why (the trace carries the per-claim reason).
+          if (stripped.length > 0) {
+            caveats.push(
+              `${stripped.length} draft claim(s) failed numeric verification and were removed.`,
+            );
+          }
+          if (checked.verified.length === 0 && stripped.length === 0) {
+            caveats.push("No verifiable claims could be grounded in the query results.");
+          }
+          report = InsightReportSchema.parse({
+            ...outcome.draft,
+            insights: checked.verified,
+            caveats,
+          });
+        } catch (error) {
+          llmCalls = budget.llmCalls - startCalls;
+          if (isRateLimitFailure(error)) {
+            // Model rate-limited or deadline-stopped: record exact attempts,
+            // keep 0 tokens when no usage was returned, fall back cleanly.
+            rateLimitedFallback = true;
+            repairs = 0;
+            promptTokens = 0;
+            completionTokens = 0;
+            report = fallbackReport(buffer, selection.chartType, selection.reason, [
+              ...baseCaveats,
+              "Insight synthesis skipped: model rate-limited.",
+            ]);
+          } else {
+            // Model or repair failure: deterministic fallback, traced below.
+            // The failed attempts still spent budget — account for all of them.
+            repairs = RENDER_REPAIR_LIMIT;
+            if (llmCalls === 0) llmCalls = 1 + RENDER_REPAIR_LIMIT;
+            promptTokens = estimateTokens(promptText, "fallback");
+            report = fallbackReport(buffer, selection.chartType, selection.reason, [
+              ...baseCaveats,
+              "Draft validation failed after 2 repairs; showing the result table instead.",
+            ]);
+          }
+        }
+        if (!rateLimitedFallback && promptTokens === 0 && completionTokens === 0) {
+          const estimate = estimateTokens(promptText, JSON.stringify(report));
+          promptTokens = estimate;
+        }
       }
     }
 

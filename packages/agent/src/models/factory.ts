@@ -18,7 +18,16 @@ import {
   modelFromMessage,
   usageFromMessage,
 } from "../telemetry/usage.js";
-import type { InvokeUsageResult, LlmUsage } from "../telemetry/usage.js";
+import type {
+  InvokeUsageResult,
+  LlmUsage,
+  ModelRetryContextOptions,
+} from "../telemetry/usage.js";
+import {
+  createAttemptAbort,
+  resolveModelRetryConfig,
+  retryModelCall,
+} from "../telemetry/retry.js";
 import {
   SqlProposalSchema,
   type SqlProposal,
@@ -44,12 +53,16 @@ export {
   UNTRUSTED_DATA_OPEN,
 } from "../constants.js";
 
+export type TracerModelCallOptions = ModelRetryContextOptions & {
+  callbacks?: Callbacks;
+};
+
 export interface TracerChatModel {
-  proposeSql(question: string, opts?: { callbacks?: Callbacks }): Promise<SqlProposal>;
+  proposeSql(question: string, opts?: TracerModelCallOptions): Promise<SqlProposal>;
   /** Same call as proposeSql, keeping provider token counts for llm_call (G1). */
   proposeSqlWithUsage(
     question: string,
-    opts?: { callbacks?: Callbacks },
+    opts?: TracerModelCallOptions,
   ): Promise<InvokeUsageResult<SqlProposal>>;
 }
 
@@ -167,10 +180,13 @@ function buildRealModel(profile: ModelProfile, override?: string, tracer = false
   return new ChatOpenAI({
     model: resolveModelId(profile, override),
     temperature: 0,
+    // Disable SDK/AsyncCaller retries across all profiles so the harness
+    // enforces a single retry/backoff/Retry-After/deadline/budget layer.
+    maxRetries: 0,
     // Total cap only: reasoning models stream for 40s+ before the first
     // answer token, so per-chunk progress (reasoning or content) resets the
     // 30s idle budget inside invokeJsonWithUsage; only silence fails here.
-    ...(tracer ? { timeout: 300000, maxRetries: 0 } : {}),
+    ...(tracer ? { timeout: 300000 } : {}),
     configuration: {
       baseURL,
       apiKey,
@@ -182,13 +198,13 @@ function buildRealModel(profile: ModelProfile, override?: string, tracer = false
 export class ProfileTracerModel implements TracerChatModel {
   constructor(private readonly model: AnyChatModel) {}
 
-  async proposeSql(question: string, opts?: { callbacks?: Callbacks }): Promise<SqlProposal> {
+  async proposeSql(question: string, opts?: TracerModelCallOptions): Promise<SqlProposal> {
     return (await this.proposeSqlWithUsage(question, opts)).parsed;
   }
 
   async proposeSqlWithUsage(
     question: string,
-    opts?: { callbacks?: Callbacks },
+    opts?: TracerModelCallOptions,
   ): Promise<InvokeUsageResult<SqlProposal>> {
     // Routed through the plain-JSON usage helper: no response_format on the
     // wire (the provider's strict json_schema path is far slower than the
@@ -204,8 +220,9 @@ export class ProfileTracerModel implements TracerChatModel {
     let out: InvokeUsageResult<SqlProposal>;
     try {
       out = await invokeJsonWithUsage(this.model, SqlProposalSchema, prompt, {
+        ...opts,
         name: "sql_proposal",
-        callbacks: opts?.callbacks,
+        node: opts?.node ?? "understand",
       });
     } catch (error) {
       // Never echo raw model output (which can contain sensitive values).
@@ -260,7 +277,7 @@ export function createChatModel(
 export function withStructured<S extends z.ZodType>(
   model: AnyChatModel,
   schema: S,
-  opts?: { name?: string; callbacks?: Callbacks },
+  opts?: { name?: string; callbacks?: Callbacks } & ModelRetryContextOptions,
 ): { invoke(input: string): Promise<z.infer<S>> } {
   return {
     invoke: async (input: string): Promise<z.infer<S>> => {
@@ -317,12 +334,51 @@ export interface SynthesisResult extends LlmUsage {
 export async function synthesize(
   rows: Record<string, unknown>[],
   question: string,
-  opts?: { model?: AnyChatModel; callbacks?: Callbacks },
+  opts?: { model?: AnyChatModel; callbacks?: Callbacks } & ModelRetryContextOptions,
 ): Promise<SynthesisResult> {
   const model = opts?.model ?? createChatModel("synthesis");
   const started = Date.now();
+  const prompt = buildSynthesisPrompt(rows, question);
   // NOTE: opts.callbacks is intentionally not forwarded (see above).
-  const result = await model.invoke(buildSynthesisPrompt(rows, question));
+  const retryResult = await retryModelCall(
+    async (ctx) => {
+      const needAbort = ctx.remainingMs !== undefined || ctx.signal !== undefined;
+      const attempt = needAbort
+        ? createAttemptAbort({
+            totalMs: ctx.remainingMs,
+            signal: ctx.signal,
+            totalMessage: `Synthesis model call exceeded ${ctx.remainingMs ?? 0}ms`,
+          })
+        : undefined;
+      try {
+        const callPromise = attempt
+          ? model.invoke(prompt, { signal: attempt.controller.signal })
+          : model.invoke(prompt);
+        callPromise.catch(() => {});
+        return attempt
+          ? await Promise.race([callPromise, attempt.abortFailure])
+          : await callPromise;
+      } finally {
+        attempt?.cleanup();
+      }
+    },
+    {
+      node: opts?.node ?? "answer",
+      modelName: opts?.modelName,
+      config: opts?.retry
+        ? resolveModelRetryConfig(process.env, opts.retry)
+        : undefined,
+      budget: opts?.budget,
+      deadlineMs: opts?.deadlineMs,
+      signal: opts?.signal,
+      emit: opts?.emit,
+      outerAttempt: opts?.outerAttempt,
+      now: opts?.now,
+      random: opts?.random,
+      sleep: opts?.sleep,
+    },
+  );
+  const result = retryResult.value;
   const content = result.content;
   return {
     text: typeof content === "string" ? content : JSON.stringify(content),
