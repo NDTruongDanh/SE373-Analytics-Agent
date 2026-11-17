@@ -43,6 +43,8 @@ catalog:
   vite: ^8.3.6
   yaml: ^2.9.1
   zod: ^4.6.7
+  node-cron: ^4.6.0
+  "@types/node-cron": ^3.0.11
 
 # Security pins for transitive dependencies whose upstream range has no patched
 # release. Each pin is covered by the workspace typecheck/lint/test gate.

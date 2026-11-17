@@ -1,3 +1,4 @@
+import cron from "node-cron";
 import type { AlertSeverity, AnomalyAlert, SchemaCatalog, Subscription } from "@shared/contracts";
 import {
   detectAnomaly,
@@ -433,52 +434,31 @@ export async function runAnomalyRunner(
 }
 
 /**
- * Lightweight cron scheduler for UC-10 (runs daily at specified hour).
+ * Cron scheduler for UC-10 using node-cron (runs daily at 07:00 by default).
  */
 export function scheduleAnomalyCron(
   options: AnomalyRunnerOptions & {
+    cronExpression?: string; // e.g. "0 7 * * *", overrides hour/minute if provided
     hour?: number; // 0-23, default 7 (07:00 daily)
     minute?: number; // 0-59, default 0
     onComplete?: (result: AnomalyRunnerResult) => void;
   },
 ): { stop: () => void } {
-  const { hour = 7, minute = 0, onComplete } = options;
-  let timer: NodeJS.Timeout | null = null;
-  let stopped = false;
+  const { hour = 7, minute = 0, cronExpression, onComplete } = options;
+  const expr = cronExpression ?? `${minute} ${hour} * * *`;
 
-  const scheduleNext = () => {
-    if (stopped) return;
-    const now = new Date();
-    const next = new Date(now);
-    next.setHours(hour, minute, 0, 0);
-    if (next.getTime() <= now.getTime()) {
-      next.setDate(next.getDate() + 1);
+  const task = cron.schedule(expr, async () => {
+    try {
+      const result = await runAnomalyRunner({ ...options, manual: false });
+      onComplete?.(result);
+    } catch (err) {
+      options.logger?.("Scheduled anomaly run failed", { error: String(err) });
     }
-    const msUntilNext = next.getTime() - now.getTime();
-
-    // This wall-clock setTimeout loop avoids a cron dependency, but unlike
-    // node-cron it cannot recover a missed 07:00 run while the process is down.
-    timer = setTimeout(async () => {
-      if (stopped) return;
-      try {
-        const result = await runAnomalyRunner({ ...options, manual: false });
-        onComplete?.(result);
-      } catch (err) {
-        options.logger?.("Scheduled anomaly run failed", { error: String(err) });
-      }
-      scheduleNext();
-    }, msUntilNext);
-  };
-
-  scheduleNext();
+  });
 
   return {
     stop: () => {
-      stopped = true;
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
+      task.stop();
     },
   };
 }
