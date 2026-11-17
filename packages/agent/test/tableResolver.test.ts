@@ -6,9 +6,11 @@ import {
   MAX_INTENT_REF_CHARS,
   MAX_INTENT_REFS,
   matchEntityInCatalog,
+  NO_MATCHING_TABLE_OPTION,
   parseTableIdentifier,
   resolveCandidateTables,
   selectSqlReferences,
+  suggestClarificationTables,
 } from "../src/subgraphs/tableResolver.js";
 import type { CatalogTable } from "../src/state.js";
 
@@ -138,10 +140,19 @@ describe("resolveCandidateTables", () => {
     expect(withDiacritics).toEqual({
       ok: true,
       tables: ["orders", "channels"],
+      requiredTables: ["orders", "channels"],
       sources: {
         catalogMatched: [],
         entitySemanticMapped: ["orders", "channels"],
+        metricRequired: [],
         semanticExpanded: [],
+      },
+      entities: {
+        catalogMatchedEntities: [],
+        semanticMappedEntities: ["đơn hàng", "kênh bán"],
+        filterLiteralEntities: [],
+        metricCoveredEntities: [],
+        unresolvedEntities: [],
       },
     });
 
@@ -184,10 +195,19 @@ describe("resolveCandidateTables", () => {
     expect(out).toEqual({
       ok: true,
       tables: ["orders"],
+      requiredTables: ["orders"],
       sources: {
         catalogMatched: ["orders"],
         entitySemanticMapped: ["orders"],
+        metricRequired: [],
         semanticExpanded: [],
+      },
+      entities: {
+        catalogMatchedEntities: ["orders", "public.orders", "orders.order_id"],
+        semanticMappedEntities: ["payment_method"],
+        filterLiteralEntities: [],
+        metricCoveredEntities: [],
+        unresolvedEntities: [],
       },
     });
   });
@@ -225,27 +245,392 @@ describe("resolveCandidateTables", () => {
     }
   });
 
-  it("expands multi-table join_rule references and enforces MAX_CANDIDATE_TABLES cap", () => {
+  it("refuses partial mapping when an essential entity cannot be resolved (orders mapped, 'kênh bán' missing)", () => {
     const out = resolveCandidateTables({
-      question: "Phân tích doanh thu chi tiết nhiều bảng",
-      schemaEntities: ["orders", "customers"],
+      question: "Doanh thu đơn hàng theo kênh bán",
+      schemaEntities: ["orders", "kênh bán"],
       catalogTables: SAMPLE_CATALOG,
       catalogLoaded: true,
       semanticChunks: [
         {
-          chunkId: "join_rule:orders_details",
-          docType: "join_rule",
-          tables: ["orders", "order_items", "channels", "regions", "products", "promotions", "events"],
-          text: "Standard joins from orders",
-          score: 0.7,
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          tables: ["orders"],
+          text: "Customer orders header",
+          score: 0.9,
+          aliasMatched: true,
         },
       ],
     });
-    expect(out.ok).toBe(true);
-    if (out.ok) {
-      expect(out.tables).toHaveLength(MAX_CANDIDATE_TABLES);
-      expect(out.tables.slice(0, 2)).toEqual(["orders", "customers"]);
+    expect(out).toEqual({
+      ok: false,
+      reason: "partial_unmapped_entities",
+      partialTables: ["orders"],
+      requiredTables: ["orders"],
+      maxTables: MAX_CANDIDATE_TABLES,
+      sources: {
+        catalogMatched: ["orders"],
+        entitySemanticMapped: [],
+        metricRequired: [],
+        semanticExpanded: [],
+      },
+      unmappedEntities: ["kênh bán"],
+      entities: {
+        catalogMatchedEntities: ["orders"],
+        semanticMappedEntities: [],
+        filterLiteralEntities: [],
+        metricCoveredEntities: [],
+        unresolvedEntities: ["kênh bán"],
+      },
+    });
+  });
+
+  it("classifies metric-defined concepts in schemaEntities as metricCoveredEntities and treats metric tables as required", () => {
+    const out = resolveCandidateTables({
+      question: "Doanh thu thuần của các đơn hàng",
+      schemaEntities: ["orders", "doanh thu thuần"],
+      requestedMetrics: ["doanh thu thuần"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "metric:net_revenue",
+          docType: "metric",
+          tables: ["orders", "order_items"],
+          text: "Doanh thu thuần (net revenue) = SUM(order_items.price_vnd * quantity)",
+          score: 0.96,
+          aliasMatched: true,
+        },
+      ],
+    });
+    expect(out).toEqual({
+      ok: true,
+      tables: ["orders", "order_items"],
+      requiredTables: ["orders", "order_items"],
+      sources: {
+        catalogMatched: ["orders"],
+        entitySemanticMapped: [],
+        metricRequired: ["order_items"],
+        semanticExpanded: [],
+      },
+      entities: {
+        catalogMatchedEntities: ["orders"],
+        semanticMappedEntities: [],
+        filterLiteralEntities: [],
+        metricCoveredEntities: ["doanh thu thuần"],
+        unresolvedEntities: [],
+      },
+    });
+
+    // Metric-required tables must not be dropped when semantic expansion fills remaining slots,
+    // and must trigger too_many_required_tables when entity + metric tables exceed 6.
+    const metricPreservedOverExpanded = resolveCandidateTables({
+      question: "Doanh thu thuần của đơn hàng theo sự kiện",
+      schemaEntities: ["orders", "channels", "customers", "regions", "products"],
+      requestedMetrics: ["doanh thu thuần"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "metric:net_revenue",
+          docType: "metric",
+          tables: ["orders", "order_items"],
+          text: "net_revenue formula",
+          score: 0.7,
+          aliasMatched: true,
+        },
+        {
+          chunkId: "table:events",
+          docType: "table",
+          table: "analytics.events",
+          tables: ["analytics.events"],
+          text: "Bảng sự kiện (events)",
+          score: 0.99,
+          aliasMatched: true,
+        },
+      ],
+    });
+    expect(metricPreservedOverExpanded.ok).toBe(true);
+    if (metricPreservedOverExpanded.ok) {
+      expect(metricPreservedOverExpanded.tables).toEqual([
+        "orders",
+        "channels",
+        "customers",
+        "regions",
+        "products",
+        "order_items",
+      ]);
+      expect(metricPreservedOverExpanded.requiredTables).toContain("order_items");
     }
+
+    const tooManyWithMetric = resolveCandidateTables({
+      question: "Doanh thu thuần across 6 entity tables",
+      schemaEntities: [
+        "orders",
+        "channels",
+        "customers",
+        "regions",
+        "products",
+        "promotions",
+      ],
+      requestedMetrics: ["doanh thu thuần"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "metric:net_revenue",
+          docType: "metric",
+          tables: ["orders", "order_items"],
+          text: "Doanh thu thuần formula",
+          score: 0.96,
+          aliasMatched: true,
+        },
+      ],
+    });
+    expect(tooManyWithMetric.ok).toBe(false);
+    if (!tooManyWithMetric.ok) {
+      expect(tooManyWithMetric.reason).toBe("too_many_required_tables");
+      expect(tooManyWithMetric.requiredTables).toContain("order_items");
+      expect(tooManyWithMetric.requiredTables).toHaveLength(7);
+    }
+  });
+
+  it("does not bind an unmapped entity via whole-question alias/dense score or partial generic word overlap", () => {
+    const wholeQuestionNoise = resolveCandidateTables({
+      question: "Tổng lương tháng 8",
+      schemaEntities: ["salaries"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          tables: ["orders"],
+          text: "Orders placed in August",
+          score: 0.92,
+          aliasMatched: true,
+          denseScore: 0.88,
+        },
+      ],
+    });
+    expect(wholeQuestionNoise.ok).toBe(false);
+    if (!wholeQuestionNoise.ok) {
+      expect(wholeQuestionNoise.reason).toBe("unmapped_entities");
+      expect(wholeQuestionNoise.unmappedEntities).toEqual(["salaries"]);
+    }
+
+    // "đơn hàng" shares generic word "hàng" with "khách hàng", must not map to customers
+    const genericWordMismatch = resolveCandidateTables({
+      question: "Thống kê đơn hàng",
+      schemaEntities: ["đơn hàng"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "table:customers",
+          docType: "table",
+          table: "customers",
+          tables: ["customers"],
+          text: "Bảng khách hàng thân thiết",
+          score: 0.85,
+          aliasMatched: true,
+        },
+      ],
+    });
+    expect(genericWordMismatch.ok).toBe(false);
+  });
+
+  it("expands bridge join tables and question-grounded tables up to MAX_CANDIDATE_TABLES without pulling unrelated tables", () => {
+    // 1. Unrelated high-score tables and single-anchor join rules must NOT expand onto simple queries
+    const focused = resolveCandidateTables({
+      question: "Đếm số đơn hàng theo trạng thái",
+      schemaEntities: ["orders"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "table:customers",
+          docType: "table",
+          table: "customers",
+          tables: ["customers"],
+          text: "Registered buyer accounts",
+          score: 0.9,
+          aliasMatched: true,
+          denseScore: 0.8,
+        },
+        {
+          chunkId: "join_rule:orders_promotions",
+          docType: "join_rule",
+          tables: ["orders", "promotions"],
+          text: "orders JOIN promotions ON orders.promo_id = promotions.promo_id",
+          score: 0.85,
+          aliasMatched: true,
+        },
+      ],
+    });
+    expect(focused.ok).toBe(true);
+    if (focused.ok) {
+      expect(focused.tables).toEqual(["orders"]);
+    }
+
+    // 2. Bridge join_rule connects two already-resolved tables via intermediate order_items
+    const bridged = resolveCandidateTables({
+      question: "Doanh số sản phẩm từ đơn hàng",
+      schemaEntities: ["orders", "products"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "join_rule:orders_products",
+          docType: "join_rule",
+          tables: ["orders", "order_items", "products"],
+          text: "JOIN public.order_items ON orders.order_id = order_items.order_id",
+          score: 0.88,
+        },
+      ],
+    });
+    expect(bridged.ok).toBe(true);
+    if (bridged.ok) {
+      expect(bridged.tables).toEqual(["orders", "products", "order_items"]);
+    }
+
+    // 3. Preserves all directly-mapped required tables first and caps semantic additions at MAX_CANDIDATE_TABLES
+    const prioritizedCap = resolveCandidateTables({
+      question:
+        "Thống kê đơn hàng theo khách hàng, khu vực, sản phẩm, khuyến mãi và sự kiện",
+      schemaEntities: ["orders", "order_items", "kênh bán"],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [
+        {
+          chunkId: "table:channels",
+          docType: "table",
+          table: "channels",
+          tables: ["channels"],
+          text: "Bảng kênh bán hàng (channels)",
+          score: 0.95,
+          aliasMatched: true,
+        },
+        {
+          chunkId: "table:customers",
+          docType: "table",
+          table: "customers",
+          tables: ["customers"],
+          text: "Bảng khách hàng (customers)",
+          score: 0.9,
+        },
+        {
+          chunkId: "table:regions",
+          docType: "table",
+          table: "regions",
+          tables: ["regions"],
+          text: "Bảng khu vực (regions)",
+          score: 0.88,
+        },
+        {
+          chunkId: "table:products",
+          docType: "table",
+          table: "products",
+          tables: ["products"],
+          text: "Bảng sản phẩm (products)",
+          score: 0.85,
+        },
+        {
+          chunkId: "table:promotions",
+          docType: "table",
+          table: "promotions",
+          tables: ["promotions"],
+          text: "Bảng khuyến mãi (promotions)",
+          score: 0.8,
+        },
+        {
+          chunkId: "table:events",
+          docType: "table",
+          table: "analytics.events",
+          tables: ["analytics.events"],
+          text: "Bảng sự kiện (events)",
+          score: 0.75,
+        },
+      ],
+    });
+    expect(prioritizedCap.ok).toBe(true);
+    if (prioritizedCap.ok) {
+      expect(prioritizedCap.tables).toHaveLength(MAX_CANDIDATE_TABLES);
+      expect(prioritizedCap.requiredTables).toEqual(["orders", "order_items", "channels"]);
+      expect(prioritizedCap.tables.slice(0, 3)).toEqual(["orders", "order_items", "channels"]);
+      expect(prioritizedCap.sources.semanticExpanded).toHaveLength(3);
+    }
+
+    // 4. Stops instead of silently dropping required tables when directly-mapped entities exceed MAX_CANDIDATE_TABLES
+    const tooManyRequired = resolveCandidateTables({
+      question: "Báo cáo toàn bộ 7 bảng trực tiếp",
+      schemaEntities: [
+        "orders",
+        "order_items",
+        "customers",
+        "channels",
+        "regions",
+        "products",
+        "promotions",
+      ],
+      catalogTables: SAMPLE_CATALOG,
+      catalogLoaded: true,
+      semanticChunks: [],
+    });
+    expect(tooManyRequired).toEqual({
+      ok: false,
+      reason: "too_many_required_tables",
+      partialTables: [
+        "orders",
+        "order_items",
+        "customers",
+        "channels",
+        "regions",
+        "products",
+      ],
+      requiredTables: [
+        "orders",
+        "order_items",
+        "customers",
+        "channels",
+        "regions",
+        "products",
+        "promotions",
+      ],
+      maxTables: MAX_CANDIDATE_TABLES,
+      sources: {
+        catalogMatched: [
+          "orders",
+          "order_items",
+          "customers",
+          "channels",
+          "regions",
+          "products",
+          "promotions",
+        ],
+        entitySemanticMapped: [],
+        metricRequired: [],
+        semanticExpanded: [],
+      },
+      unmappedEntities: [],
+      entities: {
+        catalogMatchedEntities: [
+          "orders",
+          "order_items",
+          "customers",
+          "channels",
+          "regions",
+          "products",
+          "promotions",
+        ],
+        semanticMappedEntities: [],
+        filterLiteralEntities: [],
+        metricCoveredEntities: [],
+        unresolvedEntities: [],
+      },
+    });
   });
 
   it("rejects out-of-catalog entities even with unrelated low-score semantic chunks", () => {
@@ -270,7 +655,23 @@ describe("resolveCandidateTables", () => {
     expect(out).toEqual({
       ok: false,
       reason: "unmapped_entities",
+      partialTables: [],
+      requiredTables: [],
+      maxTables: MAX_CANDIDATE_TABLES,
+      sources: {
+        catalogMatched: [],
+        entitySemanticMapped: [],
+        metricRequired: [],
+        semanticExpanded: [],
+      },
       unmappedEntities: ["salaries"],
+      entities: {
+        catalogMatchedEntities: [],
+        semanticMappedEntities: [],
+        filterLiteralEntities: [],
+        metricCoveredEntities: [],
+        unresolvedEntities: ["salaries"],
+      },
     });
   });
 
@@ -296,7 +697,23 @@ describe("resolveCandidateTables", () => {
     expect(out).toEqual({
       ok: false,
       reason: "no_candidates",
+      partialTables: [],
+      requiredTables: [],
+      maxTables: MAX_CANDIDATE_TABLES,
+      sources: {
+        catalogMatched: [],
+        entitySemanticMapped: [],
+        metricRequired: [],
+        semanticExpanded: [],
+      },
       unmappedEntities: [],
+      entities: {
+        catalogMatchedEntities: [],
+        semanticMappedEntities: [],
+        filterLiteralEntities: [],
+        metricCoveredEntities: [],
+        unresolvedEntities: [],
+      },
     });
   });
 
@@ -312,17 +729,65 @@ describe("resolveCandidateTables", () => {
     expect(out).toEqual({
       ok: true,
       tables: ["orders"],
+      requiredTables: ["orders"],
       sources: {
         catalogMatched: ["orders"],
         entitySemanticMapped: [],
+        metricRequired: [],
         semanticExpanded: [],
+      },
+      entities: {
+        catalogMatchedEntities: ["orders"],
+        semanticMappedEntities: [],
+        filterLiteralEntities: ["Miền Nam"],
+        metricCoveredEntities: [],
+        unresolvedEntities: [],
       },
     });
   });
 });
 
+describe("suggestClarificationTables", () => {
+  it("picks up to 3 candidate tables plus NO_MATCHING_TABLE_OPTION and handles single-table or empty catalogs", () => {
+    const options = suggestClarificationTables({
+      catalogTables: SAMPLE_CATALOG,
+      semanticChunks: [
+        {
+          chunkId: "table:channels",
+          docType: "table",
+          table: "channels",
+          tables: ["channels"],
+          text: "Acquisition channels",
+          score: 0.85,
+        },
+      ],
+      excludeTables: ["orders"],
+      hints: ["sales channel"],
+    });
+    expect(options.length).toBeGreaterThanOrEqual(2);
+    expect(options.length).toBeLessThanOrEqual(4);
+    expect(options).not.toContain("orders");
+    expect(options[0]).toBe("channels");
+    expect(options[options.length - 1]).toBe(NO_MATCHING_TABLE_OPTION);
+
+    expect(
+      suggestClarificationTables({
+        catalogTables: [{ name: "orders", schema: "public" }],
+        semanticChunks: [],
+      }),
+    ).toEqual(["orders", NO_MATCHING_TABLE_OPTION]);
+
+    expect(
+      suggestClarificationTables({
+        catalogTables: [],
+        semanticChunks: [],
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("selectSqlReferences", () => {
-  it("prioritizes chunks belonging to candidateTables ahead of higher-scored unrelated chunks", () => {
+  it("filters out unrelated tables, partial outside join rules, and examples while keeping needed metrics and rules", () => {
     const refs = selectSqlReferences(
       [
         {
@@ -333,16 +798,73 @@ describe("selectSqlReferences", () => {
           score: 0.99,
         },
         {
+          chunkId: "join_rule:orders_promotions",
+          docType: "join_rule",
+          tables: ["orders", "promotions"],
+          text: "JOIN promotions ON orders.promo_id = promotions.promo_id",
+          score: 0.95,
+        },
+        {
+          chunkId: "example:top_sellers",
+          docType: "example",
+          tables: ["orders"],
+          text: "SELECT seller_id FROM sellers",
+          score: 0.92,
+        },
+        {
           chunkId: "metric:net_revenue",
           docType: "metric",
           tables: ["orders", "order_items"],
-          text: "Revenue formula",
+          text: "Net revenue sums order_items.price_vnd on completed orders",
           score: 0.7,
+          aliasMatched: true,
+        },
+        {
+          chunkId: "join_rule:orders_items",
+          docType: "join_rule",
+          tables: ["orders", "order_items"],
+          text: "JOIN public.order_items oi ON oi.order_id = o.order_id",
+          score: 0.85,
+        },
+        {
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          text: "Orders status values: 'completed', 'cancelled', 'pending'",
+          score: 0.8,
+        },
+      ],
+      ["orders", "order_items"],
+      {
+        question: "Doanh thu thuần của đơn hàng?",
+        requestedMetrics: ["doanh thu thuần"],
+      },
+    );
+    expect(refs).toEqual([
+      "[metric:net_revenue] Net revenue sums order_items.price_vnd on completed orders",
+      "[join_rule:orders_items] JOIN public.order_items oi ON oi.order_id = o.order_id",
+      "[table:orders] Orders status values: 'completed', 'cancelled', 'pending'",
+    ]);
+  });
+
+  it("keeps unknown-metadata chunks only when backed by candidate/question evidence", () => {
+    const refs = selectSqlReferences(
+      [
+        {
+          chunkId: "misc:unrelated",
+          text: "Unrelated operational note",
+          score: 0.95,
+        },
+        {
+          chunkId: "misc:orders_note",
+          tables: ["orders"],
+          text: "Orders fiscal cutoff date is UTC+7",
+          score: 0.6,
         },
       ],
       ["orders"],
+      { question: "Orders cutoff date?" },
     );
-    expect(refs[0]).toBe("[metric:net_revenue] Revenue formula");
-    expect(refs[1]).toBe("[table:products] Products catalog info");
+    expect(refs).toEqual(["[misc:orders_note] Orders fiscal cutoff date is UTC+7"]);
   });
 });

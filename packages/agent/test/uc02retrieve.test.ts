@@ -317,7 +317,7 @@ describe("UC-02 unknown-term gate", () => {
       semanticChunks: [
         {
           chunkId: "metric:net_revenue",
-          docType: "metric",
+          docType: "metric" as const,
           table: "orders",
           tables: ["orders"],
           metricName: "net_revenue",

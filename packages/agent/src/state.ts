@@ -44,6 +44,7 @@ export const ClarificationFieldSchema = z.enum([
   "timeRange",
   "scope",
   "filterValue",
+  "table",
 ]);
 export type ClarificationField = z.infer<typeof ClarificationFieldSchema>;
 

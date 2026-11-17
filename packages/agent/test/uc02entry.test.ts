@@ -1,5 +1,6 @@
 // UC-02 entry integration: unknown-term 0-SQL short-circuit + citation header.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { NO_MATCHING_TABLE_OPTION } from "../src/constants.js";
 import { createTextToSqlRuntime } from "../src/subgraphs/textToSql.js";
 import { validateCitations } from "../src/validators/citationValidator.js";
 import type { AgentState, RootRuntime } from "../src/state.js";
@@ -46,6 +47,7 @@ function stateWith(overrides: Partial<AgentState>): AgentState {
     threadId: "t",
     vizSpec: null,
     pendingClarification: null,
+    clarificationAttempts: 0,
     analysisPlan: null,
     rootCauseAnswer: null,
     ...overrides,
@@ -343,7 +345,8 @@ describe("UC-02 text-to-SQL entry", () => {
       },
     });
     const state = stateWith({
-      question: "Thống kê doanh thu bán hàng theo khu vực và khuyến mãi",
+      question:
+        "Thống kê doanh thu bán hàng theo khách hàng, khu vực, sản phẩm, khuyến mãi và người bán",
       catalogStatus: "ready",
       catalogTables: catalogNames.map((name) => ({ name, schema: "public" })),
       intent: {
@@ -352,7 +355,7 @@ describe("UC-02 text-to-SQL entry", () => {
         filters: [],
         timeRange: null,
         requestedMetrics: [],
-        // Two catalog-exact + one Vietnamese entity mapped via semantic chunk + extra semantic chunks
+        // Two catalog-exact + one Vietnamese entity mapped via semantic chunk + extra question-grounded chunks
         schemaEntities: ["orders", "order_items", "kênh bán"],
         queryMode: "standard_query",
       },
@@ -372,7 +375,7 @@ describe("UC-02 text-to-SQL entry", () => {
           docType: "table",
           table: "customers",
           tables: ["customers"],
-          text: "customers table",
+          text: "Bảng khách hàng (customers)",
           score: 0.9,
         },
         {
@@ -380,7 +383,7 @@ describe("UC-02 text-to-SQL entry", () => {
           docType: "table",
           table: "regions",
           tables: ["regions"],
-          text: "regions table",
+          text: "Bảng khu vực (regions)",
           score: 0.88,
         },
         {
@@ -388,7 +391,7 @@ describe("UC-02 text-to-SQL entry", () => {
           docType: "table",
           table: "products",
           tables: ["products"],
-          text: "products table",
+          text: "Bảng sản phẩm (products)",
           score: 0.85,
         },
         {
@@ -396,7 +399,7 @@ describe("UC-02 text-to-SQL entry", () => {
           docType: "table",
           table: "promotions",
           tables: ["promotions"],
-          text: "promotions table",
+          text: "Bảng khuyến mãi (promotions)",
           score: 0.8,
         },
         {
@@ -404,7 +407,7 @@ describe("UC-02 text-to-SQL entry", () => {
           docType: "table",
           table: "sellers",
           tables: ["sellers"],
-          text: "sellers table",
+          text: "Bảng người bán (sellers)",
           score: 0.7,
         },
       ],
@@ -419,13 +422,13 @@ describe("UC-02 text-to-SQL entry", () => {
     ]);
   });
 
-  it("fails closed to cannot_answer when proposed entities do not exist in catalog or semantic chunks", async () => {
+  it("requests clarification with available tables instead of cannot_answer when no table candidates resolve", async () => {
     let executorCalls = 0;
     const { entry } = createTextToSqlRuntime({
       executor: {
         run: async () => {
           executorCalls += 1;
-          throw new Error("executor must not run for out-of-schema entities");
+          throw new Error("executor must not run when tables are unidentified");
         },
       },
     });
@@ -461,7 +464,335 @@ describe("UC-02 text-to-SQL entry", () => {
     });
     const out = await entry(state, fakeRuntime());
     expect(executorCalls).toBe(0);
-    expect(out.status).toBe("cannot_answer");
+    expect(out.status).toBe("needs_clarification");
+    expect(out.pendingClarification).toMatchObject({
+      field: "table",
+      options: ["orders", "customers", NO_MATCHING_TABLE_OPTION],
+    });
     expect(out.answerText).toMatch(/salaries/);
+    expect(out.answerText).toMatch(/orders, customers/);
+    expect(out.answerText).toMatch(/ask a new question/i);
+  });
+
+  it("refuses to silently drop an unresolved partial entity and asks user to clarify or ask a new question", async () => {
+    let executorCalls = 0;
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async () => {
+          executorCalls += 1;
+          throw new Error("executor must not run with partial unresolved entities");
+        },
+      },
+    });
+    const state = stateWith({
+      question: "Doanh thu đơn hàng theo kênh bán",
+      catalogStatus: "ready",
+      catalogTables: [
+        { name: "orders", schema: "public" },
+        { name: "channels", schema: "public" },
+      ],
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        schemaEntities: ["orders", "kênh bán"],
+        queryMode: "standard_query",
+      },
+      semanticRetrieveStatus: "ok",
+      semanticChunks: [
+        {
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          tables: ["orders"],
+          text: "Bảng đơn hàng (orders)",
+          score: 0.9,
+          aliasMatched: true,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(executorCalls).toBe(0);
+    expect(out.status).toBe("needs_clarification");
+    expect(out.pendingClarification).toMatchObject({
+      field: "table",
+      options: ["channels", NO_MATCHING_TABLE_OPTION],
+    });
+    expect(out.answerText).toMatch(/orders/);
+    expect(out.answerText).toMatch(/kênh bán/);
+    expect(out.answerText).toMatch(/ask a new question/i);
+  });
+
+  it("runs targeted semantic follow-up for a missing partial entity and succeeds when resolved", async () => {
+    const queries: string[] = [];
+    let seenTables: string[] = [];
+    const { entry } = createTextToSqlRuntime({
+      semanticSearch: async (query) => {
+        queries.push(query);
+        if (query === "kênh bán") {
+          return [
+            {
+              chunkId: "table:channels",
+              docType: "table",
+              table: "channels",
+              tables: ["channels"],
+              metricName: null,
+              content: "Bảng kênh bán hàng (channels)",
+              score: 0.93,
+              aliasMatched: true,
+            },
+          ];
+        }
+        return [];
+      },
+      executor: {
+        run: async (input) => {
+          seenTables = [...input.candidateTables];
+          return {
+            status: "ok",
+            sql: "SELECT 1 AS n",
+            tablesUsed: seenTables,
+            columns: ["n"],
+            rows: [{ n: 1 }],
+            maskedColumns: [],
+            attempts: 1,
+          };
+        },
+      },
+    });
+    const state = stateWith({
+      question: "Số đơn hàng theo kênh bán",
+      catalogStatus: "ready",
+      catalogTables: [
+        { name: "orders", schema: "public" },
+        { name: "channels", schema: "public" },
+      ],
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        schemaEntities: ["orders", "kênh bán"],
+        queryMode: "standard_query",
+      },
+      semanticRetrieveStatus: "ok",
+      semanticChunks: [
+        {
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          tables: ["orders"],
+          text: "Bảng đơn hàng (orders)",
+          score: 0.9,
+          aliasMatched: true,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(queries).toEqual(["kênh bán"]);
+    expect(out.status).toBe("ok");
+    expect(seenTables).toEqual(["orders", "channels"]);
+  });
+
+  it("allows metric-covered concepts in schemaEntities to proceed normally with metric tables", async () => {
+    let seenTables: string[] = [];
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async (input) => {
+          seenTables = [...input.candidateTables];
+          return {
+            status: "ok",
+            sql: "SELECT SUM(oi.price_vnd) AS rev FROM public.orders o JOIN public.order_items oi ON oi.order_id = o.order_id",
+            tablesUsed: seenTables,
+            columns: ["rev"],
+            rows: [{ rev: 500 }],
+            maskedColumns: [],
+            attempts: 1,
+          };
+        },
+      },
+    });
+    const state = stateWith({
+      question: "Doanh thu thuần của đơn hàng tháng 8",
+      catalogStatus: "ready",
+      catalogTables: [
+        { name: "orders", schema: "public" },
+        { name: "order_items", schema: "public" },
+      ],
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: ["doanh thu thuần"],
+        schemaEntities: ["orders", "doanh thu thuần"],
+        queryMode: "standard_query",
+      },
+      semanticRetrieveStatus: "ok",
+      semanticChunks: [
+        {
+          chunkId: "metric:net_revenue",
+          docType: "metric",
+          tables: ["orders", "order_items"],
+          text: "Doanh thu thuần (net_revenue) = SUM(order_items.price_vnd)",
+          score: 0.95,
+          aliasMatched: true,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(out.status).toBe("ok");
+    expect(seenTables).toEqual(["orders", "order_items"]);
+  });
+
+  it("stops and asks user to narrow the question when directly-mapped required tables exceed 6", async () => {
+    let executorCalls = 0;
+    const required = [
+      "orders",
+      "order_items",
+      "customers",
+      "channels",
+      "regions",
+      "products",
+      "promotions",
+    ];
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async () => {
+          executorCalls += 1;
+          throw new Error("executor must not silently drop required tables");
+        },
+      },
+    });
+    const state = stateWith({
+      question: "Báo cáo tổng hợp 7 bảng cùng lúc",
+      catalogStatus: "ready",
+      catalogTables: required.map((name) => ({ name, schema: "public" })),
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        schemaEntities: required,
+        queryMode: "standard_query",
+      },
+      semanticRetrieveStatus: "ok",
+      semanticChunks: [],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(executorCalls).toBe(0);
+    expect(out.status).toBe("needs_clarification");
+    expect(out.pendingClarification).toBeNull();
+    expect(out.answerText).toMatch(/7 bảng/);
+    expect(out.answerText).toMatch(/promotions/);
+  });
+
+  it("checks deadline before each semantic follow-up search and stops with budget status without extra MCP calls", async () => {
+    let searchCalls = 0;
+    const { entry } = createTextToSqlRuntime({
+      semanticSearch: async () => {
+        searchCalls += 1;
+        return [];
+      },
+      executor: {
+        run: async () => {
+          throw new Error("executor must not run after budget deadline");
+        },
+      },
+    });
+
+    const expiredFirst = await entry(
+      stateWith({
+        question: "Số đơn theo kênh bán và khu vực",
+        catalogStatus: "ready",
+        catalogTables: [
+          { name: "orders", schema: "public" },
+          { name: "channels", schema: "public" },
+          { name: "regions", schema: "public" },
+        ],
+        intent: {
+          metric: null,
+          dimensions: [],
+          filters: [],
+          timeRange: null,
+          requestedMetrics: [],
+          schemaEntities: ["orders", "kênh bán", "khu vực"],
+          queryMode: "standard_query",
+        },
+        semanticRetrieveStatus: "ok",
+        semanticChunks: [],
+        budget: {
+          llmCalls: 0,
+          tokensUsed: 0,
+          maxLlmCalls: 20,
+          maxTokens: 60000,
+          deadlineMs: Date.now() - 10,
+        },
+      }),
+      fakeRuntime(),
+    );
+    expect(searchCalls).toBe(0);
+    expect(expiredFirst.status).toBe("cannot_answer");
+    expect(expiredFirst.answerText).toMatch(/deadline/i);
+
+    let stepCalls = 0;
+    let fakeNow = 1_700_000_000_000;
+    const midDeadline = fakeNow + 1000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+    try {
+      const { entry: entry2 } = createTextToSqlRuntime({
+        semanticSearch: async () => {
+          stepCalls += 1;
+          // Advance simulated clock past deadline during first follow-up call
+          fakeNow = midDeadline + 10;
+          return [];
+        },
+        executor: {
+          run: async () => {
+            throw new Error("executor must not run after budget deadline");
+          },
+        },
+      });
+      const expiredSecond = await entry2(
+        stateWith({
+          question: "Số đơn theo kênh bán và khu vực",
+          catalogStatus: "ready",
+          catalogTables: [
+            { name: "orders", schema: "public" },
+            { name: "channels", schema: "public" },
+            { name: "regions", schema: "public" },
+          ],
+          intent: {
+            metric: null,
+            dimensions: [],
+            filters: [],
+            timeRange: null,
+            requestedMetrics: [],
+            schemaEntities: ["orders", "kênh bán", "khu vực"],
+            queryMode: "standard_query",
+          },
+          semanticRetrieveStatus: "ok",
+          semanticChunks: [],
+          budget: {
+            llmCalls: 0,
+            tokensUsed: 0,
+            maxLlmCalls: 20,
+            maxTokens: 60000,
+            deadlineMs: midDeadline,
+          },
+        }),
+        fakeRuntime(),
+      );
+      expect(stepCalls).toBe(1);
+      expect(expiredSecond.status).toBe("cannot_answer");
+      expect(expiredSecond.answerText).toMatch(/deadline/i);
+      expect(expiredSecond.toolsCalled).toContain("search_semantic_layer");
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

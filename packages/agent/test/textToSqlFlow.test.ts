@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Command, MemorySaver } from "@langchain/langgraph";
 import { dbToolError, type SearchSemanticLayerChunk } from "@shared/contracts";
 import {
@@ -6,6 +6,7 @@ import {
   createAnswerSynthesizer,
   createRetrieveSemantic,
 } from "../src/index.js";
+import { NO_MATCHING_TABLE_OPTION } from "../src/constants.js";
 import {
   type ChatModelLike,
   type McpToolCaller,
@@ -649,5 +650,524 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     expect(out.status).toBe("cannot_answer");
     expect(out.answerText).toMatch(/Run budget exceeded/);
     expect(listCalls).toBe(0);
+  });
+
+  it("interrupts with pendingClarification when an entity remains unmapped, resumes with user table choice, and re-resolves", async () => {
+    const searchQueries: string[] = [];
+    const seenTables: string[] = [];
+    let execCalls = 0;
+    const intent = makeIntentModel({
+      requestedMetrics: [],
+      schemaEntities: ["orders", "phòng CSKH"],
+      queryMode: "standard_query",
+    });
+
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async (q) => {
+          searchQueries.push(q);
+          return q === "phòng CSKH"
+            ? []
+            : [
+                semanticChunk({
+                  chunkId: "table:orders",
+                  docType: "table",
+                  table: "orders",
+                  tables: ["orders"],
+                  content: "Customer orders header",
+                }),
+              ];
+        },
+        intentModel: intent.model,
+        executor: {
+          run: async (input) => {
+            execCalls += 1;
+            seenTables.push(...input.candidateTables);
+            return {
+              status: "ok",
+              sql: "SELECT COUNT(*) AS cnt FROM public.orders o JOIN public.channels c ON c.channel_id = o.channel_id",
+              tablesUsed: input.candidateTables,
+              columns: ["cnt"],
+              rows: [{ cnt: 9 }],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+
+    const cfg = runConfig("t-partial-hitl", "r-partial-hitl");
+    const first = (await graph.invoke(
+      { question: "Đếm số đơn hàng của phòng CSKH", ucId: "text-to-sql" },
+      cfg,
+    )) as Record<string, unknown>;
+
+    expect(execCalls).toBe(0);
+    expect(intent.calls).toBe(1);
+    expect(searchQueries).toEqual(["Đếm số đơn hàng của phòng CSKH", "phòng CSKH"]);
+    const interrupts = first["__interrupt__"] as { value?: { pendingClarification?: { field: string; options: string[]; attempts: number } } }[];
+    expect(Array.isArray(interrupts)).toBe(true);
+    expect(interrupts).toHaveLength(1);
+    const pending = interrupts[0]?.value?.pendingClarification;
+    expect(pending?.field).toBe("table");
+    expect(pending?.attempts).toBe(0);
+    expect(pending?.options).toContain("channels");
+    expect(pending?.options).not.toContain("orders");
+
+    const resumed = await graph.invoke(new Command({ resume: "channels" }), cfg);
+    expect(execCalls).toBe(1);
+    expect(seenTables).toEqual(["orders", "channels"]);
+    expect(resumed.status).toBe("ok");
+    expect(resumed.clarificationAttempts).toBe(1);
+    expect(resumed.intent.schemaEntities).toEqual(["orders", "channels"]);
+    expect(resumed.question).toContain("Clarification (table for phòng CSKH): channels");
+    expect(resumed.answerText).toBe("cnt: 9");
+  });
+
+  it("enforces max 2 clarification rounds and asks user to start a new question once exhausted", async () => {
+    let execCalls = 0;
+    const expandedCatalog: CatalogTable[] = [
+      ...BASE_CATALOG,
+      { name: "regions", schema: "public", description: "Geographic regions" },
+      { name: "products", schema: "public", description: "Product catalog" },
+    ];
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => expandedCatalog,
+        semanticSearch: async () => [],
+        intentModel: makeIntentModel({
+          requestedMetrics: [],
+          schemaEntities: ["orders", "thực thể 1", "thực thể 2", "thực thể 3"],
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async () => {
+            execCalls += 1;
+            throw new Error("executor must not run when entities stay unresolved");
+          },
+        },
+      },
+    });
+
+    const cfg = runConfig("t-limit-hitl", "r-limit-hitl");
+    const first = (await graph.invoke(
+      { question: "Thống kê 3 phần chưa rõ", ucId: "text-to-sql" },
+      cfg,
+    )) as Record<string, unknown>;
+    expect(Array.isArray(first["__interrupt__"])).toBe(true);
+
+    const second = (await graph.invoke(
+      new Command({ resume: "channels" }),
+      cfg,
+    )) as Record<string, unknown>;
+    expect(Array.isArray(second["__interrupt__"])).toBe(true);
+
+    // Pick a valid option on round 2: remaining entity 3 still keeps resolution incomplete after 2 attempts
+    const third = await graph.invoke(new Command({ resume: "regions" }), cfg);
+    expect(execCalls).toBe(0);
+    expect(third.status).toBe("needs_clarification");
+    expect(third.pendingClarification).toBeNull();
+    expect(third.clarificationAttempts).toBe(2);
+    expect(third.answerText).toMatch(/ask a new question/i);
+  });
+
+  it("stops and asks user to narrow the question through buildRootGraph when >6 required tables", async () => {
+    let execCalls = 0;
+    const sevenTables = [
+      "orders",
+      "order_items",
+      "channels",
+      "customers",
+      "regions",
+      "products",
+      "promotions",
+    ];
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => sevenTables.map((name) => ({ name, schema: "public" })),
+        semanticSearch: async () => [],
+        intentModel: makeIntentModel({
+          requestedMetrics: [],
+          schemaEntities: sevenTables,
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async () => {
+            execCalls += 1;
+            throw new Error("should not execute when required tables exceed cap");
+          },
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "Báo cáo 7 bảng", ucId: "text-to-sql" },
+      runConfig("t-too-many", "r-too-many"),
+    );
+    expect(execCalls).toBe(0);
+    expect(out.status).toBe("needs_clarification");
+    expect(out.pendingClarification).toBeNull();
+    expect(out.answerText).toMatch(/7 bảng/);
+    expect(out.answerText).toMatch(/promotions/);
+  });
+
+  it("stops with deadline budget status before second follow-up semantic MCP call when clock expires", async () => {
+    const queries: string[] = [];
+    let currentNow = 1_700_000_000_000;
+    const deadlineMs = currentNow + 1000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => currentNow);
+    try {
+      const graph = buildRootGraph({
+        checkpointer: new MemorySaver(),
+        retrieve: createRetrieveSemantic({ search: async () => [] }),
+        synthesize: createAnswerSynthesizer(),
+        textToSql: {
+          listTables: async () => BASE_CATALOG,
+          semanticSearch: async (q) => {
+            queries.push(q);
+            if (q === "kênh bán") {
+              // Advance simulated clock past deadline during first follow-up call
+              currentNow = deadlineMs + 10;
+            }
+            return [];
+          },
+          intentModel: makeIntentModel({
+            requestedMetrics: [],
+            schemaEntities: ["orders", "kênh bán", "khu vực"],
+            queryMode: "standard_query",
+          }).model,
+          executor: {
+            run: async () => {
+              throw new Error("executor must not run after budget deadline");
+            },
+          },
+        },
+      });
+
+      const out = await graph.invoke(
+        {
+          question: "Số đơn theo kênh bán và khu vực",
+          ucId: "text-to-sql",
+          budget: {
+            llmCalls: 0,
+            tokensUsed: 0,
+            maxLlmCalls: 20,
+            maxTokens: 60_000,
+            deadlineMs,
+          },
+        },
+        runConfig("t-followup-deadline", "r-followup-deadline"),
+      );
+      expect(queries).toEqual(["Số đơn theo kênh bán và khu vực", "kênh bán"]);
+      expect(out.status).toBe("cannot_answer");
+      expect(out.answerText).toMatch(/deadline/i);
+      expect(out.toolsCalled).toContain("search_semantic_layer");
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("recovers missing entity via semantic follow-up and filters irrelevant references from SQL prompt", async () => {
+    const searchQueries: string[] = [];
+    const seenRefs: string[] = [];
+    const seenTables: string[] = [];
+    const intent = makeIntentModel({
+      requestedMetrics: [],
+      schemaEntities: ["orders", "kênh bán"],
+      queryMode: "standard_query",
+    });
+
+    const searchFn = async (q: string): Promise<SearchSemanticLayerChunk[]> => {
+      searchQueries.push(q);
+      if (q === "kênh bán") {
+        return [
+          semanticChunk({
+            chunkId: "table:channels",
+            docType: "table",
+            table: "channels",
+            tables: ["channels"],
+            content: "Bảng kênh bán hàng (channels) gồm channel_name",
+            score: 0.94,
+          }),
+        ];
+      }
+      return [
+        semanticChunk({
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          tables: ["orders"],
+          content: "Bảng đơn hàng (orders) gồm status và channel_id",
+          score: 0.9,
+        }),
+        semanticChunk({
+          chunkId: "table:order_items",
+          docType: "table",
+          table: "order_items",
+          tables: ["order_items"],
+          content: "Chi tiết dòng sản phẩm trong đơn",
+          score: 0.88,
+          aliasMatched: false,
+          denseScore: 0.5,
+        }),
+        semanticChunk({
+          chunkId: "example:orders_sample",
+          docType: "example",
+          tables: ["orders"],
+          content: "SELECT * FROM public.orders LIMIT 10",
+          score: 0.99,
+        }),
+      ];
+    };
+
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: searchFn }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: searchFn,
+        intentModel: intent.model,
+        executor: {
+          run: async (input) => {
+            seenTables.push(...input.candidateTables);
+            seenRefs.push(...(input.references ?? []));
+            return {
+              status: "ok",
+              sql: "SELECT c.channel_name, COUNT(*) AS cnt FROM public.orders o JOIN public.channels c ON c.channel_id = o.channel_id GROUP BY c.channel_name",
+              tablesUsed: ["orders", "channels"],
+              columns: ["channel_name", "cnt"],
+              rows: [{ channel_name: "Website", cnt: 7 }],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "Số đơn hàng theo kênh bán", ucId: "text-to-sql" },
+      runConfig("t-followup-ok", "r-followup-ok"),
+    );
+
+    expect(out.status).toBe("ok");
+    expect(intent.calls).toBe(1);
+    expect(searchQueries).toEqual(["Số đơn hàng theo kênh bán", "kênh bán"]);
+    expect(seenTables).toEqual(["orders", "channels"]);
+    expect(seenRefs.some((r) => r.includes("table:channels"))).toBe(true);
+    expect(seenRefs.some((r) => r.includes("table:orders"))).toBe(true);
+    expect(seenRefs.some((r) => r.includes("table:order_items"))).toBe(false);
+    expect(seenRefs.some((r) => r.includes("example:orders_sample"))).toBe(false);
+  });
+
+  it("surfaces SCOPE_DENIED on follow-up semantic search as restricted instead of needs_clarification", async () => {
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async (q) => {
+          if (q === "kênh bán") {
+            throw dbToolError("SCOPE_DENIED", "semantic access denied");
+          }
+          return [
+            semanticChunk({
+              chunkId: "table:orders",
+              docType: "table",
+              table: "orders",
+              tables: ["orders"],
+              content: "Orders header",
+            }),
+          ];
+        },
+        intentModel: makeIntentModel({
+          requestedMetrics: [],
+          schemaEntities: ["orders", "kênh bán"],
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async () => {
+            throw new Error("should not execute on restricted follow-up");
+          },
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "Số đơn hàng theo kênh bán", ucId: "text-to-sql" },
+      runConfig("t-followup-denied", "r-followup-denied"),
+    );
+
+    expect(out.status).toBe("restricted");
+  });
+
+  it("stops cleanly and asks to rephrase when user selects NO_MATCHING_TABLE_OPTION on resume", async () => {
+    let execCalls = 0;
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async () => [],
+        intentModel: makeIntentModel({
+          requestedMetrics: [],
+          schemaEntities: ["orders", "bộ phận CSKH"],
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async () => {
+            execCalls += 1;
+            throw new Error("executor must not run when user rejects suggested tables");
+          },
+        },
+      },
+    });
+
+    const cfg = runConfig("t-abort-rephrase", "r-abort-rephrase");
+    const first = (await graph.invoke(
+      { question: "Đếm số đơn hàng của bộ phận CSKH", ucId: "text-to-sql" },
+      cfg,
+    )) as Record<string, unknown>;
+    const interrupts = first["__interrupt__"] as {
+      value?: { pendingClarification?: { options: string[] } };
+    }[];
+    const options = interrupts[0]?.value?.pendingClarification?.options ?? [];
+    expect(options).toContain(NO_MATCHING_TABLE_OPTION);
+
+    const resumed = await graph.invoke(
+      new Command({ resume: NO_MATCHING_TABLE_OPTION }),
+      cfg,
+    );
+    expect(execCalls).toBe(0);
+    expect(resumed.status).toBe("needs_clarification");
+    expect(resumed.pendingClarification).toBeNull();
+    expect(resumed.clarificationAttempts).toBe(1);
+    expect(resumed.answerText).toMatch(/ask a new question/i);
+  });
+
+  it("accepts a valid catalog table supplied on resume even when outside the top 3 suggested options", async () => {
+    const seenTables: string[] = [];
+    const largerCatalog: CatalogTable[] = [
+      ...BASE_CATALOG,
+      { name: "customers", schema: "public", description: "Buyers" },
+      { name: "regions", schema: "public", description: "Regions" },
+      { name: "products", schema: "public", description: "Products" },
+      { name: "sellers", schema: "public", description: "Merchants" },
+    ];
+
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => largerCatalog,
+        semanticSearch: async () => [],
+        intentModel: makeIntentModel({
+          requestedMetrics: [],
+          schemaEntities: ["orders", "gian hàng"],
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async (input) => {
+            seenTables.push(...input.candidateTables);
+            return {
+              status: "ok",
+              sql: "SELECT COUNT(*) AS cnt FROM public.orders",
+              tablesUsed: input.candidateTables,
+              columns: ["cnt"],
+              rows: [{ cnt: 5 }],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+
+    const cfg = runConfig("t-custom-catalog-resume", "r-custom-catalog-resume");
+    const first = (await graph.invoke(
+      { question: "Đếm số đơn hàng theo gian hàng", ucId: "text-to-sql" },
+      cfg,
+    )) as Record<string, unknown>;
+    const interrupts = first["__interrupt__"] as {
+      value?: { pendingClarification?: { options: string[] } };
+    }[];
+    const options = interrupts[0]?.value?.pendingClarification?.options ?? [];
+    expect(options).toHaveLength(4);
+    expect(options).not.toContain("sellers");
+    expect(options[3]).toBe(NO_MATCHING_TABLE_OPTION);
+
+    const resumed = await graph.invoke(new Command({ resume: "sellers" }), cfg);
+    expect(resumed.status).toBe("ok");
+    expect(seenTables).toEqual(["orders", "sellers"]);
+  });
+
+  it("includes metric-required tables in requiredTables cap check and rejects when 6 entities + metric add a 7th table", async () => {
+    let execCalls = 0;
+    const sixEntities = [
+      "orders",
+      "channels",
+      "customers",
+      "regions",
+      "products",
+      "promotions",
+    ];
+    const searchFn = async (): Promise<SearchSemanticLayerChunk[]> => [
+      semanticChunk({
+        chunkId: "metric:net_revenue",
+        docType: "metric",
+        tables: ["orders", "order_items"],
+        metricName: "net_revenue",
+        content: "Doanh thu thuần (net_revenue) = SUM(order_items.price_vnd)",
+        score: 0.96,
+        aliasMatched: true,
+      }),
+    ];
+
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: searchFn }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () =>
+          [...sixEntities, "order_items"].map((name) => ({ name, schema: "public" })),
+        semanticSearch: searchFn,
+        intentModel: makeIntentModel({
+          requestedMetrics: ["doanh thu thuần"],
+          schemaEntities: sixEntities,
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async () => {
+            execCalls += 1;
+            throw new Error("should stop when entity + metric tables exceed 6");
+          },
+        },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "Doanh thu thuần across 6 entities", ucId: "text-to-sql" },
+      runConfig("t-metric-cap", "r-metric-cap"),
+    );
+    expect(execCalls).toBe(0);
+    expect(out.status).toBe("needs_clarification");
+    expect(out.pendingClarification).toBeNull();
+    expect(out.answerText).toMatch(/7 bảng/);
+    expect(out.answerText).toMatch(/order_items/);
   });
 });
