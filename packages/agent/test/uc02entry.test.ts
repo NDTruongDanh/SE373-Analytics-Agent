@@ -261,4 +261,43 @@ describe("UC-02 text-to-SQL entry", () => {
     expect(out.status).toBe("cannot_answer");
     expect(out.answerText).toMatch(/Citation check failed/);
   });
+
+  it("enforces full semantic catalog membership on the live text-to-SQL citation path", async () => {
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async () => ({
+          status: "ok",
+          sql: "SELECT COUNT(*) AS n FROM public.orders",
+          tablesUsed: ["orders"],
+          columns: ["n"],
+          rows: [{ n: 10 }],
+          maskedColumns: [],
+          attempts: 1,
+        }),
+      },
+    });
+    const state = stateWith({
+      question: "How many orders?",
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        schemaEntities: ["orders"],
+        queryMode: "standard_query",
+      },
+      semanticChunks: [
+        {
+          chunkId: "metric:fabricated_not_in_catalog",
+          text: "bogus chunk",
+          aliasMatched: false,
+          denseScore: 0.1,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toMatch(/Citation check failed/);
+  });
 });

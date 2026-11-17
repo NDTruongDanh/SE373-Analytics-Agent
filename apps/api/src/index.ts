@@ -28,10 +28,12 @@ import {
   routeQuestionToUc,
   runTracerGraph,
   type AgentState,
+  type RetrieveFn,
   type SpanEvent,
   type UcEntryHandler,
   type VizFn,
 } from "@shared/agent";
+import { createRetrieveSemantic } from "@shared/agent/uc02";
 import { createUc03Viz } from "@shared/agent/uc03";
 import {
   buildLangSmithRunConfig,
@@ -91,6 +93,11 @@ export interface BuildAppOptions {
   store?: AppStateStore;
   /** Test seam: merged OVER the registry table (mirrors RootGraphDeps). */
   ucHandlers?: Record<string, UcEntryHandler>;
+  /**
+   * UC-02 retrieve seam (semantic search + two-tier unknown-term gate).
+   * Defaults to createRetrieveSemantic(). Override with a scripted seam in tests.
+   */
+  retrieve?: RetrieveFn;
   /**
    * UC-03 VIZ seam (insight_report verification for every ok/no_data
    * answer). Defaults to createUc03Viz(): deterministic chart validation
@@ -332,6 +339,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         checkpointer: options.checkpointer,
         emitSpan: progress,
         ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
+        retrieve: options.retrieve ?? createRetrieveSemantic(),
         viz: options.viz ?? createUc03Viz(),
       }),
       emit,

@@ -29,6 +29,7 @@ import {
   type UcEntryHandler,
   type PendingClarification,
 } from "../state.js";
+import { loadSemanticCatalogIds } from "../semantic/catalog.js";
 import { checkUnknownTerms, buildCannotAnswer } from "../semantic/retrieveSemantic.js";
 import {
   deriveCitations,
@@ -68,6 +69,8 @@ export interface TextToSqlRuntimeDeps {
   /** SQL model seam; omitted in production to use the configured profile. */
   sqlModel?: ChatModelLike;
   executor?: TextToSqlExecutorLike;
+  /** Full semantic catalog IDs for K7 CitationValidator; defaults to semantic/*.yaml. */
+  catalogIds?: string[] | ReadonlySet<string>;
 }
 
 /** Root-entry guard: initialize one persistent deadline and stop before I/O. */
@@ -209,21 +212,25 @@ const EXECUTOR_UPDATE_MAP: {
   }),
 };
 
-function updateFromExecutor(result: ExecutorResult, state: AgentState): AgentUpdate {
+function updateFromExecutor(
+  result: ExecutorResult,
+  state: AgentState,
+  catalogIds: string[] | ReadonlySet<string>,
+): AgentUpdate {
   const handler = EXECUTOR_UPDATE_MAP[result.status] as (
     r: ExecutorResult,
   ) => AgentUpdate;
   const update = handler(result);
   if ((result.status === "ok" || result.status === "no_data") && typeof update.sql === "string") {
-    const headed = withCitationHeader(state, update.sql);
+    const headed = withCitationHeader(state, update.sql, catalogIds);
     if (headed === null) {
-      // Persistent K7 failure (e.g. citation_missing_metric): fail closed
-      // rather than shipping an unverified header.
+      // Persistent K7 failure (e.g. citation_missing_metric or unknown catalog ID):
+      // fail closed rather than shipping an unverified header.
       return {
         status: "cannot_answer",
         sql: result.sql,
         answerText:
-          "Citation check failed (metric queries must cite at least one retrieved metric:* chunk); cannot answer without verified citations.",
+          "Citation check failed (metric queries must cite at least one retrieved metric:* chunk in the semantic catalog); cannot answer without verified citations.",
       };
     }
     return { ...update, sql: headed };
@@ -247,7 +254,10 @@ function normalizeCandidateTables(entities: string[]): string[] {
 }
 
 /** Definition fast-path (RT->SYN): answer from retrieved semantic chunks, no executor/models/MCP. */
-function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
+function handleDefinitionLookup(
+  state: AgentState,
+  catalogIds: string[] | ReadonlySet<string>,
+): AgentUpdate | null {
   if (state.intent.queryMode !== "definition_lookup") return null;
   const metrics = state.intent.requestedMetrics;
   const metricsLabel = metrics.length > 0 ? metrics.join(", ") : "the requested term";
@@ -258,6 +268,29 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
       answerText: `No semantic definitions were retrieved for this question; cannot define ${metricsLabel}.`,
     };
   }
+  const retrievedIds = chunks.map((chunk) => chunk.chunkId);
+  const metricCitations = chunks
+    .filter((chunk) => chunk.chunkId.startsWith("metric:"))
+    .map((chunk) => chunk.chunkId)
+    .slice(0, 5);
+  const candidateCitations =
+    metricCitations.length > 0 ? metricCitations : deriveCitations(retrievedIds);
+  const citationInput = {
+    citations: candidateCitations,
+    sql: null,
+    requestedMetrics: metrics,
+    retrievedChunkIds: retrievedIds,
+    catalogIds,
+  };
+  const checked = validateCitations(citationInput);
+  const verified = checked.ok ? checked : repairCitations(citationInput, 2);
+  if (!verified.ok) {
+    return {
+      status: "cannot_answer",
+      answerText:
+        `Citation check failed for definition lookup (${verified.issue.message}); cannot define ${metricsLabel} without verified catalog citations.`,
+    };
+  }
   const lines = chunks.slice(0, 5).map((chunk) => {
     const snippet = (chunk.text ?? "").slice(0, 300);
     if (snippet && chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score}): ${snippet}`;
@@ -265,12 +298,10 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
     if (chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score})`;
     return `${chunk.chunkId}`;
   });
-  const citations = chunks
-    .filter((chunk) => chunk.chunkId.startsWith("metric:"))
-    .map((chunk) => chunk.chunkId)
-    .slice(0, 5);
+  const citations = verified.citations.filter((id) => id.startsWith("metric:"));
+  const displayedCitations = citations.length > 0 ? citations : verified.citations;
   const citationLine =
-    citations.length > 0 ? `\nCitations: ${citations.join(", ")}.` : "";
+    displayedCitations.length > 0 ? `\nCitations: ${displayedCitations.join(", ")}.` : "";
   const prefix =
     metrics.length > 0 ? `Definitions for ${metrics.join(", ")}:\n` : "Definitions:\n";
   return {
@@ -284,32 +315,33 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
 }
 
 /** Unknown-term short-circuit (two-tier gate): fail before any MCP when retrieval ran but grounds nothing. */
-function handleUnknownTerm(state: AgentState): AgentUpdate | null {
+function handleUnknownTerm(
+  state: AgentState,
+  catalogIds: string[] | ReadonlySet<string>,
+): AgentUpdate | null {
   const metrics = state.intent.requestedMetrics;
   const chunks = state.semanticChunks;
   if (metrics.length === 0) return null;
   // Fail closed: metrics present but no retrieved chunks means nothing is
   // grounded — never let the executor run ungrounded.
-  if (chunks.length === 0) return buildCannotAnswer(metrics, []);
+  if (chunks.length === 0) return buildCannotAnswer(metrics, [], catalogIds);
   const { ungrounded } = checkUnknownTerms(metrics, chunks);
   if (ungrounded.length === 0) return null;
-  return buildCannotAnswer(ungrounded, chunks);
+  return buildCannotAnswer(ungrounded, chunks, catalogIds);
 }
 
 /**
  * K7 citation header (UC-02): derive citations from the retrieved turn
- * context and prepend `-- @citations: ...` to executor SQL. Never changes
- * status on success — the unknown-term gate owns cannot_answer; this seam
- * only guarantees dual (JSON + SQL header) citation formatting. Returns
- * null on persistent K7 failure so the caller can fail closed to
+ * context, validate against the full semantic catalog + turn retrieved set
+ * (with <= 2 repair retries), and prepend `-- @citations: ...` to SQL.
+ * Returns null on persistent K7 failure so the caller fails closed to
  * cannot_answer instead of shipping an unverified header.
- *
- * No fake catalog: the runtime turn has only retrieved IDs, so catalog
- * membership is enforced in eval/grader (full catalog) and validator unit
- * tests — here we enforce retrieved-this-turn + metric:* coverage, with a
- * <= 2 repair loop before failing.
  */
-function withCitationHeader(state: AgentState, sql: string | null): string | null {
+function withCitationHeader(
+  state: AgentState,
+  sql: string | null,
+  catalogIds: string[] | ReadonlySet<string>,
+): string | null {
   if (sql === null || sql === undefined) return sql;
   const retrievedIds = state.semanticChunks.map((chunk) => chunk.chunkId);
   if (retrievedIds.length === 0) return sql;
@@ -320,13 +352,14 @@ function withCitationHeader(state: AgentState, sql: string | null): string | nul
     sql,
     requestedMetrics: state.intent.requestedMetrics,
     retrievedChunkIds: retrievedIds,
+    catalogIds,
   };
   const checked = validateCitations(input);
   if (checked.ok) return checked.sql;
   const repaired = repairCitations(input, 2);
   if (repaired.ok) return repaired.sql;
-  // Persistent failure (e.g. citation_missing_metric for column-only
-  // retrieval on a metric query): signal the caller to fail closed.
+  // Persistent failure (e.g. citation_missing_metric or unknown catalog ID):
+  // signal the caller to fail closed.
   return null;
 }
 
@@ -477,15 +510,19 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     };
   };
 
+  const catalogIds = deps.catalogIds ?? loadSemanticCatalogIds();
   const entry: UcEntryHandler = async (
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
     let activeState = state;
+    if (activeState.status === "cannot_answer" || activeState.status === "error") {
+      return {};
+    }
     let clarificationUpdate: AgentUpdate = {};
-    const definition = handleDefinitionLookup(activeState);
+    const definition = handleDefinitionLookup(activeState, catalogIds);
     if (definition) return definition;
-    const unknownTerm = handleUnknownTerm(activeState);
+    const unknownTerm = handleUnknownTerm(activeState, catalogIds);
     if (unknownTerm) return unknownTerm;
     const ambiguousMetric = clarificationForAmbiguousMetric(activeState);
     if (ambiguousMetric === "exhausted") {
@@ -577,7 +614,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       if (activeState.intent.timeRange !== null || activeState.clarificationAttempts >= 2) {
         return {
           ...clarificationUpdate,
-          ...updateFromExecutor(result, state),
+          ...updateFromExecutor(result, state, catalogIds),
           pendingClarification: null,
           answerText: "The query still needs clarification after two responses.",
         };
@@ -586,7 +623,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       if (!options || options.length < 2 || options.length > 4) {
         return {
           ...clarificationUpdate,
-          ...updateFromExecutor(result, state),
+          ...updateFromExecutor(result, state, catalogIds),
           pendingClarification: null,
           answerText: "A valid time range could not be derived from the available data.",
         };
@@ -616,7 +653,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         callbacks: rt.config.callbacks,
       });
     }
-    const update = updateFromExecutor(result, state);
+    const update = updateFromExecutor(result, state, catalogIds);
     const isOkLike = result.status === "ok" || result.status === "no_data";
     const observedTools =
       collectedTools.length > 0

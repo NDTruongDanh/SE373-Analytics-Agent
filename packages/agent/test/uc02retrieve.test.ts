@@ -7,9 +7,10 @@ import {
   closestMetrics,
   createRetrieveSemantic,
   isMetricGrounded,
+  loadSemanticCatalogIds,
   UNKNOWN_TERM_DENSE_THRESHOLD,
   type GroundingChunk,
-} from "../src/semantic/retrieveSemantic.js";
+} from "../src/semantic/index.js";
 import type { SearchSemanticLayerChunk } from "@shared/contracts";
 import type { AgentState, RootRuntime } from "../src/state.js";
 
@@ -72,7 +73,31 @@ describe("UC-02 unknown-term gate", () => {
     expect(UNKNOWN_TERM_DENSE_THRESHOLD).toBe(0.6);
   });
 
-  it("passes basic queries with no requested metrics (no search)", async () => {
+  it("searches semantic chunks for text-to-sql queries even with no requested metrics", async () => {
+    let searched = false;
+    const retrieved = [
+      chunk({
+        chunkId: "table:regions",
+        docType: "table",
+        table: "regions",
+        tables: ["regions"],
+        metricName: null,
+        content: "Table regions",
+      }),
+    ];
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        searched = true;
+        return retrieved;
+      },
+    });
+    const out = await retrieve(stateWith({ requestedMetrics: [] }), fakeRuntime());
+    expect(searched).toBe(true);
+    expect(out.status).toBeUndefined();
+    expect(out.semanticChunks?.map((c) => c.chunkId)).toEqual(["table:regions"]);
+  });
+
+  it("skips semantic search on the legacy tracer route when no metrics are requested", async () => {
     let searched = false;
     const retrieve = createRetrieveSemantic({
       search: async () => {
@@ -80,7 +105,8 @@ describe("UC-02 unknown-term gate", () => {
         return [];
       },
     });
-    const out = await retrieve(stateWith({ requestedMetrics: [] }), fakeRuntime());
+    const tracerState = { ...stateWith({ requestedMetrics: [] }), ucId: "tracer" };
+    const out = await retrieve(tracerState, fakeRuntime());
     expect(out).toEqual({});
     expect(searched).toBe(false);
   });
@@ -262,5 +288,23 @@ describe("UC-02 unknown-term gate", () => {
     // "doanh thu thuần" shares doanh + thu with the ASCII haystack.
     expect(isMetricGrounded("doanh thu thuần", chunks, 0.6, all)).toBe(true);
     expect(isMetricGrounded("NPS", chunks, 0.6, all)).toBe(false);
+  });
+
+  it("loads the full semantic YAML catalog and falls back to catalog metrics for closestMetrics", () => {
+    const catalog = loadSemanticCatalogIds();
+    expect(catalog.has("metric:net_revenue")).toBe(true);
+    expect(catalog.has("metric:active_customers")).toBe(true);
+    expect(catalog.has("table:orders")).toBe(true);
+    expect(catalog.has("column:orders.status")).toBe(true);
+    expect(catalog.has("orders.status")).toBe(true);
+    expect(catalog.has("join_rule:orders_items_payments")).toBe(true);
+
+    const cannotAnswer = buildCannotAnswer(
+      ["NPS"],
+      [{ chunkId: "table:reviews" }],
+      catalog,
+    );
+    expect(cannotAnswer.status).toBe("cannot_answer");
+    expect(cannotAnswer.answerText).toMatch(/metric:/);
   });
 });

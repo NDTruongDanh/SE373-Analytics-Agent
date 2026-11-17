@@ -17,8 +17,10 @@
 // through the MCP client only.
 
 import type { SearchSemanticLayerChunk } from "@shared/contracts";
+import { DEFAULT_ROUTE_ID, RCA_UC_ID } from "../constants.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import type { AgentState, AgentUpdate, RootRuntime } from "../state.js";
+import { loadSemanticCatalogIds } from "./catalog.js";
 
 /** Calibrated dense-similarity threshold (text-embedding-3-small default). */
 export const UNKNOWN_TERM_DENSE_THRESHOLD = 0.6;
@@ -37,6 +39,7 @@ export type SemanticSearchFn = (
 export interface RetrieveSemanticDeps {
   search?: SemanticSearchFn;
   topK?: number;
+  catalogIds?: string[] | ReadonlySet<string>;
 }
 
 function readTransport(rt: RootRuntime): TracerRunConfig | null {
@@ -176,12 +179,19 @@ export function checkUnknownTerms(
 export function closestMetrics(
   chunks: Pick<GroundingChunk, "chunkId">[],
   limit: number = CLOSEST_METRICS_LIMIT,
+  catalogIds?: string[] | ReadonlySet<string>,
 ): string[] {
   const metrics = chunks
     .filter((chunk) => chunk.chunkId.startsWith("metric:"))
     .map((chunk) => chunk.chunkId);
   const deduped = [...new Set(metrics)];
   if (deduped.length > 0) return deduped.slice(0, limit);
+  if (catalogIds) {
+    const catalogMetrics = [...catalogIds].filter((id) =>
+      id.startsWith("metric:"),
+    );
+    if (catalogMetrics.length > 0) return catalogMetrics.slice(0, limit);
+  }
   return chunks.map((chunk) => chunk.chunkId).slice(0, limit);
 }
 
@@ -192,8 +202,9 @@ function hasUserSuppliedFormula(question: string): boolean {
 export function buildCannotAnswer(
   requestedMetrics: string[],
   chunks: Pick<GroundingChunk, "chunkId">[],
+  catalogIds?: string[] | ReadonlySet<string>,
 ): AgentUpdate {
-  const closest = closestMetrics(chunks);
+  const closest = closestMetrics(chunks, CLOSEST_METRICS_LIMIT, catalogIds);
   const available = closest.length > 0 ? closest.join(", ") : "no metric chunks retrieved";
   return {
     status: "cannot_answer",
@@ -251,12 +262,22 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
   rt: RootRuntime,
 ) => Promise<AgentUpdate> {
   const topK = deps.topK ?? RETRIEVE_TOP_K;
+  const catalogIds = deps.catalogIds ?? loadSemanticCatalogIds();
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     const metrics = state.intent.requestedMetrics ?? [];
     const isDefinition = state.intent.queryMode === "definition_lookup";
+    const needsGrounding = metrics.length > 0 || isDefinition;
 
-    // Basic UC-01 queries pass straight through (no semantic search).
-    if (metrics.length === 0 && !isDefinition) return {};
+    // Preserve the legacy tracer / RCA demo routes when no metrics or
+    // definitions are requested so their existing span shapes stay intact.
+    if (
+      !needsGrounding &&
+      (state.ucId === "" ||
+        state.ucId === DEFAULT_ROUTE_ID ||
+        state.ucId === RCA_UC_ID)
+    ) {
+      return {};
+    }
 
     const started = Date.now();
     let chunks: SearchSemanticLayerChunk[];
@@ -267,8 +288,8 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
       if (!transport) {
         // Fail closed: metrics present (or a definition lookup) but no MCP
         // transport means we cannot ground them — never skip the gate with {}.
-        // Basic UC-01 queries (no metrics, no definition) still pass through.
-        if (metrics.length === 0 && !isDefinition) return {};
+        // Basic queries without transport (unit tests) still pass through.
+        if (!needsGrounding) return {};
         return {
           status: "error",
           answerText:
@@ -279,7 +300,19 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
         query: state.question,
         topK,
       });
-      const parsed = JSON.parse(raw.text) as { chunks?: SearchSemanticLayerChunk[] };
+      if (raw.isError && needsGrounding) {
+        return {
+          status: "error",
+          answerText:
+            "Semantic grounding failed (search_semantic_layer returned an error); cannot verify requested metrics without speculating.",
+        };
+      }
+      let parsed: { chunks?: SearchSemanticLayerChunk[] } = {};
+      try {
+        parsed = JSON.parse(raw.text) as { chunks?: SearchSemanticLayerChunk[] };
+      } catch {
+        parsed = {};
+      }
       chunks = Array.isArray(parsed.chunks) ? parsed.chunks : [];
     }
     rt.emit({
@@ -301,7 +334,10 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
           durationMs: 0,
           payload: { gate: "unknown_term", ungrounded },
         });
-        return { semanticChunks: stateChunks, ...buildCannotAnswer(ungrounded, chunks) };
+        return {
+          semanticChunks: stateChunks,
+          ...buildCannotAnswer(ungrounded, chunks, catalogIds),
+        };
       }
     }
 

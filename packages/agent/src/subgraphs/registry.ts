@@ -16,6 +16,12 @@ import {
   type UcEntryHandler,
 } from "../state.js";
 import { DEFAULT_ROUTE_ID, RESULT_PREVIEW_MAX } from "../constants.js";
+import { loadSemanticCatalogIds } from "../semantic/catalog.js";
+import {
+  deriveCitations,
+  repairCitations,
+  validateCitations,
+} from "../validators/citationValidator.js";
 
 export { DEFAULT_ROUTE_ID } from "../constants.js";
 
@@ -263,6 +269,39 @@ export function createTracerDefaultEntry(): UcEntryHandler {
     trace("run", "node_done", 0, { parentSpanId: runSpan, attempt: 0 });
 
     const answerStarted = Date.now();
+    const retrievedIds = (state.semanticChunks ?? []).map((chunk) => chunk.chunkId);
+    let finalSql = proposal.sql;
+    if (retrievedIds.length > 0) {
+      const citations = deriveCitations(retrievedIds);
+      if (citations.length > 0) {
+        const input = {
+          citations,
+          sql: proposal.sql,
+          requestedMetrics: state.intent?.requestedMetrics ?? [],
+          retrievedChunkIds: retrievedIds,
+          catalogIds: loadSemanticCatalogIds(),
+        };
+        const checked = validateCitations(input);
+        const verified = checked.ok ? checked : repairCitations(input, 2);
+        if (!verified.ok || verified.sql === null) {
+          trace("answer", "node_done", Date.now() - answerStarted, {
+            payload: { status: "cannot_answer", total: 0 },
+            attempt: 0,
+          });
+          return {
+            sql: proposal.sql,
+            tablesUsed: proposal.tablesUsed,
+            columns: runPayload.columns,
+            resultPreview: [],
+            toolsCalled: [...state.toolsCalled, "list_tables", "run_query"],
+            status: "cannot_answer",
+            answerText:
+              "Citation check failed on default route; cannot answer without verified catalog citations.",
+          };
+        }
+        finalSql = verified.sql;
+      }
+    }
     const preview = runPayload.rows.slice(0, RESULT_PREVIEW_MAX);
     const countKey = previewCountKey(runPayload.columns, preview);
     const total = previewCountTotal(runPayload.columns, preview);
@@ -278,7 +317,7 @@ export function createTracerDefaultEntry(): UcEntryHandler {
     });
 
     return {
-      sql: proposal.sql,
+      sql: finalSql,
       tablesUsed: proposal.tablesUsed,
       columns: runPayload.columns,
       resultPreview: preview,
