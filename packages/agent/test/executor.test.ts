@@ -498,4 +498,181 @@ describe("ValidatedQueryExecutor core path", () => {
     // Only the describe ran; explain/run never fired on the tripped budget.
     expect(mcp.calls.map((call) => call.tool)).toEqual(["describe_table"]);
   });
+
+  it("retries 429 twice then succeeds, recording all attempts in budget and redacted traces", async () => {
+    const saved = {
+      max: process.env.AGENT_MODEL_MAX_RETRIES,
+      base: process.env.AGENT_MODEL_RETRY_BASE_MS,
+      maxWait: process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS,
+    };
+    process.env.AGENT_MODEL_MAX_RETRIES = "3";
+    process.env.AGENT_MODEL_RETRY_BASE_MS = "50";
+    process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = "100";
+    try {
+      let calls = 0;
+      const model: ChatModelLike = {
+        invoke: async () => ({ content: proposalFor(TRACER_SQL, ["orders"]) }),
+        stream: () => {
+          calls += 1;
+          if (calls <= 2) {
+            throw Object.assign(
+              new Error("429 Rate limit reached: Bearer sk-secret-must-not-leak"),
+              {
+                status: 429,
+                headers: { "Retry-After": "0.01", authorization: "Bearer sk-raw" },
+              },
+            );
+          }
+          return (async function* () {
+            yield {
+              content: proposalFor(TRACER_SQL, ["orders"]),
+              usage_metadata: { input_tokens: 30, output_tokens: 20, total_tokens: 50 },
+              response_metadata: { model: "openai/gpt-oss-120b" },
+            };
+          })();
+        },
+        withStructuredOutput: () => ({
+          invoke: async () => JSON.parse(proposalFor(TRACER_SQL, ["orders"])),
+        }),
+      };
+      const mcp = new StubMcpCaller({
+        describe_table: describeHandler,
+        explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 4 }),
+        run_query: () => ({
+          columns: ["status", "n"],
+          rows: [{ status: "completed", n: 7 }],
+          rowCount: 1,
+          truncated: false,
+          maskedColumns: [],
+          durationMs: 2,
+        }),
+      });
+      const { sink, seen } = spans();
+      const budget = createBudgetState({ maxLlmCalls: 10, runDeadlineMs: 10_000 });
+      const executor = new ValidatedQueryExecutor({ model, mcp, emitSpan: sink });
+
+      const result = await executor.run({
+        question: "How many orders per status?",
+        candidateTables: ["orders"],
+        principal: PRINCIPAL,
+        budget,
+      });
+
+      expect(result.status).toBe("ok");
+      expect(calls).toBe(3);
+      expect(budget.llmCalls).toBe(3);
+      expect(budget.tokensUsed).toBe(50);
+
+      const retryEvents = seen.filter((s) => s.type === "retry");
+      const failedLlm = seen.filter(
+        (s) => s.type === "llm_call" && (s.payload as { ok?: boolean })?.ok === false,
+      );
+      expect(retryEvents).toHaveLength(2);
+      expect(failedLlm).toHaveLength(2);
+      const serialized = JSON.stringify(seen);
+      expect(serialized).not.toContain("sk-secret-must-not-leak");
+      expect(serialized).not.toContain("sk-raw");
+    } finally {
+      if (saved.max === undefined) delete process.env.AGENT_MODEL_MAX_RETRIES;
+      else process.env.AGENT_MODEL_MAX_RETRIES = saved.max;
+      if (saved.base === undefined) delete process.env.AGENT_MODEL_RETRY_BASE_MS;
+      else process.env.AGENT_MODEL_RETRY_BASE_MS = saved.base;
+      if (saved.maxWait === undefined) delete process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS;
+      else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
+    }
+  });
+
+  it("stops with RATE_LIMITED within deadline when model always returns 429 and counts retries in budget breaker", async () => {
+    const saved = {
+      max: process.env.AGENT_MODEL_MAX_RETRIES,
+      base: process.env.AGENT_MODEL_RETRY_BASE_MS,
+      maxWait: process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS,
+    };
+    process.env.AGENT_MODEL_MAX_RETRIES = "3";
+    process.env.AGENT_MODEL_RETRY_BASE_MS = "50";
+    process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = "100";
+    try {
+      let calls = 0;
+      const always429: ChatModelLike = {
+        invoke: async () => {
+          throw new Error("unused");
+        },
+        stream: () => {
+          calls += 1;
+          throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+        },
+        withStructuredOutput: () => ({
+          invoke: async () => {
+            throw new Error("unused");
+          },
+        }),
+      };
+      const mcp = new StubMcpCaller({ describe_table: describeHandler });
+      const budget = createBudgetState({ maxLlmCalls: 10, runDeadlineMs: 2_000 });
+      const started = Date.now();
+      const executor = new ValidatedQueryExecutor({ model: always429, mcp });
+
+      const result = await executor.run({
+        question: "How many orders per status?",
+        candidateTables: ["orders"],
+        principal: PRINCIPAL,
+        budget,
+      });
+
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(result.status).toBe("error");
+      if (result.status !== "error") return;
+      expect(result.error.code).toBe("RATE_LIMITED");
+      expect(result.error.retryable).toBe(true);
+      expect(calls).toBe(4);
+      expect(budget.llmCalls).toBe(4);
+      expect(budget.tokensUsed).toBe(0);
+
+      // Next executor step sees the consumed retry budget and trips at maxLlmCalls.
+      let secondCalls = 0;
+      const budget2 = createBudgetState({ maxLlmCalls: 3, runDeadlineMs: 5_000 });
+      const flakyThenInvalid: ChatModelLike = {
+        invoke: async () => ({ content: proposalFor(TRACER_SQL, ["orders"]) }),
+        stream: () => {
+          secondCalls += 1;
+          if (secondCalls <= 2) {
+            throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+          }
+          return (async function* () {
+            yield { content: proposalFor(TRACER_SQL, ["orders"]) };
+          })();
+        },
+        withStructuredOutput: () => ({
+          invoke: async () => JSON.parse(proposalFor(TRACER_SQL, ["orders"])),
+        }),
+      };
+      const mcpInvalid = new StubMcpCaller({
+        describe_table: describeHandler,
+        explain_query: () => {
+          throw dbToolError("INVALID_SQL", "bad column");
+        },
+      });
+      const res2 = await new ValidatedQueryExecutor({
+        model: flakyThenInvalid,
+        mcp: mcpInvalid,
+      }).run({
+        question: "How many orders per status?",
+        candidateTables: ["orders"],
+        principal: PRINCIPAL,
+        budget: budget2,
+      });
+      expect(res2.status).toBe("cannot_answer");
+      if (res2.status !== "cannot_answer") return;
+      expect(res2.budgetExceeded).toBe(true);
+      expect(res2.tripReason).toBe("llm-calls");
+      expect(budget2.llmCalls).toBe(3);
+    } finally {
+      if (saved.max === undefined) delete process.env.AGENT_MODEL_MAX_RETRIES;
+      else process.env.AGENT_MODEL_MAX_RETRIES = saved.max;
+      if (saved.base === undefined) delete process.env.AGENT_MODEL_RETRY_BASE_MS;
+      else process.env.AGENT_MODEL_RETRY_BASE_MS = saved.base;
+      if (saved.maxWait === undefined) delete process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS;
+      else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
+    }
+  });
 });

@@ -264,6 +264,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
   const topK = deps.topK ?? RETRIEVE_TOP_K;
   const catalogIds = deps.catalogIds ?? loadSemanticCatalogIds();
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
+    if (state.status === "error") return {};
     const metrics = state.intent.requestedMetrics ?? [];
     const isDefinition = state.intent.queryMode === "definition_lookup";
     const needsGrounding = metrics.length > 0 || isDefinition;

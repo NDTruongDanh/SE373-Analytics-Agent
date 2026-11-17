@@ -22,8 +22,15 @@ import {
 } from "@shared/contracts";
 import { UNTRUSTED_DATA_CLOSE, UNTRUSTED_DATA_OPEN } from "../../constants.js";
 import {
+  checkBudget,
+  estimateTokens,
+  recordLlmCall,
+} from "../../queryExecutor/budgets.js";
+import { classifyModelError } from "../../telemetry/retry.js";
+import {
   invokeWithUsage,
   type InvokeUsageResult,
+  type ModelRetryContextOptions,
   type StructuredModelLike,
 } from "../../telemetry/usage.js";
 import { RENDER_REPAIR_LIMIT, validateChart, type ChartIssue } from "../../validators/renderChart.js";
@@ -91,32 +98,65 @@ export interface DraftOutcome {
   repairs: number;
 }
 
+function isSchemaOrParseError(error: unknown): boolean {
+  const reason = classifyModelError(error).reason;
+  return (
+    reason === "syntax_error" ||
+    reason === "zod_error" ||
+    reason === "output_parse_error"
+  );
+}
+
 /**
  * Draft + bounded repair: validates each draft headlessly and re-prompts
  * with the structured diff until it passes or `RENDER_REPAIR_LIMIT` is hit.
  * Malformed drafts (schema parse failures, e.g. a chartType/spec mismatch)
  * count as repair attempts with a shape diff — they never abort the loop
- * early. Throws the last issue when the model never converges — the caller
- * falls back to the deterministic Table spec.
+ * early. Transport rate-limit, auth, abort, and budget errors rethrow
+ * immediately without burning chart repair attempts. Throws the last issue
+ * when the model never converges — the caller falls back to the
+ * deterministic Table spec.
  */
 export async function runVizDraft(
   model: VizModelLike,
   input: PromptInput,
   buffer: SelectorBuffer,
+  ctx?: ModelRetryContextOptions,
 ): Promise<DraftOutcome> {
   const base = buildInsightPrompt(input);
   let prompt = base;
   let repairs = 0;
   let usage: InvokeUsageResult<VizDraft> | undefined;
   for (;;) {
+    if (ctx?.budget) {
+      const check = checkBudget(ctx.budget);
+      if (check.tripped) {
+        throw new Error(`Run budget exceeded (${check.reason})`);
+      }
+    }
     let draft: VizDraft;
     try {
       const attempt = await invokeWithUsage(model, VizDraftSchema, prompt, {
+        ...ctx,
         name: "viz_draft",
+        node: ctx?.node ?? "viz",
+        outerAttempt: repairs + 1,
       });
       usage = attempt;
       draft = attempt.parsed;
+      if (ctx?.budget) {
+        const realTokens = attempt.inputTokens + attempt.outputTokens;
+        recordLlmCall(
+          ctx.budget,
+          realTokens > 0
+            ? realTokens
+            : estimateTokens(prompt, JSON.stringify(draft)),
+        );
+      }
     } catch (error) {
+      if (!isSchemaOrParseError(error)) {
+        throw error;
+      }
       if (repairs >= RENDER_REPAIR_LIMIT) {
         throw new Error(
           `viz draft failed validation: draft ${repairs + 1} is not a valid InsightReport (${messageOf(error)}).`,

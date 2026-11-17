@@ -210,6 +210,15 @@ export function createTracerDefaultEntry(): UcEntryHandler {
     const model = createChatModel();
     const out = await model.proposeSqlWithUsage(state.question, {
       callbacks: rt.config.callbacks,
+      node: "understand",
+      ...(state.budget?.deadlineMs && state.budget.deadlineMs > 0
+        ? { deadlineMs: state.budget.deadlineMs }
+        : {}),
+      emit: (event) =>
+        trace(event.node, event.type, event.durationMs, {
+          payload: event.payload,
+          attempt: event.attempt,
+        }),
     });
     const proposal = out.parsed;
     const llmDurationMs = Date.now() - started;

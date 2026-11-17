@@ -11,6 +11,7 @@ import { MemorySaver } from "@langchain/langgraph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
 import { SSE_ALLOWLIST } from "../src/sse.js";
+import { ModelRetryError } from "@shared/agent/telemetry";
 
 const SEED_PHONES = ["0901111111", "0905555555"];
 const SEED_EMAIL = "an.nguyen@example.vn";
@@ -402,7 +403,6 @@ describe("buildApp /api/ask", () => {
     expect(out.status).toBe(200);
     expect(out.json).toMatchObject({ added: 1, updated: 2, skipped: 15, deleted: 0 });
   });
-
   it("wires createRetrieveSemantic into buildApp by default and records search_semantic_layer spans", async () => {
     const localTraces = mkdtempSync(path.join(tmpdir(), "fullhost-semantic-"));
     const mcpCalls: string[] = [];
@@ -526,4 +526,42 @@ describe("buildApp /api/ask", () => {
     expect(evalSrc).toMatch(/buildRootGraph\(\{[\s\S]*?\bretrieve\s*:/);
     expect(evalSrc).toMatch(/buildEvalGraph\(/);
   });
-});
+
+  it("propagates RATE_LIMITED without downgrading to INTERNAL_ERROR on SSE failed events", async () => {
+    const app = buildApp({
+      checkpointer: new MemorySaver(),
+      mcpUrl: "http://127.0.0.1:1/mcp",
+      tracesDir,
+      env: stubEnv,
+      ucHandlers: {
+        tracer: async () => {
+          throw new ModelRetryError({
+            message: "RATE_LIMITED: model provider rate limit (HTTP 429) after 4 attempt(s)",
+            status: 429,
+            attempts: 4,
+            reason: "max_retries_exhausted",
+          });
+        },
+      },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "How many orders?", persona: "sales_south" }),
+      });
+      const blocks = parseSse(await response.text());
+      const failed = blocks.find((b) => b.event === "failed");
+      expect(failed).toBeDefined();
+      expect(failed?.data["data"]).toMatchObject({
+        code: "RATE_LIMITED",
+        retryable: true,
+        repairable: false,
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
