@@ -30,7 +30,11 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildRootGraph } from "@shared/agent";
+import {
+  buildRootGraph,
+  createAnswerSynthesizer,
+  createRetrieveSemantic,
+} from "@shared/agent";
 import { createCheckpointer } from "@shared/agent/ports";
 import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
 import { createSpanEmitter } from "../packages/agent/src/telemetry/spans.js";
@@ -436,7 +440,12 @@ export async function buildLiveAdapter(
     const emit = createEvalEmitter(tracesDir, { runId, threadId, userId, role });
     const t0 = Date.now();
     try {
-      const graph = buildRootGraph({ checkpointer, emitSpan: emit });
+      const graph = buildRootGraph({
+        checkpointer,
+        retrieve: createRetrieveSemantic(),
+        synthesize: createAnswerSynthesizer(),
+        emitSpan: emit,
+      });
       const out = (await withTimeout(
         graph.invoke(
           { question: c.question, ucId: c.ucId ?? "tracer", runId, threadId },
@@ -648,9 +657,15 @@ interface SafetyDrive {
 
 /** Scripted model: proposes the fixture attack SQL, ignoring its input. */
 function scriptedModel(sql: string, tablesUsed: string[]): ChatModelLike {
+  const payload = { sql, tablesUsed };
+  const rawMessage = { content: JSON.stringify(payload) };
   return {
+    invoke: () => Promise.resolve(rawMessage),
+    async *stream() {
+      yield rawMessage;
+    },
     withStructuredOutput: () => ({
-      invoke: () => Promise.resolve({ sql, tablesUsed }),
+      invoke: () => Promise.resolve(payload),
     }),
   };
 }
@@ -1446,7 +1461,12 @@ async function main(): Promise<void> {
         continue;
       }
       const cases = loadUcCases(repoRoot, uc);
-      const gatewayFile = path.join(repoRoot, "evals", uc, "cases.jsonl");
+      const gatewayFile = path.join(
+        repoRoot,
+        "evals",
+        uc,
+        uc === "uc09" ? "cases.jsonl" : "gateway.jsonl",
+      );
       if (existsSync(gatewayFile)) {
         // UC-09 dispatch (D-02): gateway records drive direct-MCP; the EX
         // path for *.json cases (tracer-01) keeps working in the same run

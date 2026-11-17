@@ -16,8 +16,18 @@
 // this module owns MCP + guard logic). No `pg` imports: DB access goes
 // through the MCP client only.
 
-import type { SearchSemanticLayerChunk } from "@shared/contracts";
-import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
+import {
+  dbToolError,
+  SearchSemanticLayerOutputSchema,
+  type SearchSemanticLayerChunk,
+} from "@shared/contracts";
+import { DEFAULT_ROUTE_ID, RCA_UC_ID } from "../constants.js";
+import {
+  callMcpTool,
+  parseMcpToolError,
+  toNormalizedMcpError,
+  type TracerRunConfig,
+} from "../mcpClient.js";
 import type { AgentState, AgentUpdate, RootRuntime } from "../state.js";
 
 /** Calibrated dense-similarity threshold (text-embedding-3-small default). */
@@ -54,15 +64,56 @@ function readTransport(rt: RootRuntime): TracerRunConfig | null {
   return { mcpUrl, token, runId, userId, roleScope };
 }
 
-function toStateChunk(chunk: SearchSemanticLayerChunk): AgentState["semanticChunks"][number] {
+export function toStateChunk(
+  chunk: SearchSemanticLayerChunk,
+): AgentState["semanticChunks"][number] {
   const out: AgentState["semanticChunks"][number] = {
     chunkId: chunk.chunkId,
+    docType: chunk.docType,
+    table: chunk.table,
     score: chunk.score,
     text: chunk.content,
   };
   if (chunk.aliasMatched !== undefined) out.aliasMatched = chunk.aliasMatched;
   if (chunk.denseScore !== undefined) out.denseScore = chunk.denseScore;
+  const tables = [...new Set([...(chunk.table ? [chunk.table] : []), ...chunk.tables])];
+  if (tables.length > 0) out.tables = tables;
   return out;
+}
+
+/**
+ * Call MCP `search_semantic_layer` and validate its payload against the shared
+ * contract. Shared by pre-intent retrieval and `createRetrieveSemantic`.
+ */
+export async function fetchSemanticChunks(
+  transport: TracerRunConfig,
+  query: string,
+  topK: number = RETRIEVE_TOP_K,
+): Promise<SearchSemanticLayerChunk[]> {
+  const raw = await callMcpTool(transport, "search_semantic_layer", {
+    query,
+    topK,
+  });
+  if (raw.isError) {
+    throw parseMcpToolError("search_semantic_layer", raw.text);
+  }
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(raw.text);
+  } catch {
+    throw dbToolError(
+      "INTERNAL_ERROR",
+      "MCP tool search_semantic_layer returned invalid JSON",
+    );
+  }
+  const validated = SearchSemanticLayerOutputSchema.safeParse(parsedJson);
+  if (!validated.success) {
+    throw dbToolError(
+      "INTERNAL_ERROR",
+      "MCP tool search_semantic_layer returned an unexpected shape",
+    );
+  }
+  return validated.data.chunks;
 }
 
 /**
@@ -252,42 +303,128 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
 ) => Promise<AgentUpdate> {
   const topK = deps.topK ?? RETRIEVE_TOP_K;
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
-    if (state.status === "error") return {};
+    if (
+      state.status === "error" ||
+      state.status === "restricted" ||
+      state.status === "cannot_answer"
+    ) {
+      return {};
+    }
     const metrics = state.intent.requestedMetrics ?? [];
     const isDefinition = state.intent.queryMode === "definition_lookup";
+    const needsGrounding = metrics.length > 0 || isDefinition;
 
-    // Basic UC-01 queries pass straight through (no semantic search).
-    if (metrics.length === 0 && !isDefinition) return {};
+    // Preserve legacy tracer and RCA routes when no metrics or definitions
+    // are requested so their existing span shapes stay untouched.
+    if (
+      !needsGrounding &&
+      (state.ucId === "" ||
+        state.ucId === DEFAULT_ROUTE_ID ||
+        state.ucId === RCA_UC_ID)
+    ) {
+      return {};
+    }
+
+    // Reuse chunks already fetched in pre-intent retrieval for the same
+    // question instead of issuing a second search_semantic_layer call (#89).
+    if (
+      state.semanticRetrieveStatus === "ok" &&
+      state.semanticQuery === state.question
+    ) {
+      if (!hasUserSuppliedFormula(state.question) && metrics.length > 0) {
+        const { ungrounded } = checkUnknownTerms(metrics, state.semanticChunks);
+        if (ungrounded.length > 0) {
+          rt.emit({
+            node: "retrieve",
+            type: "node_done",
+            durationMs: 0,
+            payload: { gate: "unknown_term", ungrounded, reusedPreRetrieval: true },
+          });
+          return buildCannotAnswer(ungrounded, state.semanticChunks);
+        }
+      }
+      rt.emit({
+        node: "retrieve",
+        type: "node_done",
+        durationMs: 0,
+        payload: {
+          gate: isDefinition ? "definition_lookup" : "data_query",
+          reusedPreRetrieval: true,
+          chunkIds: state.semanticChunks.map((chunk) => chunk.chunkId),
+        },
+      });
+      return {};
+    }
 
     const started = Date.now();
     let chunks: SearchSemanticLayerChunk[];
-    if (deps.search) {
-      chunks = await deps.search(state.question, topK);
-    } else {
-      const transport = readTransport(rt);
-      if (!transport) {
-        // Fail closed: metrics present (or a definition lookup) but no MCP
-        // transport means we cannot ground them — never skip the gate with {}.
-        // Basic UC-01 queries (no metrics, no definition) still pass through.
-        if (metrics.length === 0 && !isDefinition) return {};
+    try {
+      if (deps.search) {
+        chunks = await deps.search(state.question, topK);
+      } else {
+        const transport = readTransport(rt);
+        if (!transport) {
+          // Fail closed: metrics present (or a definition lookup) but no MCP
+          // transport means we cannot ground them — never skip the gate with {}.
+          // Basic UC-01 queries without transport (unit tests) still pass through.
+          if (!needsGrounding) return {};
+          return {
+            status: "error",
+            semanticRetrieveStatus: "error",
+            semanticErrorCode: "INTERNAL_ERROR",
+            answerText:
+              "Semantic grounding unavailable (MCP transport identity is incomplete); cannot verify requested metrics without speculating.",
+          };
+        }
+        chunks = await fetchSemanticChunks(transport, state.question, topK);
+      }
+    } catch (error) {
+      const normalized = toNormalizedMcpError("search_semantic_layer", error);
+      rt.emit({
+        node: "retrieve",
+        type: "tool_call",
+        durationMs: Date.now() - started,
+        payload: {
+          tool: "search_semantic_layer",
+          ok: false,
+          code: normalized.code,
+        },
+      });
+      // Metric/definition queries stay fail-closed (never speculate or claim out-of-schema).
+      if (needsGrounding) {
         return {
-          status: "error",
-          answerText:
-            "Semantic grounding unavailable (MCP transport identity is incomplete); cannot verify requested metrics without speculating.",
+          status:
+            normalized.code === "SCOPE_DENIED" || normalized.code === "UNAUTHORIZED"
+              ? "restricted"
+              : "error",
+          semanticRetrieveStatus: "error",
+          semanticErrorCode: normalized.code,
+          answerText: `Semantic grounding failed (${normalized.code}): ${normalized.message}`,
         };
       }
-      const raw = await callMcpTool(transport, "search_semantic_layer", {
-        query: state.question,
-        topK,
+      // Plain data questions record the retrieval failure and allow catalog-verified
+      // intent entities to continue, while preventing false out-of-schema claims (#89).
+      rt.emit({
+        node: "retrieve",
+        type: "node_done",
+        durationMs: 0,
+        payload: {
+          gate: "data_query",
+          degraded: true,
+          errorCode: normalized.code,
+          chunkIds: [],
+        },
       });
-      const parsed = JSON.parse(raw.text) as { chunks?: SearchSemanticLayerChunk[] };
-      chunks = Array.isArray(parsed.chunks) ? parsed.chunks : [];
+      return {
+        semanticRetrieveStatus: "error",
+        semanticErrorCode: normalized.code,
+      };
     }
     rt.emit({
       node: "retrieve",
       type: "tool_call",
       durationMs: Date.now() - started,
-      payload: { tool: "search_semantic_layer", chunkCount: chunks.length },
+      payload: { tool: "search_semantic_layer", ok: true, chunkCount: chunks.length },
     });
 
     const stateChunks = chunks.map(toStateChunk);
@@ -302,7 +439,13 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
           durationMs: 0,
           payload: { gate: "unknown_term", ungrounded },
         });
-        return { semanticChunks: stateChunks, ...buildCannotAnswer(ungrounded, chunks) };
+        return {
+          semanticChunks: stateChunks,
+          semanticQuery: state.question,
+          semanticRetrieveStatus: "ok",
+          semanticErrorCode: null,
+          ...buildCannotAnswer(ungrounded, chunks),
+        };
       }
     }
 
@@ -315,6 +458,11 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
         chunkIds: chunks.map((chunk) => chunk.chunkId),
       },
     });
-    return { semanticChunks: stateChunks };
+    return {
+      semanticChunks: stateChunks,
+      semanticQuery: state.question,
+      semanticRetrieveStatus: "ok",
+      semanticErrorCode: null,
+    };
   };
 }

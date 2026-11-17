@@ -1,4 +1,7 @@
-import { dbToolError, type DbToolError } from "@shared/contracts";
+import {
+  dbToolError,
+  ListTablesOutputSchema,
+} from "@shared/contracts";
 import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createChatModel } from "../models/factory.js";
@@ -18,7 +21,12 @@ import {
   type ExecutorRunInput,
   type McpToolCaller,
 } from "../queryExecutor/executor.js";
-import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
+import {
+  callMcpTool,
+  parseMcpToolError,
+  toNormalizedMcpError,
+  type TracerRunConfig,
+} from "../mcpClient.js";
 import { loadSkill } from "../skills/loader.js";
 import {
   isClarificationOption,
@@ -29,11 +37,24 @@ import {
   IntentSchema,
   type AgentState,
   type AgentUpdate,
+  type CatalogTable,
   type RootRuntime,
   type UcEntryHandler,
   type PendingClarification,
 } from "../state.js";
-import { checkUnknownTerms, buildCannotAnswer } from "../semantic/retrieveSemantic.js";
+import {
+  buildCannotAnswer,
+  checkUnknownTerms,
+  fetchSemanticChunks,
+  RETRIEVE_TOP_K,
+  toStateChunk,
+  type SemanticSearchFn,
+} from "../semantic/retrieveSemantic.js";
+import {
+  buildIntentPrompt,
+  resolveCandidateTables,
+  selectSqlReferences,
+} from "./tableResolver.js";
 import {
   deriveCitations,
   repairCitations,
@@ -72,6 +93,10 @@ export interface TextToSqlRuntimeDeps {
   /** SQL model seam; omitted in production to use the configured profile. */
   sqlModel?: ChatModelLike;
   executor?: TextToSqlExecutorLike;
+  /** Optional catalog table discovery override for tests; production calls MCP list_tables. */
+  listTables?: (rt: RootRuntime) => Promise<CatalogTable[]>;
+  /** Optional semantic search override for pre-intent retrieval in tests. */
+  semanticSearch?: SemanticSearchFn;
 }
 
 /** Root-entry guard: initialize one persistent deadline and stop before I/O. */
@@ -119,25 +144,6 @@ function readRunContext(rt: RootRuntime): {
   return { identity, transport };
 }
 
-function asMcpFailure(tool: string, text: string): DbToolError {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "code" in parsed &&
-      typeof (parsed as { code: unknown }).code === "string" &&
-      "message" in parsed &&
-      typeof (parsed as { message: unknown }).message === "string"
-    ) {
-      return parsed as DbToolError;
-    }
-  } catch {
-    // A malformed gateway failure is deliberately normalized below.
-  }
-  return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${text.slice(0, 200)}`);
-}
-
 /** MCP adapter for the shared executor. Identity stays in transport headers. */
 function createRuntimeMcpCaller(config: TracerRunConfig): McpToolCaller {
   return {
@@ -147,7 +153,7 @@ function createRuntimeMcpCaller(config: TracerRunConfig): McpToolCaller {
       delete toolArgs.userId;
       delete toolArgs.roleScope;
       const result = await callMcpTool(config, tool, toolArgs);
-      if (result.isError) throw asMcpFailure(tool, result.text);
+      if (result.isError) throw parseMcpToolError(tool, result.text);
       try {
         return JSON.parse(result.text) as unknown;
       } catch {
@@ -160,15 +166,107 @@ function createRuntimeMcpCaller(config: TracerRunConfig): McpToolCaller {
   };
 }
 
-function intentPrompt(question: string, skillContract: string): string {
-  return [
-    "Extract a structured analytics intent from the user question.",
-    "requestedMetrics contains business measures; schemaEntities contains candidate physical tables or columns.",
-    "Use definition_lookup only when the user asks for a definition rather than data.",
-    "Do not invent tables, columns, metrics, or filter values.",
-    `Skill contract:\n${skillContract}`,
-    `Question: ${question}`,
-  ].join("\n\n");
+async function fetchCatalogTables(transport: TracerRunConfig): Promise<CatalogTable[]> {
+  const result = await callMcpTool(transport, "list_tables", {});
+  if (result.isError) throw parseMcpToolError("list_tables", result.text);
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(result.text);
+  } catch {
+    throw dbToolError("INTERNAL_ERROR", "MCP tool list_tables returned invalid JSON");
+  }
+  const validated = ListTablesOutputSchema.safeParse(parsedJson);
+  if (!validated.success) {
+    throw dbToolError(
+      "INTERNAL_ERROR",
+      "MCP tool list_tables returned an unexpected shape",
+    );
+  }
+  return validated.data.tables;
+}
+
+type CatalogLoadResult =
+  | { ok: true; tables: CatalogTable[]; calledTool: boolean }
+  | {
+      ok: false;
+      catalogStatus: "empty" | "error";
+      status: "error" | "restricted";
+      answerText: string;
+    };
+
+async function loadCatalogForRun(
+  deps: TextToSqlRuntimeDeps,
+  rt: RootRuntime,
+  transport: TracerRunConfig | null,
+  node: string,
+): Promise<CatalogLoadResult> {
+  if (!deps.listTables && (deps.executor || !transport)) {
+    if (!deps.executor && !transport) {
+      return {
+        ok: false,
+        catalogStatus: "error",
+        status: "error",
+        answerText: "text-to-SQL MCP transport identity is incomplete.",
+      };
+    }
+    return { ok: true, tables: [], calledTool: false };
+  }
+  const started = Date.now();
+  try {
+    const tables = deps.listTables
+      ? await deps.listTables(rt)
+      : await fetchCatalogTables(transport!);
+    rt.emit({
+      node,
+      type: "tool_call",
+      durationMs: Date.now() - started,
+      payload: {
+        tool: "list_tables",
+        ok: true,
+        tableCount: tables.length,
+        tables: tables.map((t) => t.name),
+      },
+    });
+    if (tables.length === 0) {
+      return {
+        ok: false,
+        catalogStatus: "empty",
+        status: "error",
+        answerText:
+          "Schema catalog is empty (list_tables returned no tables); cannot determine query tables.",
+      };
+    }
+    return { ok: true, tables, calledTool: true };
+  } catch (thrown) {
+    const err = toNormalizedMcpError("list_tables", thrown);
+    rt.emit({
+      node,
+      type: "tool_call",
+      durationMs: Date.now() - started,
+      payload: { tool: "list_tables", ok: false, code: err.code },
+    });
+    return {
+      ok: false,
+      catalogStatus: "error",
+      status:
+        err.code === "SCOPE_DENIED" || err.code === "UNAUTHORIZED"
+          ? "restricted"
+          : "error",
+      answerText: `Schema catalog lookup failed (${err.code}): ${err.message}`,
+    };
+  }
+}
+
+function dedupeTools(tools: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tool of tools) {
+    if (tool && !seen.has(tool)) {
+      seen.add(tool);
+      out.push(tool);
+    }
+  }
+  return out;
 }
 
 type ExecutorStatus = ExecutorResult["status"];
@@ -233,21 +331,6 @@ function updateFromExecutor(result: ExecutorResult, state: AgentState): AgentUpd
     return { ...update, sql: headed };
   }
   return update;
-}
-
-const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/** Normalize schema entities to bare table names: trim, strip schema prefix, validate, lowercase, dedupe. */
-function normalizeCandidateTables(entities: string[]): string[] {
-  const seen = new Set<string>();
-  const tables: string[] = [];
-  for (const entity of entities) {
-    const last = (entity.trim().split(".").pop() ?? "").trim().toLowerCase();
-    if (!TABLE_NAME_RE.test(last) || seen.has(last)) continue;
-    seen.add(last);
-    tables.push(last);
-  }
-  return tables;
 }
 
 /** Definition fast-path (RT->SYN): answer from retrieved semantic chunks, no executor/models/MCP. */
@@ -454,7 +537,79 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     }
 
     const skill = loadSkill("text-to-sql", { emit: rt.emit });
-    const prompt = intentPrompt(state.question, skill.contract);
+    const { transport } = readRunContext(rt);
+    const understandTools: string[] = [];
+
+    const catalogLoad = await loadCatalogForRun(deps, rt, transport, "understand");
+    if (!catalogLoad.ok) {
+      return {
+        catalogTables: [],
+        catalogStatus: catalogLoad.catalogStatus,
+        status: catalogLoad.status,
+        answerText: catalogLoad.answerText,
+        budget: { deadlineMs: budget.deadlineMs },
+      };
+    }
+    const catalogTables = catalogLoad.tables;
+    const catalogStatus: AgentState["catalogStatus"] = catalogLoad.calledTool
+      ? "ready"
+      : state.catalogStatus;
+    if (catalogLoad.calledTool && !deps.listTables) {
+      understandTools.push("list_tables");
+    } else if (catalogLoad.calledTool) {
+      understandTools.push("list_tables");
+    }
+
+    let preStateChunks: AgentState["semanticChunks"] = [];
+    let semanticQuery: string | null = null;
+    let semanticRetrieveStatus: AgentState["semanticRetrieveStatus"] = "unloaded";
+    let semanticErrorCode: string | null = null;
+
+    if (deps.semanticSearch || (!deps.executor && transport)) {
+      const searchStarted = Date.now();
+      try {
+        const rawChunks = deps.semanticSearch
+          ? await deps.semanticSearch(state.question, RETRIEVE_TOP_K)
+          : await fetchSemanticChunks(transport!, state.question, RETRIEVE_TOP_K);
+        rt.emit({
+          node: "retrieve",
+          type: "tool_call",
+          durationMs: Date.now() - searchStarted,
+          payload: {
+            tool: "search_semantic_layer",
+            ok: true,
+            chunkCount: rawChunks.length,
+            phase: "pre_understand",
+          },
+        });
+        understandTools.push("search_semantic_layer");
+        preStateChunks = rawChunks.map(toStateChunk);
+        semanticQuery = state.question;
+        semanticRetrieveStatus = "ok";
+      } catch (error) {
+        const normalized = toNormalizedMcpError("search_semantic_layer", error);
+        rt.emit({
+          node: "retrieve",
+          type: "tool_call",
+          durationMs: Date.now() - searchStarted,
+          payload: {
+            tool: "search_semantic_layer",
+            ok: false,
+            code: normalized.code,
+            phase: "pre_understand",
+          },
+        });
+        semanticRetrieveStatus = "error";
+        semanticErrorCode = normalized.code;
+      }
+    }
+
+    const prompt = buildIntentPrompt({
+      question: state.question,
+      skillContract: skill.contract,
+      catalogTables,
+      semanticChunks: preStateChunks,
+    });
     const intentStarted = Date.now();
     let out;
     try {
@@ -515,6 +670,23 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     return {
       ...(state.status === "error" ? { status: "no_data" as const, answerText: "" } : {}),
       intent,
+      ...(catalogStatus === "ready" ? { catalogTables, catalogStatus } : {}),
+      ...(semanticRetrieveStatus === "ok"
+        ? {
+            semanticChunks: preStateChunks,
+            semanticQuery,
+            semanticRetrieveStatus,
+            semanticErrorCode: null,
+          }
+        : semanticRetrieveStatus === "error"
+          ? {
+              semanticRetrieveStatus,
+              semanticErrorCode,
+            }
+          : {}),
+      ...(understandTools.length > 0
+        ? { toolsCalled: dedupeTools([...state.toolsCalled, ...understandTools]) }
+        : {}),
       budget: {
         llmCalls: failedCalls + 1,
         tokensUsed:
@@ -529,7 +701,13 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
-    if (state.status === "error") return {};
+    if (
+      state.status === "error" ||
+      state.status === "restricted" ||
+      state.status === "cannot_answer"
+    ) {
+      return {};
+    }
     let activeState = state;
     let clarificationUpdate: AgentUpdate = {};
     const definition = handleDefinitionLookup(activeState);
@@ -570,13 +748,76 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         answerText: "text-to-SQL run identity is incomplete.",
       };
     }
-    const candidateTables = normalizeCandidateTables(activeState.intent.schemaEntities);
-    if (candidateTables.length === 0) {
+    let effectiveCatalogTables = activeState.catalogTables;
+    let effectiveCatalogStatus = activeState.catalogStatus;
+    const entryPreTools: string[] = [];
+    if (
+      effectiveCatalogStatus === "unloaded" &&
+      (deps.listTables || (!deps.executor && transport))
+    ) {
+      const catalogLoad = await loadCatalogForRun(deps, rt, transport, "describe");
+      if (!catalogLoad.ok) {
+        return {
+          ...clarificationUpdate,
+          catalogTables: [],
+          catalogStatus: catalogLoad.catalogStatus,
+          status: catalogLoad.status,
+          answerText: catalogLoad.answerText,
+        };
+      }
+      if (catalogLoad.calledTool) {
+        effectiveCatalogTables = catalogLoad.tables;
+        effectiveCatalogStatus = "ready";
+        entryPreTools.push("list_tables");
+      }
+    }
+    const resolved = resolveCandidateTables({
+      question: activeState.question,
+      schemaEntities: activeState.intent.schemaEntities,
+      requestedMetrics: activeState.intent.requestedMetrics,
+      filterValues: activeState.intent.filters.map((f) => String(f.value ?? "")),
+      catalogTables: effectiveCatalogTables,
+      catalogLoaded: effectiveCatalogStatus === "ready",
+      semanticChunks: activeState.semanticChunks,
+    });
+    if (!resolved.ok) {
+      if (activeState.semanticRetrieveStatus === "error") {
+        const code = activeState.semanticErrorCode ?? "INTERNAL_ERROR";
+        return {
+          ...clarificationUpdate,
+          status:
+            code === "SCOPE_DENIED" || code === "UNAUTHORIZED"
+              ? "restricted"
+              : "error",
+          answerText: `Semantic retrieval failed (${code}); cannot determine candidate tables safely.`,
+        };
+      }
+      const missing =
+        resolved.unmappedEntities.length > 0
+          ? ` (${resolved.unmappedEntities.join(", ")})`
+          : "";
+      const available =
+        effectiveCatalogTables.length > 0
+          ? ` Available tables: ${effectiveCatalogTables.map((t) => t.name).join(", ")}.`
+          : "";
       return {
+        ...clarificationUpdate,
         status: "cannot_answer",
-        answerText: "No candidate data tables were identified for this question.",
+        answerText: `No candidate data tables were identified for this question${missing}.${available}`,
       };
     }
+    const candidateTables = resolved.tables;
+    rt.emit({
+      node: "describe",
+      type: "node_done",
+      durationMs: 0,
+      payload: {
+        candidateTables,
+        candidateCount: candidateTables.length,
+        sources: resolved.sources,
+      },
+    });
+    const references = selectSqlReferences(activeState.semanticChunks, candidateTables);
     const collectedTools: string[] = [];
     const seenTools = new Set<string>();
     const executor =
@@ -621,6 +862,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       question: activeState.question,
       timeRange: activeState.intent.timeRange,
       candidateTables,
+      references,
       principal: identity,
       budget,
       callbacks: rt.config.callbacks,
@@ -663,6 +905,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         question: activeState.question,
         timeRange: activeState.intent.timeRange,
         candidateTables,
+        references,
         principal: identity,
         budget,
         callbacks: rt.config.callbacks,
@@ -679,8 +922,21 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     return {
       ...clarificationUpdate,
       ...update,
+      ...(effectiveCatalogStatus === "ready" &&
+      activeState.catalogStatus === "unloaded"
+        ? {
+            catalogTables: effectiveCatalogTables,
+            catalogStatus: effectiveCatalogStatus,
+          }
+        : {}),
       ...(isOkLike
-        ? { toolsCalled: [...activeState.toolsCalled, ...observedTools] }
+        ? {
+            toolsCalled: dedupeTools([
+              ...activeState.toolsCalled,
+              ...entryPreTools,
+              ...observedTools,
+            ]),
+          }
         : {}),
       budget: {
         llmCalls: budget.llmCalls - state.budget.llmCalls,

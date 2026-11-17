@@ -32,6 +32,7 @@ import {
   type BudgetState,
   type BudgetTripReason,
 } from "./budgets.js";
+import { buildSqlProposalPrompt, type DescribedTable } from "./prompt.js";
 import {
   estimateCostUsd,
   invokeJsonWithUsage,
@@ -128,6 +129,11 @@ export interface ExecutorRunInput {
   timeRange?: string | null;
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
+  /**
+   * Trusted semantic-layer snippets (metric definitions, join rules,
+   * enum anchors) shown to the SQL model as reference (#89/#104). Never row data.
+   */
+  references?: string[];
   principal: ExecutorPrincipal;
   /**
    * LangSmith callbacks from the enclosing graph run (same tracer object
@@ -684,15 +690,7 @@ export class ValidatedQueryExecutor {
     // 1. Selective describe: candidate tables only, budget-checked per call.
     // Describe failures return immediately — the catalog they would build is
     // the repair loop's ground truth, so there is nothing to repair with.
-    const described: {
-      table: string;
-      columns: {
-        name: string;
-        type: string;
-        nullable: boolean;
-        sensitive: boolean;
-      }[];
-    }[] = [];
+    const described: DescribedTable[] = [];
     for (const table of input.candidateTables) {
       const check = checkBudget(budget);
       if (check.tripped) return budgetTrip(check.reason, 0);
@@ -716,7 +714,12 @@ export class ValidatedQueryExecutor {
           attempts: 1,
         };
       }
-      described.push({ table: parsed.data.table, columns: parsed.data.columns });
+      described.push({
+        table: parsed.data.table,
+        columns: parsed.data.columns,
+        primaryKey: parsed.data.primaryKey,
+        foreignKeys: parsed.data.foreignKeys,
+      });
       partials.tablesDescribed.push(parsed.data.table);
       this.span({
         node: "describe",
@@ -759,13 +762,18 @@ export class ValidatedQueryExecutor {
         let proposal: SqlProposal;
         let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
         let usageModel: string | undefined;
-        const timeRangeContext = input.timeRange?.trim()
-          ? `\n\n<user-selected-time-range>${JSON.stringify(input.timeRange.trim())}</user-selected-time-range>`
-          : "";
-        const prompt =
-          repairFeedback === null
-            ? `${input.question}${timeRangeContext}`
-            : `${input.question}${timeRangeContext}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
+        // Plain-JSON path has no response_format on the wire, so the prompt carries
+        // the output contract, described schema (with PK/FK), and semantic refs.
+        const prompt = buildSqlProposalPrompt({
+          question: input.question,
+          timeRange: input.timeRange,
+          described,
+          references: input.references,
+          repair:
+            repairFeedback === null
+              ? null
+              : { attempt: attempt - 1, feedback: repairFeedback },
+        });
         try {
           // Plain-JSON proposal: no response_format on the wire (the
           // provider's strict json_schema path is far slower than the
@@ -891,7 +899,7 @@ export class ValidatedQueryExecutor {
         return { status: "restricted", error: gate.error, sql, attempts: attempt };
       }
       if (gate.verdict === "needs_clarification") {
-        if (input.timeRange?.trim() && attempt < this.maxAttempts) {
+        if (input.timeRange?.trim() && attempt < effectiveMaxAttempts) {
           repairFeedback = [
             "The user already supplied a time range, but the SQL did not include a valid conjunctive orders.purchase_date range predicate.",
             "Use the selected range exactly as a [start, end) bound and preserve the requested metric.",

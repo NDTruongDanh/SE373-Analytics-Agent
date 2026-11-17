@@ -261,4 +261,207 @@ describe("UC-02 text-to-SQL entry", () => {
     expect(out.status).toBe("cannot_answer");
     expect(out.answerText).toMatch(/Citation check failed/);
   });
+
+  it("resolves candidate tables from semantic chunks when schemaEntities is empty", async () => {
+    let seenCandidateTables: string[] = [];
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async (input) => {
+          seenCandidateTables = [...input.candidateTables];
+          return {
+            status: "ok",
+            sql: "SELECT status, COUNT(*) FROM public.orders GROUP BY status",
+            tablesUsed: ["orders"],
+            columns: ["status", "count"],
+            rows: [{ status: "completed", count: 5 }],
+            maskedColumns: [],
+            attempts: 1,
+          };
+        },
+      },
+    });
+    const state = stateWith({
+      question: "Đếm số đơn hàng theo trạng thái",
+      catalogStatus: "ready",
+      catalogTables: [
+        { name: "orders", schema: "public" },
+        { name: "customers", schema: "public" },
+      ],
+      intent: {
+        metric: null,
+        dimensions: ["status"],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        schemaEntities: [],
+        queryMode: "standard_query",
+      },
+      semanticRetrieveStatus: "ok",
+      semanticChunks: [
+        {
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          tables: ["orders"],
+          text: "orders table storing customer orders",
+          score: 0.9,
+          aliasMatched: true,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(out.status).toBe("ok");
+    expect(seenCandidateTables).toEqual(["orders"]);
+  });
+
+  it("prioritizes catalog > semantic-mapped > semantic-expanded and caps candidateTables at 6", async () => {
+    let seenCandidateTables: string[] = [];
+    const catalogNames = [
+      "orders",
+      "order_items",
+      "customers",
+      "channels",
+      "regions",
+      "products",
+      "promotions",
+      "sellers",
+    ];
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async (input) => {
+          seenCandidateTables = [...input.candidateTables];
+          return {
+            status: "ok",
+            sql: "SELECT 1 AS n",
+            tablesUsed: ["orders"],
+            columns: ["n"],
+            rows: [{ n: 1 }],
+            maskedColumns: [],
+            attempts: 1,
+          };
+        },
+      },
+    });
+    const state = stateWith({
+      question: "Thống kê doanh thu bán hàng theo khu vực và khuyến mãi",
+      catalogStatus: "ready",
+      catalogTables: catalogNames.map((name) => ({ name, schema: "public" })),
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        // Two catalog-exact + one Vietnamese entity mapped via semantic chunk + extra semantic chunks
+        schemaEntities: ["orders", "order_items", "kênh bán"],
+        queryMode: "standard_query",
+      },
+      semanticRetrieveStatus: "ok",
+      semanticChunks: [
+        {
+          chunkId: "table:channels",
+          docType: "table",
+          table: "channels",
+          tables: ["channels"],
+          text: "Bảng kênh bán hàng (channels)",
+          score: 0.95,
+          aliasMatched: true,
+        },
+        {
+          chunkId: "table:customers",
+          docType: "table",
+          table: "customers",
+          tables: ["customers"],
+          text: "customers table",
+          score: 0.9,
+        },
+        {
+          chunkId: "table:regions",
+          docType: "table",
+          table: "regions",
+          tables: ["regions"],
+          text: "regions table",
+          score: 0.88,
+        },
+        {
+          chunkId: "table:products",
+          docType: "table",
+          table: "products",
+          tables: ["products"],
+          text: "products table",
+          score: 0.85,
+        },
+        {
+          chunkId: "table:promotions",
+          docType: "table",
+          table: "promotions",
+          tables: ["promotions"],
+          text: "promotions table",
+          score: 0.8,
+        },
+        {
+          chunkId: "table:sellers",
+          docType: "table",
+          table: "sellers",
+          tables: ["sellers"],
+          text: "sellers table",
+          score: 0.7,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(out.status).toBe("ok");
+    expect(seenCandidateTables.length).toBe(6);
+    expect(seenCandidateTables.slice(0, 3)).toEqual([
+      "orders",
+      "order_items",
+      "channels",
+    ]);
+  });
+
+  it("fails closed to cannot_answer when proposed entities do not exist in catalog or semantic chunks", async () => {
+    let executorCalls = 0;
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async () => {
+          executorCalls += 1;
+          throw new Error("executor must not run for out-of-schema entities");
+        },
+      },
+    });
+    const state = stateWith({
+      question: "Lương nhân viên phòng kho là bao nhiêu?",
+      catalogStatus: "ready",
+      catalogTables: [
+        { name: "orders", schema: "public" },
+        { name: "customers", schema: "public" },
+      ],
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        schemaEntities: ["salaries"],
+        queryMode: "standard_query",
+      },
+      semanticRetrieveStatus: "ok",
+      semanticChunks: [
+        {
+          chunkId: "table:orders",
+          docType: "table",
+          table: "orders",
+          tables: ["orders"],
+          text: "Orders placed by customers",
+          score: 0.25,
+          aliasMatched: false,
+          denseScore: 0.25,
+        },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(executorCalls).toBe(0);
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toMatch(/salaries/);
+  });
 });

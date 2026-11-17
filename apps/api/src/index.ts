@@ -24,11 +24,16 @@ import { Command, Overwrite, type BaseCheckpointSaver } from "@langchain/langgra
 import {
   BUDGET_DEFAULTS,
   buildRootGraph,
+  createAnswerSynthesizer,
+  createRetrieveSemantic,
   previewCountTotal,
   routeQuestionToUc,
   runTracerGraph,
   type AgentState,
+  type RetrieveFn,
+  type RootGraphDeps,
   type SpanEvent,
+  type SynthesizeFn,
   type UcEntryHandler,
   type VizFn,
 } from "@shared/agent";
@@ -93,6 +98,12 @@ export interface BuildAppOptions {
   store?: AppStateStore;
   /** Test seam: merged OVER the registry table (mirrors RootGraphDeps). */
   ucHandlers?: Record<string, UcEntryHandler>;
+  /** Optional semantic retrieve hook; defaults to createRetrieveSemantic(). */
+  retrieve?: RetrieveFn;
+  /** Optional text-to-SQL runtime deps seam (mirrors RootGraphDeps.textToSql). */
+  textToSql?: RootGraphDeps["textToSql"];
+  /** Optional answer synthesizer hook; defaults to createAnswerSynthesizer(). */
+  synthesize?: SynthesizeFn;
   /**
    * UC-03 VIZ seam (insight_report verification for every ok/no_data
    * answer). Defaults to createUc03Viz(): deterministic chart validation
@@ -352,7 +363,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
         checkpointer: options.checkpointer,
         emitSpan: progress,
         ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
+        ...(options.textToSql ? { textToSql: options.textToSql } : {}),
+        retrieve: options.retrieve ?? createRetrieveSemantic(),
         viz: options.viz ?? createUc03Viz(),
+        synthesize: options.synthesize ?? createAnswerSynthesizer(),
       }),
       emit,
     };
@@ -471,7 +485,9 @@ export function buildApp(options: BuildAppOptions): express.Express {
           question, ucId: effectiveUcId, runId, threadId,
           // A new question reuses the thread, but not the previous run's outputs or budgets.
           status: "no_data", answerText: "", sql: null, tablesUsed: [],
-          semanticChunks: [], resultPreview: [], columns: [], toolsCalled: [],
+          semanticChunks: [], catalogTables: [], catalogStatus: "unloaded",
+          semanticQuery: null, semanticRetrieveStatus: "unloaded", semanticErrorCode: null,
+          resultPreview: [], columns: [], toolsCalled: [],
           vizSpec: null, pendingClarification: null, analysisPlan: null, rootCauseAnswer: null,
           budget: new Overwrite({ llmCalls: 0, tokensUsed: 0, maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls, maxTokens: BUDGET_DEFAULTS.maxTokens, deadlineMs: 0 }),
           telemetry: new Overwrite({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }),
