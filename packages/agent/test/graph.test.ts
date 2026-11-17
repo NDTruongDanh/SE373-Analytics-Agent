@@ -722,4 +722,120 @@ describe("root graph seam", () => {
       );
     }
   });
+
+  it("retries intentModel 429 twice then succeeds on text-to-sql, or stops with RATE_LIMITED when exhausted", async () => {
+    const saved = {
+      max: process.env.AGENT_MODEL_MAX_RETRIES,
+      base: process.env.AGENT_MODEL_RETRY_BASE_MS,
+      maxWait: process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS,
+    };
+    process.env.AGENT_MODEL_MAX_RETRIES = "2";
+    process.env.AGENT_MODEL_RETRY_BASE_MS = "50";
+    process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = "100";
+    try {
+      let okCalls = 0;
+      const spans: { node: string; type: string; payload?: unknown }[] = [];
+      const okGraph = buildRootGraph({
+        emitSpan: (event) => {
+          spans.push({ node: event.node, type: event.type, payload: event.payload });
+          return `s-${spans.length}`;
+        },
+        retrieve: async () => ({
+          semanticChunks: [
+            { chunkId: "metric:order_count", text: "order_count", aliasMatched: true },
+          ],
+        }),
+        textToSql: {
+          intentModel: {
+            withStructuredOutput: () => ({
+              invoke: async () => {
+                okCalls += 1;
+                if (okCalls <= 2) {
+                  throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+                }
+                return {
+                  metric: "order_count",
+                  dimensions: ["status"],
+                  filters: [],
+                  timeRange: null,
+                  requestedMetrics: ["order_count"],
+                  schemaEntities: ["orders"],
+                  queryMode: "standard_query" as const,
+                };
+              },
+            }),
+          },
+          executor: {
+            run: async () => ({
+              status: "ok" as const,
+              sql: "SELECT status, COUNT(*) AS n FROM orders GROUP BY status",
+              tablesUsed: ["orders"],
+              columns: ["status", "n"],
+              rows: [{ status: "delivered", n: 4 }],
+              maskedColumns: [],
+              attempts: 1,
+            }),
+          },
+        },
+      });
+      const okOut = await okGraph.invoke(
+        { question: "How many orders?", ucId: TEXT_TO_SQL_UC_ID },
+        {
+          configurable: {
+            thread_id: "thread-429-ok",
+            runId: "run-429-ok",
+            userId: "u1",
+            roleScope: "sales_south",
+          },
+        },
+      );
+      expect(okOut.status).toBe("ok");
+      expect(okCalls).toBe(3);
+      expect(okOut.budget.llmCalls).toBe(3);
+      expect(spans.filter((s) => s.type === "retry")).toHaveLength(2);
+
+      // Persistent 429 on intentModel stops cleanly with RATE_LIMITED without calling executor.
+      let executorCalled = false;
+      const failGraph = buildRootGraph({
+        textToSql: {
+          intentModel: {
+            withStructuredOutput: () => ({
+              invoke: async () => {
+                throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+              },
+            }),
+          },
+          executor: {
+            run: async () => {
+              executorCalled = true;
+              throw new Error("executor must not run when intentModel is rate-limited");
+            },
+          },
+        },
+      });
+      const failOut = await failGraph.invoke(
+        { question: "How many orders?", ucId: TEXT_TO_SQL_UC_ID },
+        {
+          configurable: {
+            thread_id: "thread-429-fail",
+            runId: "run-429-fail",
+            userId: "u1",
+            roleScope: "sales_south",
+          },
+        },
+      );
+      expect(executorCalled).toBe(false);
+      expect(failOut.status).toBe("error");
+      expect(failOut.answerText).toContain("RATE_LIMITED");
+      expect(failOut.budget.llmCalls).toBe(3);
+      expect(failOut.budget.tokensUsed).toBe(0);
+    } finally {
+      if (saved.max === undefined) delete process.env.AGENT_MODEL_MAX_RETRIES;
+      else process.env.AGENT_MODEL_MAX_RETRIES = saved.max;
+      if (saved.base === undefined) delete process.env.AGENT_MODEL_RETRY_BASE_MS;
+      else process.env.AGENT_MODEL_RETRY_BASE_MS = saved.base;
+      if (saved.maxWait === undefined) delete process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS;
+      else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
+    }
+  });
 });

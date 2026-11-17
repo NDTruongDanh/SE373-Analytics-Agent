@@ -48,6 +48,14 @@ export {
   type TreeNode,
 } from "./traceTree.js";
 
+export {
+  isRateLimitFailure,
+  ModelRetryError,
+  resolveModelRetryConfig,
+  toModelDbToolError,
+  type ModelRetryConfig,
+} from "./retry.js";
+
 export interface SpanContext {
   runId: string;
   threadId: string;

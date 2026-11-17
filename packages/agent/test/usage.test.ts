@@ -16,6 +16,7 @@ import {
   type McpToolCaller,
 } from "../src/queryExecutor/executor.js";
 import { createBudgetState } from "../src/queryExecutor/budgets.js";
+import { ModelRetryError } from "../src/telemetry/retry.js";
 import { loadModelPricing } from "../src/telemetry/pricing.js";
 import {
   estimateCostUsd,
@@ -187,6 +188,77 @@ describe("invokeWithUsage", () => {
       invokeWithUsage(fake, SqlProposalSchema, "q", { name: "sql_proposal" }),
     ).rejects.toThrow();
   });
+
+  it("retries 429 twice then succeeds on structured invoke without retrying schema/auth errors", async () => {
+    let calls = 0;
+    const budget = createBudgetState({ runDeadlineMs: 30_000 });
+    const events: { type: string; payload?: unknown }[] = [];
+    const model: ChatModelLike = {
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          calls += 1;
+          if (calls <= 2) {
+            throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+          }
+          return {
+            raw: rawMessage(
+              { input_tokens: 40, output_tokens: 10, total_tokens: 50 },
+              KNOWN_MODEL,
+            ),
+            parsed: PARSED,
+          };
+        },
+      }),
+    };
+    const out = await invokeWithUsage(model, SqlProposalSchema, "q", {
+      name: "sql_proposal",
+      budget,
+      retry: { maxRetries: 3, baseMs: 10, maxWaitMs: 500 },
+      emit: (e) => {
+        events.push(e);
+        return `s-${events.length}`;
+      },
+      sleep: async () => {},
+    });
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.attempts).toBe(3);
+    expect(calls).toBe(3);
+    expect(budget.llmCalls).toBe(2);
+    expect(events.filter((e) => e.type === "retry")).toHaveLength(2);
+
+    // Non-retryable 401 and Zod errors never retry.
+    let authCalls = 0;
+    await expect(
+      invokeWithUsage(
+        {
+          withStructuredOutput: () => ({
+            invoke: async () => {
+              authCalls += 1;
+              throw Object.assign(new Error("Unauthorized"), { status: 401 });
+            },
+          }),
+        },
+        SqlProposalSchema,
+        "q",
+        { retry: { maxRetries: 3, baseMs: 1, maxWaitMs: 50 }, sleep: async () => {} },
+      ),
+    ).rejects.toThrow("Unauthorized");
+    expect(authCalls).toBe(1);
+  });
+
+  it("aborts structured invoke at the run deadline", async () => {
+    const hanging: ChatModelLike = {
+      withStructuredOutput: () => ({
+        invoke: () => new Promise(() => {}),
+      }),
+    };
+    const err = await invokeWithUsage(hanging, SqlProposalSchema, "q", {
+      deadlineMs: Date.now() + 40,
+      retry: { maxRetries: 0, baseMs: 1, maxWaitMs: 10 },
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).name).toBe("TimeoutError");
+  });
 });
 
 describe("invokeJsonWithUsage", () => {
@@ -305,6 +377,98 @@ describe("invokeJsonWithUsage", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).name).toBe("TimeoutError");
     expect(String((error as Error).message)).toMatch(/stalled/);
+  });
+
+  it("retries streaming JSON on 503/429 and stops with RATE_LIMITED without retrying invalid JSON", async () => {
+    let calls = 0;
+    const budget = createBudgetState({ runDeadlineMs: 30_000 });
+    const out = await invokeJsonWithUsage(
+      {
+        invoke: async () => ({}),
+        stream: () => {
+          calls += 1;
+          if (calls === 1) {
+            throw Object.assign(new Error("503 Service Unavailable"), {
+              status: 503,
+              headers: { "Retry-After": "0.1" },
+            });
+          }
+          if (calls === 2) {
+            throw Object.assign(new Error("429 Rate limit; try again in 50ms"), {
+              status: 429,
+            });
+          }
+          return (async function* () {
+            yield { content: JSON.stringify(PARSED), usage_metadata: USAGE };
+          })();
+        },
+      },
+      SqlProposalSchema,
+      "q",
+      {
+        budget,
+        retry: { maxRetries: 3, baseMs: 10, maxWaitMs: 500 },
+        sleep: async () => {},
+      },
+    );
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.attempts).toBe(3);
+    expect(calls).toBe(3);
+
+    // Invalid JSON is never retried.
+    let badJsonCalls = 0;
+    await expect(
+      invokeJsonWithUsage(
+        {
+          invoke: async () => ({}),
+          stream: () => {
+            badJsonCalls += 1;
+            return (async function* () {
+              yield { content: "not json at all" };
+            })();
+          },
+        },
+        SqlProposalSchema,
+        "q",
+        { retry: { maxRetries: 3, baseMs: 1, maxWaitMs: 50 }, sleep: async () => {} },
+      ),
+    ).rejects.toThrow(/not valid JSON/);
+    expect(badJsonCalls).toBe(1);
+
+    // Persistent 429 throws ModelRetryError (RATE_LIMITED).
+    await expect(
+      invokeJsonWithUsage(
+        {
+          invoke: async () => ({}),
+          stream: () => {
+            throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+          },
+        },
+        SqlProposalSchema,
+        "q",
+        { retry: { maxRetries: 1, baseMs: 1, maxWaitMs: 50 }, sleep: async () => {} },
+      ),
+    ).rejects.toBeInstanceOf(ModelRetryError);
+  });
+
+  it("aborts streaming JSON at the run deadline even when totalMs is larger", async () => {
+    const hanging = async function* () {
+      yield { content: "" };
+      await new Promise(() => {});
+      yield { content: "" };
+    };
+    const error = await invokeJsonWithUsage(
+      { invoke: async () => ({}), stream: () => hanging() },
+      SqlProposalSchema,
+      "q",
+      {
+        idleMs: 10_000,
+        totalMs: 300_000,
+        deadlineMs: Date.now() + 40,
+      },
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe("TimeoutError");
   });
 });
 

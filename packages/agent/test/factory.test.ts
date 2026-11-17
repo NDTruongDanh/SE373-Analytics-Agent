@@ -20,6 +20,7 @@ import {
   type AnyChatModel,
 } from "../src/models/factory.js";
 import { DEFAULT_MODEL_ID, TRACER_SQL_PROPOSAL } from "../src/constants.js";
+import { ModelRetryError } from "../src/telemetry/retry.js";
 
 const ENV_KEYS = [
   "AGENT_MODEL_API_KEY",
@@ -58,9 +59,11 @@ function asReal(model: AnyChatModel): ChatOpenAI {
 }
 
 describe("chat-model factory", () => {
-  it("routes every profile to ChatOpenAI by default (no fake, no network)", () => {
+  it("routes every profile to ChatOpenAI with maxRetries=0 by default (no hidden SDK retry)", () => {
     for (const profile of ["intent", "sql", "synthesis"] as const) {
-      expect(createChatModel(profile)).toBeInstanceOf(ChatOpenAI);
+      const model = asReal(createChatModel(profile));
+      expect(model).toBeInstanceOf(ChatOpenAI);
+      expect(model.caller.maxRetries).toBe(0);
     }
   });
 
@@ -193,5 +196,42 @@ describe("chat-model factory", () => {
     });
     const answer = await new ProfileTracerModel(model).proposeSql("How many orders?");
     expect(answer).toEqual(TRACER_SQL_PROPOSAL);
+  });
+
+  it("retries 429s inside synthesize and surfaces RATE_LIMITED when exhausted", async () => {
+    let calls = 0;
+    const flakyModel = {
+      invoke: async () => {
+        calls += 1;
+        if (calls <= 2) {
+          throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+        }
+        return { content: "12 orders total" };
+      },
+    } as unknown as AnyChatModel;
+
+    const ok = await synthesize([{ status: "ok", n: 12 }], "How many?", {
+      model: flakyModel,
+      retry: { maxRetries: 3, baseMs: 1, maxWaitMs: 50 },
+      sleep: async () => {},
+    });
+    expect(ok.text).toBe("12 orders total");
+    expect(calls).toBe(3);
+
+    let failCalls = 0;
+    const always429 = {
+      invoke: async () => {
+        failCalls += 1;
+        throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+      },
+    } as unknown as AnyChatModel;
+    await expect(
+      synthesize([{ status: "ok", n: 12 }], "How many?", {
+        model: always429,
+        retry: { maxRetries: 2, baseMs: 1, maxWaitMs: 50 },
+        sleep: async () => {},
+      }),
+    ).rejects.toBeInstanceOf(ModelRetryError);
+    expect(failCalls).toBe(3);
   });
 });
