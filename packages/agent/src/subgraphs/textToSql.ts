@@ -7,7 +7,9 @@ import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createChatModel } from "../models/factory.js";
 import {
   estimateCostUsd,
+  invokeJsonWithUsage,
   invokeWithUsage,
+  type PlainJsonModelLike,
 } from "../telemetry/usage.js";
 import {
   isRateLimitFailure,
@@ -96,6 +98,8 @@ export interface TextToSqlExecutorLike {
 
 export interface TextToSqlRuntimeDeps {
   intentModel?: IntentModelLike;
+  /** Plain-JSON intent model seam for providers returning Markdown-wrapped JSON. */
+  intentJsonModel?: PlainJsonModelLike;
   /** SQL model seam; omitted in production to use the configured profile. */
   sqlModel?: ChatModelLike;
   executor?: TextToSqlExecutorLike;
@@ -909,10 +913,10 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         deadlineMs: budget.deadlineMs,
         emit: rt.emit,
       };
-      out = deps.intentModel
+      out = deps.intentModel && !deps.intentJsonModel
         ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, invokeOpts)
-        : await invokeWithUsage(
-            createChatModel("intent"),
+        : await invokeJsonWithUsage(
+            deps.intentJsonModel ?? createChatModel("intent"),
             IntentProposalSchema,
             prompt,
             invokeOpts,
@@ -934,6 +938,17 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         return {
           status: "cannot_answer",
           answerText: `${error.message}; no model or query was called.`,
+          budget: {
+            llmCalls: budget.llmCalls - startCalls,
+            tokensUsed: 0,
+            deadlineMs: budget.deadlineMs,
+          },
+        };
+      }
+      if (error instanceof SyntaxError || error instanceof z.ZodError) {
+        return {
+          status: "error",
+          answerText: "The model returned an invalid intent response; please try again.",
           budget: {
             llmCalls: budget.llmCalls - startCalls,
             tokensUsed: 0,

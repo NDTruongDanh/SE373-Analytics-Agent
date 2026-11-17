@@ -118,6 +118,37 @@ function makeSqlModel(sql: string, tablesUsed: string[], capturedPrompts?: strin
 }
 
 describe("end-to-end UC-01 flow through buildRootGraph", () => {
+  it("accepts a Markdown-fenced intent response and reaches the executor", async () => {
+    const run = vi.fn(async () => ({
+      status: "ok" as const,
+      sql: "SELECT COUNT(*) AS n FROM public.orders",
+      tablesUsed: ["orders"],
+      columns: ["n"],
+      rows: [{ n: 2 }],
+      maskedColumns: [],
+      attempts: 1,
+    }));
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async () => [],
+        intentJsonModel: {
+          async *stream() {
+            yield { content: '```json\n{"schemaEntities":["orders"],"requestedMetrics":[],"queryMode":"standard_query"}\n```' };
+          },
+        },
+        executor: { run },
+      },
+    });
+    const out = await graph.invoke(
+      { question: "Có bao nhiêu đơn hàng?", ucId: "text-to-sql" },
+      runConfig("t-fenced-intent", "r-fenced-intent"),
+    );
+    expect(out.status).toBe("ok");
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ candidateTables: ["orders"] }));
+  });
+
   it("runs catalog discovery -> single semantic search -> SQL proposal -> synthesis", async () => {
     const intentPrompts: string[] = [];
     const sqlPrompts: string[] = [];
