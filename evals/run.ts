@@ -122,7 +122,24 @@ export interface HarnessOutcome {
   reason?: string;
   ms: number;
   tokens: number;
+  /** Estimated model cost from policies/model_pricing.yaml (#97). */
+  costUsd?: number;
   wired?: boolean;
+}
+
+/**
+ * Token and cost totals for one eval case, read from the run's span
+ * emitter roll-up (the same numbers as its run_done JSONL event, #97).
+ */
+export function runUsage(totals: {
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+}): { tokens: number; costUsd: number } {
+  return {
+    tokens: totals.inputTokens + totals.outputTokens,
+    costUsd: totals.estimatedCostUsd,
+  };
 }
 
 export type HarnessAdapter = (c: EvalCase) => Promise<HarnessOutcome>;
@@ -480,6 +497,7 @@ export async function buildLiveAdapter(
           ? redactPII(out.answerText).redacted.slice(0, 500)
           : undefined;
       emit.emitRunDone(status);
+      const usage = runUsage(emit.totals());
       return {
         status,
         rows: out.resultPreview ?? [],
@@ -490,7 +508,7 @@ export async function buildLiveAdapter(
             ? undefined
             : diagnostic ?? `harness status '${status}'`,
         ms: Date.now() - t0,
-        tokens: 0,
+        ...usage,
         wired: true,
       };
     } catch (error) {
@@ -505,7 +523,8 @@ export async function buildLiveAdapter(
         rows: [],
         reason,
         ms: Date.now() - t0,
-        tokens: 0,
+        // Calls made before the failure still cost tokens (#97).
+        ...runUsage(emit.totals()),
         wired: true,
       };
     }
@@ -537,6 +556,7 @@ export interface GradedCase {
   exPass: boolean;
   ms: number;
   tokens: number;
+  costUsd?: number;
   note?: string;
 }
 
@@ -573,6 +593,7 @@ export async function runEval(
       exPass: pass,
       ms: outcome.ms,
       tokens: outcome.tokens,
+      ...(outcome.costUsd !== undefined ? { costUsd: outcome.costUsd } : {}),
       ...(pass
         ? {}
         : {

@@ -145,7 +145,14 @@ function readRunContext(rt: RootRuntime): {
   const token = read("token");
   const transport =
     mcpUrl && token && identity
-      ? { mcpUrl, token, runId: identity.runId, userId: identity.userId, roleScope: identity.roleScope }
+      ? {
+          mcpUrl,
+          token,
+          runId: identity.runId,
+          userId: identity.userId,
+          roleScope: identity.roleScope,
+          callbacks: rt.config.callbacks,
+        }
       : null;
   return { identity, transport };
 }
