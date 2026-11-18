@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:857e12728ea0a61594061bb0697705efab9ad1fb29fdca0375e0f64d5b69d662",
+  "pageVersion": "sha256:898ec6e12b8e1e9d4e57e4e8f2bba2d4061ff2a95c4688de06ec8e180088ad54",
   "claims": [
     {
       "id": "claim_78e91c482704485589f3185c9b862649",
@@ -207,7 +207,7 @@
           "version": "repo-lines-v1:sha256:224b8e9b020cbd56dc382a6072e093df474f6a6dd0bb83631d4c08eb85168e33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZWZhYWYyNDU1NDJkZTEzMjViNGExZjg3MTQyZGY3MGM1YmQxYWEyNzIzNTgzZTUyOTAyMTIxZTMxNjIyMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZTdjMDRmNzMxZjRhMzJlYWJkOTdlNDNlZGMxYTA1MzdmMTk2ZGMyMTgxMTk5Y2QwY2Y4MTAyODczOTBkZDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlMzE0ZDgyNGM1NzlmNTg0M2YyODdhZjQ0NDZmOGI1ZTBmMmU3NTVkN2MxZGIzMDU0NTY1Y2EyZjU1YTMyOTIifQ"
         },
         {
-          "resource": "repo://packages/contracts/src/answers.ts#L48-L49",
+          "resource": "repo://packages/contracts/src/answers.ts#L54-L55",
           "version": "repo-lines-v1:sha256:6a955e9ab28490c4a55e385df6b7b8c31a01cbec52f4e4414cf542770ac689da:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDBjNjFjNzdhZmVlOTQwYzJhMmNkNWVhMWM2NDUxYTc0ODk5ZjVmMjAyNjE3YWFkZmUyMmQ3ZDI1NTFmMGE2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzg1YWM1ZDU2NWVlMzU0YTk4MTgwZTRhZThjNGQ1Njg2YWEwY2Q4NzE2Mzc4OTRkNmFkYjQwMmY1ZjcyMDExNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjA2NjY5MTRiNzRkOGNkOGY0YzEzOTI2YjcwNGRkZDU3YzRkMTdiN2ZjMDI0NjEzODBjMWZjZjRkYTJlZGZhNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2RlZmU3YjQ5MzhjZDBkMDcxYjU2MTlkMGM5OWM5ZDU4NTVkZDc4ZjcyMjJkZGFkNTE1OWFhYjQ5ZGM1YTQxMSJ9"
         },
         {
@@ -297,14 +297,190 @@
           "version": "repo-lines-v1:sha256:8a6aa1137ad08c2d1adedc9cab26f575ec088087e6ec1c6deebe266b3afd67b9:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQxMjlkMTQ2NzdmYWViMzljNWM5MzFmOTVkODdlMmUzYzQ0NGI1NDk5NTdmZjQ1MmI5OGYzZDdiM2VlZDE1ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmI4MTMxMDBkZjNkYzkzMjkzZWVmNzVjNDcyMGU2YjkzMWFhNGU0OTZmNmNlNDE1MWRlYzY0Y2VlNGQzMTgxYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGNmZDFkODEyNWU3YTRlZGYxZmZkOTY1NmMwMWZlYTJkMDk3MDY5MjZlMGY0YmRjOWQ3NTRhMWM4NTgwYmExZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTQ2MzcwMTYwNmY3Y2MzMTk5ZDYxMjMzNTAxZDZkNzA3ZmI5ODgwYzRkMGQyMzUzNzUxMWVlMjRlZTViM2UyOSJ9"
         },
         {
-          "resource": "repo://package.json#L16-L22",
+          "resource": "repo://package.json#L21-L27",
           "version": "repo-lines-v1:sha256:b346c85deca055284ae9d9ceef3ca7c618bf1f3adfcfa1b6ae16f15e9417d601:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDhlMjJkNzk3ODIxMzM0MGM1NGEwNTdjNzdmNGU3ODIyMGEzYTY0OWQ0MGViMDQzOTNkNmZjYTRlNjY2OTg5OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGFhOGY5OWZjOTQ0N2ZiNmZjNDQxN2ZmMjdkNzgwOWEzYjU2Yjg2YzY5OGVhYjAxNzcyZDNmYzRhMDFkMjBkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOThiZmJiNWFkMDUwM2EwM2U5ZjczMDcxNDkyZjIzZTE3ZDI1Y2MyYTY0ZTZlZjQwOThmNTY5ZmNhNjgyZjg3ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTljYjVlNjE0MjYwOWI4YjE0M2NkYzgxZjBmOTQ1MDk5ZjBjMTVkYTY3NWQ5MzFlMmQ4ZGIzOTg3ZmM2Y2I0ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_23b71e343f77402299e408dfcf312871",
+      "statement": "The eval entrypoint is `tsx evals/run.ts`, exposed as `pnpm eval`, with demo, trace-view, data load/verify, and skills-check as companion commands.",
+      "evidence": [
+        {
+          "resource": "repo://package.json",
+          "version": "repo-file-v1:sha256:7fd63003eaddae69237c9d4d4b295323799275663481ce9e2b5c521708394c37"
+        }
+      ]
+    },
+    {
+      "id": "claim_43968d926c65429aa4b2759a9ec92969",
+      "statement": "BenchmarkRowSchema freezes the graded question row as required id, question, difficulty, goldSql, goldResultPath with optional ordered and defaulted tags, where ordered selects ordered versus multiset comparison.",
+      "evidence": [
+        {
+          "resource": "repo://packages/contracts/src/benchmark.ts#L7-L15",
+          "version": "repo-lines-v1:sha256:90e42d1f5fdbe3e41b7f942c7ac357815fcb5ee19b7b8a2b2fbdd4a65fc45263:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjJhZTE5NDg3YzA2NjZiOWZlMjAyOTExOWRjYmFmNWMxZTkwMTk5NWRlNDhkN2VjZWNjYjc0MzhjMDQ1YWM4ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjRmM2ZjZDcxYjEyZjdhMzkzN2RkNDNjYmRhY2RlNWNkMmIzM2RjMDMxNzdhYTNiNGNjODM3MTgyYTZjNDI3YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTYxY2UyYTI0OThmNjQyZGFhZDEzYjkxZTJkNzZjN2I5ZDVmZGE0NjIyZmNmZDhmM2Q5MTE1N2NjM2NhY2NjZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5738a0886ad54158b4effaa507013cac",
+      "statement": "EX grading matches result sets ignoring column names and order unless ordered, with 0.5% float tolerance, numeric-string coercion, NULL-only-equals-NULL, ISO timestamp normalization, and row-count drift reported as a mismatch.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/grader.test.ts#L13-L71",
+          "version": "repo-lines-v1:sha256:7bc650b71fc054b043f2c1ab3a2c36c97ba4035fda33391ac5c596c1974f9fd4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmZGY5ODE4YTZmYjA2MjI1OTFkYTg5YzYwZTRlZGI0NWJmOTc1YzllYTRkYTkxNzQ3NTU4MWE5OTBiMTI2MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjM2UyYzBiMTQxZWFjNjc0YmZjOTlkOGFkNTM1ZTNkZDFmN2U3MTgwMGI3ZDBiNDI0NzU0NGE1YWY1NjE5NjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3Njg4NTljMmU2YTU2YTJlM2E3MWY5NDdiNTc2NGI2NmZmN2FlNWM3NzYxNzc0YTQzNTk2NTMxOGU1NDNhYWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_03975941fa2e45029ab0b371cb71fd97",
+      "statement": "EX grading scores cannot_answer on status plus non-blank reason rather than rows: reasoned cannot_answer passes, empty reason fails, and ok-with-rows fails against cannot_answer gold.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/grader.test.ts#L73-L86",
+          "version": "repo-lines-v1:sha256:7071818242ee1712b93eff59b810456c629fd8d605f1baa02db34e820832818f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlOGY1YzI4Yzc3MTY4NTUwYmY0NjY4ZDZiMzJhZDJiYzAyYjY4MzczN2UwMjljOWUwM2ExODNkOTU0ZTQwZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlZTdlNDUyNDNkNmQ4ZWZkNWExMDFjNzYyMDg4ZTJlOGJlZDM1YWQwODdjYWNkYjlmMThmZTA4MDcxMTg0YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkZjU4MDNmZTM2ZTE1NzY0NDc0OTk5YjFmYjlmMDM1N2MyMTE0MWJlNWFlOTIyY2YzMjJjODAzMTQ4MDZmZjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d76ac53e6810491b98bf9bdfcd5fd75e",
+      "statement": "Two-run regression refuses to compare across datasetVersion values and otherwise reports EX, mean-latency, and mean-token deltas plus per-case improved and regressed ID lists.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/grader.test.ts#L104-L120",
+          "version": "repo-lines-v1:sha256:7aa7bd6e3b041b879bd23e3b1618d781f9cddd3e2f67c2e7ed3dd1037cdb2c54:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNjYzMmIyNjM0YTNiZWJkNjljN2MyZTFjMmFjMTRhZTM2NzZkN2FmMmYzOTZlNzgzZjM1ZDE4MTQzZWM5MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzNTAxNzlkMDc0ZDhhYmIzMjE2YTc2ZGVhODNkNGY3M2NkOGUwNDhkMDZiNGZkZDQ5MTU2Mzg2YzU5NzNkNzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9c2feb311ebd4df1be725b48b46bfac0",
+      "statement": "Gold SQL and gold results are hidden from the agent at run time, and the eval entry scrubs all four LangSmith tracing flags in-process and drops the live model key unless explicitly opted in so eval runs never export.",
+      "evidence": [
+        {
+          "resource": "repo://docs/prd.md",
+          "version": "repo-file-v1:sha256:defd5a8bd93f7855a52c6e986b3d860b4498fe482033314870f850201df23951"
+        },
+        {
+          "resource": "repo://packages/agent/test/evalGuard.test.ts#L25-L80",
+          "version": "repo-lines-v1:sha256:d04aa7b1151f25b54ec307de909ce78939a5e625a49f4aa07ae643f20ca3b369:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4NWRmZWU4ZGY3ZmU3OGI0MjE3ZjRjY2FjYzZjN2QwZDFjZGJlZjY5NjcwOGMzZWMyNWI0MTlkNzNmNDkwOTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5NTcyZmE5MmVhOWJiOGRiZDZhODc4NGI1NGNiNzUxZTEwZmYxZGVhZjVmMjBlMDUwYWE5NjQwY2FlYjRjNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzOWMxMGM0OWEyMjU4MWU1ZjU3MzU1YzIxODg1OGRmNjExNmNiZjg4Y2RkYThiOWZkNmZiMmM2OWEwODk2ZWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50fa536c57f146efa3b2dfb0738105e2",
+      "statement": "Trace events conform to a TraceEvent envelope keyed by runId with spanId, parentSpanId, and attempt chaining, and appendTraceEvent redacts via row-level redactRow plus a stringify-and-scan backstop before appending one JSONL line per event.",
+      "evidence": [
+        {
+          "resource": "repo://packages/access-policy/src/redactor.ts#L9-L21",
+          "version": "repo-lines-v1:sha256:798ffb6f3c709dfc61941ce37a89958f9768d55e31e08afc614e225fdc882f48:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1MWEwZDdkOWZmNWM2MWRjNmI1Nzc1ZDc3Nzk4MTIzMDcxOTk1N2YxMGI1MzY5M2UxMGNmMmUyNmRiMjQ3MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3ZTg0Y2E5Y2Q5Nzg5OGU0NTIzMGE1OWViNjI1NDgzOWZjM2M4MTU1NGE4N2M3NzMwOTZkYjM1MDM2MzNmNDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlMjAyMDY1MGE1OWQwY2QyMWQxZTU4MDQ0NTEzMTI2YjZkMmQ3M2VhY2UwMjdjNjZmN2U0YWI5MDkzMWZiNGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlNTZhMTc4ZmRlN2Y5ZTEwMjZhMDdiZThlYjAyMWY2NDMxM2FmYjg4OTBiMmJkNTliMjJkYWEwMWJmM2VjZjEifQ"
+        },
+        {
+          "resource": "repo://packages/agent/src/traces/writer.ts#L68-L87",
+          "version": "repo-lines-v1:sha256:3cfcad91705d222a305598d83f9bc7530c488cc4564ac70113ead7ae00104055:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMGQwOTkyYmQyNGNhZGYxZjJmZjc5NzE4MzVhM2RjMzk0NGFhNGIzYmM4YzQwMDdlNjhkYjUwOTZmNWI3ZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkYzBkYTMyMDM0ZjRmZDlmNDU4ZmE5MGI5MGFkY2ViMDFmMzAzNzY2NTZmMmU1ZWY1Y2EwM2MwNGNjNmUwYTgifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/trace.ts#L7-L22",
+          "version": "repo-lines-v1:sha256:1a665556a3c164de4dad667214bdeb9de37214241f3b85f2d110b25e2d8f7489:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZWIyODA5NGQ4NDI4NDRiODM4MmMyZGQxY2ZiYmY5MTMzNzJiMmEyMTBjODY2MTYzMWRhNDcxYjMwZDU5ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3ZTc1ZWI2MGI4N2NhMWM3ZDQxMDZjNGJmYTIwNzliOThhMWNmYTEyMTg4MzAwNmU5NDhmOTZkNDEyYWQxMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkODY3NmQzMzE5NGViMTBhOTFiNzhiY2JjODhlNWM3NzU3NTg2YzE5MzU3MzY5MTc0ZDU5YzY2NmU0OTdmM2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_774bd6b45b934986bffd43bb89a80766",
+      "statement": "The MCP audit sink writes exactly one PII-redacted JSONL line per call carrying run identity, decision, error and explain-cost fields, with SQL string literals masked and residual PII scrubbed.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/audit.ts#L11-L67",
+          "version": "repo-lines-v1:sha256:be45545c4797335e049099dca4e1bc3e2aba210db5d69c76313c0e0887e01b36:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkMWExNmE5YzNiYWIxNjU5NWE0YjgyYTc4M2UyOWI2NzA0MDIwMzRlZGM0OWRkZWJjMDAxYTczOTUxMDZiY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3YzNkYWRkMjgxMzdlZjlmOWE1ZGE4MGExZTBjNWNjNGM5MThmZDY2NWQzMDYwMmY4MDBjMzFmMjNlYWExNTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5N2QwMDliZTdkZWNjYzNjOTdlM2M5ZTQ4ODA5OWQ2M2NkMmNiZjgwOWM1Y2Q4ZmM3ODU2MWUxZWRiMjZkZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkOWY1MDY0ZDA1ODZhOTYxYzRkZTYzM2FlZTg3Mjk2MDM0MzAxOGM3MjJiZGY2NzE3MDNkMDM3MzA2MTgzMmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_27cf20945fb343fda975c20e8060c45e",
+      "statement": "Safety records require non-empty fix and attackSql, a known expectedBlockingLayer contained in acceptableLayers, and grade as pass only at an acceptable layer with none-allowed as the light-query control; resubmission must stay blocked at the same layer and denial codes map to gateway stages including db:role for permission failures.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/safety.test.ts#L29-L200",
+          "version": "repo-lines-v1:sha256:439d2e4df2c18896158f2f57c6badd6570f999a2230cb4b35e59c750da6525ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3OTdmOGM3YmIyZmE1MjJkZmI4NWQ4ZDFmNmI4YWIzZjk5NWI4MDUyOTVhNmM2MDYyNGZmYmQyNWViZmI1ZDExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4NGU0MjA4Y2Q2ZmZiOGM0YTM1NDdiMmY1NGFkYTE5OTc4YzNmMzY1ZTc4Zjk1MDJlZjUxNDVjZGQyYWE4NTQzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5MjA0MGUwOTVhOTRlMmFkYTc0ZTQyMWYzNzE4NzUxYTkxYTgxMGJmZDY2ZjQ4ZjRlOTM5YzdiNzQ4MGViNjcwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNDQyNTlmMmIwYTYzMWUyYTUzNjdjZGIwOWM3MGE5ZTYxNjhlMDZmYTI4ZDM5MDg2OGQwMzMxYTRhZjRlZDFjIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_d0efd73ec88342f0b6ee8f5b218bbabd",
+      "statement": "The safety suite presence gate requires at least six cases with attackSql, fix, and layer attribution from the eleven-value vocabulary and pins safety-01-full-scan through safety-06-light with safety-06-light as the none-allowed control.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/test/grader.test.ts#L123-L172",
+          "version": "repo-lines-v1:sha256:89b50b455808b1bea3e0f8bc192e2ae756c30f14dbd058bb886aec7693b88b5f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxZGFjMGEyNmM1ZjFlMDlmYTk0NjEwNTQ4YjcxZGIwNzIwMDc2M2M2NGVhYjRkZTlhYjgxNThlZDAzNDA5ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViOWRjMzQ5N2RlZjU2MGE4MTBjOWQwZjU4YmYyNzk4MmY0OTFlNDk3MWYzZTE1YmEwMThjYWE4ZmU3MzMyMWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_99b44ac915bc4fcbaa514790c8cbdd73",
+      "statement": "Run budgets lock 20 LLM calls, 60000 tokens, and a 120s deadline with at most 3 SQL attempts and a 200-row detail clamp, while SQLAnswer caps attempts at 3 and resultPreview at 50 and requires intent, sql, tablesUsed, answerText, status, and token-cost-latency telemetry.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/constants.ts#L11-L29",
+          "version": "repo-lines-v1:sha256:707cc3945c5571c17d0861fbe613efcda3750bfb8250b9d83e426509d25a430a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjYjVmMTBlYTk1NzU2OWRiYmU5NjA1ZWE1ODQxZGIwN2RiZDU3YjdjZGZkNmYyODJmNjdhYzIwOTIxMDhmZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3ZTEwNDhkNDI1ZWZjMmJlYzRiNmU5ZGQ1MTlhZjJlN2Y2MGUzMDU0MmYwMmNlMGU3MDk1MmEwN2U1OThiZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4NTQ5ZmMzYWRhMjUxNDg4ZmNjNjI4NGY2YTcyNmJkNWM4NzlhNDc5Njg4ZjM1NmEwMGIxMzc2YWZjMzNkNTQifQ"
+        },
+        {
+          "resource": "repo://packages/contracts/src/answers.ts#L36-L57",
+          "version": "repo-lines-v1:sha256:30c791e18931d7250daf4736a7bc33185caef27fe20ccacda0c783298457d519:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkMjgxYWQ2ZWIyN2I4YjExZTAyMjQyY2NlYzViYjkyZWYzYThmMTk3NDZmYjQzNDUxODQ0OTUyYjg1N2Y4MGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMjE5MmFkMmI0MzU0NDhhZDc1YTBhMTZkMmMwOWQxMDA5NGMxMzRmZDU5NzFlMmY2OWVkMmFjYTc0YWRlMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1N2QyMDk5NTg3ZTg1ODg5YTI4MTA2MWI5MTZkNjQ5MzNhM2VkZjY1ZTFlNDNhZDk2Y2VkNzEyNjQ2NzhlMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxZDQ1Yjk1MjJiN2M2NTRiYmM5NDBiNjMwNzk1ZjJkMjgzM2Y1YTM4MGJiNTMwOTYxYzZjYWM0MmQxYmQzNmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5113287149ca45e986cbcd81fd090d21",
+      "statement": "Usage telemetry reads provider usage_metadata and response_metadata model IDs without throwing, preserves them on structured and streaming JSON paths with idle and total stream caps, and prices calls from policies/model_pricing.yaml with unknown models costing 0 and pricingKnown false.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/telemetry/pricing.ts#L1-L107",
+          "version": "repo-lines-v1:sha256:ddec2b5d722b0fcfdbbed1b91c715fac874f9545c8c5b3cc55db05a9c159ef07:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkZDUyZDUwNDYwZWJiNmVhOTYxMjg1Y2Q1NTc5YjhkODQ5NWJlOGEzZWVmNzViMTRiYWJmMGI2NDVlYjQzYTM1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://packages/agent/src/telemetry/usage.ts#L38-L126",
+          "version": "repo-lines-v1:sha256:c4da865378f00b983588759507cb4944387595d121cd43553979fe6b06b44455:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MWYzNzFmYjg3OWYwM2RhYjA0YjZmYjBmZGQyMmVjZjc1ZDliOGFhOGFhZGNjZGYwZWM4OTgwYzRiMWI5NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxZmQyMmVmYWRjODNiMzQyOGVlNWRkODdlZWQ5YTNlNWZlYTcyNTNkOWUwYmIwZGJkOGQzMzA5MGU3NzdlYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwYTU1ZTA3NmU1NjFjOWU1MzVkYjQ3MjIyZDQ2NzdjZTJmNDcxOTVkMDEyMDdlMmYzY2Q5MTEwNzg2OThjMDkifQ"
+        },
+        {
+          "resource": "repo://policies/model_pricing.yaml#L9-L15",
+          "version": "repo-lines-v1:sha256:02f50ff04fdb2d55ac5549c4b87c8caf791c33993bba8ebe628e25d164b830df:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTczNjc1ZDVjNGFjNTI1OTYxODM1YThiNGRlMjE1NDI2NzRiYTMzMTRkNWNiMDlhMDIwNWIyNTFiYzYwZTAyOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBlOTEyZTk2OTk5ZjI2ZTQ3NzRjZTBlMDZhMTE4YjA2ZDRmOWMwMzUxYzBlMjM4OGJhMWQ3MzI3Y2U0ZDZjMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzhhYzZkNDQzYmUxM2JjZGYxYTM2ZjQzMjcxOTVjMGQyMGVjYTkyN2JjNjEzYmYwNDgxMDc3OTg1NWQ2ZTY1OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_05bc686f9a7846b0a8046722b1c3aa25",
+      "statement": "The span emitter folds llm_call, tool_call, and repair events into per-run totals and writes a terminal run_done span; trace:show reads only already-redacted trace and audit files with no DB or network I/O to nest spans and join audits, and traces tests pin marker-only PII redaction with one contract-valid event per line.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/telemetry/spans.ts#L148-L220",
+          "version": "repo-lines-v1:sha256:846dc758d32d5dfb0eda1dc65dc6a06b81bca8a4e11bbd699a4022f2e19045d3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5NWVjNGE3NTI1YTZlZmY2OTY1MzdhNDkzZTlmYmI3MmFmMGMzYzE5NWRhMjQxMTA1Yzk4NDIxMDA4ZDM4ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MjRkMjA1NmEyY2JhMDQyNzA1ODNlYjI0YTRlNjY1ZDBjMzVjMThhNGQxYWQzNTVkYzE3OTIxNTBkY2YyNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4MDExMmQ2ZTM5NGI1ZWY0MDY0ZGQzYWZkMmE2ZDU4OGRjNzkyODI2ODY5ODNmNjg1ODIyOTQ5OTM5YjZmYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2ZTZkODQzNDNmNTJhYjU4NzBmNzVjZjZhNDk0ZmQwNTdhMDgxZWRmZjQwNGQwOWQ0OGZiNTkzY2QwNGM0NWIifQ"
+        },
+        {
+          "resource": "repo://packages/agent/test/traces.test.ts#L38-L130",
+          "version": "repo-lines-v1:sha256:47692bd3e42233abe183f463bbc137000b5ed263e6b68cc9e443624cabb3e14b:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxYzBlMjNiYjc1ODY0NGFhMTgzZDJlNjM0MmUwNGI4Yjk0YTVhZThlYTc0ODRmMDc4NmE2YjE1ZGJjMDJlMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViMjIwMThjNTQxMzlkNzExNjYzNjNmMDM0MDgwNWIyYjA1MmRjMmM3ZWMyOTc1MWExYzczYWEwNDcwZDJmM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiMmM5NjE1ZDFkOGQyOTk0MGM5ZGQwNjEwOTI2NGJiOTcwMDUwNDc5MTMyNTMxYmUzYzA0ZTQ4OGM3MzEwNzIifQ"
+        },
+        {
+          "resource": "repo://scripts/trace-show.ts",
+          "version": "repo-file-v1:sha256:4e2db58b2a329c9328bde486b6275e6c35eb31a5f9949ddff36ee55e518bd8dd"
+        }
+      ]
+    },
+    {
+      "id": "claim_7e7eebe837054b549b503b8bb2600cd6",
+      "statement": "The gateway enforces a fixed 7-stage pipeline of auth, scope, zod, sqlGuard, AccessPolicy, read-only executor, and PII scan plus audit, with the local safety gate denying sensitive-column and cross-join shapes agent-side before any MCP call.",
+      "evidence": [
+        {
+          "resource": "repo://packages/agent/src/queryExecutor/safetyGate.ts#L1-L15",
+          "version": "repo-lines-v1:sha256:1a84062518c75a21504a21c59d16fbfd479e246b2cbbb7dd91b55da80b6ba415:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiMTY5ZWFkNjM3MGM1NDMwZmNmYzVjYmVhYTM1MGIyMzI5NGM3ZWIzZTQyZThlMTc3ZmYxOTJjMTBlZTk0MGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ZWViNWM2MjBhNGZhZTVlZWZhZjBiY2ZjYmZmNDA5MzE0OWYwNWExMjg5Y2UzMmY5NDNjZWE3ZWY1YTc5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2OTYzMWM2ZDExOGViMzQ1YmJjOTRmNzE1NTMzZTFlZWYzMTYwMzMxYjIwMWE5ZTVhMjI1MWFjYTdkM2Q4MmQifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/pipeline.ts#L1-L15",
+          "version": "repo-lines-v1:sha256:d91e699df1afdc9e53b6d089e143b1a320cb8212de2b5220657b531afc95538b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0NGNiNWE2ZGViN2E3MjM2MGVkYjgyM2JkMGM2YzJiZmE3YmM3N2U5NzQwZTY5ODFkZTRiY2ZhY2FjMGE1OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0NjgyMWI5YTAxYWU4ZWRhYWNlZjYyZDhiMDMxMGI1ZTIxNWFhY2I4YjM5NzkzNWE2ZTlhZDA1NDE3NDM0OTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5Y2QzNWMwZDI2MjY3NjE4YjUxNDUzMzE2ZThmZDI3M2JkOTMzMjY1NDZlOTAzNGY5YWQ3ZWRhZmMyNDM4Y2QifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-11-06T15:32:05.739Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-13T15:50:35.780Z"
   }
 }

@@ -42,6 +42,8 @@ import {
   createLangSmithTracer,
   createSpanEmitter,
   flushLangSmith,
+  isRateLimitFailure,
+  toModelDbToolError,
   type LangSmithRunConfig,
 } from "@shared/agent/telemetry";
 import { dbToolError, type DbToolError } from "@shared/contracts";
@@ -273,6 +275,24 @@ function readLastApprovalRequest(
     }
   }
   return last;
+}
+
+function toFailedSseData(error: unknown, fallbackMessage: string) {
+  if (isRateLimitFailure(error)) {
+    const rateErr = toModelDbToolError(error, fallbackMessage);
+    return failedPayload({
+      code: rateErr.code,
+      message: rateErr.message,
+      retryable: rateErr.retryable,
+      repairable: rateErr.repairable,
+    });
+  }
+  return failedPayload({
+    code: "INTERNAL_ERROR",
+    message: error instanceof Error ? error.message : fallbackMessage,
+    retryable: true,
+    repairable: false,
+  });
 }
 
 const SSE_HEADERS = {
@@ -528,12 +548,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         runId,
         threadId,
         node: "answer",
-        data: failedPayload({
-          code: "INTERNAL_ERROR",
-          message: error instanceof Error ? error.message : "unknown ask failure",
-          retryable: true,
-          repairable: false,
-        }),
+        data: toFailedSseData(error, "unknown ask failure"),
       });
     } finally {
       // End the response first, then drain the LangSmith tail detached
@@ -696,12 +711,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         runId,
         threadId: stored.threadId,
         node: "answer",
-        data: failedPayload({
-          code: "INTERNAL_ERROR",
-          message: error instanceof Error ? error.message : "unknown resume failure",
-          retryable: true,
-          repairable: false,
-        }),
+        data: toFailedSseData(error, "unknown resume failure"),
       });
     } finally {
       // End the response first, then drain the LangSmith tail detached

@@ -6,6 +6,10 @@ import {
   estimateCostUsd,
   invokeWithUsage,
 } from "../telemetry/usage.js";
+import {
+  isRateLimitFailure,
+  toModelDbToolError,
+} from "../telemetry/retry.js";
 import { checkBudget, createBudgetState, estimateTokens, type BudgetState } from "../queryExecutor/budgets.js";
 import {
   ValidatedQueryExecutor,
@@ -36,7 +40,7 @@ import {
   validateCitations,
 } from "../validators/citationValidator.js";
 import { registerUC } from "./registry.js";
-import { TEXT_TO_SQL_UC_ID } from "../constants.js";
+import { BUDGET_LIMITS, TEXT_TO_SQL_UC_ID } from "../constants.js";
 
 export { TEXT_TO_SQL_UC_ID } from "../constants.js";
 
@@ -446,20 +450,62 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
+    const startCalls = state.budget?.llmCalls ?? 0;
+    const budget: BudgetState = {
+      llmCalls: startCalls,
+      tokensUsed: state.budget?.tokensUsed ?? 0,
+      maxLlmCalls: state.budget?.maxLlmCalls ?? BUDGET_LIMITS.maxLlmCalls,
+      maxTokens: state.budget?.maxTokens ?? BUDGET_LIMITS.maxTokens,
+      deadlineMs:
+        state.budget?.deadlineMs && state.budget.deadlineMs > 0
+          ? state.budget.deadlineMs
+          : Date.now() + BUDGET_LIMITS.runDeadlineMs,
+    };
+    const preCheck = checkBudget(budget);
+    if (preCheck.tripped) {
+      return {
+        status: "cannot_answer",
+        answerText: `Run budget exceeded (${preCheck.reason}); no model or query was called.`,
+        budget: { deadlineMs: budget.deadlineMs },
+      };
+    }
+
     const skill = loadSkill("text-to-sql", { emit: rt.emit });
     const prompt = intentPrompt(state.question, skill.contract);
     const intentStarted = Date.now();
-    const out = deps.intentModel
-      ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, {
-          name: "intent_proposal",
-          callbacks: rt.config.callbacks,
-        })
-      : await invokeWithUsage(
-          createChatModel("intent"),
-          IntentProposalSchema,
-          prompt,
-          { name: "intent_proposal", callbacks: rt.config.callbacks },
-        );
+    let out;
+    try {
+      const invokeOpts = {
+        name: "intent_proposal",
+        callbacks: rt.config.callbacks,
+        node: "understand",
+        budget,
+        deadlineMs: budget.deadlineMs,
+        emit: rt.emit,
+      };
+      out = deps.intentModel
+        ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, invokeOpts)
+        : await invokeWithUsage(
+            createChatModel("intent"),
+            IntentProposalSchema,
+            prompt,
+            invokeOpts,
+          );
+    } catch (error) {
+      if (isRateLimitFailure(error)) {
+        const toolErr = toModelDbToolError(error, "Intent extraction failed");
+        return {
+          status: "error",
+          answerText: toolErr.message,
+          budget: {
+            llmCalls: budget.llmCalls - startCalls,
+            tokensUsed: 0,
+            deadlineMs: budget.deadlineMs,
+          },
+        };
+      }
+      throw error;
+    }
     const intent = out.parsed;
     const intentDurationMs = Date.now() - intentStarted;
     // Real provider counts feed the budget when present; fakes fall back to
@@ -482,10 +528,12 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         pricingKnown,
       },
     });
+    const failedCalls = budget.llmCalls - startCalls;
     return {
+      ...(state.status === "error" ? { status: "no_data" as const, answerText: "" } : {}),
       intent,
       budget: {
-        llmCalls: 1,
+        llmCalls: failedCalls + 1,
         tokensUsed:
           realTokens > 0
             ? realTokens
@@ -498,6 +546,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
+    if (state.status === "error") return {};
     let activeState = state;
     let clarificationUpdate: AgentUpdate = {};
     const definition = handleDefinitionLookup(activeState);
@@ -578,7 +627,10 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     const budget: BudgetState = {
       llmCalls: activeState.budget.llmCalls,
       tokensUsed: activeState.budget.tokensUsed,
-      deadlineMs: activeState.budget.deadlineMs,
+      deadlineMs:
+        activeState.budget.deadlineMs > 0
+          ? activeState.budget.deadlineMs
+          : Date.now() + BUDGET_LIMITS.runDeadlineMs,
       maxLlmCalls: activeState.budget.maxLlmCalls,
       maxTokens: activeState.budget.maxTokens,
     };

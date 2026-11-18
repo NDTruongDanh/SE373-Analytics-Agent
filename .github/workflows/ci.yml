@@ -132,11 +132,15 @@ jobs:
       - name: Set up JS + install
         uses: ./.github/actions/setup-js
 
-      # docker-compose.yml carries the initdb roles, so compose (not a plain
+      # docker-compose.ci.yml carries the initdb roles, so compose (not a plain
       # services: postgres) is required. --wait reuses its pg_isready
-      # healthcheck instead of a hand-rolled sleep loop.
+      # healthcheck instead of a hand-rolled sleep loop. The CI file is
+      # db-only on purpose: the live tests below connect over loopback
+      # (DATABASE_URL on 5433) and run via pnpm, so the mcp/api/web
+      # containers must not build or start here — and the full stack's hard
+      # `env_file: ../.env` requirement must not apply to a clean checkout.
       - name: Start loopback database
-        run: docker compose -f docker/docker-compose.yml up -d --wait --wait-timeout 90
+        run: docker compose -f docker/docker-compose.ci.yml up db -d --wait --wait-timeout 90
 
       - name: Load small seed scale
         run: pnpm data:load --scale=small
@@ -158,11 +162,11 @@ jobs:
 
       - name: Dump database logs on failure
         if: failure()
-        run: docker compose -f docker/docker-compose.yml logs db
+        run: docker compose -f docker/docker-compose.ci.yml logs db
 
       - name: Teardown database
         if: always()
-        run: docker compose -f docker/docker-compose.yml down -v
+        run: docker compose -f docker/docker-compose.ci.yml down -v
 
   secrets:
     runs-on: ubuntu-latest

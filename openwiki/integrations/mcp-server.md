@@ -4,8 +4,8 @@ title: Database MCP server and gateway
 description: Implemented db-tools MCP gateway with scoped tools, 7-stage pipeline, read-only executor, audit, and operator surfaces.
 tags: [mcp, db-tools, scoped-auth, sql-validation, audit-log, operator-ui, uc-09]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-07T14:35:23.411Z
+  - by: openwiki/0.9.0
+    at: 2026-11-13T15:50:35.780Z
 sources:
   - id: openwiki-source-4cc9c6a076b816ea09303ac9
     resource: repo://apps/api/src/constants.ts
@@ -49,7 +49,7 @@ sources:
     resource: repo://packages/mcp-server/src/server.ts
   - id: openwiki-source-239b7c4787e6faba4ea0bd52
     resource: repo://policies/mcp_clients.yaml
-generated: { by: "openwiki/0.7.2", at: "2026-11-07T14:35:23.411Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-13T15:50:35.780Z" }
 ---
 
 # Database MCP server and gateway
@@ -157,7 +157,7 @@ The checked-in registry maps `sales_south` to `schema:read` plus `data:read` wit
 
 ## 6. Configuration and boot
 
-`createGatewayApp` loads both YAML files, resolves every `tokenEnv` from `process.env`, initializes the audit sink defaulting to `logs/mcp_audit.jsonl`, builds the catalog from `information_schema` unless a test override is injected, warms the SQL guard once, selects the embedder, and wires the hybrid search closure with the agent read-only pool.
+`createGatewayApp` loads both YAML files, resolves every `tokenEnv` from `process.env`, initializes the audit sink defaulting to `logs/mcp_audit.jsonl`, builds the catalog from `information_schema` unless a test override is injected, warms the SQL guard once, selects the embedder (OpenAI-compatible endpoint when `EMBEDDING_MODEL_ID` and `EMBEDDING_API_KEY` are configured, otherwise the deterministic 1536-dim fake with a boot warning), and wires the hybrid search closure with the agent read-only pool.
 
 Boot fails closed: malformed YAML, wrong version, empty client list, unknown scopes, extra keys, duplicate `clientId` or `tokenEnv`, or any missing or empty token variable throws before the server listens. Catalog boot also fails closed on an empty table list so the server never serves nothing as something.
 
@@ -189,7 +189,7 @@ Error hygiene uses one `DbToolError` type and the `sanitizeError` choke-point. D
 
 `POST /reindex` is the admin-only semantic refresh path on the same host. It authenticates the same way (HTTP 401 on bad token), then requires the `admin` role and returns HTTP 403 `SCOPE_DENIED` otherwise. On success it runs the injected `options.reindex` hook or the built-in `indexCorpus` over `INDEXER_DATABASE_URL` or `DATABASE_URL` with the env-selected embedder and default corpus files, calls `resetSemanticCache`, and returns the `{ added, updated, skipped, deleted }` counts; indexer failures return HTTP 500 `INTERNAL_ERROR`.
 
-Tool handlers return MCP content with the JSON-stringified result, or an `isError` payload carrying the stringified error plus its code. Resource handlers cover `semantic://data-dictionary` and `semantic://metrics` as `text/markdown` and throw the stringified error on denial; otherwise they return the filtered Markdown contents. The default port is 8081 via `MCP_PORT`, and the server name is `se373-mcp-gateway` version `1.0.0`. `docs/mcp_interface.md` is generated from the contract schemas and must not be hand-edited.
+Tool handlers return MCP content with the JSON-stringified result, or an `isError` payload carrying the stringified error plus its code. Each tool is registered with a pass-through loose schema so every call reaches `executeToolCall` where auth, scope, zod, and audit run in order, while `tools/list` still advertises the strict contract schemas. Resource handlers cover `semantic://data-dictionary` and `semantic://metrics` as `text/markdown` and throw the stringified error on denial; otherwise they return the filtered Markdown contents. The default port is 8081 via `MCP_PORT`, and the server name is `se373-mcp-gateway` version `1.0.0`. `docs/mcp_interface.md` is generated from the contract schemas and must not be hand-edited.
 
 ## 11. Operator surfaces
 

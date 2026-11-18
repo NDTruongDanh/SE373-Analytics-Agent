@@ -249,4 +249,67 @@ describe("UC-03 VIZ seam", () => {
     expect(spec.repairs).toBe(2);
     expect(out.budget?.llmCalls).toBe(3);
   });
+
+  it("retries 429s in viz without burning chart repairs and degrades cleanly when exhausted", async () => {
+    const saved = {
+      max: process.env.AGENT_MODEL_MAX_RETRIES,
+      base: process.env.AGENT_MODEL_RETRY_BASE_MS,
+      maxWait: process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS,
+    };
+    process.env.AGENT_MODEL_MAX_RETRIES = "2";
+    process.env.AGENT_MODEL_RETRY_BASE_MS = "50";
+    process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = "100";
+    try {
+      const { seen, rt } = harness();
+      let okCalls = 0;
+      const flakyVizModel: VizModelLike = {
+        withStructuredOutput: () => ({
+          invoke: async () => {
+            okCalls += 1;
+            if (okCalls <= 2) {
+              throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+            }
+            return VizDraftSchema.parse(barDraft());
+          },
+        }),
+      };
+      const okOut = await createUc03Viz({ model: flakyVizModel })(
+        stateOf({ status: "ok", ...BAR_BUFFER, resultPreview: BAR_BUFFER.rows }),
+        rt,
+      );
+      const okSpec = okOut.vizSpec as Uc03VizSpec;
+      expect(okSpec.repairs).toBe(0);
+      expect(okSpec.report.insights).toHaveLength(1);
+      expect(okOut.budget?.llmCalls).toBe(3);
+      expect(seen.spans.filter((s) => s.type === "retry")).toHaveLength(2);
+
+      // Always 429: stops after 3 attempts (0 repairs burned), falls back with 0 tokens.
+      let failCalls = 0;
+      const always429: VizModelLike = {
+        withStructuredOutput: () => ({
+          invoke: async () => {
+            failCalls += 1;
+            throw Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+          },
+        }),
+      };
+      const { rt: rtFail } = harness();
+      const failOut = await createUc03Viz({ model: always429 })(
+        stateOf({ status: "ok", ...BAR_BUFFER, resultPreview: BAR_BUFFER.rows }),
+        rtFail,
+      );
+      const failSpec = failOut.vizSpec as Uc03VizSpec;
+      expect(failCalls).toBe(3);
+      expect(failSpec.repairs).toBe(0);
+      expect(failSpec.report.caveats.join(" ")).toContain("rate-limited");
+      expect(failOut.budget).toEqual({ llmCalls: 3, tokensUsed: 0 });
+    } finally {
+      if (saved.max === undefined) delete process.env.AGENT_MODEL_MAX_RETRIES;
+      else process.env.AGENT_MODEL_MAX_RETRIES = saved.max;
+      if (saved.base === undefined) delete process.env.AGENT_MODEL_RETRY_BASE_MS;
+      else process.env.AGENT_MODEL_RETRY_BASE_MS = saved.base;
+      if (saved.maxWait === undefined) delete process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS;
+      else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
+    }
+  });
 });

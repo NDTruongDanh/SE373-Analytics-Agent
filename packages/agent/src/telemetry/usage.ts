@@ -7,6 +7,14 @@
 import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { estimateCostUsd } from "./pricing.js";
+import type { BudgetState } from "../queryExecutor/budgets.js";
+import {
+  createAttemptAbort,
+  resolveModelRetryConfig,
+  retryModelCall,
+  type ModelRetryOverrides,
+  type RetrySpanEmit,
+} from "./retry.js";
 
 /** Minimal structured-output surface; satisfied by ChatModelLike and AnyChatModel. */
 export interface StructuredModelLike<S extends z.ZodType> {
@@ -26,6 +34,28 @@ export interface InvokeUsageResult<T> extends LlmUsage {
   model: string | undefined;
   /** Ms from call start to the first streamed chunk (reasoning or content). */
   firstTokenMs?: number;
+  /** Total provider attempts made (1 + rate-limit retries). */
+  attempts?: number;
+}
+
+export interface ModelRetryContextOptions {
+  node?: string;
+  modelName?: string;
+  budget?: BudgetState;
+  deadlineMs?: number;
+  signal?: AbortSignal;
+  emit?: RetrySpanEmit;
+  outerAttempt?: number;
+  retry?: ModelRetryOverrides;
+  now?: () => number;
+  random?: () => number;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+export interface InvokeWithUsageOptions extends ModelRetryContextOptions {
+  name?: string;
+  callbacks?: Callbacks;
+  totalMs?: number;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -87,40 +117,108 @@ function asRawParsed(
   return { raw: record["raw"], parsed: record["parsed"] };
 }
 
+function minPositiveBound(a?: number, b?: number): number | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return Math.min(a, b);
+}
+
+function retryOptionsFrom(
+  opts: ModelRetryContextOptions | undefined,
+  defaultNode: string,
+) {
+  return {
+    node: opts?.node ?? defaultNode,
+    modelName: opts?.modelName,
+    config: opts?.retry
+      ? resolveModelRetryConfig(process.env, opts.retry)
+      : undefined,
+    budget: opts?.budget,
+    deadlineMs: opts?.deadlineMs,
+    signal: opts?.signal,
+    emit: opts?.emit,
+    outerAttempt: opts?.outerAttempt,
+    now: opts?.now,
+    random: opts?.random,
+    sleep: opts?.sleep,
+  };
+}
+
 /**
  * Structured call preserving provider usage. Real path returns the parsed
  * value plus real counts and the raw model id; fake/stub path returns the
  * parsed value with zero counts and undefined model. The model position is
  * anchored to z.ZodType so S infers from the schema argument alone.
  * Schema violations still throw (fail-closed, same as the direct call it
- * replaces). The optional LangSmith callbacks ride the same tracer the
- * graph.invoke site passed (suppression by handler name; duplicates fold
- * to one handler in _configureSync), so model runs stay correlatable.
+ * replaces). Rate-limit/overload errors (429/503) retry through the shared
+ * retry helper honoring backoff+jitter, Retry-After, budget, and deadline.
  */
 export async function invokeWithUsage<S extends z.ZodType>(
   model: StructuredModelLike<z.ZodType>,
   schema: S,
   input: string,
-  opts?: { name?: string; callbacks?: Callbacks },
+  opts?: InvokeWithUsageOptions,
 ): Promise<InvokeUsageResult<z.infer<S>>> {
-  const { callbacks, ...structOpts } = opts ?? {};
-  const config = callbacks !== undefined ? { callbacks } : undefined;
-  const out = await model
-    .withStructuredOutput(schema, { ...structOpts, includeRaw: true })
-    .invoke(input, config);
-  const rawShape = asRawParsed(out);
-  if (rawShape !== null) {
-    return {
-      parsed: schema.parse(rawShape.parsed),
-      ...usageFromMessage(rawShape.raw),
-      model: modelFromMessage(rawShape.raw),
-    };
-  }
+  const structOpts = opts?.name !== undefined ? { name: opts.name } : {};
+  const retryResult = await retryModelCall(async (ctx) => {
+    const effectiveTotalMs = minPositiveBound(opts?.totalMs, ctx.remainingMs);
+    const needAbort =
+      effectiveTotalMs !== undefined || ctx.signal !== undefined;
+    const attempt = needAbort
+      ? createAttemptAbort({
+          totalMs: effectiveTotalMs,
+          signal: ctx.signal,
+          totalMessage: `Model structured call exceeded ${effectiveTotalMs ?? 0}ms`,
+        })
+      : undefined;
+    try {
+      const invokeConfig =
+        opts?.callbacks !== undefined || attempt !== undefined
+          ? {
+              ...(opts?.callbacks !== undefined
+                ? { callbacks: opts.callbacks }
+                : {}),
+              ...(attempt !== undefined
+                ? { signal: attempt.controller.signal }
+                : {}),
+            }
+          : undefined;
+      const runnable = model.withStructuredOutput(schema, {
+        ...structOpts,
+        includeRaw: true,
+      });
+      const callPromise = (
+        runnable.invoke as (
+          prompt: string,
+          config?: { callbacks?: Callbacks; signal?: AbortSignal },
+        ) => Promise<unknown>
+      )(input, invokeConfig);
+      callPromise.catch(() => {});
+      const out = attempt
+        ? await Promise.race([callPromise, attempt.abortFailure])
+        : await callPromise;
+      const rawShape = asRawParsed(out);
+      if (rawShape !== null) {
+        return {
+          parsed: schema.parse(rawShape.parsed),
+          ...usageFromMessage(rawShape.raw),
+          model: modelFromMessage(rawShape.raw),
+        };
+      }
+      return {
+        parsed: schema.parse(out),
+        inputTokens: 0,
+        outputTokens: 0,
+        model: undefined,
+      };
+    } finally {
+      attempt?.cleanup();
+    }
+  }, retryOptionsFrom(opts, "understand"));
+
   return {
-    parsed: schema.parse(out),
-    inputTokens: 0,
-    outputTokens: 0,
-    model: undefined,
+    ...retryResult.value,
+    attempts: retryResult.attempts,
   };
 }
 
@@ -198,7 +296,7 @@ function extractJsonDocument(text: string): unknown {
  * the streamed chunks exactly like the structured variant; fakes degrade to
  * zero-usage instead of throwing.
  */
-export interface JsonStreamOptions {
+export interface JsonStreamOptions extends ModelRetryContextOptions {
   name?: string;
   callbacks?: Callbacks;
   /** Abort when no chunk (reasoning or content) arrives within this long. */
@@ -210,103 +308,89 @@ export interface JsonStreamOptions {
 const DEFAULT_IDLE_MS = 30000;
 const DEFAULT_TOTAL_MS = 300000;
 
-function timeoutError(message: string): Error {
-  const error = new Error(message);
-  error.name = "TimeoutError";
-  return error;
-}
-
 export async function invokeJsonWithUsage<S extends z.ZodType>(
   model: PlainJsonModelLike,
   schema: S,
   input: string,
   opts?: JsonStreamOptions,
 ): Promise<InvokeUsageResult<z.infer<S>>> {
-  const started = Date.now();
-  const idleMs = opts?.idleMs ?? DEFAULT_IDLE_MS;
-  const totalMs = opts?.totalMs ?? DEFAULT_TOTAL_MS;
-  const controller = new AbortController();
+  const requestedIdleMs = opts?.idleMs ?? DEFAULT_IDLE_MS;
+  const requestedTotalMs = opts?.totalMs ?? DEFAULT_TOTAL_MS;
 
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  const armIdle = () => {
-    if (idleTimer !== undefined) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      controller.abort(
-        timeoutError(`Model stream stalled: no tokens for ${idleMs}ms`),
-      );
-    }, idleMs);
-  };
-  const totalTimer = setTimeout(() => {
-    controller.abort(timeoutError(`Model stream exceeded ${totalMs}ms`));
-  }, totalMs);
-
-  const abortFailure = new Promise<never>((_resolve, reject) => {
-    if (controller.signal.aborted) {
-      reject(
-        controller.signal.reason instanceof Error
-          ? controller.signal.reason
-          : timeoutError("Model stream aborted"),
-      );
-      return;
-    }
-    controller.signal.addEventListener(
-      "abort",
-      () => {
-        reject(
-          controller.signal.reason instanceof Error
-            ? controller.signal.reason
-            : timeoutError("Model stream aborted"),
-        );
-      },
-      { once: true },
-    );
-  });
-  // Avoid an unhandled rejection when the consumer wins the race below.
-  abortFailure.catch(() => {});
-
-  const consume = (async (): Promise<{
-    text: string;
-    usage: LlmUsage;
-    modelId: string | undefined;
-    firstTokenMs: number | undefined;
-  }> => {
-    let text = "";
-    let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
-    let modelId: string | undefined;
-    let firstTokenMs: number | undefined;
-    const stream = await model.stream(input, {
-      callbacks: opts?.callbacks,
-      signal: controller.signal,
-      runName: opts?.name,
+  const retryResult = await retryModelCall(async (ctx) => {
+    const started = Date.now();
+    const effectiveTotalMs =
+      minPositiveBound(requestedTotalMs, ctx.remainingMs) ?? requestedTotalMs;
+    const effectiveIdleMs = Math.min(requestedIdleMs, effectiveTotalMs);
+    const attempt = createAttemptAbort({
+      totalMs: effectiveTotalMs,
+      idleMs: effectiveIdleMs,
+      signal: ctx.signal,
+      idleMessage: `Model stream stalled: no tokens for ${effectiveIdleMs}ms`,
+      totalMessage: `Model stream exceeded ${effectiveTotalMs}ms`,
     });
-    armIdle();
-    for await (const chunk of stream) {
-      if (firstTokenMs === undefined) firstTokenMs = Date.now() - started;
-      text += messageText(chunk) ?? "";
-      const counts = usageFromMessage(chunk);
-      if (counts.inputTokens > 0 || counts.outputTokens > 0) usage = counts;
-      modelId = modelFromMessage(chunk) ?? modelId;
-      armIdle();
-    }
-    return { text, usage, modelId, firstTokenMs };
-  })();
 
-  try {
-    const { text, usage, modelId, firstTokenMs } = await Promise.race([
-      consume,
-      abortFailure,
-    ]);
-    return {
-      // Empty output fails closed through schema validation.
-      parsed: schema.parse(text === "" ? undefined : extractJsonDocument(text)),
-      ...usage,
-      model: modelId,
-      firstTokenMs,
-    };
-  } finally {
-    if (idleTimer !== undefined) clearTimeout(idleTimer);
-    clearTimeout(totalTimer);
-  }
+    let activeIterator: AsyncIterator<unknown> | undefined;
+    const consume = (async (): Promise<{
+      text: string;
+      usage: LlmUsage;
+      modelId: string | undefined;
+      firstTokenMs: number | undefined;
+    }> => {
+      let text = "";
+      let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+      let modelId: string | undefined;
+      let firstTokenMs: number | undefined;
+      const stream = await model.stream(input, {
+        callbacks: opts?.callbacks,
+        signal: attempt.controller.signal,
+        runName: opts?.name,
+      });
+      const iterator = stream[Symbol.asyncIterator]();
+      activeIterator = iterator;
+      attempt.armIdle();
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) {
+          activeIterator = undefined;
+          break;
+        }
+        const chunk = next.value;
+        if (firstTokenMs === undefined) firstTokenMs = Date.now() - started;
+        text += messageText(chunk) ?? "";
+        const counts = usageFromMessage(chunk);
+        if (counts.inputTokens > 0 || counts.outputTokens > 0) usage = counts;
+        modelId = modelFromMessage(chunk) ?? modelId;
+        attempt.armIdle();
+      }
+      return { text, usage, modelId, firstTokenMs };
+    })();
+    consume.catch(() => {});
+
+    try {
+      const { text, usage, modelId, firstTokenMs } = await Promise.race([
+        consume,
+        attempt.abortFailure,
+      ]);
+      return {
+        // Empty output fails closed through schema validation.
+        parsed: schema.parse(text === "" ? undefined : extractJsonDocument(text)),
+        ...usage,
+        model: modelId,
+        firstTokenMs,
+      };
+    } finally {
+      attempt.cleanup();
+      if (activeIterator?.return) {
+        void activeIterator.return().catch(() => {});
+      }
+    }
+  }, retryOptionsFrom(opts, "propose"));
+
+  return {
+    ...retryResult.value,
+    attempts: retryResult.attempts,
+  };
 }
 
 export { estimateCostUsd };

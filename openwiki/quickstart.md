@@ -1,11 +1,11 @@
 ---
 type: task-routing-map
 title: Quickstart task map
-description: Entry points, one-command setup, wiki commands, and routing links to agent, data, use-case, integration, eval, and operations domains for the SE373 Analytics Agent.
+description: Entry points, one-command setup, and routing links to agent, data, MCP, evals, and use-case domains for the SE373 Analytics Agent.
 tags: [quickstart, setup, analytics-agent, routing, openwiki]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-11-11T15:45:43.966Z
+  - by: openwiki/0.9.0
+    at: 2026-11-13T15:50:35.780Z
 sources:
   - id: openwiki-source-5f5b95b3d6a215fa02ceb945
     resource: repo://.env.example
@@ -25,6 +25,8 @@ sources:
     resource: repo://apps/web/src/app.tsx
   - id: openwiki-source-8e8b395281c4996e784ae3b5
     resource: repo://apps/web/src/main.tsx
+  - id: openwiki-source-5be27729131e30130689f927
+    resource: repo://docker/docker-compose.yml
   - id: openwiki-source-115b2dad781e2a2c5b5a980d
     resource: repo://docs/architecture.md
   - id: openwiki-source-e1843c282db36a6d28fd4a37
@@ -37,6 +39,8 @@ sources:
     resource: repo://package.json
   - id: openwiki-source-bfb9871db1c11a0b91b0e3c3
     resource: repo://packages/agent/src/constants.ts
+  - id: openwiki-source-7a382cb67515f2241c13f47e
+    resource: repo://packages/agent/src/graph.ts
   - id: openwiki-source-6e14a80344fc52e883de4e14
     resource: repo://packages/agent/src/subgraphs/registry.ts
   - id: openwiki-source-0da85c5a9f665a701eb30287
@@ -47,8 +51,12 @@ sources:
     resource: repo://packages/contracts/src/index.ts
   - id: openwiki-source-4c4499ad1e842a81b6f27cfc
     resource: repo://packages/contracts/src/tools.ts
+  - id: openwiki-source-3c3de4bf966593db2e75c054
+    resource: repo://packages/data/src/load.ts
   - id: openwiki-source-38ea9620ad4a090cbdc31b69
     resource: repo://packages/mcp-server/src/semantic/index.ts
+  - id: openwiki-source-133b0c7d08e8e3c7f7e4fda2
+    resource: repo://packages/mcp-server/src/server.ts
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
   - id: openwiki-source-0414973c1f692e417872f6fc
@@ -57,128 +65,159 @@ sources:
     resource: repo://scripts/generate-interface.mjs
   - id: openwiki-source-a11884925ded039ec27120f5
     resource: repo://scripts/openwiki-fetch-patch.mjs
-  - id: openwiki-source-8f237913979f09c8e64c25ba
-    resource: repo://scripts/trace-show.ts
-generated: { by: "openwiki/0.7.2", at: "2026-11-11T15:45:43.966Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-13T15:50:35.780Z" }
 ---
 
 # Quickstart task map
 
-This repository is the **SE373 Analytics Agent** course project: a natural-language analytics agent over a Vietnamese business database. The monorepo harness foundation — architecture, package boundaries, shared contracts, and lint boundaries — is built and the reference agent loop is implemented with registry extensions; remaining per-UC designs are detailed in `docs/UC-plan/` and the openwiki domain pages.
+This repository is the **SE373 Analytics Agent**: a natural-language analytics agent over a fictional Vietnamese business. Users ask in Vietnamese or English; the agent looks up the semantic dictionary, generates `SELECT`/`WITH`, self-repairs on error, then returns tables, charts, and cited insights.
 
-UC routing goes through the sole registry seam in [`packages/agent/src/subgraphs/registry.ts`](../packages/agent/src/subgraphs/registry.ts): `registerUC` is the only way the frozen root builder gains UC wiring, the `tracer` id stays always registered as the default route for unknown `ucId`s, `text-to-sql` registers from its own subgraph module, and `root-cause-analysis` registers from its own RCA module. Use this page to set up the environment, verify the toolchain, and route to the domain that owns your task.
+Mental model: **LLM proposes, harness disposes.** Policy, SQL validation, RBAC and masking, verification, and audit live in TypeScript code, not prompts. Stack is TypeScript, LangGraph.js, MCP (`db-tools` gateway), Postgres 16 + pgvector, and React + Vite.
+
+Use this page to set up the environment, verify the toolchain, and route to the domain that owns your task.
 
 ## 1. Prerequisites
 
-- Node.js `>=24.0.0` and pnpm `>=10`; the repo pins `pnpm@11.25.0` via `packageManager` and activates it with Corepack.
-- An OpenCode Go API key (Go or Go Plus subscription); it is never committed and is pasted locally or stored as a CI secret.
-- Docker for the loopback Postgres database used by the harness operator flow.
-- For a step-by-step Windows/PowerShell startup of Docker, MCP, API, and web, see [`docs/local-setup.md`](../docs/local-setup.md).
+- Docker + Docker Compose.
+- Node `>=24.0.0` and pnpm `>=10`; the repo pins `pnpm@11.25.0` via `packageManager` and activates it with Corepack.
+- Ports free (loopback-only): `5433` (db), `8081` (mcp), `3001` (api), `5173` (web).
+- An OpenCode Go API key for OpenWiki runs only; it is never committed and is pasted locally or stored as a CI secret. The harness agent itself runs on the deterministic fake model when no agent model key is set.
+
+See [`README.md`](../README.md), [`package.json`](../package.json), and [`.env.example`](../.env.example). For a step-by-step Windows PowerShell startup of Docker, MCP, API, and web, see [`docs/local-setup.md`](../docs/local-setup.md).
 
 ## 2. One-command setup and run
 
-Wiki docs run:
+First-time setup:
 
 ```sh
 corepack enable
 corepack prepare pnpm@11.25.0 --activate
 pnpm install --frozen-lockfile
-cp .env.example .env   # then fill in OPENAI_COMPATIBLE_API_KEY with your key
-pnpm wiki:update:print # non-interactive; same command CI runs
-pnpm typecheck && pnpm lint && pnpm test
+cp .env.example .env   # fill in tokens locally; never commit .env
 ```
 
-This is the documented local wiki run. The copyable variable template lives in [`.env.example`](../.env.example). Never commit the resulting `.env`; CI instead maps the `OPENCODE_GO_API_KEY` secret to `OPENAI_COMPATIBLE_API_KEY`. The read boundary for what wiki runs may inspect is [`.openwikiignore`](../.openwikiignore): secrets and local state, generated wiki state, dependencies and build output, data dumps (`data/*.csv|*.parquet|*.db|*.sqlite|*.duckdb`), plus evals, seeded scenarios, seed manifests, traces, and results. Document the loader script and schema files, never the contents of ignored dumps or hidden gold signals.
+`.env` carries DB URLs, `MCP_PORT` / `API_PORT`, MCP bearer tokens (`MCP_TOKEN_*`), and optional model and embedding keys. Without an agent model key the agent runs on the deterministic fake model.
+
+Full stack with Docker (db + mcp + api + web):
+
+```sh
+docker compose up -d --build
+docker compose ps
+docker compose logs -f --tail=100
+docker compose down        # stop
+docker compose down -v     # stop + wipe pgdata (fresh DB next boot)
+```
+
+Same via pnpm wrappers: `pnpm docker:up` / `pnpm docker:down` / `pnpm docker:ps` / `pnpm docker:logs`. The compose definition is [`docker/docker-compose.yml`](../docker/docker-compose.yml) with a root include in [`docker-compose.yml`](../docker-compose.yml); the database image is `pgvector/pgvector:0.8.7-pg16` and host ports are loopback-only `127.0.0.1:5433:5432` (db), `127.0.0.1:8081:8081` (mcp), `127.0.0.1:3001:3001` (api), and `127.0.0.1:5173:80` (web). Roles are `owner` / `agent_ro` / `indexer` / `harness_state`.
 
 Harness operator run (needs Docker plus the DB env in `.env`):
 
 ```sh
-pnpm db:up             # Postgres 16 + pgvector on 127.0.0.1:5433 (loopback only)
-pnpm data:load         # full Olist-VN seed (~1M order_items, a few minutes)
-pnpm data:load --scale=small  # CI-speed seed: same FK graph, ~53 s + verify
-pnpm data:verify       # pins the loaded volume to data/seed_manifest.json
-pnpm demo:tracer       # end-to-end proof: gateway + host, 8 PII-clean trace events
+pnpm db:up             # compose db service only
+pnpm data:load         # full Olist-VN seed (~1M order_items, ~6 min)
+pnpm data:load --scale=small  # CI-speed seed: same FK graph, <2 min
+pnpm data:verify       # pins the loaded volume to the seed manifest
+pnpm demo:tracer       # end-to-end proof: gateway + host, PII-clean trace events
+pnpm trace:show <runId>  # render a stored redacted trace; no DB or network I/O
 pnpm eval --uc uc09    # live harness eval (or --all); needs the DB + gateway env
-pnpm skills:check      # declarative-skills invariant (no scripts/credentials)
+pnpm skills:check      # declarative-skills invariant (no scripts or credentials)
 ```
 
-This is the documented operator sequence. External MCP clients (MCP Inspector, `scripts/externalClient.ts`) connect to the gateway over Streamable HTTP with a per-role bearer token from `policies/mcp_clients.yaml`, whose values stay in `.env` and never enter the repo.
+Load seed data one-off through the profile-gated service instead when running the full stack: `docker compose --profile data run --rm data` (or `pnpm docker:data`). Verify in the browser at `http://127.0.0.1:5173`, then check `traces/` (per-run) and `logs/mcp_audit.jsonl` (PII-redacted).
 
-The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — the full Express SSE host that mints run context, maps UI persona to MCP principal, invokes the root graph, and supports resume on the same thread — with persistence ports injected from [`apps/api/src/ports.ts`](../apps/api/src/ports.ts) (fail-fast when `HARNESS_STATE_DATABASE_URL` is absent) and sanitized streaming via [`apps/api/src/sse.ts`](../apps/api/src/sse.ts), and the full Vite + React operator chat UI rooted at [`apps/web/src/app.tsx`](../apps/web/src/app.tsx) and mounted by [`apps/web/src/main.tsx`](../apps/web/src/main.tsx) — persona switcher, SSE streaming via `postStream`, and clarification resume against `/api/runs/:runId/resume`.
+Local iteration without Docker for the app layer:
+
+```sh
+corepack pnpm build
+node --env-file=.env --import tsx packages/mcp-server/src/server.ts
+node --env-file=.env --import tsx apps/api/src/index.ts
+corepack pnpm --filter @shared/web dev
+```
+
+Check `http://127.0.0.1:3001/healthz` (api) and `http://127.0.0.1:8081/healthz` (mcp). The operator hosts are [`apps/api/src/index.ts`](../apps/api/src/index.ts) — Express SSE host that mints run context, maps UI persona to MCP principal, invokes the root graph, and supports resume on the same thread — with persistence ports from [`apps/api/src/ports.ts`](../apps/api/src/ports.ts) (fails fast when `HARNESS_STATE_DATABASE_URL` is absent) and sanitized streaming via [`apps/api/src/sse.ts`](../apps/api/src/sse.ts).
+
+Wiki docs run:
+
+```sh
+pnpm wiki:update:print # non-interactive; same command CI runs
+pnpm wiki:dry-run      # validate without writing
+pnpm typecheck && pnpm lint && pnpm test
+```
+
+The copyable variable template is [`.env.example`](../.env.example). Never commit the resulting `.env`; CI maps the `OPENCODE_GO_API_KEY` secret to `OPENAI_COMPATIBLE_API_KEY`. The read boundary for wiki runs is [`.openwikiignore`](../.openwikiignore): secrets and local state, generated wiki state, dependencies and build output, data dumps (`data/*.csv|*.parquet|*.db|*.sqlite|*.duckdb`), evals, seeded scenarios and manifests, traces, audit payloads, and results. Document the loader script and schema files, never the contents of ignored dumps or hidden gold signals.
+
+Every `wiki:*` script preloads [`scripts/openwiki-fetch-patch.mjs`](../scripts/openwiki-fetch-patch.mjs), which injects a stable opaque `x-opencode-session` header (`ses_` plus 32 hex chars) on `opencode.ai` requests to satisfy the mandatory OpenCode Go routing requirement. Inference must stay on the Responses API (`OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API=true`) because the pinned model is Responses-only; routing to `/chat/completions` fails as `ModelProtocolUnsupported` surfaced as HTTP 401. Scheduled wiki CI runs daily at `08:00 UTC` plus on demand on Node 24, installs with `pnpm/action-setup` and `actions/setup-node`, runs the same wiki update command, and opens a docs-only auto-merge PR limited to `openwiki`, `AGENTS.md`, and `CLAUDE.md`.
 
 ## 3. Commands (entrypoints)
 
-| Command | What it does | Source |
-|---|---|---|
-| `pnpm wiki:update:print` | Non-interactive wiki update; the command CI runs | `package.json`, `README.md` |
-| `pnpm wiki:init` | First wiki generation | `package.json`, `README.md` |
-| `pnpm wiki:update` | Interactive wiki update | `package.json`, `README.md` |
-| `pnpm wiki:dry-run` | Validate without writing | `package.json`, `README.md` |
-| `pnpm wiki:visualize` | Static-site export under `docs/openwiki-visualizer` | `package.json`, `README.md` |
-| `pnpm db:up` / `pnpm db:reset` | Start / reset the loopback Postgres 16 + pgvector container | `package.json`, `README.md` |
-| `pnpm data:load` / `pnpm data:verify` | Seed the Olist-VN business data / verify it against the seed manifest | `package.json`, `README.md` |
-| `pnpm demo:tracer` | End-to-end gateway + host proof with PII-clean trace events | `package.json`, `README.md` |
-| `pnpm trace:show` | Render a stored PII-redacted trace bundle without DB or network I/O | `package.json`, `scripts/trace-show.ts` |
-| `pnpm eval` | Live harness eval runner (`--uc <id>` or `--all`) | `package.json`, `README.md` |
-| `pnpm external-client` | External MCP client probe over Streamable HTTP | `package.json`, `README.md` |
-| `pnpm skills:check` | Declarative-skills invariant check | `package.json`, `README.md` |
-| `pnpm typecheck` / `pnpm build` / `pnpm clean` | TypeScript project references build (`tsc -b`) and clean | `package.json` |
-| `pnpm check:workspace` | Workspace consistency check | `package.json` |
-| `pnpm lint` | ESLint over the repo, including package import boundaries | `package.json` |
-| `pnpm test` | Type-check plus Vitest run over the workspace | `package.json` |
-| `pnpm docs:interface` | Regenerate `docs/mcp_interface.md` from frozen contract schemas | `package.json`, `scripts/generate-interface.mjs` |
-| `pnpm semantic:index` | Build or refresh the semantic retrieval index (`semantic.semantic_chunks`) | `package.json`, `packages/mcp-server/src/semantic/index.ts` |
+| Command | What it does |
+|---|---|
+| `pnpm wiki:update:print` | Non-interactive wiki update; the command CI runs |
+| `pnpm wiki:init` / `pnpm wiki:update` | First generation / interactive update |
+| `pnpm wiki:dry-run` | Validate without writing |
+| `pnpm wiki:visualize` | Static-site export |
+| `pnpm db:up` / `pnpm db:reset` | Start / reset the loopback Postgres 16 + pgvector container |
+| `pnpm docker:up` / `pnpm docker:down` / `pnpm docker:ps` / `pnpm docker:logs` | Full-stack equivalents of `docker compose up/down/ps/logs` |
+| `pnpm docker:data` | One-shot seed load through the profile-gated `data` service |
+| `pnpm data:load` / `pnpm data:verify` | Seed the Olist-VN business data / verify it against the seed manifest |
+| `pnpm demo:tracer` | End-to-end gateway + host proof with PII-clean trace events |
+| `pnpm trace:show` | Render a stored PII-redacted trace bundle without DB or network I/O |
+| `pnpm external-client` | External MCP client probe over Streamable HTTP |
+| `pnpm eval` | Live harness eval runner (`--uc <id>` or `--all`) |
+| `pnpm skills:check` | Declarative-skills invariant check |
+| `pnpm alert:run` | Manual or scheduled anomaly-alert runner |
+| `pnpm typecheck` / `pnpm build` / `pnpm clean` | TypeScript project-references build (`tsc -b`) and clean |
+| `pnpm check:workspace` | Workspace consistency check |
+| `pnpm lint` | ESLint over the repo, including package import boundaries |
+| `pnpm test` | Type-check plus Vitest run over the workspace |
+| `pnpm docs:interface` | Regenerate `docs/mcp_interface.md` from frozen contract schemas |
+| `pnpm semantic:index` | Build or refresh the semantic retrieval index (`semantic.semantic_chunks`) |
 
-The full current script set is `package.json:13-36`: wiki entrypoints plus DB/data/eval/trace entrypoints plus `typecheck`/`build`/`clean`/`check:workspace`/`lint`/`test`/`docs:interface`/`semantic:index`.
-
-Every `wiki:*` script preloads [`scripts/openwiki-fetch-patch.mjs`](../scripts/openwiki-fetch-patch.mjs), which injects the mandatory `x-opencode-session` header (`ses_<32 hex>`) on `opencode.ai` requests. The session id is stable per process: an explicit `OPENWIKI_OPENCODE_SESSION_ID` override wins, otherwise a deterministic `repo|run_id|sha|job` hash in GitHub Actions or a random value locally, never overwriting an existing header. The provider must stay on the Responses API (`OPENWIKI_OPENAI_COMPATIBLE_USE_RESPONSES_API=true`) because the pinned model is Responses-only; `false` routes to `/chat/completions` and fails as `ModelProtocolUnsupported`.
-
-The interface generator [`scripts/generate-interface.mjs`](../scripts/generate-interface.mjs) reads the frozen Zod schemas in [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) — tool I/O from `tools.ts` and the frozen code list from `constants.ts` — and writes [`docs/mcp_interface.md`](../docs/mcp_interface.md). It covers `list_tables`, `describe_table`, `explain_query`, `run_query`, and `sample_rows` plus the shared error-code table. It also emits the retryable/repairable routing mirror consumed by the executor. Run `pnpm docs:interface` after changing contracts; do not hand-edit the generated file.
-
-Scheduled CI ([`openwiki-update.yml`](../.github/workflows/openwiki-update.yml)) runs daily at `08:00 UTC` plus on demand on Node 24, installs via `pnpm/action-setup` + `actions/setup-node`, runs OpenWiki with `code --update --print`, and opens a docs-only auto-merge PR limited to `openwiki`, `AGENTS.md`, `CLAUDE.md`.
+The full set is defined in [`package.json`](../package.json). The interface generator reads the frozen Zod schemas in [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) and writes [`docs/mcp_interface.md`](../docs/mcp_interface.md); run `pnpm docs:interface` after changing contracts and do not hand-edit the generated file. The semantic indexer is [`packages/mcp-server/src/semantic/index.ts`](../packages/mcp-server/src/semantic/index.ts) and writes as the `indexer` role.
 
 ## 4. Repository layout
 
 | Path | Role |
 |---|---|
-| [`README.md`](../README.md) | Operator setup, harness eval flow, provider/session-header caveat |
-| [`AGENTS.md`](../AGENTS.md) | Agent guide: progressive disclosure, ownership, boundaries, conventions |
-| [`package.json`](../package.json) | Scripts and pinned `openwiki@0.7.2` dependency |
+| [`README.md`](../README.md) | Operator setup, Docker flow, dataset, and gate summary |
+| [`AGENTS.md`](../AGENTS.md) | Contributor rules, boundaries, and gates |
+| [`package.json`](../package.json) | Scripts and pinned toolchain |
 | [`pnpm-workspace.yaml`](../pnpm-workspace.yaml) | Workspace packages (`apps/*`, `packages/*`) and shared catalog versions |
-| [`docs/architecture.md`](../docs/architecture.md) | Harness architecture, package boundaries, shared contracts, per-UC code placement |
-| [`docs/local-setup.md`](../docs/local-setup.md) | Step-by-step local startup on Windows/PowerShell, troubleshooting |
-| [`docs/prd.md`](../docs/prd.md) | Full product requirements (11 use cases, harness, evals) |
+| [`docs/architecture.md`](../docs/architecture.md) | Harness architecture, package boundaries, shared contracts, per-UC placement |
+| [`docs/local-setup.md`](../docs/local-setup.md) | Step-by-step local startup on Windows PowerShell and troubleshooting |
+| [`docs/prd.md`](../docs/prd.md) | Full product requirements (use cases, harness, evals) |
 | [`docs/mcp_interface.md`](../docs/mcp_interface.md) | Generated MCP tool interface; regenerate with `pnpm docs:interface` |
-| [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts) | Frozen shared Zod schemas consumed by the interface generator |
-| [`apps/api/src/index.ts`](../apps/api/src/index.ts) | Full Express SSE host: `/api/ask`, `/api/runs/:runId/resume`, persona-to-principal mapping |
-| [`apps/api/src/ports.ts`](../apps/api/src/ports.ts) | Host persistence ports: PostgresSaver checkpointer + AppStateStore, fail-fast boot |
-| [`apps/api/src/sse.ts`](../apps/api/src/sse.ts) | Sanitized SSE emitter: allowlisted events, metadata-only payloads, wire PII tripwire |
-| [`apps/web/src/app.tsx`](../apps/web/src/app.tsx) | Full Vite + React operator chat UI: persona switcher, SSE streaming, clarification resume |
-| [`openwiki/INSTRUCTIONS.md`](INSTRUCTIONS.md) | Brief every OpenWiki run reads; defines scope, taxonomy, and grounding rules |
-| [`.openwikiignore`](../.openwikiignore) | Read boundary: secrets, generated state, `node_modules/`, data dumps, evals/seeds/traces |
+| [`.env.example`](../.env.example) | Copyable env template; never commit the filled `.env` |
+| [`docker/docker-compose.yml`](../docker/docker-compose.yml) | Services, loopback ports, roles, volumes, and profile-gated loader |
+| [`packages/agent/src/graph.ts`](../packages/agent/src/graph.ts) | Frozen root LangGraph builder; extend only via registry and injected seams |
+| [`packages/agent/src/subgraphs/registry.ts`](../packages/agent/src/subgraphs/registry.ts) | Sole UC wiring seam (`registerUC`); `tracer` stays the default route |
+| [`packages/mcp-server/src/server.ts`](../packages/mcp-server/src/server.ts) | MCP `db-tools` gateway over Streamable HTTP |
+| [`packages/data/src/load.ts`](../packages/data/src/load.ts) / [`packages/data/src/verify.ts`](../packages/data/src/verify.ts) | Deterministic Vietnamized Olist loader / manifest verifier |
+| [`scripts/demo-tracer.ts`](../scripts/demo-tracer.ts) | One-command live proof used by `pnpm demo:tracer` |
+| [`scripts/trace-show.ts`](../scripts/trace-show.ts) | Redacted trace renderer used by `pnpm trace:show` |
+| [`scripts/externalClient.ts`](../scripts/externalClient.ts) | Scoped-token gateway probe used by `pnpm external-client` |
+| [`.openwikiignore`](../.openwikiignore) | Read boundary: secrets, generated state, deps, dumps, evals, seeds, traces |
 | [`.github/workflows/openwiki-update.yml`](../.github/workflows/openwiki-update.yml) | Scheduled wiki refresh workflow |
-
-The agent brief scopes this wiki to code documentation for coding agents: workflow graph, read-only guards, semantic index, memory, evals, and traces — organized by system (`agent/`, `data/`, `use-cases/`, `integrations/`, `evals/`, `operations/`), not by source directory.
 
 ## 5. Task-routing map
 
-| If you need to… | Start here | Normative spec |
-|---|---|---|
-| Understand the reference agent loop (understand → retrieve → plan → generate → validate → cost-gate → execute → mask → chart → review) and shared harness | [Agent workflow and harness architecture](agent/workflow-architecture.md) | [`docs/prd.md`](../docs/prd.md) §2.4, [`docs/architecture.md`](../docs/architecture.md) |
-| Build the semantic layer (data dictionary, metric definitions, join rules, hybrid retrieval, citations, event log) | [Semantic layer and retrieval](agent/semantic-layer.md) | [`docs/prd.md`](../docs/prd.md) §2.3, UC-02 |
-| Enforce read-only guards, SQL validation, EXPLAIN cost gates, RBAC row/column policy, PII masking, and injection defenses | [Safety and access control](agent/safety-and-access-control.md) | [`docs/prd.md`](../docs/prd.md) §§4.1/4.3, UC-07/UC-08 |
-| Build or load the business database (8+ tables, ≥1M-row table, fake PII columns, hidden seeded scenarios) with one command | [Business database and seeding](data/database-and-seeding.md) | [`docs/prd.md`](../docs/prd.md) §2.1 |
-| Implement natural-language queries with bounded self-repair and ≥70% execution accuracy | [Natural-language query with self-repair (UC-01)](use-cases/text-to-sql.md) | UC-01 (`docs/prd.md`) |
-| Add branching root-cause analysis with checkpoints or scheduled anomaly detection with deduped alerts | [Root-cause and anomaly alerts (UC-05, UC-10)](use-cases/root-cause-and-anomaly.md) | UC-05, UC-10 (`docs/prd.md`) |
-| Package DB tools as an MCP server with scoped auth plus operator surfaces (Web/CLI/Notebook) | [Database MCP server and operator software](integrations/mcp-server.md) | UC-09 (`docs/prd.md`), software (`docs/prd.md`) |
-| Run evals (`pnpm eval --all`), EX scoring, regression, and mandatory safety cases | [Eval runner, metrics, and regression](evals/eval-and-safety-harness.md) | Evals and safety (`docs/prd.md`) |
-| Change toolchain, build/test/lint/interface entrypoints, provider/session-header config, scheduled wiki CI, or submission layout | [Repository operations and wiki automation](operations/repository-operations.md) | [`README.md`](../README.md), [`.env.example`](../.env.example), [`openwiki-update.yml`](../.github/workflows/openwiki-update.yml) |
+| If you need to… | Start here |
+|---|---|
+| Understand the reference agent loop and shared harness (root graph, UC registry, budgets, HITL, checkpointing) | [Agent workflow and harness architecture](agent/workflow-architecture.md) |
+| Build the semantic layer (dictionary, metrics, hybrid retrieval, citations, embeddings) | [Semantic layer and retrieval](agent/semantic-layer.md) |
+| Enforce read-only guards, SQL validation, cost gates, RBAC and masking, PII redaction, and injection defenses | [Safety and access control](agent/safety-and-access-control.md) |
+| Build or load the business database (Olist-VN tables, ~1M-row table, fake PII, hidden seeded scenarios) | [Business database and seeding](data/database-and-seeding.md) |
+| Implement natural-language queries with bounded self-repair and execution accuracy | [Natural-language query with self-repair (UC-01)](use-cases/text-to-sql.md) |
+| Add branching root-cause analysis or scheduled anomaly detection with deduped alerts | [Root cause and anomaly alerts (UC-05, UC-10)](use-cases/root-cause-and-anomaly.md) |
+| Package DB tools as an MCP server with scoped auth plus operator surfaces | [Database MCP server and gateway](integrations/mcp-server.md) |
+| Run evals (`pnpm eval --all`), execution-accuracy scoring, regression, and mandatory safety cases | [Eval runner, metrics, and regression](evals/eval-and-safety-harness.md) |
+| Change toolchain, Docker services, env, gates, wiki provider config, scheduled wiki CI, or submission layout | [Repository operations and wiki automation](operations/repository-operations.md) |
 
-Hard invariants apply to every task: the agent builds its own SQL path (no hosted text-to-SQL/BI products), connects read-only at the connection layer, uses only synthetic or public data with fake PII, and answers in Python or TypeScript with a LangGraph-style workflow. Tool, skill, observability, and single-command eval requirements are fixed in the common harness contract.
+Hard invariants apply to every task: the agent builds its own SQL path (no hosted text-to-SQL products), connects read-only at the connection layer as `agent_ro`, uses only synthetic or public data with fake PII, and answers through a LangGraph-style workflow. Tool, skill, observability, and single-command eval requirements are fixed in the common harness contract.
 
 ## 6. Next steps
 
 1. Run the setup sequence in §2 and confirm `pnpm wiki:dry-run` plus `pnpm typecheck && pnpm lint && pnpm test` pass.
 2. Read the PRD scope and mandatory rules before writing any agent or loader code.
-3. Pick a use case from §5 and check its K1–K8 coverage row; a submission set must cover all eight knowledge areas.
+3. Pick a use case from §5 and check its coverage row; a submission set must cover the required knowledge areas.
 4. Continue to [Agent workflow and harness architecture](agent/workflow-architecture.md) for the workflow and harness, and [Business database and seeding](data/database-and-seeding.md) for the dataset, seeded scenarios, and load command.

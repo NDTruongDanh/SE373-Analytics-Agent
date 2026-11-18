@@ -688,4 +688,100 @@ describe("run_query attempt accounting", () => {
       repairs: 1,
     });
   });
+
+  it("records rate-limit retry attempts in trace without leaking headers or keys and reconciles run_done", async () => {
+    const saved = {
+      max: process.env.AGENT_MODEL_MAX_RETRIES,
+      base: process.env.AGENT_MODEL_RETRY_BASE_MS,
+      maxWait: process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS,
+    };
+    process.env.AGENT_MODEL_MAX_RETRIES = "3";
+    process.env.AGENT_MODEL_RETRY_BASE_MS = "50";
+    process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = "100";
+    try {
+      const dir = mkdtempSync(path.join(tmpdir(), "traces-retry-"));
+      const runId = "run-retry-trace-1";
+      const emit = createSpanEmitter({
+        runId,
+        threadId: "thread-retry-1",
+        userId: "user-retry-1",
+        role: "hr",
+        tracesDir: dir,
+      });
+      let calls = 0;
+      const executor = new ValidatedQueryExecutor({
+        model: {
+          invoke: async () => ({ content: JSON.stringify({ sql: E2E_SQL, tablesUsed: ["orders"] }) }),
+          stream: () => {
+            calls += 1;
+            if (calls <= 2) {
+              throw Object.assign(new Error("429 limit sk-secret-key-xyz"), {
+                status: 429,
+                headers: { authorization: "Bearer sk-raw-header" },
+              });
+            }
+            return (async function* () {
+              yield {
+                content: JSON.stringify({ sql: E2E_SQL, tablesUsed: ["orders"] }),
+                usage_metadata: { input_tokens: 20, output_tokens: 10, total_tokens: 30 },
+              };
+            })();
+          },
+          withStructuredOutput: () => ({
+            invoke: async () => ({ sql: E2E_SQL, tablesUsed: ["orders"] }),
+          }),
+        },
+        mcp: {
+          call: async (tool: string) => {
+            if (tool === "describe_table") {
+              return { table: "orders", columns: E2E_COLUMNS, primaryKey: ["id"], foreignKeys: [] };
+            }
+            if (tool === "explain_query") return { estimatedCost: 5, estimatedRows: 3 };
+            if (tool === "run_query") {
+              return {
+                columns: ["status", "n"],
+                rows: [{ status: "completed", n: 7 }],
+                rowCount: 1,
+                truncated: false,
+                maskedColumns: [],
+                durationMs: 1,
+              };
+            }
+            throw new Error(`unexpected tool ${tool}`);
+          },
+        },
+        emitSpan: (event) =>
+          emit({
+            node: event.node,
+            type: event.type,
+            durationMs: event.durationMs ?? 0,
+            payload: event.payload,
+            attempt: event.attempt,
+          }),
+      });
+      const res = await executor.run({
+        question: "How many orders per status?",
+        candidateTables: ["orders"],
+        principal: { runId, userId: "user-retry-1", roleScope: "hr" },
+      });
+      expect(res.status).toBe("ok");
+      emit.emitRunDone(res.status);
+
+      const raw = readFileSync(path.join(dir, `${runId}.jsonl`), "utf8");
+      expect(raw).not.toContain("sk-secret-key-xyz");
+      expect(raw).not.toContain("sk-raw-header");
+      const events = raw.trim().split("\n").map((line) => TraceEventSchema.parse(JSON.parse(line)));
+      expect(events.filter((e) => e.type === "retry")).toHaveLength(2);
+      expect(events.filter((e) => e.type === "llm_call")).toHaveLength(3);
+      const done = events.find((e) => e.type === "run_done");
+      expect(done?.payload).toMatchObject({ status: "ok", llmCalls: 3 });
+    } finally {
+      if (saved.max === undefined) delete process.env.AGENT_MODEL_MAX_RETRIES;
+      else process.env.AGENT_MODEL_MAX_RETRIES = saved.max;
+      if (saved.base === undefined) delete process.env.AGENT_MODEL_RETRY_BASE_MS;
+      else process.env.AGENT_MODEL_RETRY_BASE_MS = saved.base;
+      if (saved.maxWait === undefined) delete process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS;
+      else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
+    }
+  });
 });

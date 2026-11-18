@@ -39,6 +39,10 @@ import {
   type LlmUsage,
 } from "../telemetry/usage.js";
 import {
+  isRateLimitFailure,
+  toModelDbToolError,
+} from "../telemetry/retry.js";
+import {
   clampLimit,
   hasWhereFilter,
   localQuerySafetyGate,
@@ -150,6 +154,8 @@ export interface ExecutorRunInput {
    * Overrides this.maxAttempts if lower, preventing over-execution during repair loops.
    */
   maxAttempts?: number;
+  /** Optional cancellation signal propagated to model retries and streaming calls. */
+  signal?: AbortSignal;
 }
 
 export interface TimeRangeOptionsInput {
@@ -778,11 +784,32 @@ export class ValidatedQueryExecutor {
           const out = await invokeJsonWithUsage(this.model, SqlProposalSchema, prompt, {
             name: "sql_proposal",
             callbacks: input.callbacks,
+            node: "propose",
+            budget,
+            deadlineMs: budget.deadlineMs,
+            signal: input.signal,
+            outerAttempt: attempt,
+            emit: (event) =>
+              this.span({
+                node: event.node,
+                type: event.type,
+                attempt: event.attempt ?? attempt,
+                durationMs: event.durationMs,
+                payload: event.payload,
+              }),
           });
           proposal = out.parsed;
           usage = { inputTokens: out.inputTokens, outputTokens: out.outputTokens };
           usageModel = out.model;
         } catch (thrown) {
+          if (isRateLimitFailure(thrown)) {
+            return {
+              status: "error",
+              error: toModelDbToolError(thrown, "SQL proposal failed"),
+              sql: partials.lastSql,
+              attempts: attempt,
+            };
+          }
           const message =
             thrown instanceof Error ? thrown.message : String(thrown);
           return {
