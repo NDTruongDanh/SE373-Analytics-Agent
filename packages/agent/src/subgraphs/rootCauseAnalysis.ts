@@ -2160,7 +2160,7 @@ function readRunContext(rt?: RootRuntime): {
   const token = pick("token");
   const transport: TracerRunConfig | null =
     mcpUrl.length > 0 && token.length > 0
-      ? { mcpUrl, token, runId, userId, roleScope }
+      ? { mcpUrl, token, runId, userId, roleScope, callbacks: rt?.config?.callbacks }
       : null;
 
   return { identity, transport };

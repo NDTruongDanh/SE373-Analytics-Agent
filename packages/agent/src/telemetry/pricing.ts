@@ -88,20 +88,38 @@ export function estimateCostUsd(
   inputTokens: number,
   outputTokens: number,
 ): CostEstimate {
-  if (model === undefined || model.length === 0) {
-    return { estimatedCostUsd: 0, pricingKnown: false };
-  }
+  const { inputCostUsd, outputCostUsd, pricingKnown } = estimateCostBreakdownUsd(
+    model,
+    inputTokens,
+    outputTokens,
+  );
+  return { estimatedCostUsd: inputCostUsd + outputCostUsd, pricingKnown };
+}
+
+export interface CostBreakdown {
+  inputCostUsd: number;
+  outputCostUsd: number;
+  pricingKnown: boolean;
+}
+
+/**
+ * Same pricing as estimateCostUsd, split into input and output cost (the
+ * LangSmith usage_metadata shape, #97). Unknown models price 0; never throws.
+ */
+export function estimateCostBreakdownUsd(
+  model: string | undefined,
+  inputTokens: number,
+  outputTokens: number,
+): CostBreakdown {
+  const unknown = { inputCostUsd: 0, outputCostUsd: 0, pricingKnown: false };
+  if (model === undefined || model.length === 0) return unknown;
   const entry = getPricingTable().models[model];
-  if (entry === undefined) {
-    return { estimatedCostUsd: 0, pricingKnown: false };
-  }
+  if (entry === undefined) return unknown;
   const safe = (n: number): number =>
     Number.isFinite(n) && n > 0 ? n : 0;
   return {
-    estimatedCostUsd:
-      (safe(inputTokens) * entry.inputPer1M +
-        safe(outputTokens) * entry.outputPer1M) /
-      1_000_000,
+    inputCostUsd: (safe(inputTokens) * entry.inputPer1M) / 1_000_000,
+    outputCostUsd: (safe(outputTokens) * entry.outputPer1M) / 1_000_000,
     pricingKnown: true,
   };
 }

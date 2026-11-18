@@ -60,7 +60,7 @@ function readTransport(rt: RootRuntime): TracerRunConfig | null {
   const userId = read("userId");
   const roleScope = read("roleScope");
   if (!mcpUrl || !token || !runId || !userId || !roleScope) return null;
-  return { mcpUrl, token, runId, userId, roleScope };
+  return { mcpUrl, token, runId, userId, roleScope, callbacks: rt.config.callbacks };
 }
 
 export function toStateChunk(

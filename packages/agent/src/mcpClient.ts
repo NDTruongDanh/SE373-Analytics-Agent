@@ -9,6 +9,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
+import { withMcpToolRun } from "./telemetry/toolRuns.js";
 import {
   dbToolError,
   DbToolErrorSchema,
@@ -27,6 +29,12 @@ export interface TracerRunConfig {
   runId: string;
   userId: string;
   roleScope: string;
+  /**
+   * The graph node's callbacks (rt.config.callbacks). When they carry the
+   * PII-safe LangSmith tracer, each call also appears as a LangSmith tool
+   * run (#97). Never sent to the gateway.
+   */
+  callbacks?: Callbacks;
 }
 
 export interface McpToolResult {
@@ -35,6 +43,16 @@ export interface McpToolResult {
 }
 
 export async function callMcpTool(
+  config: TracerRunConfig,
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<McpToolResult> {
+  return withMcpToolRun(config.callbacks, tool, args, () =>
+    callMcpToolUntraced(config, tool, args),
+  );
+}
+
+async function callMcpToolUntraced(
   config: TracerRunConfig,
   tool: string,
   args: Record<string, unknown>,
