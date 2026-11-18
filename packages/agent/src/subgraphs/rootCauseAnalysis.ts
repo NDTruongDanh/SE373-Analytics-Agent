@@ -39,6 +39,7 @@ import { createChatModel } from "../models/factory.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import { pauseForApproval } from "../hitl.js";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
+import { loadSkill } from "../skills/loader.js";
 
 export { RCA_UC_ID } from "../constants.js";
 
@@ -118,6 +119,9 @@ export const DEFAULT_CANDIDATE_PRODUCTS = [
 ];
 
 export interface RcaRuntimeDeps {
+  skillsDir?: string;
+  loadSkill?: typeof loadSkill;
+  skillContract?: string;
   intentModel?: IntentModelLike;
   executor?: TextToSqlExecutorLike;
   mcpCaller?: McpToolCaller;
@@ -1058,6 +1062,15 @@ export function parseRcaIntent(question: string): RcaIntent {
   };
 }
 
+export function rcaIntentPrompt(question: string, skillContract: string): string {
+  return [
+    "Extract a structured root cause analysis diagnostic intent from the user question in Vietnamese.",
+    "Identify target metric, metric type (additive or ratio), direction (decrease or increase), and time periods.",
+    `Skill contract:\n${skillContract}`,
+    `Question: ${question}`,
+  ].join("\n\n");
+}
+
 export function formatVnd(val: number): string {
   if (Math.abs(val) >= 1_000_000_000) {
     return `${(val / 1_000_000_000).toFixed(2)} tỷ VNĐ`;
@@ -1110,13 +1123,14 @@ export async function validateBaseline(
 
     const targetFactTable = getMetricTargetTable(intent.metricName);
     const expectedDateCol = getMetricDateColumn(intent.metricName);
+    const contractSnippet = deps.skillContract ? `\n\nSkill contract:\n${deps.skillContract}` : "";
     deps.setTargetTable?.(targetFactTable);
     deps.setAllowedDateColumns?.([expectedDateCol]);
     deps.setActivePeriod?.(intent.baselinePeriod);
     let baseRes: ExecutorResult;
     try {
       baseRes = await deps.executor.run({
-        question: `Compute baseline for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}. Reference SQL: ${baseSql}`,
+        question: `Compute baseline for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}.${contractSnippet}\n\nReference SQL: ${baseSql}`,
         candidateTables: intent.candidateTables,
         principal,
       });
@@ -1175,7 +1189,7 @@ export async function validateBaseline(
     let currRes: ExecutorResult;
     try {
       currRes = await deps.executor.run({
-        question: `Compute current value for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}. Reference SQL: ${currSql}`,
+        question: `Compute current value for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}.${contractSnippet}\n\nReference SQL: ${currSql}`,
         candidateTables: intent.candidateTables,
         principal,
       });
@@ -1691,10 +1705,11 @@ export async function executeAnalysis(
           deps.setTargetTable?.(targetTable);
           deps.setAllowedDateColumns?.([expectedDateCol]);
 
+          const contractSnippet = deps.skillContract ? `\n\nSkill contract:\n${deps.skillContract}` : "";
           const remainingForBaseline = Math.max(1, maxQueries - plan.totalQueriesCount - 1);
           deps.setActivePeriod?.(plan.baselinePeriod);
           const baseRes = await deps.executor.run({
-            question: `Calculate baseline for step ${step.stepId} from ${plan.baselinePeriod.start} to ${plan.baselinePeriod.end}. Reference SQL: ${baseSql}`,
+            question: `Calculate baseline for step ${step.stepId} from ${plan.baselinePeriod.start} to ${plan.baselinePeriod.end}.${contractSnippet}\n\nReference SQL: ${baseSql}`,
             candidateTables: intent.candidateTables,
             principal,
             budget: createBudgetState({ maxLlmCalls: remainingForBaseline }),
@@ -1732,7 +1747,7 @@ export async function executeAnalysis(
           const remainingForCurrent = Math.max(1, maxQueries - plan.totalQueriesCount);
           deps.setActivePeriod?.(plan.currentPeriod);
           const currRes = await deps.executor.run({
-            question: `Calculate current for step ${step.stepId} from ${plan.currentPeriod.start} to ${plan.currentPeriod.end}. Reference SQL: ${currSql}`,
+            question: `Calculate current for step ${step.stepId} from ${plan.currentPeriod.start} to ${plan.currentPeriod.end}.${contractSnippet}\n\nReference SQL: ${currSql}`,
             candidateTables: intent.candidateTables,
             principal,
             budget: createBudgetState({ maxLlmCalls: remainingForCurrent }),
@@ -2179,7 +2194,39 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
   ): Promise<AgentUpdate> => {
     const { identity, transport } = readRunContext(rt);
     const principal = identity;
-    const intent = parseRcaIntent(state.question);
+
+    const skillLoader = deps.loadSkill ?? loadSkill;
+    const skill = skillLoader("root-cause-analysis", {
+      skillsDir: deps.skillsDir,
+      emit: rt?.emit,
+    });
+
+    const modelToUse =
+      deps.intentModel ??
+      (process.env.AGENT_MODEL_API_KEY
+        ? (createChatModel("intent") as unknown as IntentModelLike)
+        : undefined);
+    let intent: RcaIntent;
+    if (modelToUse) {
+      try {
+        intent = await modelToUse
+          .withStructuredOutput(RcaIntentSchema, { name: "rca_intent" })
+          .invoke(rcaIntentPrompt(state.question, skill.contract));
+      } catch (err) {
+        rt?.emit?.({
+          node: "intent",
+          type: "intent_model_error",
+          durationMs: 0,
+          payload: { error: err instanceof Error ? err.message : String(err) },
+        });
+        if (deps.intentModel) {
+          throw err;
+        }
+        intent = parseRcaIntent(state.question);
+      }
+    } else {
+      intent = parseRcaIntent(state.question);
+    }
 
     let activePeriod: TimePeriod | null = null;
     let activeAllowedCols: string[] | null = null;
@@ -2196,6 +2243,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
 
     let effectiveDeps: RcaRuntimeDeps = {
       ...deps,
+      skillContract: skill.contract,
       setActivePeriod: deps.setActivePeriod ?? setActivePeriod,
       setAllowedDateColumns: deps.setAllowedDateColumns ?? setAllowedDateColumns,
       setTargetTable: deps.setTargetTable ?? setTargetTable,

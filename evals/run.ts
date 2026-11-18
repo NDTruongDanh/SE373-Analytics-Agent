@@ -1344,6 +1344,17 @@ async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const args = process.argv.slice(2);
 
+  // Load env once at runner entrypoint and apply the eval isolation guard
+  // (scrubs LangSmith tracing and drops live keys unless EVAL_USE_LIVE_MODEL=1)
+  // before any UCs run. Downstream calls (buildLiveAdapter, graders) pass
+  // loadEnv: false or receive config explicitly.
+  try {
+    process.loadEnvFile?.();
+  } catch {
+    // env file optional
+  }
+  prepareEvalEnv();
+
   if (args[0] === "--compare" && args.length === 3) {
     const before = JSON.parse(readFileSync(args[1], "utf8")) as EvalResultsFile;
     const after = JSON.parse(readFileSync(args[2], "utf8")) as EvalResultsFile;
@@ -1401,10 +1412,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  // UC-05 dispatch (pure, DB-free): RCA tree decomposition + HITL + K7 waterfall gate.
+  // UC-05 dispatch: RCA tree decomposition + HITL + K7 waterfall gate (EC-01..07 scripted, EC-08 live graph against seeded DB).
   // Writes the same GradedCase envelope for --compare.
   if (ucs.length === 1 && ucs[0] === "uc05") {
-    const uc05 = await gradeUc05(repoRoot);
+    const uc05 = await gradeUc05(repoRoot, {
+      liveMcpUrl: process.env.MCP_URL ?? "http://127.0.0.1:8081/mcp",
+      liveToken: process.env.MCP_TOKEN_ADMIN,
+    });
     const passed = uc05.cases.filter((c) => c.exPass).length;
     mkdirSync(path.join(repoRoot, "results"), { recursive: true });
     writeFileSync(
@@ -1421,7 +1435,7 @@ async function main(): Promise<void> {
 
   let live: LiveHandle;
   try {
-    live = await buildLiveAdapter(repoRoot);
+    live = await buildLiveAdapter(repoRoot, { loadEnv: false });
   } catch (error) {
     console.error(`eval infrastructure failure: ${(error as Error).message}`);
     process.exit(INFRA_EXIT_CODE);
@@ -1432,7 +1446,10 @@ async function main(): Promise<void> {
   try {
     for (const uc of ucs) {
       if (uc === "uc05") {
-        const uc05 = await gradeUc05(repoRoot);
+        const uc05 = await gradeUc05(repoRoot, {
+          liveMcpUrl: live.mcpUrl,
+          liveToken: process.env.MCP_TOKEN_ADMIN,
+        });
         const passed = uc05.cases.filter((c) => c.exPass).length;
         writeFileSync(
           path.join(repoRoot, "results", "uc05.json"),
@@ -1441,7 +1458,7 @@ async function main(): Promise<void> {
         );
         if (passed !== uc05.cases.length) failed = true;
         console.log(
-          `eval uc05: ${passed}/${uc05.cases.length} EX pass (dataset uc05-1, deterministic rca runner)`,
+          `eval uc05: ${passed}/${uc05.cases.length} EX pass (dataset uc05-1, live graph + deterministic runner)`,
         );
         continue;
       }

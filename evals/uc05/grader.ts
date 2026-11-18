@@ -11,6 +11,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { MemorySaver, StateGraph, START, END } from "../../packages/agent/node_modules/@langchain/langgraph/dist/index.js";
+import { buildRootGraph } from "../../packages/agent/src/graph.js";
+import { RCA_UC_ID } from "../../packages/agent/src/constants.js";
+import { createChatModel } from "../../packages/agent/src/models/factory.js";
 import {
   createRcaRuntime,
   type RcaRuntimeDeps,
@@ -33,15 +36,17 @@ interface CaseItem {
   caseId: string;
   name: string;
   question: string;
-  expectedMetric: string;
-  expectedDirection: string;
+  expectedMetric?: string;
+  expectedDirection?: string;
   expectedDimensions?: string[];
   expectedMathPass?: boolean;
-  expectedStatus: string;
+  expectedStatus?: string;
   maxQueriesAllowed?: number;
   hitlAction?: string;
   simulateErrorBranch?: boolean;
   maxQueriesLimit?: number;
+  isLiveGraph?: boolean;
+  scenarioId?: string;
   notes?: string;
 }
 
@@ -103,7 +108,15 @@ function fakeState(question: string): AgentState {
   };
 }
 
-export async function gradeUc05(repoRoot: string): Promise<{
+export interface GradeUc05Options {
+  liveMcpUrl?: string;
+  liveToken?: string;
+}
+
+export async function gradeUc05(
+  repoRoot: string,
+  opts: GradeUc05Options = {},
+): Promise<{
   cases: GradedCase[];
   summary: Record<string, unknown>;
 }> {
@@ -382,6 +395,183 @@ export async function gradeUc05(repoRoot: string): Promise<{
         note = exPass
           ? `Passed: Hard quota respected (${totalQueries} queries <= 3), remaining branches recorded as MAX_QUERIES_REACHED`
           : `Failed: totalQueries=${totalQueries}, hasMaxQueriesReached=${hasMaxQueriesReached}, hasSkipped=${hasSkippedStep}`;
+      } else if (c.caseId === "EC-08" || c.isLiveGraph) {
+        // Live graph execution (Issue #94): ucId unset, routed dynamically by RCA regex patterns
+        // against seeded scenario (e.g. uc05-lazada-nam-diengiadung).
+        // Queries real database over live MCP gateway when available, validating seeded baseline.
+        // Reaches HITL plan interrupt and verifies skill_call event is emitted.
+        const emittedSpans: Array<{ node: string; type: string; payload?: unknown }> = [];
+        const skillsDir = path.resolve(repoRoot, "skills");
+
+        // 1. Load and verify seeded scenario from packages/data/src/seeds.json
+        const seedsPath = path.resolve(repoRoot, "packages/data/src/seeds.json");
+        const seeds = JSON.parse(readFileSync(seedsPath, "utf8"));
+        const scenarioId = c.scenarioId ?? "uc05-lazada-nam-diengiadung";
+        const scenario = seeds.scenarios_uc05?.find((s: { id: string }) => s.id === scenarioId);
+        if (!scenario) {
+          throw new Error(`Seeded scenario '${scenarioId}' not found in seeds.json`);
+        }
+
+        const threadId = makeThreadId("eval_uc05", c.id);
+        const mcpUrl = opts.liveMcpUrl ?? process.env.MCP_URL ?? "http://127.0.0.1:8081/mcp";
+        const token = opts.liveToken ?? process.env.MCP_TOKEN_ADMIN ?? "";
+
+        // Verify live MCP gateway availability; fail-closed without mocks (Issue #94 review)
+        let isLiveMcpAvailable = false;
+        if (mcpUrl && token) {
+          try {
+            const probe = await fetch(mcpUrl.replace(/\/mcp$/, "/healthz"), { signal: AbortSignal.timeout(2000) });
+            isLiveMcpAvailable = probe.ok;
+          } catch {
+            isLiveMcpAvailable = false;
+          }
+        }
+
+        if (!isLiveMcpAvailable) {
+          results.push({
+            id: c.id,
+            status: "fail",
+            exPass: false,
+            ms: Date.now() - startMs,
+            tokens: 0,
+            note: `Failed (infra): Live MCP gateway unreachable at ${mcpUrl} (healthz probe failed or token missing) — live seeded scenario requires running MCP server`,
+          });
+          continue;
+        }
+
+        // Propose baseline queries matching the seeded scenario dimensions:
+        // Lazada x Nam x Điện gia dụng from seeds.json (uc05-lazada-nam-diengiadung)
+        const scenarioFilterSql = `
+FROM public.order_items i
+JOIN public.orders o USING (order_id)
+JOIN public.customers c USING (customer_id)
+JOIN public.channels ch USING (channel_id)
+JOIN public.products p USING (product_id)
+JOIN public.categories cat USING (category_id)
+WHERE o.status = 'delivered'
+  AND ch.channel_name = 'Lazada'
+  AND c.region_group = 'Nam'
+  AND cat.name_vi = 'Điện gia dụng'`;
+
+        const baseSql = `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val ${scenarioFilterSql} AND o.purchase_date >= '2026-08-01' AND o.purchase_date < '2026-09-01'`;
+        const currSql = `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val ${scenarioFilterSql} AND o.purchase_date >= '2026-09-01' AND o.purchase_date < '2026-10-01'`;
+        const sqlResponses = [
+          JSON.stringify({ sql: baseSql, tablesUsed: ["orders", "order_items", "customers", "channels", "products", "categories"] }),
+          JSON.stringify({ sql: currSql, tablesUsed: ["orders", "order_items", "customers", "channels", "products", "categories"] }),
+        ];
+        const sqlModel = createChatModel("sql", { fake: { responses: sqlResponses } });
+
+        const deps: RcaRuntimeDeps = {
+          skillsDir,
+          sqlModel: sqlModel as never,
+        };
+
+        const rcaRuntime = createRcaRuntime(deps);
+        const rootGraph = buildRootGraph({
+          checkpointer: new MemorySaver(),
+          emitSpan: (evt) => {
+            emittedSpans.push(evt);
+            return `span_${emittedSpans.length}`;
+          },
+          ucHandlers: { [RCA_UC_ID]: rcaRuntime.entry },
+        });
+
+        const out = await rootGraph.invoke(
+          {
+            question: c.question,
+            ucId: "", // Deliberately unset to test router dynamic dispatch
+          },
+          {
+            configurable: {
+              thread_id: threadId,
+              mcpUrl,
+              token,
+              runId: threadId,
+              userId: "eval",
+              roleScope: "admin",
+            },
+          },
+        );
+
+        const interrupts = (out as { __interrupt__?: Array<{ value?: Record<string, unknown> }> })
+          .__interrupt__;
+        const hasInterrupt = Array.isArray(interrupts) && interrupts.length > 0;
+        const interruptPayload = hasInterrupt ? interrupts[0]?.value : undefined;
+        const isPlanInterrupt = interruptPayload?.action === "review_analysis_plan";
+        const plan = interruptPayload?.plan as {
+          baselineVal?: number;
+          currentVal?: number;
+          absDelta?: number;
+          pctDelta?: number;
+          isValidBaseline?: boolean;
+          steps?: unknown[];
+        } | undefined;
+        const isValidBaseline = plan?.isValidBaseline === true;
+
+        const hasSkillCall = emittedSpans.some(
+          (s) =>
+            s.type === "skill_call" &&
+            (s.payload as { skill?: string } | undefined)?.skill === "root-cause-analysis",
+        );
+
+        // Scenario validation against seeds.json metadata:
+        // Expected drop magnitude is ~12% (magnitude: -0.12 in seeds.json, 0.88 multiplier in load.ts).
+        // Synchronized with packages/data/src/verify.ts: inBand(entry.id, num(row["pct"]), -0.2, -0.05).
+        // Rather than hard-coding fixed revenue totals (which depend on database scale),
+        // we dynamically verify:
+        // 1. Positive baseline and current values retrieved from the database.
+        // 2. Negative delta reflecting revenue drop (absDelta < 0).
+        // 3. Mathematical consistency: absDelta === currentVal - baselineVal AND pctDelta === (absDelta / baselineVal) * 100.
+        // 4. pctDelta lands strictly within the verified seed scenario drop band [-20%, -5%] (from verify.ts).
+        // 5. pctDelta aligns with expected scenario magnitude (-12% +/- 8%).
+        const isBaselinePositive = typeof plan?.baselineVal === "number" && plan.baselineVal > 0;
+        const isCurrentPositive = typeof plan?.currentVal === "number" && plan.currentVal > 0;
+        const isDeltaNegative = typeof plan?.absDelta === "number" && plan.absDelta < 0;
+
+        const calculatedAbsDelta = (plan?.currentVal ?? 0) - (plan?.baselineVal ?? 0);
+        const calculatedPctDelta = (plan?.baselineVal ?? 0) !== 0
+          ? (calculatedAbsDelta / Math.abs(plan?.baselineVal ?? 1)) * 100
+          : 0;
+
+        const isAbsDeltaConsistent =
+          isBaselinePositive &&
+          isCurrentPositive &&
+          isDeltaNegative &&
+          Math.abs((plan?.absDelta ?? 0) - calculatedAbsDelta) < 1;
+
+        const isPctDeltaConsistent =
+          typeof plan?.pctDelta === "number" &&
+          Math.abs(plan.pctDelta - calculatedPctDelta) < 0.05;
+
+        const isMathConsistent = isAbsDeltaConsistent && isPctDeltaConsistent;
+
+        const SEED_MIN_PCT_DROP = -20; // verify.ts inBand floor: -0.20 (-20%)
+        const SEED_MAX_PCT_DROP = -5;  // verify.ts inBand ceiling: -0.05 (-5%)
+        const isDeltaInBand =
+          typeof plan?.pctDelta === "number" &&
+          plan.pctDelta <= SEED_MAX_PCT_DROP &&
+          plan.pctDelta >= SEED_MIN_PCT_DROP;
+
+        const expectedMagnitude = typeof scenario.magnitude === "number" ? scenario.magnitude : -0.12;
+        const expectedPct = expectedMagnitude * 100;
+        const isNearExpectedMagnitude =
+          typeof plan?.pctDelta === "number" &&
+          Math.abs(plan.pctDelta - expectedPct) <= 8;
+
+        exPass = Boolean(
+          hasInterrupt &&
+            isPlanInterrupt &&
+            isValidBaseline &&
+            hasSkillCall &&
+            isBaselinePositive &&
+            isCurrentPositive &&
+            isDeltaInBand &&
+            isNearExpectedMagnitude &&
+            isMathConsistent,
+        );
+        note = exPass
+          ? `Passed: Live graph routed via router (ucId unset) for seeded scenario ${scenarioId}, queried real DB via live MCP run_query (baseline=${plan?.baselineVal}, current=${plan?.currentVal}, pctDelta=${plan?.pctDelta?.toFixed(2)}% in verify.ts band [-20%, -5%], target magnitude ${expectedPct}%), skill loaded (skill_call emitted), reached HITL plan interrupt`
+          : `Failed: hasInterrupt=${hasInterrupt}, isPlanInterrupt=${isPlanInterrupt}, isValidBaseline=${isValidBaseline}, hasSkillCall=${hasSkillCall}, isDeltaInBand=${isDeltaInBand} (got ${plan?.pctDelta}%, required [-20%, -5%]), isNearExpectedMagnitude=${isNearExpectedMagnitude} (target ${expectedPct}%), isAbsDeltaConsistent=${isAbsDeltaConsistent}, isPctDeltaConsistent=${isPctDeltaConsistent}`;
       }
     } catch (err) {
       exPass = false;
