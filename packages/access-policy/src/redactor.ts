@@ -8,13 +8,26 @@ import { MASKED_EMAIL, MASKED_PHONE } from "./constants.js";
 // Compat re-exports: the canonical definitions live in ./constants.js.
 export { MASKED_EMAIL, MASKED_PHONE };
 
+// Phone start guard (#115): replaces a plain `\b`. Like `\b` it rejects a
+// start inside a word or longer digit run, and it also rejects the fraction
+// digits of a decimal (`0.0912345678`): `\b` matches right after the `.`,
+// which masked numbers, and broke JSON lines that the trace writer and the
+// LangSmith anonymizer scan as text. A phone after plain punctuation
+// (`tel:0901…`, `a,0901…`, end of sentence) still matches.
+const PHONE_START = String.raw`(?<!\w|\d[.,])`;
 // Mobile: 03/05/07/08/09 prefixes, 10 digits total, spaced and compact
 // forms (e.g. `0901 234 567`, `0901234567`, `032 123 4567`). Separators may
 // sit between any digits, so both 4-3-3 and 3-3-4 groupings match.
-const MOBILE_PATTERN = /\b0(?:3|5|7|8|9)(?:[\s.\-]*\d){8}\b/g;
+const MOBILE_PATTERN = new RegExp(
+  String.raw`${PHONE_START}0(?:3|5|7|8|9)(?:[\s.\-]*\d){8}\b`,
+  "g",
+);
 // Landline: 02X prefixes with 10-12 digits total
 // (e.g. `0285 8212 0590`, `024 0590 1799`, compact `028582120590`).
-const LANDLINE_PATTERN = /\b02\d(?:[\s.\-]*\d){7,9}\b/g;
+const LANDLINE_PATTERN = new RegExp(
+  String.raw`${PHONE_START}02\d(?:[\s.\-]*\d){7,9}\b`,
+  "g",
+);
 // International: +84 with 8-9 subscriber digits and optional separators
 // (e.g. `+84901234567`, `+84 901 234 567`).
 const INTL_PATTERN = /\+84(?:[\s.\-]*\d){8,9}\b/g;

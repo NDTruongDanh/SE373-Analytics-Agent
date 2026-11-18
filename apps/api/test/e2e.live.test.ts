@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
 import { createHostPorts } from "../src/ports.js";
-import { SSE_ALLOWLIST } from "../src/sse.js";
+import { containsWirePii, SSE_ALLOWLIST } from "../src/sse.js";
 
 const HARNESS_URL = process.env["HARNESS_STATE_DATABASE_URL"] ?? "";
 const AGENT_RO_URL = process.env["AGENT_RO_DATABASE_URL"] ?? "";
@@ -219,8 +219,12 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       expect(event.runId).toBe(runId);
       expect(typeof event.threadId).toBe("string");
       expect(typeof event.spanId).toBe("string");
-      expect(/0\d{9}/.test(line)).toBe(false);
-      expect(/\S+@\S+\.\S+/.test(line)).toBe(false);
+      // Same detector as the SSE tripwire (#115): a bare /0\d{9}/ also
+      // matched float digits (costs, scores) and made this test flaky.
+      expect(containsWirePii(line)).toBe(false);
+      for (const literal of liveLiterals) {
+        expect(line).not.toContain(literal);
+      }
       if (event.type === "tool_call" && event.payload?.tool) {
         tools.push(event.payload.tool);
       }
@@ -236,8 +240,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(vizTypes).toContain("chart_validated");
 
     // SSE proof: no seed PII shapes, no live row cell value, no token.
-    expect(/0\d{9}/.test(sseText)).toBe(false);
-    expect(/\S+@\S+\.\S+/.test(sseText)).toBe(false);
+    expect(containsWirePii(sseText)).toBe(false);
     for (const literal of liveLiterals) {
       expect(sseText).not.toContain(literal);
     }
