@@ -32,6 +32,7 @@ import {
   type BudgetState,
   type BudgetTripReason,
 } from "./budgets.js";
+import { buildSqlProposalPrompt } from "./prompt.js";
 import {
   estimateCostUsd,
   invokeJsonWithUsage,
@@ -128,6 +129,11 @@ export interface ExecutorRunInput {
   timeRange?: string | null;
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
+  /**
+   * Trusted semantic-layer snippets (metric definitions, join rules,
+   * examples) shown to the SQL model as reference (#104). Never row data.
+   */
+  references?: string[];
   principal: ExecutorPrincipal;
   /**
    * LangSmith callbacks from the enclosing graph run (same tracer object
@@ -759,13 +765,18 @@ export class ValidatedQueryExecutor {
         let proposal: SqlProposal;
         let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
         let usageModel: string | undefined;
-        const timeRangeContext = input.timeRange?.trim()
-          ? `\n\n<user-selected-time-range>${JSON.stringify(input.timeRange.trim())}</user-selected-time-range>`
-          : "";
-        const prompt =
-          repairFeedback === null
-            ? `${input.question}${timeRangeContext}`
-            : `${input.question}${timeRangeContext}\n\nPrevious attempt ${attempt - 1} failed with ${repairFeedback}. Propose corrected read-only SQL.`;
+        // The plain-JSON path has no response_format, so the prompt carries
+        // the output contract plus the described schema (#104).
+        const prompt = buildSqlProposalPrompt({
+          question: input.question,
+          timeRange: input.timeRange,
+          described,
+          references: input.references,
+          repair:
+            repairFeedback === null
+              ? null
+              : { attempt: attempt - 1, feedback: repairFeedback },
+        });
         try {
           // Plain-JSON proposal: no response_format on the wire (the
           // provider's strict json_schema path is far slower than the

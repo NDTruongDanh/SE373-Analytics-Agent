@@ -72,17 +72,49 @@ describe("UC-02 unknown-term gate", () => {
     expect(UNKNOWN_TERM_DENSE_THRESHOLD).toBe(0.6);
   });
 
-  it("passes basic queries with no requested metrics (no search)", async () => {
+  it("retrieves for basic queries and keeps chunk tables as candidates (#104)", async () => {
     let searched = false;
     const retrieve = createRetrieveSemantic({
       search: async () => {
         searched = true;
-        return [];
+        return [
+          {
+            chunkId: "table:orders",
+            docType: "table",
+            table: "orders",
+            tables: ["orders", "channels"],
+            metricName: null,
+            content: "orders table",
+            score: 0.9,
+          },
+        ];
+      },
+    });
+    const out = await retrieve(stateWith({ requestedMetrics: [] }), fakeRuntime());
+    expect(searched).toBe(true);
+    expect(out.semanticChunks?.[0]?.tables).toEqual(["orders", "channels"]);
+    expect(out.status).toBeUndefined();
+  });
+
+  it("degrades a basic query to no chunks when search fails (#104)", async () => {
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        throw new Error("gateway down");
       },
     });
     const out = await retrieve(stateWith({ requestedMetrics: [] }), fakeRuntime());
     expect(out).toEqual({});
-    expect(searched).toBe(false);
+  });
+
+  it("stays fail-closed when search fails for a metric query", async () => {
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        throw new Error("gateway down");
+      },
+    });
+    await expect(
+      retrieve(stateWith({ requestedMetrics: ["doanh thu thuần"] }), fakeRuntime()),
+    ).rejects.toThrow("gateway down");
   });
 
   it("grounds an alias-matched metric", () => {

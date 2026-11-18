@@ -24,11 +24,15 @@ import { Command, Overwrite, type BaseCheckpointSaver } from "@langchain/langgra
 import {
   BUDGET_DEFAULTS,
   buildRootGraph,
+  createAnswerSynthesizer,
+  createRetrieveSemantic,
   previewCountTotal,
   routeQuestionToUc,
   runTracerGraph,
   type AgentState,
+  type RetrieveFn,
   type SpanEvent,
+  type SynthesizeFn,
   type UcEntryHandler,
   type VizFn,
 } from "@shared/agent";
@@ -100,6 +104,18 @@ export interface BuildAppOptions {
    * tool-free synthesis otherwise. Override with a scripted seam in tests.
    */
   viz?: VizFn;
+  /**
+   * Semantic retrieve seam (#104). Defaults to createRetrieveSemantic(),
+   * which calls search_semantic_layer over the run's MCP transport so
+   * text-to-SQL gets grounded candidate tables. Override in tests.
+   */
+  retrieve?: RetrieveFn;
+  /**
+   * Answer seam (#104). Defaults to createAnswerSynthesizer(), which turns
+   * UC-03 verified insights or the masked preview into answerText; the
+   * root builder's own default is the tracer demo formatter.
+   */
+  synthesize?: SynthesizeFn;
   /** Optional semantic re-index handler (defaults to calling the MCP gateway /reindex endpoint). */
   reindex?: (ctx: { token: string; mcpUrl: string }) => Promise<ReindexResult>;
 }
@@ -353,6 +369,8 @@ export function buildApp(options: BuildAppOptions): express.Express {
         emitSpan: progress,
         ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
         viz: options.viz ?? createUc03Viz(),
+        retrieve: options.retrieve ?? createRetrieveSemantic(),
+        synthesize: options.synthesize ?? createAnswerSynthesizer(),
       }),
       emit,
     };

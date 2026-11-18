@@ -238,6 +238,23 @@ function updateFromExecutor(result: ExecutorResult, state: AgentState): AgentUpd
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Normalize schema entities to bare table names: trim, strip schema prefix, validate, lowercase, dedupe. */
+/** Cap on candidate tables so the selective describe stays selective (#104). */
+const MAX_CANDIDATE_TABLES = 6;
+
+/**
+ * Candidate tables: tables the intent names first, then tables documented by
+ * the retrieved semantic chunks in score order (#104), deduped and capped.
+ */
+function candidateTablesFor(state: AgentState): string[] {
+  const retrieved = [...state.semanticChunks]
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .flatMap((chunk) => chunk.tables ?? []);
+  return normalizeCandidateTables([...state.intent.schemaEntities, ...retrieved]).slice(
+    0,
+    MAX_CANDIDATE_TABLES,
+  );
+}
+
 function normalizeCandidateTables(entities: string[]): string[] {
   const seen = new Set<string>();
   const tables: string[] = [];
@@ -570,7 +587,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         answerText: "text-to-SQL run identity is incomplete.",
       };
     }
-    const candidateTables = normalizeCandidateTables(activeState.intent.schemaEntities);
+    const candidateTables = candidateTablesFor(activeState);
     if (candidateTables.length === 0) {
       return {
         status: "cannot_answer",
@@ -621,6 +638,9 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       question: activeState.question,
       timeRange: activeState.intent.timeRange,
       candidateTables,
+      references: activeState.semanticChunks
+        .map((chunk) => chunk.text ?? "")
+        .filter((text) => text !== ""),
       principal: identity,
       budget,
       callbacks: rt.config.callbacks,
