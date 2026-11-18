@@ -4,14 +4,15 @@
 // and the restart-proof host endpoint belongs to 01-14 — this module stays
 // DB-free: semantics only, proven on MemorySaver.
 
-import { Command, interrupt } from "@langchain/langgraph";
-import { THREAD_ID_MAX_LENGTH } from "./constants.js";
+import { Command, interrupt, isGraphInterrupt } from "@langchain/langgraph";
+import { NO_MATCHING_TABLE_OPTION, THREAD_ID_MAX_LENGTH } from "./constants.js";
 import type {
   ClarificationField,
   PendingClarification,
 } from "./state.js";
 
-export { THREAD_ID_MAX_LENGTH } from "./constants.js";
+export { isGraphInterrupt };
+export { NO_MATCHING_TABLE_OPTION, THREAD_ID_MAX_LENGTH } from "./constants.js";
 
 /**
  * Build chat:{userId}:{sessionId}. Throws on empty parts or over-length ids
@@ -92,6 +93,66 @@ export function isClarificationOption(
   value: unknown,
 ): value is string {
   return typeof value === "string" && request.options.includes(value);
+}
+
+export type TableClarificationVerdict =
+  | { kind: "abort_rephrase" }
+  | { kind: "table"; table: string }
+  | { kind: "invalid" };
+
+const ABORT_REPHRASE_ALIASES = new Set([
+  "khong co bang phu hop",
+  "khong co bang nao",
+  "dat lai cau hoi",
+  "none of the above",
+  "no matching table",
+  "reset",
+  "cancel",
+]);
+
+function normalizeChoiceText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .trim();
+}
+
+export function isAbortClarificationChoice(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed === NO_MATCHING_TABLE_OPTION) return true;
+  return ABORT_REPHRASE_ALIASES.has(normalizeChoiceText(trimmed));
+}
+
+/**
+ * Evaluate a user's table-clarification resume value: accepts the explicit
+ * "no matching table / rephrase" option, any presented option, or any valid
+ * catalog table name even when it fell outside the top-3 suggested options.
+ */
+export function classifyTableClarificationValue(
+  request: PendingClarification,
+  value: unknown,
+  allowedTableNames: readonly string[],
+): TableClarificationVerdict {
+  if (typeof value !== "string") return { kind: "invalid" };
+  const trimmed = value.trim();
+  if (!trimmed) return { kind: "invalid" };
+  if (isAbortClarificationChoice(trimmed)) {
+    return { kind: "abort_rephrase" };
+  }
+  const catalogMatch = allowedTableNames.find(
+    (name) => name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (catalogMatch) {
+    return { kind: "table", table: catalogMatch };
+  }
+  if (request.options.includes(trimmed)) {
+    return { kind: "table", table: trimmed };
+  }
+  return { kind: "invalid" };
 }
 
 export interface ReviewPayload {

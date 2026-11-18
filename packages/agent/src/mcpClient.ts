@@ -9,6 +9,15 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
+import { withMcpToolRun } from "./telemetry/toolRuns.js";
+import {
+  dbToolError,
+  DbToolErrorSchema,
+  ErrorCodes,
+  type DbToolError,
+  type ErrorCode,
+} from "@shared/contracts";
 
 // Legacy tracer surface (01-01 slice): a fresh SDK Client plus transport per
 // tool call, identity passed explicitly from the run config. Consumed by the
@@ -20,6 +29,12 @@ export interface TracerRunConfig {
   runId: string;
   userId: string;
   roleScope: string;
+  /**
+   * The graph node's callbacks (rt.config.callbacks). When they carry the
+   * PII-safe LangSmith tracer, each call also appears as a LangSmith tool
+   * run (#97). Never sent to the gateway.
+   */
+  callbacks?: Callbacks;
 }
 
 export interface McpToolResult {
@@ -28,6 +43,16 @@ export interface McpToolResult {
 }
 
 export async function callMcpTool(
+  config: TracerRunConfig,
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<McpToolResult> {
+  return withMcpToolRun(config.callbacks, tool, args, () =>
+    callMcpToolUntraced(config, tool, args),
+  );
+}
+
+async function callMcpToolUntraced(
   config: TracerRunConfig,
   tool: string,
   args: Record<string, unknown>,
@@ -68,6 +93,57 @@ export function parseToolJson<T>(result: McpToolResult, tool: string): T {
     throw new Error(`MCP tool ${tool} failed with ${err.code}: ${err.message ?? ""}`);
   }
   return parsed as T;
+}
+
+function asValidErrorCode(code: string): ErrorCode {
+  return (ErrorCodes as readonly string[]).includes(code)
+    ? (code as ErrorCode)
+    : "INTERNAL_ERROR";
+}
+
+/** Normalize an MCP tool error response payload into a contract DbToolError. */
+export function parseMcpToolError(tool: string, text: string): DbToolError {
+  try {
+    const raw: unknown = JSON.parse(text);
+    const validated = DbToolErrorSchema.safeParse(raw);
+    if (validated.success) return validated.data;
+    if (
+      typeof raw === "object" &&
+      raw !== null &&
+      "code" in raw &&
+      typeof (raw as { code: unknown }).code === "string" &&
+      "message" in raw &&
+      typeof (raw as { message: unknown }).message === "string"
+    ) {
+      const code = asValidErrorCode((raw as { code: string }).code);
+      const msg = (raw as { message: string }).message;
+      return dbToolError(code, msg.slice(0, 500));
+    }
+  } catch {
+    // Non-JSON error payloads fall through to INTERNAL_ERROR below.
+  }
+  return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${text.slice(0, 200)}`);
+}
+
+/** Coerce any thrown error into a contract DbToolError without leaking raw details. */
+export function toNormalizedMcpError(tool: string, thrown: unknown): DbToolError {
+  const validated = DbToolErrorSchema.safeParse(thrown);
+  if (validated.success) return validated.data;
+  if (
+    typeof thrown === "object" &&
+    thrown !== null &&
+    "code" in thrown &&
+    typeof (thrown as { code: unknown }).code === "string" &&
+    "message" in thrown &&
+    typeof (thrown as { message: unknown }).message === "string"
+  ) {
+    return dbToolError(
+      asValidErrorCode((thrown as { code: string }).code),
+      (thrown as { message: string }).message.slice(0, 500),
+    );
+  }
+  const msg = thrown instanceof Error ? thrown.message : String(thrown);
+  return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${msg.slice(0, 200)}`);
 }
 
 // Full 01-12 surface: per-call identity from the host-populated

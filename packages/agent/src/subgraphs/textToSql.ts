@@ -1,10 +1,15 @@
-import { dbToolError, type DbToolError } from "@shared/contracts";
+import {
+  dbToolError,
+  ListTablesOutputSchema,
+} from "@shared/contracts";
 import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createChatModel } from "../models/factory.js";
 import {
   estimateCostUsd,
+  invokeJsonWithUsage,
   invokeWithUsage,
+  type PlainJsonModelLike,
 } from "../telemetry/usage.js";
 import {
   isRateLimitFailure,
@@ -18,10 +23,17 @@ import {
   type ExecutorRunInput,
   type McpToolCaller,
 } from "../queryExecutor/executor.js";
-import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
+import {
+  callMcpTool,
+  parseMcpToolError,
+  toNormalizedMcpError,
+  type TracerRunConfig,
+} from "../mcpClient.js";
 import { loadSkill } from "../skills/loader.js";
 import {
+  classifyTableClarificationValue,
   isClarificationOption,
+  isGraphInterrupt,
   pauseForClarification,
   requestClarification,
 } from "../hitl.js";
@@ -29,11 +41,28 @@ import {
   IntentSchema,
   type AgentState,
   type AgentUpdate,
+  type CatalogTable,
   type RootRuntime,
   type UcEntryHandler,
   type PendingClarification,
 } from "../state.js";
-import { checkUnknownTerms, buildCannotAnswer } from "../semantic/retrieveSemantic.js";
+import {
+  buildCannotAnswer,
+  checkUnknownTerms,
+  fetchSemanticChunks,
+  RETRIEVE_TOP_K,
+  toStateChunk,
+  type SemanticSearchFn,
+} from "../semantic/retrieveSemantic.js";
+import {
+  buildIntentPrompt,
+  foldAscii,
+  matchEntityInCatalog,
+  resolveCandidateTables,
+  selectSqlReferences,
+  suggestClarificationTables,
+  type ResolveCandidateTablesResult,
+} from "./tableResolver.js";
 import {
   deriveCitations,
   repairCitations,
@@ -69,9 +98,15 @@ export interface TextToSqlExecutorLike {
 
 export interface TextToSqlRuntimeDeps {
   intentModel?: IntentModelLike;
+  /** Plain-JSON intent model seam for providers returning Markdown-wrapped JSON. */
+  intentJsonModel?: PlainJsonModelLike;
   /** SQL model seam; omitted in production to use the configured profile. */
   sqlModel?: ChatModelLike;
   executor?: TextToSqlExecutorLike;
+  /** Optional catalog table discovery override for tests; production calls MCP list_tables. */
+  listTables?: (rt: RootRuntime) => Promise<CatalogTable[]>;
+  /** Optional semantic search override for pre-intent retrieval in tests. */
+  semanticSearch?: SemanticSearchFn;
 }
 
 /** Root-entry guard: initialize one persistent deadline and stop before I/O. */
@@ -114,28 +149,16 @@ function readRunContext(rt: RootRuntime): {
   const token = read("token");
   const transport =
     mcpUrl && token && identity
-      ? { mcpUrl, token, runId: identity.runId, userId: identity.userId, roleScope: identity.roleScope }
+      ? {
+          mcpUrl,
+          token,
+          runId: identity.runId,
+          userId: identity.userId,
+          roleScope: identity.roleScope,
+          callbacks: rt.config.callbacks,
+        }
       : null;
   return { identity, transport };
-}
-
-function asMcpFailure(tool: string, text: string): DbToolError {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "code" in parsed &&
-      typeof (parsed as { code: unknown }).code === "string" &&
-      "message" in parsed &&
-      typeof (parsed as { message: unknown }).message === "string"
-    ) {
-      return parsed as DbToolError;
-    }
-  } catch {
-    // A malformed gateway failure is deliberately normalized below.
-  }
-  return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${text.slice(0, 200)}`);
 }
 
 /** MCP adapter for the shared executor. Identity stays in transport headers. */
@@ -147,7 +170,7 @@ function createRuntimeMcpCaller(config: TracerRunConfig): McpToolCaller {
       delete toolArgs.userId;
       delete toolArgs.roleScope;
       const result = await callMcpTool(config, tool, toolArgs);
-      if (result.isError) throw asMcpFailure(tool, result.text);
+      if (result.isError) throw parseMcpToolError(tool, result.text);
       try {
         return JSON.parse(result.text) as unknown;
       } catch {
@@ -160,15 +183,107 @@ function createRuntimeMcpCaller(config: TracerRunConfig): McpToolCaller {
   };
 }
 
-function intentPrompt(question: string, skillContract: string): string {
-  return [
-    "Extract a structured analytics intent from the user question.",
-    "requestedMetrics contains business measures; schemaEntities contains candidate physical tables or columns.",
-    "Use definition_lookup only when the user asks for a definition rather than data.",
-    "Do not invent tables, columns, metrics, or filter values.",
-    `Skill contract:\n${skillContract}`,
-    `Question: ${question}`,
-  ].join("\n\n");
+async function fetchCatalogTables(transport: TracerRunConfig): Promise<CatalogTable[]> {
+  const result = await callMcpTool(transport, "list_tables", {});
+  if (result.isError) throw parseMcpToolError("list_tables", result.text);
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(result.text);
+  } catch {
+    throw dbToolError("INTERNAL_ERROR", "MCP tool list_tables returned invalid JSON");
+  }
+  const validated = ListTablesOutputSchema.safeParse(parsedJson);
+  if (!validated.success) {
+    throw dbToolError(
+      "INTERNAL_ERROR",
+      "MCP tool list_tables returned an unexpected shape",
+    );
+  }
+  return validated.data.tables;
+}
+
+type CatalogLoadResult =
+  | { ok: true; tables: CatalogTable[]; calledTool: boolean }
+  | {
+      ok: false;
+      catalogStatus: "empty" | "error";
+      status: "error" | "restricted";
+      answerText: string;
+    };
+
+async function loadCatalogForRun(
+  deps: TextToSqlRuntimeDeps,
+  rt: RootRuntime,
+  transport: TracerRunConfig | null,
+  node: string,
+): Promise<CatalogLoadResult> {
+  if (!deps.listTables && (deps.executor || !transport)) {
+    if (!deps.executor && !transport) {
+      return {
+        ok: false,
+        catalogStatus: "error",
+        status: "error",
+        answerText: "text-to-SQL MCP transport identity is incomplete.",
+      };
+    }
+    return { ok: true, tables: [], calledTool: false };
+  }
+  const started = Date.now();
+  try {
+    const tables = deps.listTables
+      ? await deps.listTables(rt)
+      : await fetchCatalogTables(transport!);
+    rt.emit({
+      node,
+      type: "tool_call",
+      durationMs: Date.now() - started,
+      payload: {
+        tool: "list_tables",
+        ok: true,
+        tableCount: tables.length,
+        tables: tables.map((t) => t.name),
+      },
+    });
+    if (tables.length === 0) {
+      return {
+        ok: false,
+        catalogStatus: "empty",
+        status: "error",
+        answerText:
+          "Schema catalog is empty (list_tables returned no tables); cannot determine query tables.",
+      };
+    }
+    return { ok: true, tables, calledTool: true };
+  } catch (thrown) {
+    const err = toNormalizedMcpError("list_tables", thrown);
+    rt.emit({
+      node,
+      type: "tool_call",
+      durationMs: Date.now() - started,
+      payload: { tool: "list_tables", ok: false, code: err.code },
+    });
+    return {
+      ok: false,
+      catalogStatus: "error",
+      status:
+        err.code === "SCOPE_DENIED" || err.code === "UNAUTHORIZED"
+          ? "restricted"
+          : "error",
+      answerText: `Schema catalog lookup failed (${err.code}): ${err.message}`,
+    };
+  }
+}
+
+function dedupeTools(tools: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tool of tools) {
+    if (tool && !seen.has(tool)) {
+      seen.add(tool);
+      out.push(tool);
+    }
+  }
+  return out;
 }
 
 type ExecutorStatus = ExecutorResult["status"];
@@ -235,21 +350,6 @@ function updateFromExecutor(result: ExecutorResult, state: AgentState): AgentUpd
   return update;
 }
 
-const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/** Normalize schema entities to bare table names: trim, strip schema prefix, validate, lowercase, dedupe. */
-function normalizeCandidateTables(entities: string[]): string[] {
-  const seen = new Set<string>();
-  const tables: string[] = [];
-  for (const entity of entities) {
-    const last = (entity.trim().split(".").pop() ?? "").trim().toLowerCase();
-    if (!TABLE_NAME_RE.test(last) || seen.has(last)) continue;
-    seen.add(last);
-    tables.push(last);
-  }
-  return tables;
-}
-
 /** Definition fast-path (RT->SYN): answer from retrieved semantic chunks, no executor/models/MCP. */
 function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
   if (state.intent.queryMode !== "definition_lookup") return null;
@@ -264,9 +364,12 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
   }
   const lines = chunks.slice(0, 5).map((chunk) => {
     const snippet = (chunk.text ?? "").slice(0, 300);
-    if (snippet && chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score}): ${snippet}`;
+    // Two decimals: a raw float like 0.0327868852 contains "0" + 9 digits,
+    // which the API's phone tripwire withholds as possible PII.
+    const score = chunk.score !== undefined ? chunk.score.toFixed(2) : undefined;
+    if (snippet && score !== undefined) return `${chunk.chunkId} (score: ${score}): ${snippet}`;
     if (snippet) return `${chunk.chunkId}: ${snippet}`;
-    if (chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score})`;
+    if (score !== undefined) return `${chunk.chunkId} (score: ${score})`;
     return `${chunk.chunkId}`;
   });
   const citations = chunks
@@ -374,11 +477,16 @@ function clarificationForAmbiguousMetric(
   return clarification.pendingClarification;
 }
 
+function clarificationAttemptsOf(state: AgentState): number {
+  const n = state.clarificationAttempts;
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : 0;
+}
+
 function clarificationSelection(
   state: AgentState,
   request: PendingClarification,
 ): string | undefined {
-  for (let attempt = state.clarificationAttempts; attempt < 2; attempt += 1) {
+  for (let attempt = clarificationAttemptsOf(state); attempt < 2; attempt += 1) {
     const pending = { ...request, attempts: attempt };
     const value = pauseForClarification(pending);
     if (isClarificationOption(pending, value)) return value;
@@ -390,6 +498,7 @@ function applyClarification(
   state: AgentState,
   request: PendingClarification,
   value: string,
+  targetUnmappedEntity?: string,
 ): { state: AgentState; update: AgentUpdate } {
   const intent = { ...state.intent };
   if (request.field === "metric") {
@@ -399,15 +508,28 @@ function applyClarification(
     intent.timeRange = value;
   } else if (request.field === "scope") {
     intent.filters = [...intent.filters, { field: "scope", operator: "=", value }];
+  } else if (request.field === "table") {
+    const remaining = targetUnmappedEntity
+      ? intent.schemaEntities.filter((entity) => entity !== targetUnmappedEntity)
+      : [...intent.schemaEntities];
+    if (!remaining.some((entity) => entity.toLowerCase() === value.toLowerCase())) {
+      remaining.push(value);
+    }
+    intent.schemaEntities = remaining;
   } else {
     intent.filters = [...intent.filters, { field: "filterValue", operator: "=", value }];
   }
-  const question = `${state.question}\nClarification (${request.field}): ${value}`;
+  const suffix =
+    request.field === "table" && targetUnmappedEntity
+      ? `\nClarification (table for ${targetUnmappedEntity}): ${value}`
+      : `\nClarification (${request.field}): ${value}`;
+  const question = `${state.question}${suffix}`;
+  const nextAttempts = clarificationAttemptsOf(state) + 1;
   const update: AgentUpdate = {
     intent,
     question,
     pendingClarification: null,
-    clarificationAttempts: state.clarificationAttempts + 1,
+    clarificationAttempts: nextAttempts,
   };
   return {
     state: {
@@ -415,10 +537,273 @@ function applyClarification(
       intent,
       question,
       pendingClarification: null,
-      clarificationAttempts: state.clarificationAttempts + 1,
+      clarificationAttempts: nextAttempts,
     },
     update,
   };
+}
+
+function clarificationForUnmappedTable(
+  unresolved: Extract<ResolveCandidateTablesResult, { ok: false }>,
+  options: string[],
+  attempts: number,
+) {
+  const target = unresolved.unmappedEntities[0];
+  const prefix =
+    unresolved.partialTables.length > 0
+      ? `Đã xác định bảng ${unresolved.partialTables.join(", ")}, `
+      : "";
+  const question = target
+    ? `${prefix}chưa xác định được bảng dữ liệu cho "${target}". Bạn muốn truy vấn bảng nào cho phần này?`
+    : `${prefix}chưa xác định được bảng dữ liệu phù hợp cho câu hỏi. Bạn muốn truy vấn bảng nào?`;
+  return requestClarification({
+    field: "table",
+    question,
+    options,
+    attempts,
+  });
+}
+
+type SafeTableClarificationSelection =
+  | { ok: true; kind: "table"; table: string; attemptsUsed: number }
+  | { ok: true; kind: "abort_rephrase"; attemptsUsed: number }
+  | { ok: false; reason: "interrupt_unavailable" | "invalid_selection" };
+
+function tryTableClarificationSelection(
+  state: AgentState,
+  request: PendingClarification,
+  catalogTables: readonly CatalogTable[],
+): SafeTableClarificationSelection {
+  const allowedNames = catalogTables.map((t) => t.name);
+  try {
+    for (let attempt = clarificationAttemptsOf(state); attempt < 2; attempt += 1) {
+      const pending = { ...request, attempts: attempt };
+      const rawValue = pauseForClarification(pending);
+      const verdict = classifyTableClarificationValue(pending, rawValue, allowedNames);
+      if (verdict.kind === "abort_rephrase") {
+        return { ok: true, kind: "abort_rephrase", attemptsUsed: attempt + 1 };
+      }
+      if (verdict.kind === "table") {
+        return {
+          ok: true,
+          kind: "table",
+          table: verdict.table,
+          attemptsUsed: attempt + 1,
+        };
+      }
+      if (typeof rawValue === "string") {
+        const catalogHit = matchEntityInCatalog(rawValue, catalogTables);
+        if (catalogHit) {
+          return {
+            ok: true,
+            kind: "table",
+            table: catalogHit.name,
+            attemptsUsed: attempt + 1,
+          };
+        }
+      }
+    }
+    return { ok: false, reason: "invalid_selection" };
+  } catch (error) {
+    if (isGraphInterrupt(error)) {
+      throw error;
+    }
+    return { ok: false, reason: "interrupt_unavailable" };
+  }
+}
+
+const MAX_ENTITY_FOLLOWUP_SEARCHES = 2;
+
+function mergeStateChunks(
+  existing: AgentState["semanticChunks"],
+  incoming: AgentState["semanticChunks"],
+): AgentState["semanticChunks"] {
+  const byId = new Map<string, AgentState["semanticChunks"][number]>();
+  for (const chunk of existing) {
+    byId.set(chunk.chunkId, chunk);
+  }
+  for (const chunk of incoming) {
+    const prev = byId.get(chunk.chunkId);
+    if (!prev || (chunk.score ?? 0) > (prev.score ?? 0)) {
+      byId.set(chunk.chunkId, chunk);
+    }
+  }
+  return [...byId.values()];
+}
+
+type FollowUpSearchResult =
+  | { ok: true; chunks: AgentState["semanticChunks"]; addedCount: number; calledTool: boolean }
+  | {
+      ok: false;
+      budgetExceeded: true;
+      tripReason: string;
+      calledTool: boolean;
+      chunks: AgentState["semanticChunks"];
+      answerText: string;
+    }
+  | {
+      ok: false;
+      budgetExceeded?: false;
+      status: "restricted" | "error";
+      errorCode: string;
+      calledTool: boolean;
+      answerText: string;
+    };
+
+async function searchForUnmappedEntities(
+  deps: TextToSqlRuntimeDeps,
+  transport: TracerRunConfig | null,
+  question: string,
+  unmappedEntities: readonly string[],
+  existingChunks: AgentState["semanticChunks"],
+  budget: BudgetState,
+  rt: RootRuntime,
+): Promise<FollowUpSearchResult> {
+  if (!deps.semanticSearch && (deps.executor || !transport)) {
+    return { ok: true, chunks: existingChunks, addedCount: 0, calledTool: false };
+  }
+  const seenQueries = new Set<string>([foldAscii(question)]);
+  const queries: string[] = [];
+  for (const entity of unmappedEntities) {
+    const trimmed = entity.trim();
+    const folded = foldAscii(trimmed);
+    if (!trimmed || !folded || seenQueries.has(folded)) continue;
+    seenQueries.add(folded);
+    queries.push(trimmed);
+    if (queries.length >= MAX_ENTITY_FOLLOWUP_SEARCHES) break;
+  }
+  if (queries.length === 0) {
+    return { ok: true, chunks: existingChunks, addedCount: 0, calledTool: false };
+  }
+
+  let merged = [...existingChunks];
+  let calledTool = false;
+  let completedCalls = 0;
+  for (const entityQuery of queries) {
+    // Check budget/deadline before every follow-up semantic MCP call (#89).
+    const budgetCheck = checkBudget(budget);
+    if (budgetCheck.tripped) {
+      rt.emit({
+        node: "describe",
+        type: "node_done",
+        durationMs: 0,
+        payload: {
+          budgetExceeded: true,
+          tripReason: budgetCheck.reason,
+          followUpCompleted: completedCalls,
+        },
+      });
+      return {
+        ok: false,
+        budgetExceeded: true,
+        tripReason: budgetCheck.reason,
+        calledTool,
+        chunks: merged,
+        answerText: `Run budget exceeded (${budgetCheck.reason}) before semantic follow-up search; stopped without issuing more MCP calls.`,
+      };
+    }
+
+    const started = Date.now();
+    try {
+      const raw = deps.semanticSearch
+        ? await deps.semanticSearch(entityQuery, RETRIEVE_TOP_K)
+        : await fetchSemanticChunks(transport!, entityQuery, RETRIEVE_TOP_K);
+      calledTool = true;
+      completedCalls += 1;
+      rt.emit({
+        node: "retrieve",
+        type: "tool_call",
+        durationMs: Date.now() - started,
+        payload: {
+          tool: "search_semantic_layer",
+          ok: true,
+          chunkCount: raw.length,
+          phase: "entity_follow_up",
+        },
+      });
+      merged = mergeStateChunks(merged, raw.map(toStateChunk));
+    } catch (error) {
+      const normalized = toNormalizedMcpError("search_semantic_layer", error);
+      rt.emit({
+        node: "retrieve",
+        type: "tool_call",
+        durationMs: Date.now() - started,
+        payload: {
+          tool: "search_semantic_layer",
+          ok: false,
+          code: normalized.code,
+          phase: "entity_follow_up",
+        },
+      });
+      return {
+        ok: false,
+        status:
+          normalized.code === "SCOPE_DENIED" || normalized.code === "UNAUTHORIZED"
+            ? "restricted"
+            : "error",
+        errorCode: normalized.code,
+        calledTool,
+        answerText: `Semantic lookup failed (${normalized.code}): ${normalized.message}`,
+      };
+    }
+  }
+  return {
+    ok: true,
+    chunks: merged,
+    addedCount: merged.length - existingChunks.length,
+    calledTool,
+  };
+}
+
+function buildTooManyTablesMessage(
+  unresolved: Extract<ResolveCandidateTablesResult, { ok: false }>,
+): string {
+  return (
+    `Câu hỏi cần tới ${unresolved.requiredTables.length} bảng dữ liệu chính ` +
+    `(${unresolved.requiredTables.join(", ")}), vượt giới hạn tối đa ${unresolved.maxTables} bảng cho một truy vấn. ` +
+    `Vui lòng thu hẹp phạm vi hoặc tách thành các câu hỏi nhỏ hơn thay vì tự động bỏ bớt bảng.`
+  );
+}
+
+function buildAskNewQuestionMessage(
+  unresolved: Extract<ResolveCandidateTablesResult, { ok: false }>,
+  catalogTables: readonly CatalogTable[],
+  reason: "unavailable" | "exhausted" | "insufficient_options" | "user_rejected",
+): string {
+  const available =
+    catalogTables.length > 0
+      ? ` Available tables: ${catalogTables.map((t) => t.name).join(", ")}.`
+      : "";
+  const partial =
+    unresolved.partialTables.length > 0
+      ? ` Identified relevant table(s): ${unresolved.partialTables.join(", ")}.`
+      : "";
+  const missing =
+    unresolved.unmappedEntities.length > 0
+      ? ` Unresolved part(s): ${unresolved.unmappedEntities.join(", ")}.`
+      : "";
+  if (reason === "user_rejected") {
+    return (
+      `No suitable table matched your confirmation.${partial}${missing} ` +
+      `Please ask a new question with more specific table names or metrics.${available}`
+    );
+  }
+  if (reason === "exhausted") {
+    return (
+      `Clarification limit reached without resolving all required data tables.${partial}${missing} ` +
+      `Please ask a new question with more specific table names or data details.${available}`
+    );
+  }
+  if (reason === "insufficient_options") {
+    return (
+      `Could not find enough candidate table options to continue interactively.${partial}${missing} ` +
+      `Please ask a new question with clearer table or data details.${available}`
+    );
+  }
+  return (
+    `Interactive resume is unavailable in this runtime context, so this run cannot continue safely.${partial}${missing} ` +
+    `Please ask a new question specifying the exact table(s) to query.${available}`
+  );
 }
 
 /**
@@ -454,7 +839,79 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     }
 
     const skill = loadSkill("text-to-sql", { emit: rt.emit });
-    const prompt = intentPrompt(state.question, skill.contract);
+    const { transport } = readRunContext(rt);
+    const understandTools: string[] = [];
+
+    const catalogLoad = await loadCatalogForRun(deps, rt, transport, "understand");
+    if (!catalogLoad.ok) {
+      return {
+        catalogTables: [],
+        catalogStatus: catalogLoad.catalogStatus,
+        status: catalogLoad.status,
+        answerText: catalogLoad.answerText,
+        budget: { deadlineMs: budget.deadlineMs },
+      };
+    }
+    const catalogTables = catalogLoad.tables;
+    const catalogStatus: AgentState["catalogStatus"] = catalogLoad.calledTool
+      ? "ready"
+      : state.catalogStatus;
+    if (catalogLoad.calledTool && !deps.listTables) {
+      understandTools.push("list_tables");
+    } else if (catalogLoad.calledTool) {
+      understandTools.push("list_tables");
+    }
+
+    let preStateChunks: AgentState["semanticChunks"] = [];
+    let semanticQuery: string | null = null;
+    let semanticRetrieveStatus: AgentState["semanticRetrieveStatus"] = "unloaded";
+    let semanticErrorCode: string | null = null;
+
+    if (deps.semanticSearch || (!deps.executor && transport)) {
+      const searchStarted = Date.now();
+      try {
+        const rawChunks = deps.semanticSearch
+          ? await deps.semanticSearch(state.question, RETRIEVE_TOP_K)
+          : await fetchSemanticChunks(transport!, state.question, RETRIEVE_TOP_K);
+        rt.emit({
+          node: "retrieve",
+          type: "tool_call",
+          durationMs: Date.now() - searchStarted,
+          payload: {
+            tool: "search_semantic_layer",
+            ok: true,
+            chunkCount: rawChunks.length,
+            phase: "pre_understand",
+          },
+        });
+        understandTools.push("search_semantic_layer");
+        preStateChunks = rawChunks.map(toStateChunk);
+        semanticQuery = state.question;
+        semanticRetrieveStatus = "ok";
+      } catch (error) {
+        const normalized = toNormalizedMcpError("search_semantic_layer", error);
+        rt.emit({
+          node: "retrieve",
+          type: "tool_call",
+          durationMs: Date.now() - searchStarted,
+          payload: {
+            tool: "search_semantic_layer",
+            ok: false,
+            code: normalized.code,
+            phase: "pre_understand",
+          },
+        });
+        semanticRetrieveStatus = "error";
+        semanticErrorCode = normalized.code;
+      }
+    }
+
+    const prompt = buildIntentPrompt({
+      question: state.question,
+      skillContract: skill.contract,
+      catalogTables,
+      semanticChunks: preStateChunks,
+    });
     const intentStarted = Date.now();
     let out;
     try {
@@ -466,10 +923,10 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         deadlineMs: budget.deadlineMs,
         emit: rt.emit,
       };
-      out = deps.intentModel
+      out = deps.intentModel && !deps.intentJsonModel
         ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, invokeOpts)
-        : await invokeWithUsage(
-            createChatModel("intent"),
+        : await invokeJsonWithUsage(
+            deps.intentJsonModel ?? createChatModel("intent"),
             IntentProposalSchema,
             prompt,
             invokeOpts,
@@ -480,6 +937,28 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         return {
           status: "error",
           answerText: toolErr.message,
+          budget: {
+            llmCalls: budget.llmCalls - startCalls,
+            tokensUsed: 0,
+            deadlineMs: budget.deadlineMs,
+          },
+        };
+      }
+      if (error instanceof Error && /^Run budget exceeded/i.test(error.message)) {
+        return {
+          status: "cannot_answer",
+          answerText: `${error.message}; no model or query was called.`,
+          budget: {
+            llmCalls: budget.llmCalls - startCalls,
+            tokensUsed: 0,
+            deadlineMs: budget.deadlineMs,
+          },
+        };
+      }
+      if (error instanceof SyntaxError || error instanceof z.ZodError) {
+        return {
+          status: "error",
+          answerText: "The model returned an invalid intent response; please try again.",
           budget: {
             llmCalls: budget.llmCalls - startCalls,
             tokensUsed: 0,
@@ -515,6 +994,23 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     return {
       ...(state.status === "error" ? { status: "no_data" as const, answerText: "" } : {}),
       intent,
+      ...(catalogStatus === "ready" ? { catalogTables, catalogStatus } : {}),
+      ...(semanticRetrieveStatus === "ok"
+        ? {
+            semanticChunks: preStateChunks,
+            semanticQuery,
+            semanticRetrieveStatus,
+            semanticErrorCode: null,
+          }
+        : semanticRetrieveStatus === "error"
+          ? {
+              semanticRetrieveStatus,
+              semanticErrorCode,
+            }
+          : {}),
+      ...(understandTools.length > 0
+        ? { toolsCalled: dedupeTools([...state.toolsCalled, ...understandTools]) }
+        : {}),
       budget: {
         llmCalls: failedCalls + 1,
         tokensUsed:
@@ -529,7 +1025,13 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
-    if (state.status === "error") return {};
+    if (
+      state.status === "error" ||
+      state.status === "restricted" ||
+      state.status === "cannot_answer"
+    ) {
+      return {};
+    }
     let activeState = state;
     let clarificationUpdate: AgentUpdate = {};
     const definition = handleDefinitionLookup(activeState);
@@ -570,13 +1072,310 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         answerText: "text-to-SQL run identity is incomplete.",
       };
     }
-    const candidateTables = normalizeCandidateTables(activeState.intent.schemaEntities);
-    if (candidateTables.length === 0) {
-      return {
-        status: "cannot_answer",
-        answerText: "No candidate data tables were identified for this question.",
-      };
+    let effectiveCatalogTables = activeState.catalogTables;
+    let effectiveCatalogStatus = activeState.catalogStatus;
+    const entryPreTools: string[] = [];
+    if (
+      effectiveCatalogStatus === "unloaded" &&
+      (deps.listTables || (!deps.executor && transport))
+    ) {
+      const catalogLoad = await loadCatalogForRun(deps, rt, transport, "describe");
+      if (!catalogLoad.ok) {
+        return {
+          ...clarificationUpdate,
+          catalogTables: [],
+          catalogStatus: catalogLoad.catalogStatus,
+          status: catalogLoad.status,
+          answerText: catalogLoad.answerText,
+        };
+      }
+      if (catalogLoad.calledTool) {
+        effectiveCatalogTables = catalogLoad.tables;
+        effectiveCatalogStatus = "ready";
+        entryPreTools.push("list_tables");
+      }
     }
+    const budget: BudgetState = {
+      llmCalls: activeState.budget.llmCalls,
+      tokensUsed: activeState.budget.tokensUsed,
+      deadlineMs:
+        activeState.budget.deadlineMs > 0
+          ? activeState.budget.deadlineMs
+          : Date.now() + BUDGET_LIMITS.runDeadlineMs,
+      maxLlmCalls: activeState.budget.maxLlmCalls,
+      maxTokens: activeState.budget.maxTokens,
+    };
+
+    const resolveCurrent = (
+      targetState: AgentState,
+      chunks: AgentState["semanticChunks"],
+    ) =>
+      resolveCandidateTables({
+        question: targetState.question,
+        schemaEntities: targetState.intent.schemaEntities,
+        requestedMetrics: targetState.intent.requestedMetrics,
+        filterValues: targetState.intent.filters.map((f) => String(f.value ?? "")),
+        catalogTables: effectiveCatalogTables,
+        catalogLoaded: effectiveCatalogStatus === "ready",
+        semanticChunks: chunks,
+      });
+
+    const catalogUpdate =
+      effectiveCatalogStatus === "ready" && activeState.catalogStatus === "unloaded"
+        ? {
+            catalogTables: effectiveCatalogTables,
+            catalogStatus: effectiveCatalogStatus,
+          }
+        : {};
+
+    let workingChunks = activeState.semanticChunks;
+    let resolved = resolveCurrent(activeState, workingChunks);
+    if (!resolved.ok) {
+      if (activeState.semanticRetrieveStatus === "error") {
+        const code = activeState.semanticErrorCode ?? "INTERNAL_ERROR";
+        return {
+          ...clarificationUpdate,
+          status:
+            code === "SCOPE_DENIED" || code === "UNAUTHORIZED"
+              ? "restricted"
+              : "error",
+          answerText: `Semantic retrieval failed (${code}); cannot determine candidate tables safely.`,
+        };
+      }
+      if (resolved.reason !== "too_many_required_tables" && resolved.unmappedEntities.length > 0) {
+        const followUp = await searchForUnmappedEntities(
+          deps,
+          transport,
+          activeState.question,
+          resolved.unmappedEntities,
+          workingChunks,
+          budget,
+          rt,
+        );
+        if (followUp.calledTool) {
+          entryPreTools.push("search_semantic_layer");
+        }
+        if (!followUp.ok) {
+          if (followUp.budgetExceeded) {
+            return {
+              ...clarificationUpdate,
+              ...catalogUpdate,
+              ...(followUp.chunks !== state.semanticChunks
+                ? { semanticChunks: followUp.chunks }
+                : {}),
+              status: "cannot_answer",
+              pendingClarification: null,
+              toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+              answerText: followUp.answerText,
+              budget: {
+                llmCalls: budget.llmCalls - state.budget.llmCalls,
+                tokensUsed: budget.tokensUsed - state.budget.tokensUsed,
+                deadlineMs: budget.deadlineMs,
+              },
+            };
+          }
+          return {
+            ...clarificationUpdate,
+            ...catalogUpdate,
+            status: followUp.status,
+            semanticRetrieveStatus: "error",
+            semanticErrorCode: followUp.errorCode,
+            toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+            answerText: followUp.answerText,
+          };
+        }
+        if (followUp.addedCount > 0 || followUp.chunks !== workingChunks) {
+          workingChunks = followUp.chunks;
+          activeState = { ...activeState, semanticChunks: workingChunks };
+          resolved = resolveCurrent(activeState, workingChunks);
+        }
+      }
+    }
+
+    while (!resolved.ok) {
+      const semanticUpdate =
+        workingChunks !== state.semanticChunks
+          ? { semanticChunks: workingChunks }
+          : {};
+      if (resolved.reason === "too_many_required_tables") {
+        rt.emit({
+          node: "describe",
+          type: "node_done",
+          durationMs: 0,
+          payload: {
+            clarificationReason: resolved.reason,
+            requiredTables: resolved.requiredTables,
+            maxTables: resolved.maxTables,
+            entities: resolved.entities,
+          },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "needs_clarification",
+          pendingClarification: null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: buildTooManyTablesMessage(resolved),
+        };
+      }
+
+      if (clarificationAttemptsOf(activeState) >= 2) {
+        rt.emit({
+          node: "describe",
+          type: "node_done",
+          durationMs: 0,
+          payload: {
+            clarificationReason: "clarification_exhausted",
+            partialTables: resolved.partialTables,
+            unmappedEntities: resolved.unmappedEntities,
+          },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "needs_clarification",
+          pendingClarification: null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: buildAskNewQuestionMessage(
+            resolved,
+            effectiveCatalogTables,
+            "exhausted",
+          ),
+        };
+      }
+
+      const tableOptions = suggestClarificationTables({
+        catalogTables: effectiveCatalogTables,
+        semanticChunks: workingChunks,
+        excludeTables: resolved.partialTables,
+        hints: [...resolved.unmappedEntities, activeState.question],
+      });
+      if (tableOptions.length < 2) {
+        rt.emit({
+          node: "describe",
+          type: "node_done",
+          durationMs: 0,
+          payload: {
+            clarificationReason: "insufficient_options",
+            partialTables: resolved.partialTables,
+            unmappedEntities: resolved.unmappedEntities,
+          },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "needs_clarification",
+          pendingClarification: null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: buildAskNewQuestionMessage(
+            resolved,
+            effectiveCatalogTables,
+            "insufficient_options",
+          ),
+        };
+      }
+
+      const clarification = clarificationForUnmappedTable(
+        resolved,
+        tableOptions,
+        clarificationAttemptsOf(activeState),
+      );
+      const selection = tryTableClarificationSelection(
+        activeState,
+        clarification.pendingClarification,
+        effectiveCatalogTables,
+      );
+      if (!selection.ok) {
+        rt.emit({
+          node: "describe",
+          type: "node_done",
+          durationMs: 0,
+          payload: {
+            clarificationReason: selection.reason,
+            partialTables: resolved.partialTables,
+            unmappedEntities: resolved.unmappedEntities,
+            entities: resolved.entities,
+          },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "needs_clarification",
+          pendingClarification:
+            selection.reason === "interrupt_unavailable"
+              ? clarification.pendingClarification
+              : null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: buildAskNewQuestionMessage(
+            resolved,
+            effectiveCatalogTables,
+            selection.reason === "interrupt_unavailable"
+              ? "unavailable"
+              : "exhausted",
+          ),
+        };
+      }
+
+      if (selection.kind === "abort_rephrase") {
+        rt.emit({
+          node: "describe",
+          type: "node_done",
+          durationMs: 0,
+          payload: {
+            clarificationReason: "user_rejected_tables",
+            partialTables: resolved.partialTables,
+            unmappedEntities: resolved.unmappedEntities,
+          },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "needs_clarification",
+          pendingClarification: null,
+          clarificationAttempts: selection.attemptsUsed,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: buildAskNewQuestionMessage(
+            resolved,
+            effectiveCatalogTables,
+            "user_rejected",
+          ),
+        };
+      }
+
+      const applied = applyClarification(
+        activeState,
+        clarification.pendingClarification,
+        selection.table,
+        resolved.unmappedEntities[0],
+      );
+      applied.state.clarificationAttempts = selection.attemptsUsed;
+      applied.update.clarificationAttempts = selection.attemptsUsed;
+      activeState = applied.state;
+      clarificationUpdate = { ...clarificationUpdate, ...applied.update };
+      resolved = resolveCurrent(activeState, workingChunks);
+    }
+
+    const candidateTables = resolved.tables;
+    rt.emit({
+      node: "describe",
+      type: "node_done",
+      durationMs: 0,
+      payload: {
+        candidateTables,
+        candidateCount: candidateTables.length,
+        sources: resolved.sources,
+        entities: resolved.entities,
+      },
+    });
+    const references = selectSqlReferences(workingChunks, candidateTables, {
+      question: activeState.question,
+      requestedMetrics: activeState.intent.requestedMetrics,
+    });
     const collectedTools: string[] = [];
     const seenTools = new Set<string>();
     const executor =
@@ -607,20 +1406,11 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
           });
         },
       });
-    const budget: BudgetState = {
-      llmCalls: activeState.budget.llmCalls,
-      tokensUsed: activeState.budget.tokensUsed,
-      deadlineMs:
-        activeState.budget.deadlineMs > 0
-          ? activeState.budget.deadlineMs
-          : Date.now() + BUDGET_LIMITS.runDeadlineMs,
-      maxLlmCalls: activeState.budget.maxLlmCalls,
-      maxTokens: activeState.budget.maxTokens,
-    };
     let result = await executor.run({
       question: activeState.question,
       timeRange: activeState.intent.timeRange,
       candidateTables,
+      references,
       principal: identity,
       budget,
       callbacks: rt.config.callbacks,
@@ -663,12 +1453,13 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         question: activeState.question,
         timeRange: activeState.intent.timeRange,
         candidateTables,
+        references,
         principal: identity,
         budget,
         callbacks: rt.config.callbacks,
       });
     }
-    const update = updateFromExecutor(result, state);
+    const update = updateFromExecutor(result, activeState);
     const isOkLike = result.status === "ok" || result.status === "no_data";
     const observedTools =
       collectedTools.length > 0
@@ -679,8 +1470,24 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     return {
       ...clarificationUpdate,
       ...update,
+      ...(workingChunks !== state.semanticChunks
+        ? { semanticChunks: workingChunks }
+        : {}),
+      ...(effectiveCatalogStatus === "ready" &&
+      activeState.catalogStatus === "unloaded"
+        ? {
+            catalogTables: effectiveCatalogTables,
+            catalogStatus: effectiveCatalogStatus,
+          }
+        : {}),
       ...(isOkLike
-        ? { toolsCalled: [...activeState.toolsCalled, ...observedTools] }
+        ? {
+            toolsCalled: dedupeTools([
+              ...activeState.toolsCalled,
+              ...entryPreTools,
+              ...observedTools,
+            ]),
+          }
         : {}),
       budget: {
         llmCalls: budget.llmCalls - state.budget.llmCalls,

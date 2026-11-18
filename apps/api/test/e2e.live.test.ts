@@ -159,7 +159,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     }
   });
 
-  it("runs the demo question end to end with redacted trace and clean SSE", async () => {
+  it("runs the explicit tracer demo end to end with redacted trace and clean SSE", async () => {
     // Live PII literals for the leak assertions: real phone/email cells
     // fetched through the pipeline as admin (never through the SSE path).
     const probe = (await mcpCall(
@@ -178,7 +178,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     const res = await fetch(`${apiBase}/api/ask`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south" }),
+      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south", ucId: "tracer" }),
     });
     expect(res.status).toBe(200);
     const sseText = await res.text();
@@ -200,12 +200,13 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(runId).toMatch(/^[0-9a-f-]{36}$/);
 
     // Trace proof: full redacted event log with tool spans in call order.
-    // 8 base spans + 3 UC-03 VIZ spans (chart_selected, chart_validated,
-    // node_done in deterministic mode — no model key in CI, so no
-    // claim_stripped lines for this grounded bar chart).
+    // 2 UC-02 retrieve spans (search_semantic_layer tool_call + retrieve
+    // node_done) + 8 base spans + 3 UC-03 VIZ spans (chart_selected,
+    // chart_validated, node_done in deterministic mode — no model key in CI,
+    // so no claim_stripped lines for this grounded bar chart).
     const tracePath = `${tracesDir}/${runId}.jsonl`;
     const lines = readFileSync(tracePath, "utf8").trim().split("\n");
-    expect(lines.length).toBe(11);
+    expect(lines.length).toBe(13);
     const tools: string[] = [];
     for (const line of lines) {
       const event = JSON.parse(line) as {
@@ -224,10 +225,8 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
         tools.push(event.payload.tool);
       }
     }
-    expect(tools.length).toBeGreaterThanOrEqual(2);
-    expect(tools[0]).toBe("list_tables");
-    expect(tools).toContain("run_query");
-    expect(completed.toolsCalled).toEqual(tools);
+    expect(tools).toEqual(["search_semantic_layer", "list_tables", "run_query"]);
+    expect(completed.toolsCalled).toEqual(["list_tables", "run_query"]);
     const vizTypes = lines
       .map((line) => (JSON.parse(line) as { node?: string; type?: string }).type)
       .filter((type) =>
