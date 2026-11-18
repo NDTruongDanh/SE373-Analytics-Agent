@@ -56,8 +56,12 @@ export interface SseEnvelope {
 // Local wire tripwire (NOT the canonical redactor): a 10-digit 0-led run
 // (VN mobile shape from the seed data) or an @-email in free text degrades
 // the emit to failed. Counts and names can never trip it: rendered counts
-// have no leading zero and names carry no @.
-const PHONE_LIKE = /0\d{9}/;
+// have no leading zero and names carry no @. The run must not continue a
+// number (#115): digits inside a longer integer or after a decimal point
+// (`1090123456789`, `0.0327868852`, a cost like `0.00052410000000001`) are
+// not phones. A run after a letter or punctuation still trips, and longer
+// 0-led runs (12-digit landlines) still trip on their first ten digits.
+const PHONE_LIKE = /(?<!\d|\d[.,])0\d{9}/;
 const EMAIL_LIKE = /\S+@\S+\.\S+/;
 
 /** True when free text carries a phone/email shape that must not go on the wire. */

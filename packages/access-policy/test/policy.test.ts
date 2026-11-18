@@ -156,6 +156,32 @@ describe("redactPII", () => {
     }
   });
 
+  // #115: `\b` matched right after a decimal point, so fraction digits that
+  // looked like a mobile number were masked and numbers were corrupted.
+  it.each([
+    "0.0912345678",
+    "0.0327868852459016",
+    "0.00052410000000001",
+    "tỷ lệ 0,0912345678",
+    "10901234567",
+    "id_0901234567",
+  ])("leaves number %s untouched", (text) => {
+    expect(redactPII(text)).toEqual({ redacted: text, hit: false });
+  });
+
+  it.each([
+    "tel:0901234567",
+    "a,0901234567",
+    "(0901234567)",
+    "gọi 0901234567.",
+    "SĐT 0901.234.567, cảm ơn",
+    "028582120590;",
+  ])("still masks a phone after punctuation in %s", (text) => {
+    const { redacted, hit } = redactPII(text);
+    expect(hit).toBe(true);
+    expect(redacted).toContain("[MASKED_PHONE]");
+  });
+
   it("masks email addresses", () => {
     const { redacted, hit } = redactPII("mail lan@example.com di");
     expect(hit).toBe(true);

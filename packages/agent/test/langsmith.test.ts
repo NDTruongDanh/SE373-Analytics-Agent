@@ -186,6 +186,15 @@ describe("piiSafeProcessor", () => {
     expect(outputs["maskedColumns"]).toEqual(["customers.phone"]);
   });
 
+  it("keeps float metadata instead of failing closed to {} (#115)", () => {
+    const out = piiSafeProcessor({
+      usage_metadata: { input_tokens: 10, total_cost: 0.0912345678 },
+      metadata: { phone: CANARY_PHONE },
+    });
+    expect(out["usage_metadata"]).toEqual({ input_tokens: 10, total_cost: 0.0912345678 });
+    expect(JSON.stringify(out)).not.toContain(CANARY_PHONE);
+  });
+
   it("removes every canary and row value from a full LangGraph state shape", () => {
     const out = piiSafeProcessor(canaryPayload());
     const serialized = JSON.stringify(out);
