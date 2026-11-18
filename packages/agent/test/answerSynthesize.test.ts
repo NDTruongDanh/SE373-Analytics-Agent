@@ -79,6 +79,8 @@ describe("synthesizeAnswer & createAnswerSynthesizer", () => {
   it("renders single scalar cell concisely and truncates multi-row previews at ANSWER_PREVIEW_ROWS", () => {
     const scalar = synthesizeAnswer(baseState({ resultPreview: [{ total: 123 }] }));
     expect(scalar.answerText).toBe("total: 123");
+    expect(synthesizeAnswer(baseState({ resultPreview: [{ total: 12345 }] })).answerText).toBe("total: 12.345");
+    expect(synthesizeAnswer(baseState({ status: "no_data" })).answerText).toBe("Không có dữ liệu phù hợp với câu hỏi.");
 
     const rows = Array.from({ length: ANSWER_PREVIEW_ROWS + 3 }, (_, i) => ({
       id: i + 1,

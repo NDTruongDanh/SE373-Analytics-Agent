@@ -34,6 +34,11 @@ function stateWith(overrides: Partial<AgentState>): AgentState {
       queryMode: "standard_query",
     },
     semanticChunks: [],
+    catalogTables: [],
+    catalogStatus: "unloaded",
+    semanticQuery: null,
+    semanticRetrieveStatus: "unloaded",
+    semanticErrorCode: null,
     resultPreview: [],
     columns: [],
     sql: null,
@@ -794,5 +799,60 @@ describe("UC-02 text-to-SQL entry", () => {
     } finally {
       nowSpy.mockRestore();
     }
+  });
+});
+
+describe("text-to-SQL candidate tables (#104)", () => {
+  it("uses retrieved chunk tables when the intent names none", async () => {
+    let seen: string[] | null = null;
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async (input: { candidateTables: string[] }) => {
+          seen = input.candidateTables;
+          return { status: "ok", sql: "SELECT 1", tablesUsed: [], columns: [], rows: [], maskedColumns: [], attempts: 1 } as never;
+        },
+      } as never,
+    });
+    const state = stateWith({
+      question: "Doanh thu thuần theo kênh bán trong tháng 09/2026?",
+      intent: {
+        metric: null,
+        dimensions: [],
+        filters: [],
+        timeRange: null,
+        requestedMetrics: [],
+        schemaEntities: [],
+        queryMode: "standard_query",
+      } as never,
+      catalogStatus: "ready",
+      catalogTables: ["orders", "order_items", "channels"].map((name) => ({ name, schema: "public" })),
+      semanticChunks: [
+        { chunkId: "table:channels", docType: "table", score: 0.4, aliasMatched: true, text: "doanh thu theo kênh bán", tables: ["channels"] },
+        { chunkId: "table:orders", docType: "table", score: 0.9, aliasMatched: true, text: "doanh thu theo kênh bán", tables: ["public.orders", "order_items"] },
+      ],
+    });
+    const out = await entry(state, fakeRuntime());
+    expect(out.status).not.toBe("cannot_answer");
+    // Score order, schema prefix stripped, deduped.
+    expect(seen).toEqual(["orders", "order_items", "channels"]);
+  });
+
+  it("retains an intent table without adding unrelated semantic tables", async () => {
+    let seen: string[] | null = null;
+    const { entry } = createTextToSqlRuntime({
+      executor: {
+        run: async (input: { candidateTables: string[] }) => {
+          seen = input.candidateTables;
+          return { status: "ok", sql: "SELECT 1", tablesUsed: [], columns: [], rows: [], maskedColumns: [], attempts: 1 } as never;
+        },
+      } as never,
+    });
+    const tables = ["a1", "a2", "a3", "a4", "a5", "a6", "a7"];
+    const state = stateWith({
+      semanticChunks: [{ chunkId: "table:many", score: 1, tables }],
+    });
+    await entry(state, fakeRuntime());
+    expect(seen?.[0]).toBe("orders");
+    expect(seen).toEqual(["orders"]);
   });
 });

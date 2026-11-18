@@ -14,6 +14,7 @@ import type {
 } from "../state.js";
 
 export const ANSWER_PREVIEW_ROWS = 5;
+const NUMBER_FORMAT = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 });
 
 const STATUS_FALLBACK_MESSAGES: Partial<Record<AgentStatus, string>> = {
   cannot_answer: "Cannot answer the question from the available schema or data.",
@@ -21,7 +22,7 @@ const STATUS_FALLBACK_MESSAGES: Partial<Record<AgentStatus, string>> = {
   restricted: "Access to this data is restricted by policy.",
   false_premise: "The question could not be answered because its premise does not match the data.",
   error: "Unable to complete the query due to an execution error.",
-  no_data: "No matching data was found.",
+  no_data: "Không có dữ liệu phù hợp với câu hỏi.",
 };
 
 interface VizInsightClaim {
@@ -66,8 +67,9 @@ function readVerifiedInsights(vizSpec: unknown): {
 
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return "null";
+  if (typeof value === "number") return NUMBER_FORMAT.format(value);
   if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "boolean") return String(value);
   return JSON.stringify(value);
 }
 

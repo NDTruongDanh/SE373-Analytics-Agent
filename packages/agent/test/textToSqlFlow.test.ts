@@ -260,7 +260,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     expect(sqlPrompts[0]).toContain("Metric net_revenue");
     expect(out.sql).toMatch(/^-- @citations: /);
     expect(out.answerText).toContain("Website");
-    expect(out.answerText).toContain("5000000");
+    expect(out.answerText).toContain("5.000.000");
   });
 
   it("reaches executor when intent schemaEntities is empty but semantic chunks identify the table", async () => {

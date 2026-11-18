@@ -21,7 +21,6 @@ import {
   SearchSemanticLayerOutputSchema,
   type SearchSemanticLayerChunk,
 } from "@shared/contracts";
-import { DEFAULT_ROUTE_ID, RCA_UC_ID } from "../constants.js";
 import {
   callMcpTool,
   parseMcpToolError,
@@ -313,17 +312,6 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
     const metrics = state.intent.requestedMetrics ?? [];
     const isDefinition = state.intent.queryMode === "definition_lookup";
     const needsGrounding = metrics.length > 0 || isDefinition;
-
-    // Preserve legacy tracer and RCA routes when no metrics or definitions
-    // are requested so their existing span shapes stay untouched.
-    if (
-      !needsGrounding &&
-      (state.ucId === "" ||
-        state.ucId === DEFAULT_ROUTE_ID ||
-        state.ucId === RCA_UC_ID)
-    ) {
-      return {};
-    }
 
     // Reuse chunks already fetched in pre-intent retrieval for the same
     // question instead of issuing a second search_semantic_layer call (#89).
