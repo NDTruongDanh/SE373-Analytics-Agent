@@ -1,73 +1,123 @@
-// Generic answer seam (#104): never the tracer orders-by-status text for a
-// non-status result; prefers UC-03 verified insights; keeps handler answers.
 import { describe, expect, it } from "vitest";
-import { ANSWER_PREVIEW_ROWS, synthesizeAnswer } from "../src/answer/synthesize.js";
-import type { AgentState } from "../src/state.js";
+import {
+  ANSWER_PREVIEW_ROWS,
+  createAnswerSynthesizer,
+  synthesizeAnswer,
+} from "../src/answer/synthesize.js";
+import type { AgentState, RootRuntime, SpanEvent } from "../src/state.js";
 
-function stateWith(overrides: Partial<AgentState>): AgentState {
+function baseState(overrides: Partial<AgentState> = {}): AgentState {
   return {
-    answerText: "",
-    status: "ok",
+    question: "q",
+    ucId: "text-to-sql",
+    intent: {
+      metric: null,
+      dimensions: [],
+      filters: [],
+      timeRange: null,
+      requestedMetrics: [],
+      schemaEntities: [],
+      queryMode: "standard_query",
+    },
+    semanticChunks: [],
+    catalogTables: [],
+    catalogStatus: "unloaded",
+    semanticQuery: null,
+    semanticRetrieveStatus: "unloaded",
+    semanticErrorCode: null,
     resultPreview: [],
     columns: [],
+    sql: null,
+    tablesUsed: [],
+    toolsCalled: [],
+    status: "ok",
+    answerText: "",
+    budget: { llmCalls: 0, tokensUsed: 0, maxLlmCalls: 20, maxTokens: 60000, deadlineMs: 0 },
+    telemetry: { promptTokens: 0, completionTokens: 0, latencyMs: 0 },
+    runId: "r",
+    threadId: "t",
     vizSpec: null,
+    pendingClarification: null,
+    clarificationAttempts: 0,
+    analysisPlan: null,
+    rootCauseAnswer: null,
     ...overrides,
-  } as unknown as AgentState;
+  };
 }
 
-const revenueRows = [
-  { channel_name: "Shopee", net_revenue_vnd: 1250000.5 },
-  { channel_name: "Lazada", net_revenue_vnd: "980000" },
-];
+describe("synthesizeAnswer & createAnswerSynthesizer", () => {
+  it("preserves non-empty upstream answerText while redacting phone/email PII", () => {
+    const clean = synthesizeAnswer(baseState({ answerText: "4 status groups, 10 orders" }));
+    expect(clean).toEqual({});
 
-describe("synthesizeAnswer", () => {
-  it("formats the masked preview with real column names", () => {
-    const out = synthesizeAnswer(
-      stateWith({ resultPreview: revenueRows, columns: ["channel_name", "net_revenue_vnd"] }),
+    const leaky = synthesizeAnswer(
+      baseState({ answerText: "Liên hệ 0901234567 hoặc user@example.vn" }),
     );
-    expect(out.status).toBe("ok");
-    expect(out.answerText).toContain("Kết quả (2 dòng):");
-    expect(out.answerText).toContain("- channel_name: Shopee, net_revenue_vnd: 1.250.000,5");
-    expect(out.answerText).toContain("- channel_name: Lazada, net_revenue_vnd: 980.000");
-    expect(out.answerText).not.toContain("status groups");
-    expect(out.answerText).not.toContain("undefined");
+    expect(leaky.answerText).toBe("Liên hệ [MASKED_PHONE] hoặc [MASKED_EMAIL]");
   });
 
-  it("caps the echoed rows", () => {
-    const rows = Array.from({ length: ANSWER_PREVIEW_ROWS + 3 }, (_, i) => ({ n: i }));
-    const out = synthesizeAnswer(stateWith({ resultPreview: rows, columns: ["n"] }));
-    expect(out.answerText).toContain(`Kết quả (${ANSWER_PREVIEW_ROWS}/${rows.length} dòng đầu):`);
-    expect(out.answerText?.match(/^- /gm)).toHaveLength(ANSWER_PREVIEW_ROWS);
-  });
-
-  it("prefers UC-03 verified insights over the raw preview", () => {
+  it("synthesizes from verified UC-03 insight claims and caveats when present", () => {
     const out = synthesizeAnswer(
-      stateWith({
-        resultPreview: revenueRows,
-        columns: ["channel_name", "net_revenue_vnd"],
+      baseState({
         vizSpec: {
           kind: "insight_report",
-          report: { insights: [{ claim: "Shopee dẫn đầu doanh thu thuần.", evidence: [] }] },
+          report: {
+            insights: [
+              { claim: "Website dẫn đầu với 5000000 VND.", evidence: [] },
+              { claim: "Liên hệ CSKH: +84 912 345 678", evidence: [] },
+            ],
+            caveats: ["Giới hạn 50 dòng"],
+          },
         },
       }),
     );
-    expect(out.answerText).toBe("- Shopee dẫn đầu doanh thu thuần.");
+    expect(out.answerText).toContain("Website dẫn đầu với 5000000 VND.");
+    expect(out.answerText).toContain("[MASKED_PHONE]");
+    expect(out.answerText).toContain("(Giới hạn 50 dòng)");
   });
 
-  it("reports no_data on an empty preview", () => {
-    const out = synthesizeAnswer(stateWith({ status: "ok", resultPreview: [] }));
-    expect(out.status).toBe("no_data");
-  });
+  it("renders single scalar cell concisely and truncates multi-row previews at ANSWER_PREVIEW_ROWS", () => {
+    const scalar = synthesizeAnswer(baseState({ resultPreview: [{ total: 123 }] }));
+    expect(scalar.answerText).toBe("total: 123");
+    expect(synthesizeAnswer(baseState({ resultPreview: [{ total: 12345 }] })).answerText).toBe("total: 12.345");
+    expect(synthesizeAnswer(baseState({ status: "no_data" })).answerText).toBe("Không có dữ liệu phù hợp với câu hỏi.");
 
-  it("keeps handler-written answers and non-data statuses untouched", () => {
-    expect(synthesizeAnswer(stateWith({ answerText: "already" }))).toEqual({});
-    expect(synthesizeAnswer(stateWith({ status: "restricted" }))).toEqual({});
-  });
-
-  it("redacts PII-shaped values in the answer", () => {
-    const out = synthesizeAnswer(
-      stateWith({ resultPreview: [{ email: "lan.pham@example.com" }], columns: ["email"] }),
+    const rows = Array.from({ length: ANSWER_PREVIEW_ROWS + 3 }, (_, i) => ({
+      id: i + 1,
+      phone: "0901234567",
+    }));
+    const multi = synthesizeAnswer(
+      baseState({ resultPreview: rows, tablesUsed: ["customers"] }),
     );
-    expect(out.answerText).not.toContain("lan.pham@example.com");
+    expect(multi.answerText).toContain(`Returned ${ANSWER_PREVIEW_ROWS + 3} rows from customers`);
+    expect(multi.answerText).toContain("; ...");
+    expect(multi.answerText).toContain("[MASKED_PHONE]");
+    expect(multi.answerText).not.toContain("0901234567");
+  });
+
+  it("provides status fallbacks and skips duplicate answer span on default tracer route", async () => {
+    expect(
+      synthesizeAnswer(baseState({ status: "restricted", answerText: "" })).answerText,
+    ).toMatch(/restricted/i);
+    expect(
+      synthesizeAnswer(baseState({ status: "error", answerText: "" })).answerText,
+    ).toMatch(/error/i);
+
+    const emitted: SpanEvent[] = [];
+    const rt = {
+      emit: (e: SpanEvent) => {
+        emitted.push(e);
+        return "s-1";
+      },
+      config: {},
+    } as unknown as RootRuntime;
+    const synth = createAnswerSynthesizer();
+
+    await synth(baseState({ ucId: "tracer", answerText: "already set" }), rt);
+    expect(emitted).toHaveLength(0);
+
+    await synth(baseState({ ucId: "text-to-sql", resultPreview: [{ n: 9 }] }), rt);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ node: "answer", type: "node_done" });
   });
 });

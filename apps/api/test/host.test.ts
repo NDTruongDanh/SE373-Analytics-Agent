@@ -442,4 +442,171 @@ describe("buildApp /api/ask", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  it("wires default retrieve, textToSql, and synthesize seams on /api/ask with PII redaction", async () => {
+    let searchCalls = 0;
+    const intentPayload = {
+      metric: null,
+      dimensions: [],
+      filters: [],
+      timeRange: null,
+      requestedMetrics: [],
+      schemaEntities: ["customers"],
+      queryMode: "standard_query" as const,
+    };
+    const app = buildApp({
+      checkpointer: new MemorySaver(),
+      mcpUrl: "http://127.0.0.1:1/mcp",
+      tracesDir,
+      env: stubEnv,
+      textToSql: {
+        listTables: async () => [
+          { name: "customers", schema: "public", description: "Customer directory" },
+        ],
+        semanticSearch: async () => {
+          searchCalls += 1;
+          return [
+            {
+              chunkId: "table:customers",
+              docType: "table",
+              table: "customers",
+              tables: ["customers"],
+              metricName: null,
+              content: "Customer directory",
+              score: 0.9,
+              aliasMatched: true,
+            },
+          ];
+        },
+        intentModel: {
+          invoke: async () => ({ content: JSON.stringify(intentPayload) }),
+          async *stream() {
+            yield { content: JSON.stringify(intentPayload) };
+          },
+          withStructuredOutput: () => ({
+            invoke: async () => intentPayload,
+          }),
+        } as never,
+        executor: {
+          run: async (input) => ({
+            status: "ok",
+            sql: "SELECT name, contact FROM public.customers LIMIT 5",
+            tablesUsed: input.candidateTables,
+            columns: ["name", "contact"],
+            rows: [{ name: "An Nguyen", contact: `${SEED_PHONES[0]} / ${SEED_EMAIL}` }],
+            maskedColumns: [],
+            attempts: 1,
+          }),
+        },
+      },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: "List customer names",
+          persona: "sales_south",
+          ucId: "text-to-sql",
+        }),
+      });
+      const raw = await response.text();
+      expect(raw).not.toContain(SEED_PHONES[0]);
+      expect(raw).not.toContain(SEED_EMAIL);
+      const blocks = parseSse(raw);
+      const completed = blocks.find((b) => b.event === "completed");
+      expect(completed).toBeDefined();
+      expect(searchCalls).toBe(1);
+      const answer = completed?.data["data"] as { status?: string; answerText?: string } | undefined;
+      expect(answer?.status).toBe("ok");
+      expect(answer?.answerText).toContain("An Nguyen");
+      expect(answer?.answerText).not.toContain(SEED_PHONES[0]);
+      expect(answer?.answerText).not.toContain(SEED_EMAIL);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("supports HITL interrupt_waiting and /api/runs/:runId/resume for unmapped table entities", async () => {
+    const intentPayload = {
+      metric: null,
+      dimensions: [],
+      filters: [],
+      timeRange: null,
+      requestedMetrics: [],
+      schemaEntities: ["orders", "kênh bán"],
+      queryMode: "standard_query" as const,
+    };
+    const app = buildApp({
+      checkpointer: new MemorySaver(),
+      mcpUrl: "http://127.0.0.1:1/mcp",
+      tracesDir,
+      env: stubEnv,
+      textToSql: {
+        listTables: async () => [
+          { name: "orders", schema: "public", description: "Orders" },
+          { name: "channels", schema: "public", description: "Channels" },
+        ],
+        semanticSearch: async () => [],
+        intentModel: {
+          invoke: async () => ({ content: JSON.stringify(intentPayload) }),
+          async *stream() {
+            yield { content: JSON.stringify(intentPayload) };
+          },
+          withStructuredOutput: () => ({
+            invoke: async () => intentPayload,
+          }),
+        } as never,
+        executor: {
+          run: async (input) => ({
+            status: "ok",
+            sql: "SELECT c.channel_name, COUNT(*) AS cnt FROM public.orders o JOIN public.channels c ON c.channel_id = o.channel_id GROUP BY c.channel_name",
+            tablesUsed: input.candidateTables,
+            columns: ["channel_name", "cnt"],
+            rows: [{ channel_name: "Website", cnt: 4 }],
+            maskedColumns: [],
+            attempts: 1,
+          }),
+        },
+      },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const askRes = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: "Số đơn theo kênh bán",
+          persona: "sales_south",
+          ucId: "text-to-sql",
+        }),
+      });
+      const askBlocks = parseSse(await askRes.text());
+      const waiting = askBlocks.find((b) => b.event === "interrupt_waiting");
+      expect(waiting).toBeDefined();
+      const pending = (waiting?.data["data"] as { pendingClarification?: { field?: string; options?: string[] } })?.pendingClarification;
+      expect(pending?.field).toBe("table");
+      expect(pending?.options).toContain("channels");
+
+      const runId = waiting?.data["runId"] as string;
+      const resumeRes = await fetch(`http://127.0.0.1:${address.port}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: "channels" }),
+      });
+      expect(resumeRes.status).toBe(200);
+      const resumeBlocks = parseSse(await resumeRes.text());
+      const completed = resumeBlocks.find((b) => b.event === "completed");
+      const answer = completed?.data["data"] as { status?: string; answerText?: string } | undefined;
+      expect(answer?.status).toBe("ok");
+      expect(answer?.answerText).toContain("Website");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

@@ -14,6 +14,12 @@ export * from "./subgraphs/registry.js";
 export * from "./alerts/index.js";
 export * from "./subgraphs/rootCauseAnalysis.js";
 export * from "./router.js";
-// Host wiring (#104): the default RootGraphDeps.retrieve for API/eval hosts.
-export { createRetrieveSemantic, RETRIEVE_TOP_K } from "./semantic/retrieveSemantic.js";
-export { createAnswerSynthesizer, synthesizeAnswer } from "./answer/synthesize.js";
+export {
+  createRetrieveSemantic,
+  RETRIEVE_TOP_K,
+} from "./semantic/retrieveSemantic.js";
+export {
+  ANSWER_PREVIEW_ROWS,
+  createAnswerSynthesizer,
+  synthesizeAnswer,
+} from "./answer/synthesize.js";

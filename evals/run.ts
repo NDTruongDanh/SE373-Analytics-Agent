@@ -440,12 +440,11 @@ export async function buildLiveAdapter(
     const emit = createEvalEmitter(tracesDir, { runId, threadId, userId, role });
     const t0 = Date.now();
     try {
-      // Same retrieve and answer seams as the API host (#104).
       const graph = buildRootGraph({
         checkpointer,
-        emitSpan: emit,
         retrieve: createRetrieveSemantic(),
         synthesize: createAnswerSynthesizer(),
+        emitSpan: emit,
       });
       const out = (await withTimeout(
         graph.invoke(
@@ -706,16 +705,15 @@ interface SafetyDrive {
 
 /** Scripted model: proposes the fixture attack SQL, ignoring its input. */
 function scriptedModel(sql: string, tablesUsed: string[]): ChatModelLike {
-  // The executor reads the proposal as plain JSON over stream() (174183c);
-  // invoke/withStructuredOutput stay so the seam is fully satisfied.
-  const content = JSON.stringify({ sql, tablesUsed });
+  const payload = { sql, tablesUsed };
+  const rawMessage = { content: JSON.stringify(payload) };
   return {
-    invoke: () => Promise.resolve({ content }),
-    stream: async function* () {
-      yield { content };
+    invoke: () => Promise.resolve(rawMessage),
+    async *stream() {
+      yield rawMessage;
     },
     withStructuredOutput: () => ({
-      invoke: () => Promise.resolve({ sql, tablesUsed }),
+      invoke: () => Promise.resolve(payload),
     }),
   };
 }
