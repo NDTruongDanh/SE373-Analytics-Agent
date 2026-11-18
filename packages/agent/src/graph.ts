@@ -155,7 +155,7 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
       "router",
       runWithRuntime(async (state) => {
         if (state.ucId && overlay.has(state.ucId)) return {};
-        const routed = routeQuestionToUc(state.question);
+        const routed = routeQuestionToUc(state.question, state.ucId);
         return overlay.has(routed) ? { ucId: routed } : {};
       }),
     )

@@ -591,6 +591,7 @@ export function buildIntentPrompt(input: IntentPromptInput): string {
 
   const parts = [
     "Extract a structured analytics intent from the user question.",
+    "Return only a JSON object with keys: metric (string or null), dimensions (string array), filters (array of {field, operator, value}), timeRange (string or null), requestedMetrics (string array), schemaEntities (string array), and queryMode (standard_query or definition_lookup). Use empty arrays and null for unknown values.",
     "Fields:",
     "- requestedMetrics: composite business KPIs or named analytical measures requested (e.g. 'doanh thu thuần', 'AOV', 'NPS'). Leave [] for simple table counts, filter counts, or listings that do not invoke a KPI formula.",
     "- schemaEntities: list EVERY entity/subject needed to answer the question (do not omit secondary breakdown entities such as channels, regions, or products); choose physical table names ONLY from <allowed-tables> when a matching table exists, or preserve the unresolved entity phrase rather than dropping it or guessing an unrelated table. Never guess column names and never put filter literal values (status strings, region names, dates) into schemaEntities.",

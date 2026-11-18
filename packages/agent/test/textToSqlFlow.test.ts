@@ -118,6 +118,60 @@ function makeSqlModel(sql: string, tablesUsed: string[], capturedPrompts?: strin
 }
 
 describe("end-to-end UC-01 flow through buildRootGraph", () => {
+  it("returns an error for invalid JSON from the intent model", async () => {
+    const run = vi.fn();
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async () => [],
+        intentJsonModel: {
+          async *stream() {
+            yield { content: "{invalid json" };
+          },
+        },
+        executor: { run },
+      },
+    });
+    const out = await graph.invoke(
+      { question: "Có bao nhiêu đơn hàng?", ucId: "text-to-sql" },
+      runConfig("t-invalid-intent", "r-invalid-intent"),
+    );
+    expect(out.status).toBe("error");
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("accepts a Markdown-fenced intent response and reaches the executor", async () => {
+    const run = vi.fn(async () => ({
+      status: "ok" as const,
+      sql: "SELECT COUNT(*) AS n FROM public.orders",
+      tablesUsed: ["orders"],
+      columns: ["n"],
+      rows: [{ n: 2 }],
+      maskedColumns: [],
+      attempts: 1,
+    }));
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async () => [],
+        intentJsonModel: {
+          async *stream() {
+            yield { content: '```json\n{"schemaEntities":["orders"],"requestedMetrics":[],"queryMode":"standard_query"}\n```' };
+          },
+        },
+        executor: { run },
+      },
+    });
+    const out = await graph.invoke(
+      { question: "Có bao nhiêu đơn hàng?", ucId: "text-to-sql" },
+      runConfig("t-fenced-intent", "r-fenced-intent"),
+    );
+    expect(out.status).toBe("ok");
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ candidateTables: ["orders"] }));
+  });
+
   it("runs catalog discovery -> single semantic search -> SQL proposal -> synthesis", async () => {
     const intentPrompts: string[] = [];
     const sqlPrompts: string[] = [];
@@ -502,6 +556,42 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       runConfig("t-sem-ent-err", "r-sem-ent-err"),
     );
     expect(entityOut.status).toBe("error");
+  });
+
+  it("rounds definition scores so long floats never look like a phone number", async () => {
+    const searchFn = async (): Promise<SearchSemanticLayerChunk[]> => [
+      semanticChunk({
+        chunkId: "metric:net_revenue",
+        docType: "metric",
+        metricName: "net_revenue",
+        content: "Doanh thu thuần = SUM(price_vnd) trên đơn delivered",
+        score: 0.03278688524590164,
+      }),
+    ];
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: searchFn }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: searchFn,
+        intentModel: makeIntentModel({
+          requestedMetrics: ["doanh thu thuần"],
+          schemaEntities: [],
+          queryMode: "definition_lookup",
+        }).model,
+        executor: { run: vi.fn() },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "Doanh thu thuần được tính như thế nào?", ucId: "text-to-sql" },
+      runConfig("t-def-score", "r-def-score"),
+    );
+    expect(out.status).toBe("ok");
+    expect(out.answerText).toContain("(score: 0.03)");
+    // The API's completed-answer tripwire (apps/api/src/sse.ts PHONE_LIKE).
+    expect(out.answerText).not.toMatch(/0\d{9}/);
   });
 
   it("serves definition_lookup directly with citations and 0 executor calls", async () => {

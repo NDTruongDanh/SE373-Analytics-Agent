@@ -7,7 +7,9 @@ import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createChatModel } from "../models/factory.js";
 import {
   estimateCostUsd,
+  invokeJsonWithUsage,
   invokeWithUsage,
+  type PlainJsonModelLike,
 } from "../telemetry/usage.js";
 import {
   isRateLimitFailure,
@@ -96,6 +98,8 @@ export interface TextToSqlExecutorLike {
 
 export interface TextToSqlRuntimeDeps {
   intentModel?: IntentModelLike;
+  /** Plain-JSON intent model seam for providers returning Markdown-wrapped JSON. */
+  intentJsonModel?: PlainJsonModelLike;
   /** SQL model seam; omitted in production to use the configured profile. */
   sqlModel?: ChatModelLike;
   executor?: TextToSqlExecutorLike;
@@ -360,9 +364,12 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
   }
   const lines = chunks.slice(0, 5).map((chunk) => {
     const snippet = (chunk.text ?? "").slice(0, 300);
-    if (snippet && chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score}): ${snippet}`;
+    // Two decimals: a raw float like 0.0327868852 contains "0" + 9 digits,
+    // which the API's phone tripwire withholds as possible PII.
+    const score = chunk.score !== undefined ? chunk.score.toFixed(2) : undefined;
+    if (snippet && score !== undefined) return `${chunk.chunkId} (score: ${score}): ${snippet}`;
     if (snippet) return `${chunk.chunkId}: ${snippet}`;
-    if (chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score})`;
+    if (score !== undefined) return `${chunk.chunkId} (score: ${score})`;
     return `${chunk.chunkId}`;
   });
   const citations = chunks
@@ -916,10 +923,10 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         deadlineMs: budget.deadlineMs,
         emit: rt.emit,
       };
-      out = deps.intentModel
+      out = deps.intentModel && !deps.intentJsonModel
         ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, invokeOpts)
-        : await invokeWithUsage(
-            createChatModel("intent"),
+        : await invokeJsonWithUsage(
+            deps.intentJsonModel ?? createChatModel("intent"),
             IntentProposalSchema,
             prompt,
             invokeOpts,
@@ -941,6 +948,17 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         return {
           status: "cannot_answer",
           answerText: `${error.message}; no model or query was called.`,
+          budget: {
+            llmCalls: budget.llmCalls - startCalls,
+            tokensUsed: 0,
+            deadlineMs: budget.deadlineMs,
+          },
+        };
+      }
+      if (error instanceof SyntaxError || error instanceof z.ZodError) {
+        return {
+          status: "error",
+          answerText: "The model returned an invalid intent response; please try again.",
           budget: {
             llmCalls: budget.llmCalls - startCalls,
             tokensUsed: 0,

@@ -465,7 +465,7 @@ export async function buildLiveAdapter(
       });
       const out = (await withTimeout(
         graph.invoke(
-          { question: c.question, ucId: c.ucId ?? "tracer", runId, threadId },
+          { question: c.question, ucId: c.ucId, runId, threadId },
           {
             // D-04: never pass LangSmith callbacks here — eval traces stay
             // JSONL-local even if the flags were somehow re-set at runtime.
