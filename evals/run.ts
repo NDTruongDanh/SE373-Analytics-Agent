@@ -30,7 +30,11 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildRootGraph } from "@shared/agent";
+import {
+  buildRootGraph,
+  createAnswerSynthesizer,
+  createRetrieveSemantic,
+} from "@shared/agent";
 import { createCheckpointer } from "@shared/agent/ports";
 import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
 import { createSpanEmitter } from "../packages/agent/src/telemetry/spans.js";
@@ -436,7 +440,13 @@ export async function buildLiveAdapter(
     const emit = createEvalEmitter(tracesDir, { runId, threadId, userId, role });
     const t0 = Date.now();
     try {
-      const graph = buildRootGraph({ checkpointer, emitSpan: emit });
+      // Same retrieve and answer seams as the API host (#104).
+      const graph = buildRootGraph({
+        checkpointer,
+        emitSpan: emit,
+        retrieve: createRetrieveSemantic(),
+        synthesize: createAnswerSynthesizer(),
+      });
       const out = (await withTimeout(
         graph.invoke(
           { question: c.question, ucId: c.ucId ?? "tracer", runId, threadId },

@@ -62,6 +62,8 @@ function toStateChunk(chunk: SearchSemanticLayerChunk): AgentState["semanticChun
   };
   if (chunk.aliasMatched !== undefined) out.aliasMatched = chunk.aliasMatched;
   if (chunk.denseScore !== undefined) out.denseScore = chunk.denseScore;
+  const tables = [...new Set([...(chunk.table ? [chunk.table] : []), ...chunk.tables])];
+  if (tables.length > 0) out.tables = tables;
   return out;
 }
 
@@ -255,32 +257,47 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
     const metrics = state.intent.requestedMetrics ?? [];
     const isDefinition = state.intent.queryMode === "definition_lookup";
 
-    // Basic UC-01 queries pass straight through (no semantic search).
-    if (metrics.length === 0 && !isDefinition) return {};
-
+    // Every question retrieves (#104): plain UC-01 queries need the table
+    // chunks as candidate tables when the intent names none.
     const started = Date.now();
+    const optional = metrics.length === 0 && !isDefinition;
     let chunks: SearchSemanticLayerChunk[];
-    if (deps.search) {
-      chunks = await deps.search(state.question, topK);
-    } else {
-      const transport = readTransport(rt);
-      if (!transport) {
-        // Fail closed: metrics present (or a definition lookup) but no MCP
-        // transport means we cannot ground them — never skip the gate with {}.
-        // Basic UC-01 queries (no metrics, no definition) still pass through.
-        if (metrics.length === 0 && !isDefinition) return {};
-        return {
-          status: "error",
-          answerText:
-            "Semantic grounding unavailable (MCP transport identity is incomplete); cannot verify requested metrics without speculating.",
-        };
+    try {
+      if (deps.search) {
+        chunks = await deps.search(state.question, topK);
+      } else {
+        const transport = readTransport(rt);
+        if (!transport) {
+          // Fail closed: metrics present (or a definition lookup) but no MCP
+          // transport means we cannot ground them — never skip the gate with {}.
+          // Basic UC-01 queries (no metrics, no definition) still pass through
+          // and rely on intent schemaEntities alone.
+          if (optional) return {};
+          return {
+            status: "error",
+            answerText:
+              "Semantic grounding unavailable (MCP transport identity is incomplete); cannot verify requested metrics without speculating.",
+          };
+        }
+        const raw = await callMcpTool(transport, "search_semantic_layer", {
+          query: state.question,
+          topK,
+        });
+        const parsed = JSON.parse(raw.text) as { chunks?: SearchSemanticLayerChunk[] };
+        chunks = Array.isArray(parsed.chunks) ? parsed.chunks : [];
       }
-      const raw = await callMcpTool(transport, "search_semantic_layer", {
-        query: state.question,
-        topK,
+    } catch (error) {
+      // Grounding gates (metrics, definitions) stay fail-closed. A plain data
+      // question only loses its retrieved candidate tables, so it degrades
+      // to intent schemaEntities instead of failing the run (#104).
+      if (!optional) throw error;
+      rt.emit({
+        node: "retrieve",
+        type: "node_done",
+        durationMs: Date.now() - started,
+        payload: { gate: "data_query", degraded: true, chunkIds: [] },
       });
-      const parsed = JSON.parse(raw.text) as { chunks?: SearchSemanticLayerChunk[] };
-      chunks = Array.isArray(parsed.chunks) ? parsed.chunks : [];
+      return {};
     }
     rt.emit({
       node: "retrieve",
