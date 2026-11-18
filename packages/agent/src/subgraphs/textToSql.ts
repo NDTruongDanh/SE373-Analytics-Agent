@@ -357,9 +357,12 @@ function handleDefinitionLookup(state: AgentState): AgentUpdate | null {
   }
   const lines = chunks.slice(0, 5).map((chunk) => {
     const snippet = (chunk.text ?? "").slice(0, 300);
-    if (snippet && chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score}): ${snippet}`;
+    // Two decimals: a raw float like 0.0327868852 contains "0" + 9 digits,
+    // which the API's phone tripwire withholds as possible PII.
+    const score = chunk.score !== undefined ? chunk.score.toFixed(2) : undefined;
+    if (snippet && score !== undefined) return `${chunk.chunkId} (score: ${score}): ${snippet}`;
     if (snippet) return `${chunk.chunkId}: ${snippet}`;
-    if (chunk.score !== undefined) return `${chunk.chunkId} (score: ${chunk.score})`;
+    if (score !== undefined) return `${chunk.chunkId} (score: ${score})`;
     return `${chunk.chunkId}`;
   });
   const citations = chunks

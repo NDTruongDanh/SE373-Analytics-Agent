@@ -558,6 +558,42 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     expect(entityOut.status).toBe("error");
   });
 
+  it("rounds definition scores so long floats never look like a phone number", async () => {
+    const searchFn = async (): Promise<SearchSemanticLayerChunk[]> => [
+      semanticChunk({
+        chunkId: "metric:net_revenue",
+        docType: "metric",
+        metricName: "net_revenue",
+        content: "Doanh thu thuần = SUM(price_vnd) trên đơn delivered",
+        score: 0.03278688524590164,
+      }),
+    ];
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: searchFn }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: searchFn,
+        intentModel: makeIntentModel({
+          requestedMetrics: ["doanh thu thuần"],
+          schemaEntities: [],
+          queryMode: "definition_lookup",
+        }).model,
+        executor: { run: vi.fn() },
+      },
+    });
+
+    const out = await graph.invoke(
+      { question: "Doanh thu thuần được tính như thế nào?", ucId: "text-to-sql" },
+      runConfig("t-def-score", "r-def-score"),
+    );
+    expect(out.status).toBe("ok");
+    expect(out.answerText).toContain("(score: 0.03)");
+    // The API's completed-answer tripwire (apps/api/src/sse.ts PHONE_LIKE).
+    expect(out.answerText).not.toMatch(/0\d{9}/);
+  });
+
   it("serves definition_lookup directly with citations and 0 executor calls", async () => {
     let execCalls = 0;
     const searchFn = async (): Promise<SearchSemanticLayerChunk[]> => [
