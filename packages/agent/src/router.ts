@@ -61,6 +61,7 @@ export function routeQuestionToUc(question: string, explicitUcId?: string): stri
     return explicitUcId.trim();
   }
   const q = question.trim();
+  // Check definitions first so overlapping RCA patterns cannot capture them.
   for (const pattern of DEFINITION_LOOKUP_PATTERNS) {
     if (pattern.test(q)) {
       return TEXT_TO_SQL_UC_ID;

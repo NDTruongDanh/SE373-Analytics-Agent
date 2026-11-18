@@ -118,6 +118,29 @@ function makeSqlModel(sql: string, tablesUsed: string[], capturedPrompts?: strin
 }
 
 describe("end-to-end UC-01 flow through buildRootGraph", () => {
+  it("returns an error for invalid JSON from the intent model", async () => {
+    const run = vi.fn();
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async () => [],
+        intentJsonModel: {
+          async *stream() {
+            yield { content: "{invalid json" };
+          },
+        },
+        executor: { run },
+      },
+    });
+    const out = await graph.invoke(
+      { question: "Có bao nhiêu đơn hàng?", ucId: "text-to-sql" },
+      runConfig("t-invalid-intent", "r-invalid-intent"),
+    );
+    expect(out.status).toBe("error");
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("accepts a Markdown-fenced intent response and reaches the executor", async () => {
     const run = vi.fn(async () => ({
       status: "ok" as const,
