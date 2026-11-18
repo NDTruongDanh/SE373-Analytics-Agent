@@ -144,6 +144,18 @@ describe("summarizeMcpResult", () => {
       rowsCount: 1,
     });
     expect(
+      summarizeMcpResult(
+        JSON.stringify({
+          table: "customers",
+          columns: [
+            { name: "customer_id", type: "text", nullable: false, sensitive: false },
+            { name: "phone", type: "text", nullable: true, sensitive: true },
+          ],
+        }),
+        false,
+      ),
+    ).toEqual({ ok: true, table: "customers", columns: ["customer_id", "phone"] });
+    expect(
       summarizeMcpResult(JSON.stringify({ chunks: [{ content: CANARY_EMAIL }, {}] }), false),
     ).toEqual({ ok: true, chunksCount: 2 });
     expect(

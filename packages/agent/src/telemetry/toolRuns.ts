@@ -79,7 +79,12 @@ export function summarizeMcpResult(
   for (const key of ["columns", "maskedColumns"]) {
     const value = record[key];
     if (Array.isArray(value)) {
-      summary[key] = value.filter((item): item is string => typeof item === "string");
+      // run_query lists names; describe_table lists {name, type, ...} objects.
+      summary[key] = value
+        .map((item) =>
+          typeof item === "string" ? item : asRecord(item)?.["name"],
+        )
+        .filter((name): name is string => typeof name === "string");
     }
   }
   if (typeof record["table"] === "string") summary["table"] = record["table"];
