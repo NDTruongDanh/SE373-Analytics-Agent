@@ -2,7 +2,7 @@
 // DB-free per D-21: MemorySaver checkpointer plus a stub MCP gateway —
 // no database, no network beyond loopback.
 
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -403,6 +403,129 @@ describe("buildApp /api/ask", () => {
     expect(out.status).toBe(200);
     expect(out.json).toMatchObject({ added: 1, updated: 2, skipped: 15, deleted: 0 });
   });
+  it("wires createRetrieveSemantic into buildApp by default and records search_semantic_layer spans", async () => {
+    const localTraces = mkdtempSync(path.join(tmpdir(), "fullhost-semantic-"));
+    const mcpCalls: string[] = [];
+    let observedChunks: string[] = [];
+    let localMcp: Server | null = null;
+    const mcpServer = createServer(async (req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      const body = (await readBody(req)) as {
+        id?: number;
+        method?: string;
+        params?: { protocolVersion?: string; name?: string };
+      };
+      if (body.method === "initialize") {
+        sse(res, body.id ?? 0, {
+          protocolVersion: body.params?.protocolVersion ?? "2025-11-25",
+          capabilities: { tools: {} },
+          serverInfo: { name: "stub-semantic", version: "0" },
+        });
+        return;
+      }
+      if (body.method === "notifications/initialized") {
+        res.writeHead(202);
+        res.end();
+        return;
+      }
+      if (body.method === "tools/call") {
+        const toolName = body.params?.name ?? "";
+        mcpCalls.push(toolName);
+        const payload =
+          toolName === "search_semantic_layer"
+            ? {
+                chunks: [
+                  {
+                    chunkId: "metric:net_revenue",
+                    docType: "metric",
+                    table: "order_items",
+                    tables: ["orders", "order_items"],
+                    metricName: "net_revenue",
+                    content: "Metric net_revenue (Doanh thu thuần)",
+                    score: 0.94,
+                    aliasMatched: true,
+                    denseScore: 0.92,
+                  },
+                ],
+              }
+            : {};
+        sse(res, body.id ?? 0, {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+        });
+        return;
+      }
+      res.writeHead(400);
+      res.end();
+    });
+
+    await new Promise<void>((resolve) => {
+      localMcp = mcpServer.listen(0, "127.0.0.1", () => resolve());
+    });
+    const mcpAddress = localMcp!.address() as AddressInfo;
+    const app = buildApp({
+      checkpointer: new MemorySaver(),
+      mcpUrl: `http://127.0.0.1:${mcpAddress.port}/mcp`,
+      tracesDir: localTraces,
+      env: stubEnv,
+      ucHandlers: {
+        "uc-semantic-probe": async (state) => {
+          observedChunks = state.semanticChunks.map((c) => c.chunkId);
+          return { status: "ok", answerText: "probed" };
+        },
+      },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const apiPort = (server.address() as AddressInfo).port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${apiPort}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: "Doanh thu thuần tháng 8?",
+          persona: "sales_south",
+          ucId: "uc-semantic-probe",
+        }),
+      });
+      expect(res.status).toBe(200);
+      const blocks = parseSse(await res.text());
+      const runId = blocks[0]!.data["runId"] as string;
+      expect(mcpCalls).toContain("search_semantic_layer");
+      expect(observedChunks).toEqual(["metric:net_revenue"]);
+      const traceEvents = readFileSync(path.join(localTraces, `${runId}.jsonl`), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { type?: string; payload?: { tool?: string } });
+      expect(
+        traceEvents.some(
+          (e) => e.type === "tool_call" && e.payload?.tool === "search_semantic_layer",
+        ),
+      ).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        if (localMcp) localMcp.close(() => resolve());
+        else resolve();
+      });
+    }
+  });
+
+  it("fails if production or live-eval root graph builders omit the retrieve seam", () => {
+    const apiSrc = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+    const evalSrc = readFileSync(new URL("../../../evals/run.ts", import.meta.url), "utf8");
+
+    expect(apiSrc).toMatch(/createRetrieveSemantic/);
+    expect(apiSrc).toMatch(/buildRootGraph\(\{[\s\S]*?\bretrieve\s*:/);
+
+    expect(evalSrc).toMatch(/createRetrieveSemantic/);
+    expect(evalSrc).toMatch(/buildRootGraph\(\{[\s\S]*?\bretrieve\s*:/);
+    expect(evalSrc).toMatch(/buildEvalGraph\(/);
+  });
 
   it("propagates RATE_LIMITED without downgrading to INTERNAL_ERROR on SSE failed events", async () => {
     const app = buildApp({
@@ -442,7 +565,6 @@ describe("buildApp /api/ask", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
-
   it("routes a normal /api/ask question to textToSql by default with PII redaction", async () => {
     let searchCalls = 0;
     const intentPayload = {

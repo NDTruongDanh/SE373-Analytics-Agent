@@ -179,7 +179,9 @@ export function repairCitations(
   for (let attempt = 0; attempt < maxRepairs; attempt += 1) {
     if (!last.ok && (last.issue.code === "citation_unknown" || last.issue.code === "citation_not_retrieved")) {
       const bad = new Set(last.missing.map(normalizeId));
-      const fallback = deriveCitations(current.retrievedChunkIds ?? []);
+      const fallback = deriveCitations(current.retrievedChunkIds ?? []).filter(
+        (id) => !bad.has(normalizeId(id)),
+      );
       const kept = current.citations.filter((id) => !bad.has(normalizeId(id)));
       const next = [...new Set([...kept, ...fallback])];
       if (next.length === 0) break;

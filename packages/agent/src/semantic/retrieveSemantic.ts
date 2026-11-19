@@ -28,6 +28,7 @@ import {
   type TracerRunConfig,
 } from "../mcpClient.js";
 import type { AgentState, AgentUpdate, RootRuntime } from "../state.js";
+import { loadSemanticCatalogIds } from "./catalog.js";
 
 /** Calibrated dense-similarity threshold (text-embedding-3-small default). */
 export const UNKNOWN_TERM_DENSE_THRESHOLD = 0.6;
@@ -46,6 +47,7 @@ export type SemanticSearchFn = (
 export interface RetrieveSemanticDeps {
   search?: SemanticSearchFn;
   topK?: number;
+  catalogIds?: string[] | ReadonlySet<string>;
 }
 
 function readTransport(rt: RootRuntime): TracerRunConfig | null {
@@ -226,12 +228,19 @@ export function checkUnknownTerms(
 export function closestMetrics(
   chunks: Pick<GroundingChunk, "chunkId">[],
   limit: number = CLOSEST_METRICS_LIMIT,
+  catalogIds?: string[] | ReadonlySet<string>,
 ): string[] {
   const metrics = chunks
     .filter((chunk) => chunk.chunkId.startsWith("metric:"))
     .map((chunk) => chunk.chunkId);
   const deduped = [...new Set(metrics)];
   if (deduped.length > 0) return deduped.slice(0, limit);
+  if (catalogIds) {
+    const catalogMetrics = [...catalogIds].filter((id) =>
+      id.startsWith("metric:"),
+    );
+    if (catalogMetrics.length > 0) return catalogMetrics.slice(0, limit);
+  }
   return chunks.map((chunk) => chunk.chunkId).slice(0, limit);
 }
 
@@ -242,8 +251,9 @@ function hasUserSuppliedFormula(question: string): boolean {
 export function buildCannotAnswer(
   requestedMetrics: string[],
   chunks: Pick<GroundingChunk, "chunkId">[],
+  catalogIds?: string[] | ReadonlySet<string>,
 ): AgentUpdate {
-  const closest = closestMetrics(chunks);
+  const closest = closestMetrics(chunks, CLOSEST_METRICS_LIMIT, catalogIds);
   const available = closest.length > 0 ? closest.join(", ") : "no metric chunks retrieved";
   return {
     status: "cannot_answer",
@@ -301,6 +311,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
   rt: RootRuntime,
 ) => Promise<AgentUpdate> {
   const topK = deps.topK ?? RETRIEVE_TOP_K;
+  const catalogIds = deps.catalogIds ?? loadSemanticCatalogIds();
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     if (
       state.status === "error" ||
@@ -328,7 +339,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
             durationMs: 0,
             payload: { gate: "unknown_term", ungrounded, reusedPreRetrieval: true },
           });
-          return buildCannotAnswer(ungrounded, state.semanticChunks);
+          return buildCannotAnswer(ungrounded, state.semanticChunks, catalogIds);
         }
       }
       rt.emit({
@@ -432,7 +443,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
           semanticQuery: state.question,
           semanticRetrieveStatus: "ok",
           semanticErrorCode: null,
-          ...buildCannotAnswer(ungrounded, chunks),
+          ...buildCannotAnswer(ungrounded, chunks, catalogIds),
         };
       }
     }

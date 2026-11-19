@@ -28,6 +28,9 @@ const LIVE = HARNESS_URL.length > 0 && AGENT_RO_URL.length > 0 && SALES_TOKEN.le
 
 const DEMO_QUESTION = "How many orders do we have per status?";
 const GATEWAY_PORT = 18081;
+// Canonical UUIDs (runId/threadId/spanId/parentSpanId) can randomly contain
+// `0\d{9}` in their 12-hex node segment and trip PHONE_LIKE in containsWirePii.
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 interface SseBlock {
   event: string;
@@ -220,8 +223,9 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       expect(typeof event.threadId).toBe("string");
       expect(typeof event.spanId).toBe("string");
       // Same detector as the SSE tripwire (#115): a bare /0\d{9}/ also
-      // matched float digits (costs, scores) and made this test flaky.
-      expect(containsWirePii(line)).toBe(false);
+      // matched float digits (costs, scores) and made this test flaky; strip
+      // canonical UUIDs so random spanId/runId hex never trips PHONE_LIKE.
+      expect(containsWirePii(line.replace(UUID_RE, "<uuid>"))).toBe(false);
       for (const literal of liveLiterals) {
         expect(line).not.toContain(literal);
       }
@@ -240,7 +244,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(vizTypes).toContain("chart_validated");
 
     // SSE proof: no seed PII shapes, no live row cell value, no token.
-    expect(containsWirePii(sseText)).toBe(false);
+    expect(containsWirePii(sseText.replace(UUID_RE, "<uuid>"))).toBe(false);
     for (const literal of liveLiterals) {
       expect(sseText).not.toContain(literal);
     }

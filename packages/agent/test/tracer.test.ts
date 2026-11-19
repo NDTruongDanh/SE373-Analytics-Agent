@@ -459,4 +459,53 @@ describe("tracer agent", () => {
       });
     }
   });
+
+  it("validates citations against the semantic catalog on the default tracer route when chunks are present", async () => {
+    const entry = createTracerDefaultEntry();
+    const okOut = await entry(
+      {
+        question: "How many orders do we have per status?",
+        toolsCalled: [],
+        semanticChunks: [{ chunkId: "table:orders", score: 0.9, text: "orders table" }],
+        intent: {
+          metric: null,
+          dimensions: [],
+          filters: [],
+          timeRange: null,
+          requestedMetrics: [],
+          schemaEntities: ["orders"],
+          queryMode: "standard_query",
+        },
+      } as unknown as AgentState,
+      {
+        emit: () => "span-1",
+        config: { configurable: { ...ctx("run-cite-ok") } } as RootRuntime["config"],
+      },
+    );
+    expect(okOut.status).toBe("ok");
+    expect(okOut.sql).toMatch(/^-- @citations: table:orders\n/);
+
+    const badOut = await entry(
+      {
+        question: "How many orders do we have per status?",
+        toolsCalled: [],
+        semanticChunks: [{ chunkId: "metric:not_in_catalog", score: 0.1, text: "bogus" }],
+        intent: {
+          metric: null,
+          dimensions: [],
+          filters: [],
+          timeRange: null,
+          requestedMetrics: ["not_in_catalog"],
+          schemaEntities: ["orders"],
+          queryMode: "standard_query",
+        },
+      } as unknown as AgentState,
+      {
+        emit: () => "span-1",
+        config: { configurable: { ...ctx("run-cite-bad") } } as RootRuntime["config"],
+      },
+    );
+    expect(badOut.status).toBe("cannot_answer");
+    expect(badOut.answerText).toMatch(/Citation check failed/);
+  });
 });

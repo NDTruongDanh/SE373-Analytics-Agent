@@ -25,7 +25,6 @@ import {
   BUDGET_DEFAULTS,
   buildRootGraph,
   createAnswerSynthesizer,
-  createRetrieveSemantic,
   previewCountTotal,
   routeQuestionToUc,
   runTracerGraph,
@@ -37,6 +36,7 @@ import {
   type UcEntryHandler,
   type VizFn,
 } from "@shared/agent";
+import { createRetrieveSemantic } from "@shared/agent/uc02";
 import { createUc03Viz } from "@shared/agent/uc03";
 import {
   buildLangSmithRunConfig,
@@ -101,18 +101,18 @@ export interface BuildAppOptions {
   /** Optional text-to-SQL runtime deps seam (mirrors RootGraphDeps.textToSql). */
   textToSql?: RootGraphDeps["textToSql"];
   /**
+   * UC-02 semantic retrieve seam (#88, #104): calls search_semantic_layer over
+   * the run's MCP transport + two-tier unknown-term gate.
+   * Defaults to createRetrieveSemantic(). Override with a scripted seam in tests.
+   */
+  retrieve?: RetrieveFn;
+  /**
    * UC-03 VIZ seam (insight_report verification for every ok/no_data
    * answer). Defaults to createUc03Viz(): deterministic chart validation
    * with zero LLM calls when no model key is configured, Profile-3
    * tool-free synthesis otherwise. Override with a scripted seam in tests.
    */
   viz?: VizFn;
-  /**
-   * Semantic retrieve seam (#104). Defaults to createRetrieveSemantic(),
-   * which calls search_semantic_layer over the run's MCP transport so
-   * text-to-SQL gets grounded candidate tables. Override in tests.
-   */
-  retrieve?: RetrieveFn;
   /**
    * Answer seam (#104). Defaults to createAnswerSynthesizer(), which turns
    * UC-03 verified insights or the masked preview into answerText; the

@@ -33,8 +33,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   buildRootGraph,
   createAnswerSynthesizer,
-  createRetrieveSemantic,
+  type RootGraphDeps,
 } from "@shared/agent";
+import { createRetrieveSemantic } from "@shared/agent/uc02";
 import { createCheckpointer } from "@shared/agent/ports";
 import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
 import { createSpanEmitter } from "../packages/agent/src/telemetry/spans.js";
@@ -340,6 +341,18 @@ export function createEvalEmitter(
 }
 
 /**
+ * Build the root graph for live evals with the UC-02 retrieve seam wired by
+ * default (semantic retrieval + unknown-term gate + definition fast-path).
+ */
+export function buildEvalGraph(deps: RootGraphDeps) {
+  return buildRootGraph({
+    ...deps,
+    retrieve: deps.retrieve ?? createRetrieveSemantic(),
+    synthesize: deps.synthesize ?? createAnswerSynthesizer(),
+  });
+}
+
+/**
  * Build the live adapter: DB TCP preflight, gateway child boot with
  * bounded healthz wait, PostgresSaver checkpointer (fail-fast setup),
  * then per-case buildRootGraph invoke with the 01-12 identity shape.
@@ -457,12 +470,7 @@ export async function buildLiveAdapter(
     const emit = createEvalEmitter(tracesDir, { runId, threadId, userId, role });
     const t0 = Date.now();
     try {
-      const graph = buildRootGraph({
-        checkpointer,
-        retrieve: createRetrieveSemantic(),
-        synthesize: createAnswerSynthesizer(),
-        emitSpan: emit,
-      });
+      const graph = buildEvalGraph({ checkpointer, emitSpan: emit });
       const out = (await withTimeout(
         graph.invoke(
           { question: c.question, ucId: c.ucId, runId, threadId },
