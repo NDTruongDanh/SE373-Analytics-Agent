@@ -97,7 +97,7 @@ describe("UC-02 unknown-term gate", () => {
     expect(out.semanticChunks?.map((c) => c.chunkId)).toEqual(["table:regions"]);
   });
 
-  it("skips semantic search on the legacy tracer route when no metrics are requested", async () => {
+  it("searches semantic chunks on the tracer route so live e2e emits retrieve spans and feeds citations", async () => {
     let searched = false;
     const retrieve = createRetrieveSemantic({
       search: async () => {
@@ -117,8 +117,9 @@ describe("UC-02 unknown-term gate", () => {
     });
     const tracerState = { ...stateWith({ requestedMetrics: [] }), ucId: "tracer" };
     const out = await retrieve(tracerState, fakeRuntime());
-    expect(out).toEqual({});
-    expect(searched).toBe(false);
+    expect(searched).toBe(true);
+    expect(out.status).toBeUndefined();
+    expect(out.semanticChunks?.map((c) => c.chunkId)).toEqual(["table:orders"]);
   });
 
   it("retrieves for basic queries and keeps chunk tables as candidates", async () => {
