@@ -41,6 +41,148 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(getUcEntry(RCA_UC_ID)).toBeDefined();
   });
 
+  it("loads root-cause-analysis skill and emits skill_call span at entry (AC1)", async () => {
+    const emittedEvents: Array<{ node: string; type: string; payload?: unknown }> = [];
+    const mockRt = {
+      emit: (e: { node: string; type: string; payload?: unknown }) => {
+        emittedEvents.push(e);
+        return `span_${emittedEvents.length}`;
+      },
+      config: { configurable: {} },
+    };
+
+    const runtime = createRcaRuntime({
+      fetchBaseline: async () => 1_000_000,
+    });
+
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    await runtime.entry(mockState, mockRt as never);
+
+    const skillCall = emittedEvents.find(
+      (e) => e.type === "skill_call" && (e.payload as { skill?: string })?.skill === "root-cause-analysis",
+    );
+    expect(skillCall).toBeDefined();
+    expect(skillCall?.node).toBe("skills");
+  });
+
+  it("injects skill contract into SQL proposal prompts sent to executor", async () => {
+    const capturedQuestions: string[] = [];
+    const mockExecutor = {
+      run: async (input: { question: string }) => {
+        capturedQuestions.push(input.question);
+        return {
+          status: "ok" as const,
+          sql: "SELECT 1000000 AS val FROM orders WHERE purchase_date >= '2026-08-01' AND purchase_date <= '2026-08-31' AND status = 'delivered'",
+          tablesUsed: ["orders"],
+          columns: ["val"],
+          rows: [{ val: 1000000 }],
+          maskedColumns: [],
+          attempts: 1,
+        };
+      },
+    };
+
+    const runtime = createRcaRuntime({ executor: mockExecutor });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    await runtime.entry(mockState, mockRt as never);
+
+    expect(capturedQuestions.length).toBeGreaterThanOrEqual(1);
+    expect(capturedQuestions[0]).toContain("Skill contract:");
+    expect(capturedQuestions[0]).toContain("root-cause-analysis");
+  });
+
+  it("injects skill contract into intentModel prompt and uses structured output", async () => {
+    let capturedPrompt = "";
+    const fakeIntentModel = {
+      withStructuredOutput: () => ({
+        invoke: async (prompt: string) => {
+          capturedPrompt = prompt;
+          return {
+            metricName: "net_revenue",
+            metricType: "additive" as const,
+            statedDirection: "decrease" as const,
+            baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+            currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+          };
+        },
+      }),
+    };
+
+    const runtime = createRcaRuntime({
+      intentModel: fakeIntentModel as never,
+      fetchBaseline: async () => 1_000_000,
+    });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: () => "span_1",
+      config: { configurable: {} },
+    };
+
+    await runtime.entry(mockState, mockRt as never);
+    expect(capturedPrompt).toContain("Skill contract:");
+    expect(capturedPrompt).toContain("root-cause-analysis");
+  });
+
+  it("emits intent_model_error and rethrows when injected intentModel fails", async () => {
+    const emittedEvents: Array<{ node: string; type: string; payload?: unknown }> = [];
+    const fakeIntentModel = {
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          throw new Error("Intent model API connection timeout");
+        },
+      }),
+    };
+
+    const runtime = createRcaRuntime({
+      intentModel: fakeIntentModel as never,
+      fetchBaseline: async () => 1_000_000,
+    });
+    const mockState = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      ucId: RCA_UC_ID,
+      toolsCalled: [],
+    } as unknown as AgentState;
+
+    const mockRt = {
+      emit: (e: { node: string; type: string; payload?: unknown }) => {
+        emittedEvents.push(e);
+        return `span_${emittedEvents.length}`;
+      },
+      config: { configurable: {} },
+    };
+
+    await expect(runtime.entry(mockState, mockRt as never)).rejects.toThrow(
+      "Intent model API connection timeout",
+    );
+    const errorSpan = emittedEvents.find(
+      (e) => e.type === "intent_model_error" && e.node === "intent",
+    );
+    expect(errorSpan).toBeDefined();
+    expect((errorSpan?.payload as { error?: string })?.error).toContain(
+      "Intent model API connection timeout",
+    );
+  });
+
   it("extracts intent from Vietnamese diagnostic queries with date & metric parsing", () => {
     // KB1: Additive drop
     const q1 = "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?";

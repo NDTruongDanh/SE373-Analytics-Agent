@@ -1428,6 +1428,17 @@ async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const args = process.argv.slice(2);
 
+  // Load env once at runner entrypoint and apply the eval isolation guard
+  // (scrubs LangSmith tracing and drops live keys unless EVAL_USE_LIVE_MODEL=1)
+  // before any UCs run. Downstream calls (buildLiveAdapter, graders) pass
+  // loadEnv: false or receive config explicitly.
+  try {
+    process.loadEnvFile?.();
+  } catch {
+    // env file optional
+  }
+  prepareEvalEnv();
+
   if (args[0] === "--compare" && args.length === 3) {
     const before = JSON.parse(readFileSync(args[1], "utf8")) as EvalResultsFile;
     const after = JSON.parse(readFileSync(args[2], "utf8")) as EvalResultsFile;
@@ -1453,6 +1464,7 @@ async function main(): Promise<void> {
     return;
   }
 
+
   mkdirSync(path.join(repoRoot, "results"), { recursive: true });
   let failed = false;
 
@@ -1471,7 +1483,7 @@ async function main(): Promise<void> {
 
   let live: LiveHandle;
   try {
-    live = await buildLiveAdapter(repoRoot);
+    live = await buildLiveAdapter(repoRoot, { loadEnv: false });
   } catch (error) {
     console.error(`eval infrastructure failure: ${(error as Error).message}`);
     process.exit(INFRA_EXIT_CODE);
