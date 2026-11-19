@@ -13,6 +13,7 @@ import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  extractFencedSqlProposal,
   invokeJsonWithUsage,
   invokeWithUsage,
   modelFromMessage,
@@ -223,6 +224,7 @@ export class ProfileTracerModel implements TracerChatModel {
         ...opts,
         name: "sql_proposal",
         node: opts?.node ?? "understand",
+        fallbackParse: extractFencedSqlProposal,
       });
     } catch (error) {
       // Never echo raw model output (which can contain sensitive values).

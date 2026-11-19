@@ -122,6 +122,12 @@ async function main(): Promise<void> {
   // alert time-series and drill-down queries provide deterministic initialSql
   const queryExecutor = new ValidatedQueryExecutor({
     model: {
+      invoke: async () => {
+        throw new Error("Unexpected LLM invocation in deterministic alert query execution");
+      },
+      async *stream() {
+        throw new Error("Unexpected LLM invocation in deterministic alert query execution");
+      },
       withStructuredOutput: () => ({
         invoke: async () => {
           throw new Error("Unexpected LLM invocation in deterministic alert query execution");

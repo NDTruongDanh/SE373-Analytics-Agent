@@ -20,6 +20,7 @@ import { ModelRetryError } from "../src/telemetry/retry.js";
 import { loadModelPricing } from "../src/telemetry/pricing.js";
 import {
   estimateCostUsd,
+  extractFencedSqlProposal,
   invokeJsonWithUsage,
   invokeWithUsage,
   modelFromMessage,
@@ -469,6 +470,81 @@ describe("invokeJsonWithUsage", () => {
     ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).name).toBe("TimeoutError");
+  });
+
+  it("extracts JSON from prose with stray braces or earlier non-JSON fences", async () => {
+    const proseWithBraces = [
+      "Thinking about {orders}:",
+      "```text\nsome scratch note\n```",
+      `Result: ${JSON.stringify(PARSED)} (ignoring {draft})`,
+    ].join("\n");
+    const out = await invokeJsonWithUsage(
+      plainModel(proseWithBraces),
+      SqlProposalSchema,
+      "q",
+    );
+    expect(out.parsed).toEqual(PARSED);
+
+    const proseWithSecondFence = [
+      "First, the SQL:",
+      "```sql\nSELECT 1\n```",
+      "Then the JSON payload:",
+      `\`\`\`json\n${JSON.stringify(PARSED)}\n\`\`\``,
+    ].join("\n");
+    const out2 = await invokeJsonWithUsage(
+      plainModel(proseWithSecondFence),
+      SqlProposalSchema,
+      "q",
+    );
+    expect(out2.parsed).toEqual(PARSED);
+  });
+
+  it("supports fenced SQL fallback while preserving usage and still rejecting plain prose", async () => {
+    const proseSql = [
+      "Here is the SQL query you requested:",
+      "",
+      "```sql",
+      "SELECT status FROM orders",
+      "```",
+    ].join("\n");
+    const out = await invokeJsonWithUsage(
+      plainModel(proseSql),
+      SqlProposalSchema,
+      "q",
+      { fallbackParse: extractFencedSqlProposal },
+    );
+    expect(out.parsed).toEqual({
+      sql: "SELECT status FROM orders",
+      tablesUsed: [],
+    });
+    expect(out.inputTokens).toBe(100);
+    expect(out.outputTokens).toBe(50);
+    expect(out.model).toBe(KNOWN_MODEL);
+
+    // Plain prose with no JSON and no SQL block still fails closed without leaking raw text.
+    const raw = `sorry, cannot comply (${CANARY_PHONE})`;
+    const error = await invokeJsonWithUsage(
+      plainModel(raw),
+      SqlProposalSchema,
+      "q",
+      { fallbackParse: extractFencedSqlProposal },
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SyntaxError);
+    expect(String((error as Error).message)).not.toContain(CANARY_PHONE);
+  });
+
+  it("falls back to invoke() when a fake omits stream()", async () => {
+    const invokeOnly = {
+      invoke: async () => ({
+        content: JSON.stringify(PARSED),
+        usage_metadata: USAGE,
+        response_metadata: { model: KNOWN_MODEL },
+      }),
+    } as unknown as Parameters<typeof invokeJsonWithUsage>[0];
+    const out = await invokeJsonWithUsage(invokeOnly, SqlProposalSchema, "q");
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.inputTokens).toBe(100);
+    expect(out.outputTokens).toBe(50);
   });
 });
 
