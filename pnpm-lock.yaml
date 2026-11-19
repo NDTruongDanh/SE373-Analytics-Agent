@@ -33,6 +33,9 @@ catalogs:
     '@types/node':
       specifier: ^26.6.5
       version: 26.6.5
+    '@types/node-cron':
+      specifier: ^3.0.11
+      version: 3.0.11
     '@types/pg':
       specifier: ^8.23.1
       version: 8.23.1
@@ -51,6 +54,9 @@ catalogs:
     jsdom:
       specifier: 29.1.1
       version: 29.1.1
+    node-cron:
+      specifier: ^4.6.0
+      version: 4.6.0
     pg:
       specifier: ^8.23.1
       version: 8.23.1
@@ -247,6 +253,9 @@ importers:
       langsmith:
         specifier: 0.11.1
         version: 0.11.1(@opentelemetry/api@1.10.0)(openai@7.43.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(google-auth-library@10.9.1)(undici@7.30.1)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0)
+      node-cron:
+        specifier: 'catalog:'
+        version: 4.6.0
       pino:
         specifier: 'catalog:'
         version: 10.4.0
@@ -260,6 +269,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
+      '@types/node-cron':
+        specifier: 'catalog:'
+        version: 3.0.11
 
   packages/contracts:
     dependencies:
@@ -1873,6 +1885,9 @@ packages:
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
+
+  '@types/node-cron@3.0.11':
+    resolution: {integrity: sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==}
 
   '@types/node@26.6.5':
     resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
@@ -3574,6 +3589,10 @@ packages:
   node-abi@3.101.0:
     resolution: {integrity: sha512-bkb/RkuWCE64eWu1PCh3Fu2pGc9mKRs+kOE+FU2bGHRYlQa86/D321DSATV54AsCQMKz3/xSt9sRgraZTpqdhQ==}
     engines: {node: '>=10'}
+
+  node-cron@4.6.0:
+    resolution: {integrity: sha512-Si/bzYiKRHOB8/a99T2+SDGN582ONDMSTlJr5oCkT6GtnqPjZ2s10eoQRYkW9ZHwjVxONL+W8Fb+qR0AHMQsdg==}
+    engines: {node: '>=20'}
 
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
@@ -6308,6 +6327,8 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
+  '@types/node-cron@3.0.11': {}
+
   '@types/node@26.6.5':
     dependencies:
       undici-types: 8.9.0
@@ -8325,6 +8346,8 @@ snapshots:
   node-abi@3.101.0:
     dependencies:
       semver: 7.8.5
+
+  node-cron@4.6.0: {}
 
   node-domexception@1.0.0: {}
 
