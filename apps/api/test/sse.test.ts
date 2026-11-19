@@ -11,6 +11,8 @@ import {
   type SseEventName,
 } from "@shared/contracts";
 import {
+  completedPayload,
+  containsWirePii,
   displayableSql,
   emitSseEvent,
   interruptPayload,
@@ -131,5 +133,39 @@ describe("sse contracts-schema gate (D-20)", () => {
       "plan",
       "currentPlan",
     ]);
+  });
+});
+
+describe("containsWirePii (#115)", () => {
+  it.each([
+    "metric:net_revenue (score: 0.03278688524590164): Metric",
+    "estimatedCostUsd 0.00052410000000001",
+    "tỷ lệ 0,0912345678",
+    "tổng 10901234567 đơn",
+    "4 status groups, 986385 orders",
+  ])("does not flag number digits in %s", (text) => {
+    expect(containsWirePii(text)).toBe(false);
+  });
+
+  it.each([
+    "0901234567",
+    "liên hệ 0901234567 nhé",
+    "SĐT:0901234567",
+    "abc0901234567",
+    "a,0901234567",
+    "028582120590",
+    "mail lan@example.com",
+  ])("flags phone or email shape in %s", (text) => {
+    expect(containsWirePii(text)).toBe(true);
+  });
+
+  it("passes a definition answer with a long score but withholds one with a phone", () => {
+    const base = { status: "ok", toolsCalled: [], total: 0 };
+    expect(
+      completedPayload({ ...base, answerText: "x (score: 0.03278688524590164)" }),
+    ).toMatchObject({ status: "ok" });
+    expect(() =>
+      completedPayload({ ...base, answerText: "gọi 0901234567" }),
+    ).toThrow(/withheld/);
   });
 });

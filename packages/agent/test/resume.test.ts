@@ -7,8 +7,10 @@ import { describe, expect, it } from "vitest";
 import { MemorySaver, StateGraph, StateSchema, START, END } from "@langchain/langgraph";
 import { z } from "zod";
 import {
+  classifyTableClarificationValue,
   isSameThread,
   makeThreadId,
+  NO_MATCHING_TABLE_OPTION,
   pauseForApproval,
   requestClarification,
   resumeDecision,
@@ -96,6 +98,34 @@ describe("hitl helpers", () => {
     expect(() =>
       requestClarification({ field: "metric", question: "r", options: ["a", "b"], attempts: 3 }),
     ).toThrow(/attempts/);
+  });
+
+  it("accepts NO_MATCHING_TABLE_OPTION, aliases, and valid catalog tables beyond top suggestions", () => {
+    const req = requestClarification({
+      field: "table",
+      question: "Chọn bảng nào?",
+      options: ["orders", "channels", NO_MATCHING_TABLE_OPTION],
+      attempts: 0,
+    }).pendingClarification;
+    const catalog = ["orders", "channels", "sellers", "regions"];
+
+    expect(classifyTableClarificationValue(req, NO_MATCHING_TABLE_OPTION, catalog)).toEqual({
+      kind: "abort_rephrase",
+    });
+    expect(classifyTableClarificationValue(req, "Không có bảng phù hợp", catalog)).toEqual({
+      kind: "abort_rephrase",
+    });
+    expect(classifyTableClarificationValue(req, "sellers", catalog)).toEqual({
+      kind: "table",
+      table: "sellers",
+    });
+    expect(classifyTableClarificationValue(req, "ORDERS", catalog)).toEqual({
+      kind: "table",
+      table: "orders",
+    });
+    expect(classifyTableClarificationValue(req, "nonexistent", catalog)).toEqual({
+      kind: "invalid",
+    });
   });
 });
 

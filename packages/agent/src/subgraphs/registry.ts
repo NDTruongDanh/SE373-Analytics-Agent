@@ -105,7 +105,7 @@ export function previewCountTotal(
 }
 
 /** Transport context the tracer default route reads from RunnableConfig. */
-export interface TracerDefaultContext extends TracerRunConfig {
+export interface TracerDefaultContext extends Omit<TracerRunConfig, "callbacks"> {
   threadId: string;
   tracesDir: string;
 }
@@ -204,6 +204,7 @@ export function createTracerDefaultEntry(): UcEntryHandler {
       runId: ctx.runId,
       userId: ctx.userId,
       roleScope: ctx.roleScope,
+      callbacks: rt.config.callbacks,
     };
 
     const started = Date.now();

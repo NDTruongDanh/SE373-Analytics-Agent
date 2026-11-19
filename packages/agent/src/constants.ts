@@ -111,5 +111,9 @@ export const SKILL_SECTIONS: SkillSectionRule[] = [
 /** Postgres schema that PostgresSaver.setup() owns (harness_state). */
 export const CHECKPOINT_SCHEMA = "langgraph" as const;
 
+/** Escape-hatch option shown when suggested candidate tables do not fit the question. */
+export const NO_MATCHING_TABLE_OPTION =
+  "Không có bảng phù hợp (đặt lại câu hỏi)";
+
 export const AGENT_SHELL =
   "Agent shell: LangGraph.js root graph skeleton (AGENT-01) with registry seam; services land in sibling plans";

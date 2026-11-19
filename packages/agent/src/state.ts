@@ -44,6 +44,7 @@ export const ClarificationFieldSchema = z.enum([
   "timeRange",
   "scope",
   "filterValue",
+  "table",
 ]);
 export type ClarificationField = z.infer<typeof ClarificationFieldSchema>;
 
@@ -58,11 +59,23 @@ export type PendingClarification = z.infer<typeof PendingClarificationSchema>;
 
 const SemanticChunkSchema = z.object({
   chunkId: z.string().min(1),
+  docType: z
+    .enum(["table", "column", "metric", "join_rule", "example", "event"])
+    .optional(),
+  table: z.string().nullable().optional(),
+  tables: z.array(z.string()).optional(),
   score: z.number().optional(),
   text: z.string().optional(),
   aliasMatched: z.boolean().optional(),
   denseScore: z.number().optional(),
 });
+
+export const CatalogTableSchema = z.object({
+  name: z.string().min(1).max(128),
+  schema: z.string().default("public"),
+  description: z.string().max(500).optional(),
+});
+export type CatalogTable = z.infer<typeof CatalogTableSchema>;
 
 const BudgetStateSchema = z
   .object({
@@ -126,6 +139,16 @@ export const AgentStateSchema = new StateSchema({
     queryMode: "standard_query" as const,
   })),
   semanticChunks: z.array(SemanticChunkSchema).default([]),
+  /** Allowed tables returned by list_tables for the current run (#89). */
+  catalogTables: z.array(CatalogTableSchema).default([]),
+  /** Tracks whether list_tables ran and succeeded for this run (#89). */
+  catalogStatus: z.enum(["unloaded", "ready", "empty", "error"]).default("unloaded"),
+  /** Question string for which semanticChunks were pre-retrieved, avoiding duplicate MCP search (#89). */
+  semanticQuery: z.string().nullable().default(null),
+  /** Outcome of semantic retrieval for distinguishing infra/scope failure from out-of-schema (#89). */
+  semanticRetrieveStatus: z.enum(["unloaded", "ok", "error"]).default("unloaded"),
+  /** Normalized MCP error code if semantic retrieval failed (#89). */
+  semanticErrorCode: z.string().nullable().default(null),
   /** Checkpointed preview: zod max rejects anything over 50 rows. */
   resultPreview: z
     .array(z.record(z.string(), z.unknown()))

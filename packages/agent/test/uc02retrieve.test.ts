@@ -102,13 +102,102 @@ describe("UC-02 unknown-term gate", () => {
     const retrieve = createRetrieveSemantic({
       search: async () => {
         searched = true;
-        return [];
+        return [
+          {
+            chunkId: "table:orders",
+            docType: "table",
+            table: "orders",
+            tables: ["orders", "channels"],
+            metricName: null,
+            content: "orders table",
+            score: 0.9,
+          },
+        ];
       },
     });
     const tracerState = { ...stateWith({ requestedMetrics: [] }), ucId: "tracer" };
     const out = await retrieve(tracerState, fakeRuntime());
     expect(out).toEqual({});
     expect(searched).toBe(false);
+  });
+
+  it("retrieves for basic queries and keeps chunk tables as candidates", async () => {
+    let searched = false;
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        searched = true;
+        return [
+          {
+            chunkId: "table:orders",
+            docType: "table",
+            table: "orders",
+            tables: ["orders", "channels"],
+            metricName: null,
+            content: "orders table",
+            score: 0.9,
+          },
+        ];
+      },
+    });
+    const out = await retrieve(stateWith({ requestedMetrics: [] }), fakeRuntime());
+    expect(searched).toBe(true);
+    expect(out.semanticChunks?.[0]?.tables).toEqual(["orders", "channels"]);
+    expect(out.status).toBeUndefined();
+  });
+
+  it("degrades a basic query to no chunks when search fails (#104)", async () => {
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        throw new Error("gateway down");
+      },
+    });
+    const out = await retrieve(stateWith({ requestedMetrics: [] }), fakeRuntime());
+    expect(out.semanticRetrieveStatus).toBe("error");
+  });
+
+  it("stays fail-closed when search fails for a metric query", async () => {
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        throw new Error("gateway down");
+      },
+    });
+    const out = await retrieve(stateWith({ requestedMetrics: ["doanh thu thuần"] }), fakeRuntime());
+    expect(out.status).toBe("error");
+  });
+
+  it("retrieves semantic chunks for plain text-to-sql queries and preserves table metadata", async () => {
+    let calls = 0;
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        calls += 1;
+        return [
+          chunk({
+            chunkId: "table:orders",
+            docType: "table",
+            table: "orders",
+            tables: ["orders", "customers"],
+            metricName: null,
+            content: "Table orders stores customer purchases",
+            score: 0.85,
+          }),
+        ];
+      },
+    });
+    const out = await retrieve(
+      stateWith({ requestedMetrics: [] }, "Đếm số đơn hàng theo kênh"),
+      fakeRuntime(),
+    );
+    expect(calls).toBe(1);
+    expect(out.semanticRetrieveStatus).toBe("ok");
+    expect(out.semanticQuery).toBe("Đếm số đơn hàng theo kênh");
+    expect(out.semanticChunks).toEqual([
+      expect.objectContaining({
+        chunkId: "table:orders",
+        docType: "table",
+        table: "orders",
+        tables: ["orders", "customers"],
+      }),
+    ]);
   });
 
   it("grounds an alias-matched metric", () => {
@@ -306,5 +395,71 @@ describe("UC-02 unknown-term gate", () => {
     );
     expect(cannotAnswer.status).toBe("cannot_answer");
     expect(cannotAnswer.answerText).toMatch(/metric:/);
+  });
+
+  it("reuses pre-retrieved chunks for the same question without duplicate search", async () => {
+    let calls = 0;
+    const retrieve = createRetrieveSemantic({
+      search: async () => {
+        calls += 1;
+        return [];
+      },
+    });
+    const baseState = {
+      ...stateWith({ requestedMetrics: ["NPS"] }, "NPS tháng này là bao nhiêu?"),
+      semanticQuery: "NPS tháng này là bao nhiêu?",
+      semanticRetrieveStatus: "ok" as const,
+      semanticChunks: [
+        {
+          chunkId: "metric:net_revenue",
+          docType: "metric" as const,
+          table: "orders",
+          tables: ["orders"],
+          metricName: "net_revenue",
+          text: "net revenue",
+          score: 0.2,
+          aliasMatched: false,
+          denseScore: 0.2,
+        },
+      ],
+    };
+    const out = await retrieve(baseState, fakeRuntime());
+    expect(calls).toBe(0);
+    expect(out.status).toBe("cannot_answer");
+    expect(out.answerText).toMatch(/NPS/);
+  });
+
+  it("maps semantic search failures to restricted or error (never cannot_answer)", async () => {
+    const scopeRetrieve = createRetrieveSemantic({
+      search: async () => {
+        throw { code: "SCOPE_DENIED", message: "forbidden" };
+      },
+    });
+    const deniedOut = await scopeRetrieve(
+      stateWith({ requestedMetrics: ["net_revenue"] }, "Doanh thu thuần?"),
+      fakeRuntime(),
+    );
+    expect(deniedOut.status).toBe("restricted");
+    expect(deniedOut.semanticRetrieveStatus).toBe("error");
+    expect(deniedOut.semanticErrorCode).toBe("SCOPE_DENIED");
+
+    const internalRetrieve = createRetrieveSemantic({
+      search: async () => {
+        throw new Error("gateway down");
+      },
+    });
+    const errOut = await internalRetrieve(
+      stateWith({ requestedMetrics: ["net_revenue"] }, "Doanh thu thuần?"),
+      fakeRuntime(),
+    );
+    expect(errOut.status).toBe("error");
+    expect(errOut.semanticRetrieveStatus).toBe("error");
+
+    const optionalOut = await internalRetrieve(
+      stateWith({ requestedMetrics: [] }, "Đếm số đơn hàng"),
+      fakeRuntime(),
+    );
+    expect(optionalOut.status).toBeUndefined();
+    expect(optionalOut.semanticRetrieveStatus).toBe("error");
   });
 });

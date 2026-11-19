@@ -30,7 +30,11 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildRootGraph, type RootGraphDeps } from "@shared/agent";
+import {
+  buildRootGraph,
+  createAnswerSynthesizer,
+  type RootGraphDeps,
+} from "@shared/agent";
 import { createRetrieveSemantic } from "@shared/agent/uc02";
 import { createCheckpointer } from "@shared/agent/ports";
 import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
@@ -119,7 +123,24 @@ export interface HarnessOutcome {
   reason?: string;
   ms: number;
   tokens: number;
+  /** Estimated model cost from policies/model_pricing.yaml (#97). */
+  costUsd?: number;
   wired?: boolean;
+}
+
+/**
+ * Token and cost totals for one eval case, read from the run's span
+ * emitter roll-up (the same numbers as its run_done JSONL event, #97).
+ */
+export function runUsage(totals: {
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+}): { tokens: number; costUsd: number } {
+  return {
+    tokens: totals.inputTokens + totals.outputTokens,
+    costUsd: totals.estimatedCostUsd,
+  };
 }
 
 export type HarnessAdapter = (c: EvalCase) => Promise<HarnessOutcome>;
@@ -327,6 +348,7 @@ export function buildEvalGraph(deps: RootGraphDeps) {
   return buildRootGraph({
     ...deps,
     retrieve: deps.retrieve ?? createRetrieveSemantic(),
+    synthesize: deps.synthesize ?? createAnswerSynthesizer(),
   });
 }
 
@@ -451,7 +473,7 @@ export async function buildLiveAdapter(
       const graph = buildEvalGraph({ checkpointer, emitSpan: emit });
       const out = (await withTimeout(
         graph.invoke(
-          { question: c.question, ucId: c.ucId ?? "tracer", runId, threadId },
+          { question: c.question, ucId: c.ucId, runId, threadId },
           {
             // D-04: never pass LangSmith callbacks here — eval traces stay
             // JSONL-local even if the flags were somehow re-set at runtime.
@@ -483,6 +505,7 @@ export async function buildLiveAdapter(
           ? redactPII(out.answerText).redacted.slice(0, 500)
           : undefined;
       emit.emitRunDone(status);
+      const usage = runUsage(emit.totals());
       return {
         status,
         rows: out.resultPreview ?? [],
@@ -493,7 +516,7 @@ export async function buildLiveAdapter(
             ? undefined
             : diagnostic ?? `harness status '${status}'`,
         ms: Date.now() - t0,
-        tokens: 0,
+        ...usage,
         wired: true,
       };
     } catch (error) {
@@ -508,7 +531,8 @@ export async function buildLiveAdapter(
         rows: [],
         reason,
         ms: Date.now() - t0,
-        tokens: 0,
+        // Calls made before the failure still cost tokens (#97).
+        ...runUsage(emit.totals()),
         wired: true,
       };
     }
@@ -540,6 +564,7 @@ export interface GradedCase {
   exPass: boolean;
   ms: number;
   tokens: number;
+  costUsd?: number;
   note?: string;
 }
 
@@ -576,6 +601,7 @@ export async function runEval(
       exPass: pass,
       ms: outcome.ms,
       tokens: outcome.tokens,
+      ...(outcome.costUsd !== undefined ? { costUsd: outcome.costUsd } : {}),
       ...(pass
         ? {}
         : {
@@ -593,9 +619,55 @@ export async function runEval(
   };
 }
 
+/**
+ * Direct-MCP gateway fixtures (UC-09). A dedicated filename keeps them apart
+ * from benchmark `cases.jsonl` files (#96): any other `.json`/`.jsonl` in a
+ * live UC dir is an EX benchmark case.
+ */
+export const GATEWAY_CASES_FILE = "gateway.jsonl";
+
+interface PureUcRun {
+  cases: { exPass: boolean }[];
+}
+
+/** DB-free suites with their own graders and fixture formats. */
+const PURE_UC_RUNNERS: Record<
+  string,
+  { datasetVersion: string; grade: (repoRoot: string) => Promise<PureUcRun>; print: (run: never) => void }
+> = {
+  uc02: { datasetVersion: "uc02-1", grade: gradeUc02, print: printUc02Report as (run: never) => void },
+  uc03: { datasetVersion: "uc03-1", grade: gradeUc03, print: printUc03Report as (run: never) => void },
+  uc05: { datasetVersion: "uc05-1", grade: gradeUc05, print: printUc05Report as (run: never) => void },
+};
+
+/** True when `uc` is graded by a pure runner rather than the live harness. */
+export function isPureUc(uc: string): boolean {
+  return uc in PURE_UC_RUNNERS;
+}
+
+async function runPureUc(repoRoot: string, uc: string, verbose: boolean): Promise<boolean> {
+  const runner = PURE_UC_RUNNERS[uc];
+  const run = await runner.grade(repoRoot);
+  const passed = run.cases.filter((c) => c.exPass).length;
+  writeFileSync(
+    path.join(repoRoot, "results", `${uc}.json`),
+    `${JSON.stringify({ uc, datasetVersion: runner.datasetVersion, cases: run.cases, summary: summarizeCases(run.cases as never) }, null, 2)}\n`,
+    "utf8",
+  );
+  if (verbose) runner.print(run as never);
+  else {
+    console.log(
+      `eval ${uc}: ${passed}/${run.cases.length} EX pass (dataset ${runner.datasetVersion}, deterministic)`,
+    );
+  }
+  return passed === run.cases.length;
+}
+
 function discoverUcDirs(repoRoot: string): string[] {
   return readdirSync(path.join(repoRoot, "evals"), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "safety")
+    // Only `uc<NN>` suites: `safety/` runs after them, and `questions/`
+    // holds hidden gold data, never a suite of its own (#96).
+    .filter((entry) => entry.isDirectory() && /^uc\d+$/.test(entry.name))
     .map((entry) => entry.name)
     .sort();
 }
@@ -605,6 +677,8 @@ export function loadUcCases(repoRoot: string, uc: string): EvalCase[] {
   const out: EvalCase[] = [];
   for (const file of readdirSync(dir).sort()) {
     if (!file.endsWith(".json") && !file.endsWith(".jsonl")) continue;
+    // Gateway fixtures have their own schema and driver (#96).
+    if (file === GATEWAY_CASES_FILE) continue;
     const contents = readFileSync(path.join(dir, file), "utf8");
     const records: unknown[] = file.endsWith(".jsonl")
       ? contents
@@ -660,9 +734,15 @@ interface SafetyDrive {
 
 /** Scripted model: proposes the fixture attack SQL, ignoring its input. */
 function scriptedModel(sql: string, tablesUsed: string[]): ChatModelLike {
+  const payload = { sql, tablesUsed };
+  const rawMessage = { content: JSON.stringify(payload) };
   return {
+    invoke: () => Promise.resolve(rawMessage),
+    async *stream() {
+      yield rawMessage;
+    },
     withStructuredOutput: () => ({
-      invoke: () => Promise.resolve({ sql, tablesUsed }),
+      invoke: () => Promise.resolve(payload),
     }),
   };
 }
@@ -940,7 +1020,7 @@ const GATEWAY_CASE_TIMEOUT_MS = 60_000;
 
 /** Strict load of the direct-MCP records for one UC dir. */
 export function loadGatewayCases(repoRoot: string, uc: string): GatewayCase[] {
-  const file = path.join(repoRoot, "evals", uc, "cases.jsonl");
+  const file = path.join(repoRoot, "evals", uc, GATEWAY_CASES_FILE);
   return readFileSync(file, "utf8")
     .trim()
     .split("\n")
@@ -1356,6 +1436,17 @@ async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const args = process.argv.slice(2);
 
+  // Load env once at runner entrypoint and apply the eval isolation guard
+  // (scrubs LangSmith tracing and drops live keys unless EVAL_USE_LIVE_MODEL=1)
+  // before any UCs run. Downstream calls (buildLiveAdapter, graders) pass
+  // loadEnv: false or receive config explicitly.
+  try {
+    process.loadEnvFile?.();
+  } catch {
+    // env file optional
+  }
+  prepareEvalEnv();
+
   if (args[0] === "--compare" && args.length === 3) {
     const before = JSON.parse(readFileSync(args[1], "utf8")) as EvalResultsFile;
     const after = JSON.parse(readFileSync(args[2], "utf8")) as EvalResultsFile;
@@ -1381,87 +1472,40 @@ async function main(): Promise<void> {
     return;
   }
 
-  // UC-02 dispatch (pure, DB-free): 3-way proxy retrieval + gate + citation
-  // validators run without booting the gateway. Writes the same GradedCase
-  // envelope for --compare.
-  if (ucs.length === 1 && ucs[0] === "uc02") {
-    const uc02 = await gradeUc02(repoRoot);
-    const passed = uc02.cases.filter((c) => c.exPass).length;
-    writeFileSync(
-      path.join(repoRoot, "results", "uc02.json"),
-      `${JSON.stringify({ uc: "uc02", datasetVersion: "uc02-1", cases: uc02.cases, summary: summarizeCases(uc02.cases) }, null, 2)}\n`,
-      "utf8",
-    );
-    printUc02Report(uc02);
-    process.exit(passed === uc02.cases.length ? 0 : 1);
-    return;
-  }
-
-  // UC-03 dispatch (pure, DB-free): validators are local deterministic code
-  // and the scripted model stands in for Profile 3, so grading runs without
-  // booting the gateway. Writes the same GradedCase envelope for --compare.
-  if (ucs.length === 1 && ucs[0] === "uc03") {
-    const uc03 = await gradeUc03(repoRoot);
-    const passed = uc03.cases.filter((c) => c.exPass).length;
-    writeFileSync(
-      path.join(repoRoot, "results", "uc03.json"),
-      `${JSON.stringify({ uc: "uc03", datasetVersion: "uc03-1", cases: uc03.cases, summary: summarizeCases(uc03.cases) }, null, 2)}\n`,
-      "utf8",
-    );
-    printUc03Report(uc03);
-    process.exit(passed === uc03.cases.length ? 0 : 1);
-    return;
-  }
-
-  // UC-05 dispatch (pure, DB-free): RCA tree decomposition + HITL + K7 waterfall gate.
-  // Writes the same GradedCase envelope for --compare.
-  if (ucs.length === 1 && ucs[0] === "uc05") {
-    const uc05 = await gradeUc05(repoRoot);
-    const passed = uc05.cases.filter((c) => c.exPass).length;
-    mkdirSync(path.join(repoRoot, "results"), { recursive: true });
-    writeFileSync(
-      path.join(repoRoot, "results", "uc05.json"),
-      `${JSON.stringify({ uc: "uc05", datasetVersion: "uc05-1", cases: uc05.cases, summary: summarizeCases(uc05.cases) }, null, 2)}\n`,
-      "utf8",
-    );
-    printUc05Report(uc05);
-    process.exit(passed === uc05.cases.length ? 0 : 1);
-    return;
-  }
 
   mkdirSync(path.join(repoRoot, "results"), { recursive: true });
+  let failed = false;
+
+  // Pure, DB-free suites (UC-02 retrieval, UC-03 viz validators, UC-05 RCA)
+  // grade without booting the gateway; they write the same GradedCase
+  // envelope for --compare. `--all` runs them first, then the live suites.
+  const pureUcs = ucs.filter((uc) => uc in PURE_UC_RUNNERS);
+  const liveUcs = ucs.filter((uc) => !(uc in PURE_UC_RUNNERS));
+  for (const uc of pureUcs) {
+    if (!(await runPureUc(repoRoot, uc, ucs.length === 1))) failed = true;
+  }
+  if (liveUcs.length === 0) {
+    process.exit(failed ? 1 : 0);
+    return;
+  }
 
   let live: LiveHandle;
   try {
-    live = await buildLiveAdapter(repoRoot);
+    live = await buildLiveAdapter(repoRoot, { loadEnv: false });
   } catch (error) {
     console.error(`eval infrastructure failure: ${(error as Error).message}`);
     process.exit(INFRA_EXIT_CODE);
     return;
   }
 
-  let failed = false;
   try {
-    for (const uc of ucs) {
-      if (uc === "uc05") {
-        const uc05 = await gradeUc05(repoRoot);
-        const passed = uc05.cases.filter((c) => c.exPass).length;
-        writeFileSync(
-          path.join(repoRoot, "results", "uc05.json"),
-          `${JSON.stringify({ uc: "uc05", datasetVersion: "uc05-1", cases: uc05.cases, summary: summarizeCases(uc05.cases) }, null, 2)}\n`,
-          "utf8",
-        );
-        if (passed !== uc05.cases.length) failed = true;
-        console.log(
-          `eval uc05: ${passed}/${uc05.cases.length} EX pass (dataset uc05-1, deterministic rca runner)`,
-        );
-        continue;
-      }
+    for (const uc of liveUcs) {
       const cases = loadUcCases(repoRoot, uc);
-      const gatewayFile = path.join(repoRoot, "evals", uc, "cases.jsonl");
+      const gatewayFile = path.join(repoRoot, "evals", uc, GATEWAY_CASES_FILE);
       if (existsSync(gatewayFile)) {
-        // UC-09 dispatch (D-02): gateway records drive direct-MCP; the EX
-        // path for *.json cases (tracer-01) keeps working in the same run
+        // UC-09 dispatch (D-02, #96): gateway records live in their own
+        // GATEWAY_CASES_FILE and drive direct-MCP; the EX path for benchmark
+        // cases (tracer-01.json) keeps working in the same run
         // and both merge into one compare-compatible envelope.
         const gatewayCases = loadGatewayCases(repoRoot, uc);
         const exResults = await runEval(cases, live.adapter);

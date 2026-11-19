@@ -21,6 +21,7 @@ import {
   OVERRIDABLE_LANGSMITH_INHERITABLE_METADATA_KEYS,
 } from "@langchain/core/tracers/tracer_langchain";
 import { redactPII, redactRow } from "@shared/access-policy";
+import { estimateCostBreakdownUsd } from "./pricing.js";
 
 /** Owner-chosen LangSmith project (D-05); separate from the OpenWiki project. */
 export const LANGSMITH_PROJECT_DEFAULT = "se373-analytics-agent";
@@ -217,6 +218,52 @@ function scrubEvents(
   );
 }
 
+interface LlmRunLike {
+  outputs?: { generations?: unknown };
+  extra?: { metadata?: Record<string, unknown> };
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** Model id from the first generation's response_metadata, then ls_model_name. */
+function llmRunModel(run: LlmRunLike): string | undefined {
+  const batches = run.outputs?.generations;
+  if (Array.isArray(batches)) {
+    for (const batch of batches) {
+      if (!Array.isArray(batch)) continue;
+      for (const generation of batch) {
+        const meta = asObject(asObject(asObject(generation)?.["message"])?.["response_metadata"]);
+        for (const key of ["model", "model_name"]) {
+          const value = meta?.[key];
+          if (typeof value === "string" && value.length > 0) return value;
+        }
+      }
+    }
+  }
+  const lsModel = run.extra?.metadata?.["ls_model_name"];
+  return typeof lsModel === "string" && lsModel.length > 0 ? lsModel : undefined;
+}
+
+/**
+ * Add input_cost / output_cost / total_cost to the LLM run's
+ * usage_metadata from our pricing table. Exported for tests.
+ */
+export function attachUsageCost(run: LlmRunLike): void {
+  const usage = asObject(run.extra?.metadata?.["usage_metadata"]);
+  if (usage === undefined) return;
+  const input = typeof usage["input_tokens"] === "number" ? usage["input_tokens"] : 0;
+  const output = typeof usage["output_tokens"] === "number" ? usage["output_tokens"] : 0;
+  const cost = estimateCostBreakdownUsd(llmRunModel(run), input, output);
+  if (!cost.pricingKnown) return;
+  usage["input_cost"] = cost.inputCostUsd;
+  usage["output_cost"] = cost.outputCostUsd;
+  usage["total_cost"] = cost.inputCostUsd + cost.outputCostUsd;
+}
+
 type TracerRun = Parameters<LangChainTracer["onRunCreate"]>[0] & {
   serialized?: unknown;
   events?: unknown;
@@ -243,6 +290,22 @@ export class PiiSafeLangChainTracer extends LangChainTracer {
   override async onRunUpdate(run: TracerRun): Promise<void> {
     this.scrubTree(run.id);
     await super.onRunUpdate(run as Parameters<LangChainTracer["onRunUpdate"]>[0]);
+  }
+
+  /**
+   * LangSmith has no price for our models (e.g. openai/gpt-oss-120b), so
+   * total_cost stayed empty (#97). After the base class copies token usage
+   * into `extra.metadata.usage_metadata`, add input/output/total cost from
+   * policies/model_pricing.yaml (the same table the JSONL llm_call spans
+   * use). Unknown models get no cost fields rather than a fake zero.
+   */
+  override onLLMEnd(run: Parameters<LangChainTracer["onLLMEnd"]>[0]): void {
+    super.onLLMEnd(run);
+    try {
+      attachUsageCost(run as unknown as LlmRunLike);
+    } catch {
+      // Cost is display-only; never fail the model call over it.
+    }
   }
 
   private scrubTree(id: string): void {

@@ -152,7 +152,7 @@ describe("buildApp resume", () => {
   });
 
   it("pauses on interrupt then resumes on the same thread without re-running", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south", ucId: "tracer" });
     expect(asked.status).toBe(200);
     const askBlocks = parseSse(asked.text);
     expect(askBlocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
@@ -179,7 +179,7 @@ describe("buildApp resume", () => {
   });
 
   it("labels a direct UC clarification interrupt in its SSE and trace metadata", async () => {
-    const asked = await post("/api/ask", { question: "please clarify", persona: "sales_south" });
+    const asked = await post("/api/ask", { question: "please clarify", persona: "sales_south", ucId: "tracer" });
     expect(asked.status).toBe(200);
     const blocks = parseSse(asked.text);
     expect(blocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
@@ -196,7 +196,7 @@ describe("buildApp resume", () => {
   });
 
   it("rehydrates the thread from the trace file after a host restart", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "marketing" });
+    const asked = await post("/api/ask", { question: "please review", persona: "marketing", ucId: "tracer" });
     expect(asked.status).toBe(200);
     const askBlocks = parseSse(asked.text);
     const runId = askBlocks[0].data["runId"] as string;
@@ -337,7 +337,7 @@ describe("buildApp resume", () => {
   });
 
   it("emits one approval_requested plus one approval_decided with metadata only", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south", ucId: "tracer" });
     expect(asked.status).toBe(200);
     expect(parseSse(asked.text).map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
     const runId = parseSse(asked.text)[0].data["runId"] as string;
@@ -379,7 +379,7 @@ describe("buildApp resume", () => {
   });
 
   it("records allowlisted resume verdicts verbatim", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south", ucId: "tracer" });
     expect(asked.status).toBe(200);
     const runId = parseSse(asked.text)[0].data["runId"] as string;
     const resumed = await post(`/api/runs/${runId}/resume`, { value: "approve" });
@@ -498,7 +498,7 @@ describe("buildResumeInvokeOptions", () => {
       const askRes = await fetch(`${base}/api/ask`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "please review", persona: "sales_south" }),
+        body: JSON.stringify({ question: "please review", persona: "sales_south", ucId: "tracer" }),
       });
       expect(askRes.status).toBe(200);
       const askBlocks = parseSse(await askRes.text());

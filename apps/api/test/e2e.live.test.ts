@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
 import { createHostPorts } from "../src/ports.js";
-import { SSE_ALLOWLIST } from "../src/sse.js";
+import { containsWirePii, SSE_ALLOWLIST } from "../src/sse.js";
 
 const HARNESS_URL = process.env["HARNESS_STATE_DATABASE_URL"] ?? "";
 const AGENT_RO_URL = process.env["AGENT_RO_DATABASE_URL"] ?? "";
@@ -159,7 +159,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     }
   });
 
-  it("runs the demo question end to end with redacted trace and clean SSE", async () => {
+  it("runs the explicit tracer demo end to end with redacted trace and clean SSE", async () => {
     // Live PII literals for the leak assertions: real phone/email cells
     // fetched through the pipeline as admin (never through the SSE path).
     const probe = (await mcpCall(
@@ -178,7 +178,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     const res = await fetch(`${apiBase}/api/ask`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south" }),
+      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south", ucId: "tracer" }),
     });
     expect(res.status).toBe(200);
     const sseText = await res.text();
@@ -200,12 +200,13 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(runId).toMatch(/^[0-9a-f-]{36}$/);
 
     // Trace proof: full redacted event log with tool spans in call order.
-    // 8 base spans + 3 UC-03 VIZ spans (chart_selected, chart_validated,
-    // node_done in deterministic mode — no model key in CI, so no
-    // claim_stripped lines for this grounded bar chart).
+    // 2 UC-02 retrieve spans (search_semantic_layer tool_call + retrieve
+    // node_done) + 8 base spans + 3 UC-03 VIZ spans (chart_selected,
+    // chart_validated, node_done in deterministic mode — no model key in CI,
+    // so no claim_stripped lines for this grounded bar chart).
     const tracePath = `${tracesDir}/${runId}.jsonl`;
     const lines = readFileSync(tracePath, "utf8").trim().split("\n");
-    expect(lines.length).toBe(11);
+    expect(lines.length).toBe(13);
     const tools: string[] = [];
     for (const line of lines) {
       const event = JSON.parse(line) as {
@@ -218,16 +219,18 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       expect(event.runId).toBe(runId);
       expect(typeof event.threadId).toBe("string");
       expect(typeof event.spanId).toBe("string");
-      expect(/0\d{9}/.test(line)).toBe(false);
-      expect(/\S+@\S+\.\S+/.test(line)).toBe(false);
+      // Same detector as the SSE tripwire (#115): a bare /0\d{9}/ also
+      // matched float digits (costs, scores) and made this test flaky.
+      expect(containsWirePii(line)).toBe(false);
+      for (const literal of liveLiterals) {
+        expect(line).not.toContain(literal);
+      }
       if (event.type === "tool_call" && event.payload?.tool) {
         tools.push(event.payload.tool);
       }
     }
-    expect(tools.length).toBeGreaterThanOrEqual(2);
-    expect(tools[0]).toBe("list_tables");
-    expect(tools).toContain("run_query");
-    expect(completed.toolsCalled).toEqual(tools);
+    expect(tools).toEqual(["search_semantic_layer", "list_tables", "run_query"]);
+    expect(completed.toolsCalled).toEqual(["list_tables", "run_query"]);
     const vizTypes = lines
       .map((line) => (JSON.parse(line) as { node?: string; type?: string }).type)
       .filter((type) =>
@@ -237,8 +240,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(vizTypes).toContain("chart_validated");
 
     // SSE proof: no seed PII shapes, no live row cell value, no token.
-    expect(/0\d{9}/.test(sseText)).toBe(false);
-    expect(/\S+@\S+\.\S+/.test(sseText)).toBe(false);
+    expect(containsWirePii(sseText)).toBe(false);
     for (const literal of liveLiterals) {
       expect(sseText).not.toContain(literal);
     }

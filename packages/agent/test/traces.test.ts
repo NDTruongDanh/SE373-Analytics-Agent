@@ -76,6 +76,21 @@ describe("TraceWriter", () => {
     expect(content).not.toContain(phone);
   });
 
+  it("keeps numeric payload values that only look like phone digits (#115)", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "traces-float-"));
+    const result = appendTraceEvent(
+      baseEvent("run-float-1", { estimatedCostUsd: 0.0912345678, score: 0.03278688524590164 }),
+      dir,
+    );
+    expect(result.redacted).toBe(false);
+    const line = readFileSync(path.join(dir, "run-float-1.jsonl"), "utf8").trim();
+    const parsed = TraceEventSchema.parse(JSON.parse(line));
+    expect(parsed.payload).toEqual({
+      estimatedCostUsd: 0.0912345678,
+      score: 0.03278688524590164,
+    });
+  });
+
   it("redacts email addresses with the shared marker", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "traces-email-"));
     const result = appendTraceEvent(

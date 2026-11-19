@@ -9,6 +9,8 @@ export interface EvalCaseResult {
   exPass: boolean;
   ms: number;
   tokens: number;
+  /** Estimated model cost in USD; absent on not-wired or scripted cases. */
+  costUsd?: number;
 }
 
 export interface EvalResultsFile {
@@ -21,6 +23,8 @@ export interface EvalResultsFile {
     exRate: number;
     avgMs: number;
     avgTokens: number;
+    /** Mean over cases that report a cost; omitted when none do. */
+    avgCostUsd?: number;
   };
 }
 
@@ -43,12 +47,16 @@ export function summarizeCases(
   cases: EvalCaseResult[],
 ): EvalResultsFile["summary"] {
   const passed = cases.filter((c) => c.exPass).length;
+  const costs = cases
+    .map((c) => c.costUsd)
+    .filter((cost): cost is number => typeof cost === "number");
   return {
     total: cases.length,
     passed,
     exRate: cases.length === 0 ? 0 : passed / cases.length,
     avgMs: mean(cases.map((c) => c.ms)),
     avgTokens: mean(cases.map((c) => c.tokens)),
+    ...(costs.length > 0 ? { avgCostUsd: mean(costs) } : {}),
   };
 }
 

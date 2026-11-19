@@ -182,6 +182,23 @@ describe("summarizeCases", () => {
     ).toEqual({ total: 2, passed: 1, exRate: 0.5, avgMs: 20, avgTokens: 2 });
   });
 
+  it("averages cost only over cases that report one (#97)", () => {
+    expect(
+      summarizeCases([
+        { id: "a", status: "ok", exPass: true, ms: 10, tokens: 1500, costUsd: 0.002 },
+        { id: "b", status: "ok", exPass: true, ms: 10, tokens: 500, costUsd: 0.001 },
+        { id: "c", status: "not_wired", exPass: false, ms: 0, tokens: 0 },
+      ]),
+    ).toEqual({
+      total: 3,
+      passed: 2,
+      exRate: 2 / 3,
+      avgMs: 20 / 3,
+      avgTokens: 2000 / 3,
+      avgCostUsd: 0.0015,
+    });
+  });
+
   it("returns zeros for an empty list", () => {
     expect(summarizeCases([])).toEqual({
       total: 0,

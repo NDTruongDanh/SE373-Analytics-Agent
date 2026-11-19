@@ -1,4 +1,4 @@
-import { DEFAULT_ROUTE_ID, RCA_UC_ID } from "./constants.js";
+import { RCA_UC_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
 
 /**
  * Definitional and formula lookup queries belong to UC-01/UC-02 semantic
@@ -20,7 +20,7 @@ const DEFINITION_LOOKUP_PATTERNS = [
  * Diagnostic questions require an explicit Why/Variance + directional change
  * (giảm, tăng, sụt giảm, biến động, drop, decrease, variance, etc.) or comparison (so với, vs).
  * Generic definition lookups, column aggregations (e.g. "lý do hủy đơn"), or bare explain/reasons
- * are excluded and fall back to DEFAULT_ROUTE_ID.
+ * are excluded and fall back to text-to-SQL.
  */
 const RCA_PATTERNS = [
   // Why/Tại sao/Vì sao with directional change or variance
@@ -52,18 +52,19 @@ const RCA_PATTERNS = [
  * Classifies user questions into appropriate UC IDs.
  * If explicitUcId is provided and non-empty, respects it.
  * Otherwise:
- * 1. Definitional questions bypass RCA and route to DEFAULT_ROUTE_ID (UC-01/UC-02 definition_lookup).
+ * 1. Definitional questions bypass RCA and route to UC-01/UC-02 definition_lookup.
  * 2. Questions matching Why/Variance with directional change/comparison route to RCA_UC_ID (UC-05).
- * 3. All other questions fall back to DEFAULT_ROUTE_ID.
+ * 3. All other questions route to UC-01 text-to-SQL.
  */
 export function routeQuestionToUc(question: string, explicitUcId?: string): string {
   if (explicitUcId && explicitUcId.trim().length > 0) {
     return explicitUcId.trim();
   }
   const q = question.trim();
+  // Check definitions first so overlapping RCA patterns cannot capture them.
   for (const pattern of DEFINITION_LOOKUP_PATTERNS) {
     if (pattern.test(q)) {
-      return DEFAULT_ROUTE_ID;
+      return TEXT_TO_SQL_UC_ID;
     }
   }
   for (const pattern of RCA_PATTERNS) {
@@ -71,5 +72,5 @@ export function routeQuestionToUc(question: string, explicitUcId?: string): stri
       return RCA_UC_ID;
     }
   }
-  return DEFAULT_ROUTE_ID;
+  return TEXT_TO_SQL_UC_ID;
 }

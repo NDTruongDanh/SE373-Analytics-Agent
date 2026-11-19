@@ -24,12 +24,15 @@ import { Command, Overwrite, type BaseCheckpointSaver } from "@langchain/langgra
 import {
   BUDGET_DEFAULTS,
   buildRootGraph,
+  createAnswerSynthesizer,
   previewCountTotal,
   routeQuestionToUc,
   runTracerGraph,
   type AgentState,
   type RetrieveFn,
+  type RootGraphDeps,
   type SpanEvent,
+  type SynthesizeFn,
   type UcEntryHandler,
   type VizFn,
 } from "@shared/agent";
@@ -95,8 +98,11 @@ export interface BuildAppOptions {
   store?: AppStateStore;
   /** Test seam: merged OVER the registry table (mirrors RootGraphDeps). */
   ucHandlers?: Record<string, UcEntryHandler>;
+  /** Optional text-to-SQL runtime deps seam (mirrors RootGraphDeps.textToSql). */
+  textToSql?: RootGraphDeps["textToSql"];
   /**
-   * UC-02 retrieve seam (semantic search + two-tier unknown-term gate).
+   * UC-02 semantic retrieve seam (#88, #104): calls search_semantic_layer over
+   * the run's MCP transport + two-tier unknown-term gate.
    * Defaults to createRetrieveSemantic(). Override with a scripted seam in tests.
    */
   retrieve?: RetrieveFn;
@@ -107,6 +113,12 @@ export interface BuildAppOptions {
    * tool-free synthesis otherwise. Override with a scripted seam in tests.
    */
   viz?: VizFn;
+  /**
+   * Answer seam (#104). Defaults to createAnswerSynthesizer(), which turns
+   * UC-03 verified insights or the masked preview into answerText; the
+   * root builder's own default is the tracer demo formatter.
+   */
+  synthesize?: SynthesizeFn;
   /** Optional semantic re-index handler (defaults to calling the MCP gateway /reindex endpoint). */
   reindex?: (ctx: { token: string; mcpUrl: string }) => Promise<ReindexResult>;
 }
@@ -359,8 +371,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
         checkpointer: options.checkpointer,
         emitSpan: progress,
         ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
+        ...(options.textToSql ? { textToSql: options.textToSql } : {}),
         retrieve: options.retrieve ?? createRetrieveSemantic(),
         viz: options.viz ?? createUc03Viz(),
+        synthesize: options.synthesize ?? createAnswerSynthesizer(),
       }),
       emit,
     };
@@ -479,7 +493,9 @@ export function buildApp(options: BuildAppOptions): express.Express {
           question, ucId: effectiveUcId, runId, threadId,
           // A new question reuses the thread, but not the previous run's outputs or budgets.
           status: "no_data", answerText: "", sql: null, tablesUsed: [],
-          semanticChunks: [], resultPreview: [], columns: [], toolsCalled: [],
+          semanticChunks: [], catalogTables: [], catalogStatus: "unloaded",
+          semanticQuery: null, semanticRetrieveStatus: "unloaded", semanticErrorCode: null,
+          resultPreview: [], columns: [], toolsCalled: [],
           vizSpec: null, pendingClarification: null, analysisPlan: null, rootCauseAnswer: null,
           budget: new Overwrite({ llmCalls: 0, tokensUsed: 0, maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls, maxTokens: BUDGET_DEFAULTS.maxTokens, deadlineMs: 0 }),
           telemetry: new Overwrite({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }),
