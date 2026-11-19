@@ -35,7 +35,9 @@ import {
 import { buildSqlProposalPrompt, type DescribedTable } from "./prompt.js";
 import {
   estimateCostUsd,
+  extractFencedSqlProposal,
   invokeJsonWithUsage,
+  invokeWithUsage,
   type LlmUsage,
 } from "../telemetry/usage.js";
 import {
@@ -778,7 +780,9 @@ export class ValidatedQueryExecutor {
           // Plain-JSON proposal: no response_format on the wire (the
           // provider's strict json_schema path is far slower than the
           // model timeout); fail-closed schema validation still applies.
-          const out = await invokeJsonWithUsage(this.model, SqlProposalSchema, prompt, {
+          // Fall back to withStructuredOutput only when a caller passes a
+          // legacy fake without stream() or invoke().
+          const callOpts = {
             name: "sql_proposal",
             callbacks: input.callbacks,
             node: "propose",
@@ -786,7 +790,13 @@ export class ValidatedQueryExecutor {
             deadlineMs: budget.deadlineMs,
             signal: input.signal,
             outerAttempt: attempt,
-            emit: (event) =>
+            emit: (event: {
+              node: string;
+              type: string;
+              attempt?: number;
+              durationMs: number;
+              payload?: unknown;
+            }) =>
               this.span({
                 node: event.node,
                 type: event.type,
@@ -794,7 +804,25 @@ export class ValidatedQueryExecutor {
                 durationMs: event.durationMs,
                 payload: event.payload,
               }),
-          });
+          };
+          const hasPlainTransport =
+            typeof this.model.stream === "function" ||
+            typeof this.model.invoke === "function";
+          const out =
+            !hasPlainTransport &&
+            typeof this.model.withStructuredOutput === "function"
+              ? await invokeWithUsage(
+                  this.model,
+                  SqlProposalSchema,
+                  prompt,
+                  callOpts,
+                )
+              : await invokeJsonWithUsage(
+                  this.model,
+                  SqlProposalSchema,
+                  prompt,
+                  { ...callOpts, fallbackParse: extractFencedSqlProposal },
+                );
           proposal = out.parsed;
           usage = { inputTokens: out.inputTokens, outputTokens: out.outputTokens };
           usageModel = out.model;

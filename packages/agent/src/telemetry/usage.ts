@@ -251,10 +251,48 @@ function messageText(message: unknown): string | null {
 }
 
 /**
- * Parse a JSON document out of model text: verbatim first, then a fenced
- * code block, then the outermost {...} span. Throws SyntaxError (never
- * echoing raw output, which may carry sensitive values) so callers keep
- * their existing parse-failure mapping.
+ * Scan balanced `{...}` spans outside JSON string literals so prose around
+ * a JSON object (even prose containing stray braces) does not defeat extraction.
+ */
+function* balancedObjectSpans(text: string): Generator<string> {
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      if (depth > 0) inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        yield text.slice(start, i + 1);
+        start = -1;
+      }
+    }
+  }
+}
+
+/**
+ * Parse a JSON document out of model text: verbatim first, then any fenced
+ * code block, then the outermost `{...}` span or balanced `{...}` spans.
+ * Throws SyntaxError (never echoing raw output, which may carry sensitive
+ * values) so callers keep their existing parse-failure mapping.
  */
 function extractJsonDocument(text: string): unknown {
   try {
@@ -262,12 +300,11 @@ function extractJsonDocument(text: string): unknown {
   } catch {
     // Fall through to fenced/span extraction below.
   }
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced) {
+  for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
     try {
-      return JSON.parse(fenced[1]);
+      return JSON.parse(match[1]);
     } catch {
-      // Fall through to span extraction below.
+      // Try next fenced block before falling through to span extraction.
     }
   }
   const start = text.indexOf("{");
@@ -276,10 +313,44 @@ function extractJsonDocument(text: string): unknown {
     try {
       return JSON.parse(text.slice(start, end + 1));
     } catch {
-      // Fall through to the SyntaxError below.
+      // Fall through to balanced-span scan below.
+    }
+  }
+  for (const candidate of balancedObjectSpans(text)) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Keep scanning remaining balanced spans.
     }
   }
   throw new SyntaxError("Model output is not valid JSON");
+}
+
+/**
+ * Fallback parser for SQL proposal models that ignore JSON-only instructions
+ * and answer in markdown prose with a fenced SQL block. Every extracted query
+ * still passes SqlProposalSchema, sqlGuard, LocalQuerySafetyGate, explain_query,
+ * and run_query before touching any data; tablesUsed is populated downstream by
+ * sqlGuard from the parsed AST.
+ */
+export function extractFencedSqlProposal(
+  text: string,
+): { sql: string; tablesUsed: string[] } | undefined {
+  for (const match of text.matchAll(
+    /```(?:sql|postgresql|postgres)\s*([\s\S]*?)```/gi,
+  )) {
+    const sql = match[1].trim();
+    if (sql.length > 0) {
+      return { sql, tablesUsed: [] };
+    }
+  }
+  for (const match of text.matchAll(/```\s*([\s\S]*?)```/g)) {
+    const sql = match[1].trim();
+    if (/^(?:SELECT|WITH)\b/i.test(sql)) {
+      return { sql, tablesUsed: [] };
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -303,6 +374,8 @@ export interface JsonStreamOptions extends ModelRetryContextOptions {
   idleMs?: number;
   /** Absolute cap for the whole stream; the model client's timeout still applies. */
   totalMs?: number;
+  /** Optional fallback extractor when the model answers in prose without JSON. */
+  fallbackParse?: (text: string) => unknown;
 }
 
 const DEFAULT_IDLE_MS = 30000;
@@ -337,6 +410,18 @@ export async function invokeJsonWithUsage<S extends z.ZodType>(
       modelId: string | undefined;
       firstTokenMs: number | undefined;
     }> => {
+      if (typeof model.stream !== "function") {
+        const message = await model.invoke(input, {
+          callbacks: opts?.callbacks,
+        });
+        const text = messageText(message) ?? "";
+        return {
+          text,
+          usage: usageFromMessage(message),
+          modelId: modelFromMessage(message),
+          firstTokenMs: Date.now() - started,
+        };
+      }
       let text = "";
       let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
       let modelId: string | undefined;
@@ -372,9 +457,25 @@ export async function invokeJsonWithUsage<S extends z.ZodType>(
         consume,
         attempt.abortFailure,
       ]);
+      let rawParsed: unknown;
+      if (text === "") {
+        rawParsed = undefined;
+      } else {
+        try {
+          rawParsed = extractJsonDocument(text);
+        } catch (error) {
+          if (error instanceof SyntaxError && opts?.fallbackParse) {
+            const fallback = opts.fallbackParse(text);
+            if (fallback === undefined) throw error;
+            rawParsed = fallback;
+          } else {
+            throw error;
+          }
+        }
+      }
       return {
         // Empty output fails closed through schema validation.
-        parsed: schema.parse(text === "" ? undefined : extractJsonDocument(text)),
+        parsed: schema.parse(rawParsed),
         ...usage,
         model: modelId,
         firstTokenMs,

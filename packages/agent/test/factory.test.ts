@@ -188,14 +188,24 @@ describe("chat-model factory", () => {
     await expect(new ProfileTracerModel(model).proposeSql("q")).rejects.toThrow("đúng định dạng JSON");
   });
 
-  it("parses a fenced JSON proposal without response_format", async () => {
-    const model = createChatModel("sql", {
+  it("parses a fenced JSON or SQL proposal wrapped in prose without response_format", async () => {
+    const jsonModel = createChatModel("sql", {
       fake: {
-        responses: [`\`\`\`json\n${JSON.stringify(TRACER_SQL_PROPOSAL)}\n\`\`\``],
+        responses: [`Here is the query:\n\`\`\`json\n${JSON.stringify(TRACER_SQL_PROPOSAL)}\n\`\`\``],
       },
     });
-    const answer = await new ProfileTracerModel(model).proposeSql("How many orders?");
-    expect(answer).toEqual(TRACER_SQL_PROPOSAL);
+    const jsonAnswer = await new ProfileTracerModel(jsonModel).proposeSql("How many orders?");
+    expect(jsonAnswer).toEqual(TRACER_SQL_PROPOSAL);
+
+    const sqlModel = createChatModel("sql", {
+      fake: {
+        responses: [
+          `Here is the query:\n\`\`\`sql\n${TRACER_SQL_PROPOSAL.sql}\n\`\`\`\nDone.`,
+        ],
+      },
+    });
+    const sqlAnswer = await new ProfileTracerModel(sqlModel).proposeSql("How many orders?");
+    expect(sqlAnswer).toEqual({ sql: TRACER_SQL_PROPOSAL.sql, tablesUsed: [] });
   });
 
   it("retries 429s inside synthesize and surfaces RATE_LIMITED when exhausted", async () => {

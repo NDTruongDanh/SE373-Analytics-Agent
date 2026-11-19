@@ -675,4 +675,100 @@ describe("ValidatedQueryExecutor core path", () => {
       else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
     }
   });
+
+  it("recovers SQL when a model wraps JSON or fenced SQL in markdown prose (regression #92)", async () => {
+    const mcp = new StubMcpCaller({
+      describe_table: describeHandler,
+      explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 2 }),
+      run_query: () => ({
+        columns: ["status", "n"],
+        rows: [{ status: "completed", n: 7 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 3,
+      }),
+    });
+
+    // Case 1: Model wraps JSON in prose with stray braces and a leading note block.
+    const proseJsonModel = new FakeChatModel([
+      [
+        "To count orders by {status}, use the following query:",
+        "```json",
+        proposalFor(TRACER_SQL, ["orders"]),
+        "```",
+        "Note: excludes {canceled} if filtered.",
+      ].join("\n"),
+    ]);
+    const resJson = await new ValidatedQueryExecutor({
+      model: proseJsonModel,
+      mcp,
+    }).run({
+      question: "How many orders do we have per status?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+    expect(resJson.status).toBe("ok");
+    if (resJson.status === "ok") {
+      expect(resJson.sql).toBe(TRACER_SQL);
+      expect(resJson.tablesUsed).toEqual(["orders"]);
+    }
+
+    // Case 2: Model ignores JSON instructions and responds in prose + fenced ```sql``` block.
+    const proseSqlModel = new FakeChatModel([
+      [
+        "Here is the PostgreSQL query to answer your question:",
+        "",
+        "```sql",
+        TRACER_SQL,
+        "```",
+        "",
+        "This groups all rows in `public.orders` by status.",
+      ].join("\n"),
+    ]);
+    const resSql = await new ValidatedQueryExecutor({
+      model: proseSqlModel,
+      mcp,
+    }).run({
+      question: "How many orders do we have per status?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+    expect(resSql.status).toBe("ok");
+    if (resSql.status === "ok") {
+      expect(resSql.sql).toBe(TRACER_SQL);
+      // sqlGuard populates tablesUsed authoritatively from the AST.
+      expect(resSql.tablesUsed).toEqual(["orders"]);
+    }
+  });
+
+  it("falls back to withStructuredOutput when a legacy fake omits stream() and invoke()", async () => {
+    const structuredOnly = {
+      withStructuredOutput: () => ({
+        invoke: async () => ({ sql: TRACER_SQL, tablesUsed: ["orders"] }),
+      }),
+    } as unknown as ChatModelLike;
+    const mcp = new StubMcpCaller({
+      describe_table: describeHandler,
+      explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 2 }),
+      run_query: () => ({
+        columns: ["status", "n"],
+        rows: [{ status: "completed", n: 7 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 3,
+      }),
+    });
+
+    const result = await new ValidatedQueryExecutor({
+      model: structuredOnly,
+      mcp,
+    }).run({
+      question: "How many orders do we have per status?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+    expect(result.status).toBe("ok");
+  });
 });
