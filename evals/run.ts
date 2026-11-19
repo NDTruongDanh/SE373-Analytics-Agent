@@ -36,6 +36,7 @@ import {
   type RootGraphDeps,
 } from "@shared/agent";
 import { createRetrieveSemantic } from "@shared/agent/uc02";
+import { createUc03Viz, type Uc03VizSpec } from "@shared/agent/uc03";
 import { createCheckpointer } from "@shared/agent/ports";
 import { scrubLangSmithEnv } from "../packages/agent/src/telemetry/langsmith.js";
 import { createSpanEmitter } from "../packages/agent/src/telemetry/spans.js";
@@ -75,7 +76,11 @@ import {
   type GatewayCase,
   type GatewayObserved,
 } from "./gateway.js";
-import { gradeUc03, printUc03Report } from "./uc03/grader.js";
+import {
+  gradeUc03,
+  printUc03Report,
+  type LiveGraphRunner,
+} from "./uc03/grader.js";
 import { gradeUc02, printUc02Report } from "./uc02/grader.js";
 import { gradeUc05, printUc05Report } from "./uc05/grader.js";
 import {
@@ -117,7 +122,9 @@ export const ANSWER_ROUTE_UC_ID = "text-to-sql";
 
 export interface HarnessOutcome {
   status: string;
+  columns?: string[];
   rows?: Record<string, unknown>[];
+  vizSpec?: unknown;
   /** Agent answer text (tracer synthesis). Graded in memory only — never persisted raw. */
   answerText?: string;
   reason?: string;
@@ -365,7 +372,7 @@ export function buildEvalGraph(deps: RootGraphDeps) {
  */
 export async function buildLiveAdapter(
   repoRoot: string,
-  opts: { loadEnv?: boolean } = {},
+  opts: { loadEnv?: boolean; withViz?: boolean } = {},
 ): Promise<LiveHandle> {
   // Unit tests pass loadEnv: false so a developer's real .env (keys, DB
   // URLs) never leaks into the test process or spawns a live gateway.
@@ -470,7 +477,11 @@ export async function buildLiveAdapter(
     const emit = createEvalEmitter(tracesDir, { runId, threadId, userId, role });
     const t0 = Date.now();
     try {
-      const graph = buildEvalGraph({ checkpointer, emitSpan: emit });
+      const graph = buildEvalGraph({
+        checkpointer,
+        emitSpan: emit,
+        ...(opts.withViz ? { viz: createUc03Viz() } : {}),
+      });
       const out = (await withTimeout(
         graph.invoke(
           { question: c.question, ucId: c.ucId, runId, threadId },
@@ -493,7 +504,9 @@ export async function buildLiveAdapter(
         `eval: case ${c.id} timed out after 150s`,
       )) as {
         status?: string;
+        columns?: string[];
         resultPreview?: Record<string, unknown>[];
+        vizSpec?: unknown;
         answerText?: unknown;
       };
       const status = out.status ?? "error";
@@ -508,7 +521,9 @@ export async function buildLiveAdapter(
       const usage = runUsage(emit.totals());
       return {
         status,
+        columns: out.columns ?? [],
         rows: out.resultPreview ?? [],
+        vizSpec: out.vizSpec,
         answerText:
           typeof out.answerText === "string" ? out.answerText : undefined,
         reason:
@@ -628,6 +643,8 @@ export const GATEWAY_CASES_FILE = "gateway.jsonl";
 
 interface PureUcRun {
   cases: { exPass: boolean }[];
+  summary?: unknown;
+  gatesPassed?: boolean;
 }
 
 /** DB-free suites with their own graders and fixture formats. */
@@ -645,22 +662,81 @@ export function isPureUc(uc: string): boolean {
   return uc in PURE_UC_RUNNERS;
 }
 
-async function runPureUc(repoRoot: string, uc: string, verbose: boolean): Promise<boolean> {
+async function runUc03WithModes(
+  repoRoot: string,
+  opts: { live?: boolean; liveGraph?: boolean },
+): Promise<PureUcRun> {
+  const wantLiveGraph = opts.liveGraph || process.env["EVAL_UC03_LIVE_GRAPH"] === "1";
+  const wantLiveModel = opts.live || wantLiveGraph || process.env["EVAL_USE_LIVE_MODEL"] === "1";
+  if (!wantLiveModel) {
+    return gradeUc03(repoRoot, { mode: "deterministic" });
+  }
+  if (!wantLiveGraph) {
+    return gradeUc03(repoRoot, { mode: "live" });
+  }
+  const live = await buildLiveAdapter(repoRoot, { loadEnv: false, withViz: true });
+  try {
+    const liveGraphRunner: LiveGraphRunner = async (liveCase) => {
+      const outcome = await live.adapter({
+        id: liveCase.id,
+        question: liveCase.question,
+        role: liveCase.role,
+        datasetVersion: "uc03-1",
+      });
+      return {
+        status: outcome.status,
+        columns: outcome.columns ?? [],
+        rows: outcome.rows ?? [],
+        vizSpec: (outcome.vizSpec as Uc03VizSpec | undefined) ?? null,
+        answerText: outcome.answerText ?? "",
+        ms: outcome.ms,
+        tokens: outcome.tokens,
+        costUsd: outcome.costUsd,
+        reason: outcome.reason,
+      };
+    };
+    return await gradeUc03(repoRoot, { mode: "live_graph", liveGraphRunner });
+  } finally {
+    await live.close();
+  }
+}
+
+async function runPureUc(
+  repoRoot: string,
+  uc: string,
+  verbose: boolean,
+  opts: { live?: boolean; liveGraph?: boolean } = {},
+): Promise<boolean> {
   const runner = PURE_UC_RUNNERS[uc];
-  const run = await runner.grade(repoRoot);
+  const run =
+    uc === "uc03"
+      ? await runUc03WithModes(repoRoot, opts)
+      : await runner.grade(repoRoot);
   const passed = run.cases.filter((c) => c.exPass).length;
+  const gatesOk = run.gatesPassed !== false;
   writeFileSync(
     path.join(repoRoot, "results", `${uc}.json`),
-    `${JSON.stringify({ uc, datasetVersion: runner.datasetVersion, cases: run.cases, summary: summarizeCases(run.cases as never) }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        uc,
+        datasetVersion: runner.datasetVersion,
+        cases: run.cases,
+        summary: summarizeCases(run.cases as never),
+        ...(run.summary !== undefined ? { ucSummary: run.summary } : {}),
+        ...(run.gatesPassed !== undefined ? { gatesPassed: run.gatesPassed } : {}),
+      },
+      null,
+      2,
+    )}\n`,
     "utf8",
   );
-  if (verbose) runner.print(run as never);
+  if (verbose || !gatesOk) runner.print(run as never);
   else {
     console.log(
       `eval ${uc}: ${passed}/${run.cases.length} EX pass (dataset ${runner.datasetVersion}, deterministic)`,
     );
   }
-  return passed === run.cases.length;
+  return passed === run.cases.length && gatesOk;
 }
 
 function discoverUcDirs(repoRoot: string): string[] {
@@ -1436,6 +1512,10 @@ async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const args = process.argv.slice(2);
 
+  const liveFlag = args.includes("--live");
+  const liveGraphFlag = args.includes("--live-graph");
+  const positional = args.filter((arg) => arg !== "--live" && arg !== "--live-graph");
+
   // Load env once at runner entrypoint and apply the eval isolation guard
   // (scrubs LangSmith tracing and drops live keys unless EVAL_USE_LIVE_MODEL=1)
   // before any UCs run. Downstream calls (buildLiveAdapter, graders) pass
@@ -1445,11 +1525,17 @@ async function main(): Promise<void> {
   } catch {
     // env file optional
   }
+  if (liveFlag || liveGraphFlag) {
+    process.env["EVAL_USE_LIVE_MODEL"] = "1";
+  }
+  if (liveGraphFlag) {
+    process.env["EVAL_UC03_LIVE_GRAPH"] = "1";
+  }
   prepareEvalEnv();
 
-  if (args[0] === "--compare" && args.length === 3) {
-    const before = JSON.parse(readFileSync(args[1], "utf8")) as EvalResultsFile;
-    const after = JSON.parse(readFileSync(args[2], "utf8")) as EvalResultsFile;
+  if (positional[0] === "--compare" && positional.length === 3) {
+    const before = JSON.parse(readFileSync(positional[1], "utf8")) as EvalResultsFile;
+    const after = JSON.parse(readFileSync(positional[2], "utf8")) as EvalResultsFile;
     try {
       const delta = compareRuns(before, after);
       console.log(JSON.stringify(delta, null, 2));
@@ -1462,12 +1548,12 @@ async function main(): Promise<void> {
   }
 
   let ucs: string[];
-  if (args[0] === "--all") {
+  if (positional[0] === "--all") {
     ucs = discoverUcDirs(repoRoot);
-  } else if (args[0] === "--uc" && typeof args[1] === "string") {
-    ucs = [args[1]];
+  } else if (positional[0] === "--uc" && typeof positional[1] === "string") {
+    ucs = [positional[1]];
   } else {
-    console.error("usage: pnpm eval --all | pnpm eval --uc <id>");
+    console.error("usage: pnpm eval --all | pnpm eval --uc <id> [--live] [--live-graph]");
     process.exit(1);
     return;
   }
@@ -1482,7 +1568,20 @@ async function main(): Promise<void> {
   const pureUcs = ucs.filter((uc) => uc in PURE_UC_RUNNERS);
   const liveUcs = ucs.filter((uc) => !(uc in PURE_UC_RUNNERS));
   for (const uc of pureUcs) {
-    if (!(await runPureUc(repoRoot, uc, ucs.length === 1))) failed = true;
+    try {
+      if (
+        !(await runPureUc(repoRoot, uc, ucs.length === 1, {
+          live: liveFlag,
+          liveGraph: liveGraphFlag,
+        }))
+      ) {
+        failed = true;
+      }
+    } catch (error) {
+      console.error(`eval infrastructure failure: ${(error as Error).message}`);
+      process.exit(INFRA_EXIT_CODE);
+      return;
+    }
   }
   if (liveUcs.length === 0) {
     process.exit(failed ? 1 : 0);

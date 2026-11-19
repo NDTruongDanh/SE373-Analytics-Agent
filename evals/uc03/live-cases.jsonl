@@ -1,0 +1,5 @@
+{"id": "uc03-live-01", "question": "Doanh thu thuần theo tháng trong năm 2026 là bao nhiêu?", "role": "admin", "expectStatus": "ok", "expectedChartTypes": ["line"]}
+{"id": "uc03-live-02", "question": "So sánh doanh thu thuần theo miền trong tháng 9/2026?", "role": "admin", "expectStatus": "ok", "expectedChartTypes": ["bar"]}
+{"id": "uc03-live-03", "question": "Doanh thu thuần theo kênh bán hàng trong tháng 9/2026?", "role": "sales_south", "expectStatus": "ok", "expectedChartTypes": ["bar", "pie"]}
+{"id": "uc03-live-04", "question": "Tổng số đơn hàng đã giao trong tháng 9/2026 là bao nhiêu?", "role": "sales_south", "expectStatus": "ok", "expectedChartTypes": ["none"]}
+{"id": "uc03-live-05", "question": "Doanh thu thuần theo miền trong tháng 12/2027?", "role": "admin", "expectStatus": "no_data", "expectedChartTypes": ["none"]}
