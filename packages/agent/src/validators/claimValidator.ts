@@ -236,6 +236,11 @@ function numberMatchesBuffer(value: number, rows: Record<string, unknown>[], col
 const CAUSAL_RE =
   /(due to|because|caused by|driven by|thanks to|led to|resulted in|attributed to|blam\w+|do\s+[a-zà-ỹ]|vì\s|bởi\s|nhờ\s|nguyên nhân|dẫn đến|gây ra|đối thủ|competitor)/i;
 
+// Explicit "cause unknown" disclaimers requested by the synthesis prompt
+// must not trigger causal stripping unless the claim also asserts a cause.
+const UNKNOWN_CAUSE_RE =
+  /(cause unknown|unknown cause|no causal (?:data|information|evidence)|nguyên nhân (?:chưa|không) rõ|(?:chưa|không) rõ nguyên nhân|(?:chưa|không) xác định được nguyên nhân)/gi;
+
 /**
  * A causal claim is grounded only by (a) an `event:*` semantic citation,
  * (b) the claim naming a cited event id, or (c) evidence citing a
@@ -249,7 +254,8 @@ function causalGrounded(
   columns: string[],
   eventIds: readonly string[],
 ): boolean {
-  if (!CAUSAL_RE.test(claim)) return true;
+  const withoutDisclaimers = claim.replace(UNKNOWN_CAUSE_RE, "");
+  if (!CAUSAL_RE.test(withoutDisclaimers)) return true;
   // Cited journal event grounds the cause (UC-11 pattern).
   for (const pointer of evidence) {
     if (/^event:/.test(pointer.column) || /^event:/.test(pointer.rowKey)) return true;
@@ -340,9 +346,14 @@ export function verifyNumericClaims(
     }
     for (const number of numbers) {
       if (number.isPercent) {
-        // Percent deltas recompute from the cited evidence pair; the
-        // claimed figure itself uses percentage points, not buffer units.
-        if (!deltaRecomputed(number.bare, insight.evidence)) {
+        // Percent values pass when they either match a cited percentage cell
+        // directly (e.g. share = 35 -> "35%") or recompute as a delta from
+        // the cited evidence pair within 1% tolerance.
+        const directEvidenceMatch = pointerValueMatches(
+          number.bare,
+          insight.evidence.map((pointer) => pointer.value),
+        );
+        if (!directEvidenceMatch && !deltaRecomputed(number.bare, insight.evidence)) {
           stripped.push({
             claimIndex,
             claim: insight.claim,

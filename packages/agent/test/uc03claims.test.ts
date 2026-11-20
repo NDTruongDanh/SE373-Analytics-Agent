@@ -182,4 +182,70 @@ describe("UC-03 numeric claim verification", () => {
     // No tool call exists on this path; the text survives only as a claim.
     expect(out.verified).toHaveLength(1);
   });
+
+  it("accepts direct percentage cells (share) while still stripping ungrounded deltas", () => {
+    const shareBuffer: ClaimBuffer = {
+      columns: ["category", "share"],
+      rows: [
+        { category: "Điện tử", share: 35 },
+        { category: "Gia dụng", share: 30 },
+      ],
+    };
+    const ok = verifyNumericClaims(
+      [
+        {
+          claim: "Electronics leads with 35% share.",
+          evidence: [{ column: "share", rowKey: "Điện tử", value: 35 }],
+        },
+      ],
+      shareBuffer,
+    );
+    expect(ok.verified).toHaveLength(1);
+    expect(ok.stripped).toHaveLength(0);
+
+    const badDelta = verifyNumericClaims(
+      [
+        {
+          claim: "Electronics leads with 35% share, up 25% vs last quarter.",
+          evidence: [
+            { column: "share", rowKey: "Điện tử", value: 35 },
+            { column: "share", rowKey: "Gia dụng", value: 30 },
+          ],
+        },
+      ],
+      shareBuffer,
+    );
+    expect(badDelta.verified).toHaveLength(0);
+    expect(badDelta.stripped[0].reason).toMatch(/does not recompute/);
+  });
+
+  it("allows explicit cause-unknown disclaimers while still stripping ungrounded causes", () => {
+    const allowed = verifyNumericClaims(
+      [
+        {
+          claim: "Doanh thu tháng 9 đạt 5,200M VND, tăng 8.0% so với tháng 8 (4,815M VND); nguyên nhân chưa rõ.",
+          evidence: EVIDENCE,
+        },
+        {
+          claim: "Revenue rose 8.0% to 5,200M VND; cause unknown.",
+          evidence: EVIDENCE,
+        },
+      ],
+      BUFFER,
+    );
+    expect(allowed.verified).toHaveLength(2);
+    expect(allowed.stripped).toHaveLength(0);
+
+    const mixedBad = verifyNumericClaims(
+      [
+        {
+          claim: "Revenue rose to 5,200M VND due to competitor weakness (cause unknown).",
+          evidence: [{ column: "revenue", rowKey: "2026-09", value: 5200 }],
+        },
+      ],
+      BUFFER,
+    );
+    expect(mixedBad.verified).toHaveLength(0);
+    expect(mixedBad.stripped[0].reason).toMatch(/cause is unverified/);
+  });
 });

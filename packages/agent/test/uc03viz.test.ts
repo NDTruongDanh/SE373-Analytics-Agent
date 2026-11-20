@@ -312,4 +312,40 @@ describe("UC-03 VIZ seam", () => {
       else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
     }
   });
+
+  it("parses plain JSON / fenced responses when the model exposes stream/invoke", async () => {
+    const { seen, rt } = harness();
+    const jsonPayload = JSON.stringify(barDraft());
+    const plainModel: VizModelLike = {
+      withStructuredOutput: () => {
+        throw new Error("should use plain JSON transport when stream/invoke exist");
+      },
+      invoke: async (input: string) => {
+        seen.prompts.push(input);
+        return {
+          content: `Here is the report:\n\`\`\`json\n${jsonPayload}\n\`\`\``,
+          usage_metadata: { input_tokens: 120, output_tokens: 45 },
+          response_metadata: { model: "deepseek-v4.1-flash" },
+        };
+      },
+      async *stream(input: string) {
+        seen.prompts.push(input);
+        yield {
+          content: `Here is the report:\n\`\`\`json\n${jsonPayload}\n\`\`\``,
+          usage_metadata: { input_tokens: 120, output_tokens: 45 },
+          response_metadata: { model: "deepseek-v4.1-flash" },
+        };
+      },
+    };
+    expect((plainModel as unknown as { bindTools?: unknown }).bindTools).toBeUndefined();
+    const out = await createUc03Viz({ model: plainModel })(
+      stateOf({ status: "ok", ...BAR_BUFFER, resultPreview: BAR_BUFFER.rows }),
+      rt,
+    );
+    const spec = out.vizSpec as Uc03VizSpec;
+    expect(spec.report.chartType).toBe("bar");
+    expect(spec.report.insights).toHaveLength(1);
+    expect(out.telemetry?.promptTokens).toBe(120);
+    expect(out.telemetry?.completionTokens).toBe(45);
+  });
 });
