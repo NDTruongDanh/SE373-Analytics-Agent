@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "d4961ce6-8fe0-4f51-a2bc-5e2791470b73",
+  "receiptId": "497ae1ca-2f4f-4bc2-8fe1-04fc7f3c5465",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
   "input": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/candidate.json",
   "output": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
   "specification": {
-    "sha256": "03a937eeb27876cc8080c3dada05d428852cfdbd53aedf59a45006dce59dccae",
-    "bytes": 7954
+    "sha256": "31207c6bb60cdfde5ac5271c231ce27d08d97595f97a094598df987537c4c42a",
+    "bytes": 21113
   },
   "artifact": {
-    "sha256": "eb07af8b80451f26834d2f1ebcc8a248afd1725fdb3a10a0a461152b7c30a3df",
-    "bytes": 867991
+    "sha256": "247f7b0a4839535b61e82e8edad97462598b352d814366239bac4604f1ef9c94",
+    "bytes": 882139
   }
 }
