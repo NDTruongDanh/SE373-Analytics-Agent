@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "browser-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "not-requested",
+  "provenance": "current",
+  "deliveryReceiptId": "82d7ca4a-9b1a-4d4e-94bb-068717c97a81",
+  "artifact": {
+    "path": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+    "sha256": "eb07af8b80451f26834d2f1ebcc8a248afd1725fdb3a10a0a461152b7c30a3df",
+    "bytes": 867991
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome"
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\n[78:78:1120/133045.435033:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:209] open /home/danh/.config/google-chrome-for-testing/Crash Reports/settings.dat: Read-only file system (30)\n[78:78:1120/133045.438929:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:209] open /home/danh/.config/google-chrome-for-testing/Crash Reports/settings.dat: Read-only file system (30)\n[78:78:1120/133045.449213:FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . : Function not implemented (38)\n[1120/133045.456994:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:209] open /home/danh/.config/google-chrome-for-testing/Crash Reports/settings.dat: Read-only file system (30)\n[1120/133045.457647:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:154] open /home/danh/.config/google-chrome-for-testing/Crash Reports/new/23cf5f7f-2d63-43b0-8d98-357eca6b9b26.dmp: Read-only file system (30)\n[1120/133045.457665:ERROR:third_party/crashpad/crashpad/handler/linux/crash_report_exception_handler.cc:209] PrepareNewCrashReport failed\nReceived signal 6\n#0 0x5f9aed463b83 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x670ab82)\n#1 0x5f9af348cef4 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc733ef3)\n#2 0x70611aa45330 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x4532f)\n#3 0x70611aa4527e (/usr/lib/x86_64-linux-gnu/libc.so.6+0x4527d)\n#4 0x70611aa288ff (/usr/lib/x86_64-linux-gnu/libc.so.6+0x288fe)\n#5 0x5f9af34837e5 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc72a7e4)\n#6 0x5f9af34435cd (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6ea5cc)\n#7 0x5f9af344351d (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6ea51c)\n#8 0x5f9aec391a14 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x5638a13)\n#9 0x5f9aec38e2c9 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x56352c8)\n#10 0x5f9af3443740 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6ea73f)\n#11 0x5f9aec155a89 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x53fca88)\n#12 0x5f9af49a08df (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xdc478de)\n#13 0x5f9aedfaa454 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x7251453)\n#14 0x5f9aedfaa23a (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x7251239)\n#15 0x5f9af341af6e (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6c1f6d)\n#16 0x5f9aecf036f0 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x61aa6ef)\n#17 0x5f9aecf03f44 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x61aaf43)\n#18 0x70611aa2a1ca (/usr/lib/x86_64-linux-gnu/libc.so.6+0x2a1c9)\n#19 0x70611aa2a28b (/usr/lib/x86_64-linux-gnu/libc.so.6+0x2a28a)\n#20 0x5f9aee67854a (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x791f549)\n  r8: 00000b6c0008034a  r9: 0000000000000001 r10: 0000000000000008 r11: 0000000000000246\n r12: 0000000000000006 r13: 00005f9800000000 r14: 0000000000000016 r15: 00000b6c000888c0\n  di: 000000000000004e  si: 000000000000004e  bp: 00007ffc8eb61c60  bx: 000000000000004e\n  dx: 0000000000000006  ax: 0000000000000000  cx: 000070611aa9ebec  sp: 00007ffc8eb61c20\n  ip: 000070611aa9ebec efl: 0000000000000246 cgf: 002b000000000033 erf: 0000000000000000\n trp: 0000000000000000 msk: 0000000000000000 cr2: 0000000000000000\n[end of stack trace]\nChrome transport: Node v26.13.1, libuv 1.52.1, linux; pid=78, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
+    "viewports": []
+  },
+  "themeStates": {
+    "status": "fail",
+    "viewports": []
+  },
+  "readability": {
+    "status": "fail",
+    "minimumProjectedNodeTextPx": 6,
+    "viewports": []
+  },
+  "viewerChrome": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "not-requested",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "directory": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/review-2",
+    "receipt": "analytics-agent-harness.browser-check.json",
+    "files": []
+  },
+  "error": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\n[78:78:1120/133045.435033:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:209] open /home/danh/.config/google-chrome-for-testing/Crash Reports/settings.dat: Read-only file system (30)\n[78:78:1120/133045.438929:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:209] open /home/danh/.config/google-chrome-for-testing/Crash Reports/settings.dat: Read-only file system (30)\n[78:78:1120/133045.449213:FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . : Function not implemented (38)\n[1120/133045.456994:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:209] open /home/danh/.config/google-chrome-for-testing/Crash Reports/settings.dat: Read-only file system (30)\n[1120/133045.457647:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:154] open /home/danh/.config/google-chrome-for-testing/Crash Reports/new/23cf5f7f-2d63-43b0-8d98-357eca6b9b26.dmp: Read-only file system (30)\n[1120/133045.457665:ERROR:third_party/crashpad/crashpad/handler/linux/crash_report_exception_handler.cc:209] PrepareNewCrashReport failed\nReceived signal 6\n#0 0x5f9aed463b83 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x670ab82)\n#1 0x5f9af348cef4 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc733ef3)\n#2 0x70611aa45330 (/usr/lib/x86_64-linux-gnu/libc.so.6+0x4532f)\n#3 0x70611aa4527e (/usr/lib/x86_64-linux-gnu/libc.so.6+0x4527d)\n#4 0x70611aa288ff (/usr/lib/x86_64-linux-gnu/libc.so.6+0x288fe)\n#5 0x5f9af34837e5 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc72a7e4)\n#6 0x5f9af34435cd (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6ea5cc)\n#7 0x5f9af344351d (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6ea51c)\n#8 0x5f9aec391a14 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x5638a13)\n#9 0x5f9aec38e2c9 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x56352c8)\n#10 0x5f9af3443740 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6ea73f)\n#11 0x5f9aec155a89 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x53fca88)\n#12 0x5f9af49a08df (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xdc478de)\n#13 0x5f9aedfaa454 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x7251453)\n#14 0x5f9aedfaa23a (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x7251239)\n#15 0x5f9af341af6e (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0xc6c1f6d)\n#16 0x5f9aecf036f0 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x61aa6ef)\n#17 0x5f9aecf03f44 (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x61aaf43)\n#18 0x70611aa2a1ca (/usr/lib/x86_64-linux-gnu/libc.so.6+0x2a1c9)\n#19 0x70611aa2a28b (/usr/lib/x86_64-linux-gnu/libc.so.6+0x2a28a)\n#20 0x5f9aee67854a (/home/danh/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome+0x791f549)\n  r8: 00000b6c0008034a  r9: 0000000000000001 r10: 0000000000000008 r11: 0000000000000246\n r12: 0000000000000006 r13: 00005f9800000000 r14: 0000000000000016 r15: 00000b6c000888c0\n  di: 000000000000004e  si: 000000000000004e  bp: 00007ffc8eb61c60  bx: 000000000000004e\n  dx: 0000000000000006  ax: 0000000000000000  cx: 000070611aa9ebec  sp: 00007ffc8eb61c20\n  ip: 000070611aa9ebec efl: 0000000000000246 cgf: 002b000000000033 erf: 0000000000000000\n trp: 0000000000000000 msk: 0000000000000000 cr2: 0000000000000000\n[end of stack trace]\nChrome transport: Node v26.13.1, libuv 1.52.1, linux; pid=78, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+}

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/candidate.json",
+    "sha256": "03a937eeb27876cc8080c3dada05d428852cfdbd53aedf59a45006dce59dccae",
+    "bytes": 7954
+  },
+  "artifact": {
+    "path": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+    "sha256": "eb07af8b80451f26834d2f1ebcc8a248afd1725fdb3a10a0a461152b7c30a3df",
+    "bytes": 867991
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/review-3/analytics-agent-harness.finalize.json",
+    "summaryReceipt": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/review-3/analytics-agent-harness.finalize-summary.json",
+    "browserCheckReceipt": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/review-3/analytics-agent-harness.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 3659,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}
