@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SE373 Analytics Agent — 5-Plane Harness Architecture",
+    "locale": "en",
+    "output": ".archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web UI",
+      "sublabel": "apps/web · React",
+      "tag": "Chat · HITL · Role",
+      "pos": [40, 216],
+      "size": [148, 68]
+    },
+    {
+      "id": "cron",
+      "type": "external",
+      "label": "Scheduled & CLI",
+      "sublabel": "UC-10 · node-cron",
+      "tag": "07:00 Daily",
+      "pos": [290, 52],
+      "size": [160, 64]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API Host & SSE",
+      "sublabel": "apps/api · Express",
+      "tag": "runId · Principal",
+      "pos": [290, 216],
+      "size": [160, 68]
+    },
+    {
+      "id": "ports",
+      "type": "backend",
+      "label": "Persistence Ports",
+      "sublabel": "PostgresSaver · State",
+      "tag": "No public.* access",
+      "pos": [290, 396],
+      "size": [160, 68]
+    },
+    {
+      "id": "llm_plan",
+      "type": "cloud",
+      "label": "Intent & Plan LLM",
+      "sublabel": "Profile 1 · Zod",
+      "tag": "Intent · MECE Tree",
+      "pos": [585, 52],
+      "size": [170, 64]
+    },
+    {
+      "id": "llm_sql",
+      "type": "cloud",
+      "label": "SQL Proposer LLM",
+      "sublabel": "Profile 2 · Zod",
+      "tag": "Single SELECT/WITH",
+      "pos": [880, 52],
+      "size": [175, 64]
+    },
+    {
+      "id": "llm_synth",
+      "type": "cloud",
+      "label": "Tool-Free Synthesizer",
+      "sublabel": "Profile 3 · Zero Tools",
+      "tag": "untrusted_data",
+      "pos": [1175, 52],
+      "size": [175, 64]
+    },
+    {
+      "id": "gov_ctx",
+      "type": "backend",
+      "label": "Governance & Context",
+      "sublabel": "Budget · Skills · RAG",
+      "tag": "3-Way RRF · Gate",
+      "pos": [585, 216],
+      "size": [170, 68]
+    },
+    {
+      "id": "exec_loops",
+      "type": "backend",
+      "label": "Execution Loops",
+      "sublabel": "ValidatedQueryExecutor",
+      "tag": "≤3 Repairs · RCA",
+      "pos": [880, 216],
+      "size": [175, 68]
+    },
+    {
+      "id": "k7_gates",
+      "type": "security",
+      "label": "K7 Verification Gates",
+      "sublabel": "Citation · Chart · Math",
+      "tag": "≤1% Num · ≤5% RCA",
+      "pos": [1175, 216],
+      "size": [175, 68]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL 16",
+      "sublabel": "pgvector · 4 Roles",
+      "tag": "Olist · RAG · State",
+      "pos": [585, 396],
+      "size": [170, 68]
+    },
+    {
+      "id": "mcp",
+      "type": "security",
+      "label": "MCP DB Gateway",
+      "sublabel": "db-tools · 7-Stage",
+      "tag": "sqlGuard · Policy",
+      "pos": [880, 396],
+      "size": [175, 68]
+    },
+    {
+      "id": "audit",
+      "type": "database",
+      "label": "Redacted Sinks",
+      "sublabel": "JSONL · Append-Only",
+      "tag": "Audit · Traces",
+      "pos": [1175, 396],
+      "size": [175, 68]
+    },
+    {
+      "id": "ext_mcp",
+      "type": "external",
+      "label": "External MCP Clients",
+      "sublabel": "UC-09 · Scoped Token",
+      "tag": "No data:sensitive",
+      "pos": [880, 556],
+      "size": [175, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Plane 2 — Host & Session Boundary (apps/api)",
+      "wraps": ["api", "ports"]
+    },
+    {
+      "kind": "region",
+      "label": "Plane 4 — Bounded LLM Proposal Plane (Stochastic · Zod Only)",
+      "wraps": ["llm_plan", "llm_sql", "llm_synth"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Plane 3 — Agent Harness Control Plane (packages/agent · Zero DB Imports)",
+      "wraps": ["gov_ctx", "exec_loops", "k7_gates"]
+    },
+    {
+      "kind": "region",
+      "label": "Plane 5 — Isolated Capability, Policy & Multi-Role Storage Plane",
+      "wraps": ["pg", "mcp", "audit"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "web-to-api",
+      "from": "web",
+      "to": "api",
+      "label": "HTTP + SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cron-to-api",
+      "from": "cron",
+      "to": "api",
+      "label": "scheduled",
+      "variant": "dashed"
+    },
+    {
+      "id": "api-to-ports",
+      "from": "api",
+      "to": "ports",
+      "label": "checkpoints"
+    },
+    {
+      "id": "ports-to-pg",
+      "from": "ports",
+      "to": "pg",
+      "label": "harness_state",
+      "variant": "security"
+    },
+    {
+      "id": "api-to-gov",
+      "from": "api",
+      "to": "gov_ctx",
+      "label": "invoke / resume",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gov-to-exec",
+      "from": "gov_ctx",
+      "to": "exec_loops",
+      "label": "grounded plan",
+      "variant": "emphasis"
+    },
+    {
+      "id": "exec-to-k7",
+      "from": "exec_loops",
+      "to": "k7_gates",
+      "label": "rows (≤1000)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gov-to-llm1",
+      "from": "gov_ctx",
+      "to": "llm_plan",
+      "label": "Zod intent"
+    },
+    {
+      "id": "exec-to-llm2",
+      "from": "exec_loops",
+      "to": "llm_sql",
+      "label": "Zod SQL"
+    },
+    {
+      "id": "k7-to-llm3",
+      "from": "k7_gates",
+      "to": "llm_synth",
+      "label": "untrusted_data",
+      "variant": "security"
+    },
+    {
+      "id": "gov-to-mcp",
+      "from": "gov_ctx",
+      "to": "mcp",
+      "label": "semantic RAG",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "exec-to-mcp",
+      "from": "exec_loops",
+      "to": "mcp",
+      "label": "SQL tools",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ext-to-mcp",
+      "from": "ext_mcp",
+      "to": "mcp",
+      "label": "Streamable HTTP",
+      "variant": "security"
+    },
+    {
+      "id": "mcp-to-pg",
+      "from": "mcp",
+      "to": "pg",
+      "label": "agent_ro (RO)",
+      "variant": "security"
+    },
+    {
+      "id": "mcp-to-audit",
+      "from": "mcp",
+      "to": "audit",
+      "label": "PII-redacted",
+      "variant": "dashed"
+    },
+    {
+      "id": "k7-to-audit",
+      "from": "k7_gates",
+      "to": "audit",
+      "label": "traces / queue",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Five Harness Invariants",
+      "items": [
+        "Single DB gateway: packages/agent has zero pg imports (ESLint enforced)",
+        "4-layer defense: AST sqlGuard, agent_ro read-only DB, AccessPolicy + PII scan, RLS (planned)",
+        "Prompt injection isolation: escaped untrusted_data tags + zero tools on Profile 3 synthesizer",
+        "Identity from Bearer token via mcp_clients.yaml; X-Run-Id/X-User-Id correlate traces only"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Bounded Loops & K7 Gates",
+      "items": [
+        "ValidatedQueryExecutor: selective describe, anti-fanout gate, ≤3 SQL repairs, 1-pass zero-row probe",
+        "UC-05 RCA & UC-10 Alerts: HITL interrupt(), depth ≤4 / ≤20 queries, trimmed z-score + 24h dedup",
+        "K7 verification: 100% catalog citations, headless render_chart, ≤1% numeric & ≤5% attribution math",
+        "Budget circuit breaker routes to a deterministic template with zero extra LLM calls"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "MCP 7-Stage Pipeline & Roles",
+      "items": [
+        "Fixed order: Auth → Scope → Zod → sqlGuard → AccessPolicy → agent_ro cursor → PII scan & audit",
+        "4 isolated DB roles: owner (seed only), agent_ro (MCP SELECT), indexer (RAG CLI), harness_state (API)",
+        "External UC-09 clients connect over Streamable HTTP with scoped tokens and never bypass policy",
+        "Spec status: monorepo foundation & contracts built; UC subgraphs & Wave 1–3 hardening planned"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,375 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "skipped",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-11-20T06:30:18.770Z",
+  "specification": {
+    "path": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/candidate.json",
+    "sha256": "03a937eeb27876cc8080c3dada05d428852cfdbd53aedf59a45006dce59dccae",
+    "bytes": 7954
+  },
+  "artifact": {
+    "path": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+    "sha256": "eb07af8b80451f26834d2f1ebcc8a248afd1725fdb3a10a0a461152b7c30a3df",
+    "bytes": 867991
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/usr/bin/node",
+        "/home/danh/.gemini/config/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/candidate.json",
+        "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "03a937eeb27876cc8080c3dada05d428852cfdbd53aedf59a45006dce59dccae",
+          "bytes": 7954
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 456,
+      "command": [
+        "/usr/bin/node",
+        "/home/danh/.gemini/config/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/candidate.json",
+        "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "784e65c4-b2de-4db9-9dea-afbc39cfe8a6",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/candidate.json",
+        "output": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+        "specification": {
+          "sha256": "03a937eeb27876cc8080c3dada05d428852cfdbd53aedf59a45006dce59dccae",
+          "bytes": 7954
+        },
+        "artifact": {
+          "sha256": "eb07af8b80451f26834d2f1ebcc8a248afd1725fdb3a10a0a461152b7c30a3df",
+          "bytes": 867991
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 188,
+      "command": [
+        "/usr/bin/node",
+        "/home/danh/.gemini/config/skills/archify/bin/archify.mjs",
+        "check",
+        "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+        "artifact": {
+          "sha256": "eb07af8b80451f26834d2f1ebcc8a248afd1725fdb3a10a0a461152b7c30a3df",
+          "bytes": 867991
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 0,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 25,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 7.5,
+            "maxBends": 2,
+            "routesOverSuggestedBends": 0,
+            "maxStretch": 1,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 24,
+            "minInteriorSegmentPx": 290.5,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [],
+            "detours": []
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 22,
+            "emptyTopRatio": 0.032,
+            "occupiedTop": 22,
+            "viewBoxTop": 0,
+            "canvasHeight": 688,
+            "typicalNodeHeight": 68,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "recognized-declared-wide",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 1331.25,
+            "actualBudgetPx": 1331.25,
+            "actualReaderWidth": 1361.25,
+            "desiredReaderWidth": 1361.25,
+            "viewportCap": 1376,
+            "limit": "source-size",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": true,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": "web-to-api",
+              "from": "web",
+              "to": "api"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 7.5,
+            "semanticTextCount": 48
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "784e65c4-b2de-4db9-9dea-afbc39cfe8a6"
+      }
+    },
+    "browser-check": {
+      "status": "skipped",
+      "exitCode": 2,
+      "durationMs": 28,
+      "command": [
+        "/usr/bin/node",
+        "/home/danh/.gemini/config/skills/archify/bin/archify.mjs",
+        "browser-check",
+        "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "skipped",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "784e65c4-b2de-4db9-9dea-afbc39cfe8a6",
+        "artifact": {
+          "path": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
+          "sha256": "eb07af8b80451f26834d2f1ebcc8a248afd1725fdb3a10a0a461152b7c30a3df",
+          "bytes": 867991
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "unavailable",
+          "executable": null
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/chrome-unavailable",
+            "severity": "warning",
+            "message": "No supported browser found. Install Chrome/Chromium (or Microsoft Edge), or set ARCHIFY_CHROME to its executable path.",
+            "subject": {
+              "artifact": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html"
+            },
+            "evidence": {
+              "executable": null
+            },
+            "supportedFixes": [
+              "set ARCHIFY_CHROME to a Chrome/Chromium executable (or Microsoft Edge) and rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "skipped",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "readability": {
+          "status": "skipped",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "analytics-agent-harness.browser-check.json",
+          "files": []
+        },
+        "error": "No supported browser found. Install Chrome/Chromium (or Microsoft Edge), or set ARCHIFY_CHROME to its executable path."
+      }
+    }
+  },
+  "browserCheck": {
+    "requested": true,
+    "ran": false
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/chrome-unavailable",
+      "severity": "warning",
+      "message": "No supported browser found. Install Chrome/Chromium (or Microsoft Edge), or set ARCHIFY_CHROME to its executable path.",
+      "subject": {
+        "artifact": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html"
+      },
+      "evidence": {
+        "executable": null
+      },
+      "supportedFixes": [
+        "set ARCHIFY_CHROME to a Chrome/Chromium executable (or Microsoft Edge) and rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.finalize.json",
+    "summaryReceipt": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.finalize-summary.json",
+    "browserCheckReceipt": "/home/danh/Desktop/Code/AI Agent/Analytics Agent/.archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-11-20T06:30:19.538Z",
+  "durationMs": 767,
+  "update": {
+    "status": "unavailable",
+    "installedVersion": null,
+    "availableVersion": null,
+    "releaseNotes": null,
+    "checkedAt": null,
+    "source": null,
+    "noticeRequired": false,
+    "noticeText": null,
+    "reason": "check-failed"
+  }
+}
