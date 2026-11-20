@@ -5,7 +5,44 @@
     "title": "SE373 Analytics Agent — 5-Plane Harness Architecture",
     "locale": "en",
     "output": ".archify/architecture-analytics-agent-harness-20261120-132756/analytics-agent-harness.html",
-    "quality_profile": "showcase"
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/NDTruongDanh/SE373-Analytics-Agent.git",
+      "provider": "github",
+      "revision": "b78fe508ac06ab5a1a09adfedc40dd6babf83baf"
+    },
+    "views": [
+      {
+        "id": "ingress-host",
+        "label": "Plane 1–2: Ingress & API Host",
+        "focus": ["web", "cron", "api", "ports"],
+        "note": "Web UI and UC-10 cron enter apps/api, which mints runId/threadId, binds role tokens, streams SSE, and persists state via harness_state."
+      },
+      {
+        "id": "semantic-grounding",
+        "label": "Plane 3A: Governance & RAG",
+        "focus": ["gov_ctx", "llm_plan", "mcp", "pg"],
+        "note": "Budget guard, SKILL.md loader, two-tier intent extraction, 3-way hybrid RRF RAG with join-rule expansion, and full-slot answerability gate."
+      },
+      {
+        "id": "sql-execution",
+        "label": "Plane 3B: SQL & RCA Loops",
+        "focus": ["exec_loops", "llm_sql", "mcp", "pg"],
+        "note": "ValidatedQueryExecutor runs selective describe, local anti-fanout gate, explain cost gate, ≤3 SQL repairs, 1-pass zero-row probe, and RCA."
+      },
+      {
+        "id": "k7-verification",
+        "label": "Plane 3C: Synthesis & K7 Gates",
+        "focus": ["k7_gates", "llm_synth", "audit"],
+        "note": "Tool-free Profile 3 receives escaped untrusted_data; K7 gates verify 100% citations, headless chart spec, ≤1% numbers, and ≤5% RCA math."
+      },
+      {
+        "id": "mcp-defense",
+        "label": "Plane 5: MCP Gateway & Storage",
+        "focus": ["mcp", "ext_mcp", "pg", "audit"],
+        "note": "Sole DB gateway (agent_ro) runs 7-stage pipeline: Auth → Scope → Zod → sqlGuard → AccessPolicy → cursor ≤1000 → PII scan & redacted audit."
+      }
+    ]
   },
   "components": [
     {
@@ -15,7 +52,21 @@
       "sublabel": "apps/web · React",
       "tag": "Chat · HITL · Role",
       "pos": [40, 216],
-      "size": [148, 68]
+      "size": [148, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 262,
+          "end_line": 262,
+          "label": "§3.1 Web UI Ownership"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 35,
+          "end_line": 35,
+          "label": "§1.2 CSP & Markdown Isolation"
+        }
+      ]
     },
     {
       "id": "cron",
@@ -24,7 +75,15 @@
       "sublabel": "UC-10 · node-cron",
       "tag": "07:00 Daily",
       "pos": [290, 52],
-      "size": [160, 64]
+      "size": [160, 64],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 361,
+          "end_line": 369,
+          "label": "§3.2.8 Anomaly & Alert Engine"
+        }
+      ]
     },
     {
       "id": "api",
@@ -33,7 +92,15 @@
       "sublabel": "apps/api · Express",
       "tag": "runId · Principal",
       "pos": [290, 216],
-      "size": [160, 68]
+      "size": [160, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 277,
+          "end_line": 286,
+          "label": "§3.2.1 Host & Session Boundary"
+        }
+      ]
     },
     {
       "id": "ports",
@@ -42,7 +109,21 @@
       "sublabel": "PostgresSaver · State",
       "tag": "No public.* access",
       "pos": [290, 396],
-      "size": [160, 68]
+      "size": [160, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 285,
+          "end_line": 285,
+          "label": "§3.2.1 Injected Ports"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 433,
+          "end_line": 434,
+          "label": "§4.3 Tier 2–3 State Stores"
+        }
+      ]
     },
     {
       "id": "llm_plan",
@@ -51,7 +132,21 @@
       "sublabel": "Profile 1 · Zod",
       "tag": "Intent · MECE Tree",
       "pos": [585, 52],
-      "size": [170, 64]
+      "size": [170, 64],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 21,
+          "end_line": 21,
+          "label": "§1.1 LLM Proposal Plane"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 302,
+          "end_line": 307,
+          "label": "§3.2.3 Two-Tier Intent"
+        }
+      ]
     },
     {
       "id": "llm_sql",
@@ -60,7 +155,15 @@
       "sublabel": "Profile 2 · Zod",
       "tag": "Single SELECT/WITH",
       "pos": [880, 52],
-      "size": [175, 64]
+      "size": [175, 64],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 331,
+          "end_line": 333,
+          "label": "§3.2.6 Grounded SQL Proposal"
+        }
+      ]
     },
     {
       "id": "llm_synth",
@@ -69,7 +172,15 @@
       "sublabel": "Profile 3 · Zero Tools",
       "tag": "untrusted_data",
       "pos": [1175, 52],
-      "size": [175, 64]
+      "size": [175, 64],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 32,
+          "end_line": 35,
+          "label": "§1.2 Untrusted Data Isolation"
+        }
+      ]
     },
     {
       "id": "gov_ctx",
@@ -78,7 +189,27 @@
       "sublabel": "Budget · Skills · RAG",
       "tag": "3-Way RRF · Gate",
       "pos": [585, 216],
-      "size": [170, 68]
+      "size": [170, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 288,
+          "end_line": 297,
+          "label": "§3.2.2 Governance & Skills"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 299,
+          "end_line": 308,
+          "label": "§3.2.3 Answerability Gate"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 310,
+          "end_line": 319,
+          "label": "§3.2.4 3-Way Hybrid RAG"
+        }
+      ]
     },
     {
       "id": "exec_loops",
@@ -87,7 +218,27 @@
       "sublabel": "ValidatedQueryExecutor",
       "tag": "≤3 Repairs · RCA",
       "pos": [880, 216],
-      "size": [175, 68]
+      "size": [175, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 321,
+          "end_line": 326,
+          "label": "§3.2.5 Clarify & HITL"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 328,
+          "end_line": 345,
+          "label": "§3.2.6 ValidatedQueryExecutor"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 347,
+          "end_line": 359,
+          "label": "§3.2.7 Hierarchical RCA"
+        }
+      ]
     },
     {
       "id": "k7_gates",
@@ -96,7 +247,15 @@
       "sublabel": "Citation · Chart · Math",
       "tag": "≤1% Num · ≤5% RCA",
       "pos": [1175, 216],
-      "size": [175, 68]
+      "size": [175, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 371,
+          "end_line": 381,
+          "label": "§3.2.9 K7 Verification Suite"
+        }
+      ]
     },
     {
       "id": "pg",
@@ -105,7 +264,15 @@
       "sublabel": "pgvector · 4 Roles",
       "tag": "Olist · RAG · State",
       "pos": [585, 396],
-      "size": [170, 68]
+      "size": [170, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 428,
+          "end_line": 437,
+          "label": "§4.3 4-Tier Memory & Roles"
+        }
+      ]
     },
     {
       "id": "mcp",
@@ -114,7 +281,15 @@
       "sublabel": "db-tools · 7-Stage",
       "tag": "sqlGuard · Policy",
       "pos": [880, 396],
-      "size": [175, 68]
+      "size": [175, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 383,
+          "end_line": 400,
+          "label": "§3.2.10 MCP 7-Stage Pipeline"
+        }
+      ]
     },
     {
       "id": "audit",
@@ -123,7 +298,21 @@
       "sublabel": "JSONL · Append-Only",
       "tag": "Audit · Traces",
       "pos": [1175, 396],
-      "size": [175, 68]
+      "size": [175, 68],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 399,
+          "end_line": 400,
+          "label": "§3.2.10 Stage 7 Audit Sink"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 434,
+          "end_line": 434,
+          "label": "§4.3 Tier 3 Operational Audit"
+        }
+      ]
     },
     {
       "id": "ext_mcp",
@@ -132,7 +321,21 @@
       "sublabel": "UC-09 · Scoped Token",
       "tag": "No data:sensitive",
       "pos": [880, 556],
-      "size": [175, 64]
+      "size": [175, 64],
+      "sources": [
+        {
+          "path": "docs/architecture.md",
+          "line": 41,
+          "end_line": 42,
+          "label": "§1.2 Principal Identity"
+        },
+        {
+          "path": "docs/architecture.md",
+          "line": 383,
+          "end_line": 388,
+          "label": "§3.2.10 External MCP Auth"
+        }
+      ]
     }
   ],
   "boundaries": [
@@ -272,32 +475,88 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Five Harness Invariants",
+      "title": "Plane 1 — Ingress & Triggers (Web UI · Cron · Ext MCP)",
       "items": [
-        "Single DB gateway: packages/agent has zero pg imports (ESLint enforced)",
-        "4-layer defense: AST sqlGuard, agent_ro read-only DB, AccessPolicy + PII scan, RLS (planned)",
-        "Prompt injection isolation: escaped untrusted_data tags + zero tools on Profile 3 synthesizer",
-        "Identity from Bearer token via mcp_clients.yaml; X-Run-Id/X-User-Id correlate traces only"
+        "Web UI (apps/web): React + Vite streaming chat, Role Switcher, SQL/citation drawer, Vega-Lite/Plotly viewer, HITL plan editor, Dictionary admin; sanitized Markdown + CSP (img-src 'self' data:); imports @shared/contracts only",
+        "Scheduled & CLI (UC-10): Daily 07:00 node-cron or pnpm alert:run --manual scans subscribed slices with per-slice checkpointing so one failed slice never aborts remaining subscriptions",
+        "External MCP Clients (UC-09): MCP Inspector / scripts/externalClient.ts connect over Streamable HTTP using per-client scoped Bearer tokens (never data:sensitive) and cannot bypass the 7-stage gateway"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Plane 2 — Host & Session Boundary (apps/api)",
+      "items": [
+        "API Host & SSE: Express gateway mints threadId/runId (X-Run-Id), maps Role Switcher personas to role Bearer tokens (X-User-Id / X-Role-Scope are correlation-only), streams SSE progress, exposes /api/ask, /api/runs/:runId/resume, /api/semantic/reindex",
+        "Concurrency & Retention: Per-threadId single-flight lock returns 409 Conflict on concurrent runs; stale checkpointId rejected on HITL resume; checkpoints pruned after 30d (HITL-pending expired at 7d)",
+        "Persistence Ports: Injects PostgresSaver (langgraph.*) and AppStateStore (app_state.alert_history) using dedicated harness_state DB role with zero privileges on public.* business tables"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Bounded Loops & K7 Gates",
+      "title": "Plane 3A — Governance, Skills & Semantic RAG (gov_ctx)",
       "items": [
-        "ValidatedQueryExecutor: selective describe, anti-fanout gate, ≤3 SQL repairs, 1-pass zero-row probe",
-        "UC-05 RCA & UC-10 Alerts: HITL interrupt(), depth ≤4 / ≤20 queries, trimmed z-score + 24h dedup",
-        "K7 verification: 100% catalog citations, headless render_chart, ≤1% numeric & ≤5% attribution math",
-        "Budget circuit breaker routes to a deterministic template with zero extra LLM calls"
+        "Budget Circuit Breaker: Checks maxLlmCalls, maxTokens, runDeadlineMs before every LLM/MCP call; on trip, routes to a deterministic terminal template with zero extra LLM calls (status: error + budget_exceeded caveat)",
+        "Declarative Skill Loader: loadSkill() loads skills/*/SKILL.md (text-to-sql, root-cause-analysis, anomaly-alert, pii-safe-query), validates 6 mandatory sections, emits skill_call spans; zero runnable scripts or credentials",
+        "Intent & Full-Slot Gate (UC-01/02): Splits requestedMetrics vs schemaEntities; short-circuits uncovered KPIs/entities to cannot_answer (0 SQL); definition_lookup skips SQL; merges multi-turn AnalysisState deltas",
+        "3-Way Hybrid RAG (UC-02): RRF (k=60) fuses pgvector HNSW, hot-reloaded Vietnamese/ASCII BM25, and exact alias match (w=1.5), plus auto join_rule graph expansion, enumValues anchors, SHA-256 incremental indexing, and live-DB semantic:verify"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Plane 3B — Execution, RCA & Anomaly Loops (exec_loops)",
+      "items": [
+        "ValidatedQueryExecutor: Shared SQL loop — candidate union (schemaEntities ∪ semanticChunks.tables) → selective describe_table → grounded SQL proposal → local sqlGuard ('Did you mean?' + 1 bridge-table expand) + LocalQuerySafetyGate (anti-fanout, LIMIT ≤200, large-table filter) → explain_query cost gate → MCP run_query → ≤3 repairs + 1-pass zero-row probe",
+        "Clarify-Then-Query & HITL: Halts with needs_clarification (≤2 turns) on ambiguous KPIs or unfiltered ≥1M-row scans; UC-05 calls interrupt('review_analysis_plan') and resumes via Command({resume}) with asOf snapshot freshness bounds",
+        "Hierarchical RCA (UC-05): validate_baseline halts on false_premise; create_plan builds MECE tree (Region→Channel→Category→Product, Orders×AOV); prunes branches <30% share, depth ≤4, queries ≤20; additivity-aware (rate/mix, LMDI-I, Simpson's guard)",
+        "Anomaly Detector (UC-10): Pure-code 28d 5–95% trimmed z-score + WoW% + min_support ≥15 orders/day (weekday seasonality, holiday calendar, BH FDR q=0.05); triggers 1–2 dim LLM drill-down only on breached slices"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Plane 3C — Pre-Response K7 Verification Gates (k7_gates)",
+      "items": [
+        "CitationValidator (UC-02): Enforces 100% catalog match for every cited metric/table/column/event ID retrieved in the turn and deterministically prepends -- @citations: to SQL (≤2 repairs)",
+        "Headless render_chart (UC-03): Compiles Vega-Lite/Plotly JSON specs headlessly with zero code execution and checks every encoded field exists in RunQueryOutput.columns (≤2 repairs)",
+        "Numeric, Truncation & Causal Verifier (UC-03): Checks claims against evidence and transient ≤1,000-row RAM buffer within ≤1% tolerance, verifies sign polarity, blocks unverified totals on truncated: true, regenerates once then strips with visible caveat",
+        "Attribution & Alert Dispatch (UC-05/10): Verifies RCA attribution sums within ≤5% of total delta; send_alert enforces allowlists, 10s timeout, ≤3 retries, and writes 24h dedup fingerprints to alert_history only post-send"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Plane 4 — Bounded LLM Proposal Plane (3 Zod Profiles)",
+      "items": [
+        "Profile 1 — Intent & Plan LLM: Proposes structured intent (requestedMetrics, schemaEntities, dimensions, filters, timeRange), ambiguity checks, and UC-05 MECE decomposition trees; zero DB credentials or execution authority",
+        "Profile 2 — SQL Proposer LLM: Generates a single SELECT/WITH from selectively described schemas, semanticChunks, join_rule CTE templates, and enumValues anchors (SemanticQueryCompiler for governed KPIs planned in Wave 3)",
+        "Profile 3 — Tool-Free Synthesizer: Drafts SQLAnswer, InsightReport, RootCauseAnswer, and AnomalyAlert from ≤50-row resultPreview wrapped in escaped <untrusted_data> tags with ZERO tools bound",
+        "Output-Format Isolation: Malformed JSON/Zod or provider 5xx gets ≤1 re-ask on the same profile without consuming a ValidatedQueryExecutor SQL repair attempt"
       ]
     },
     {
       "dot": "rose",
-      "title": "MCP 7-Stage Pipeline & Roles",
+      "title": "Plane 5A — MCP Gateway (packages/mcp-server · UC-09)",
       "items": [
-        "Fixed order: Auth → Scope → Zod → sqlGuard → AccessPolicy → agent_ro cursor → PII scan & audit",
-        "4 isolated DB roles: owner (seed only), agent_ro (MCP SELECT), indexer (RAG CLI), harness_state (API)",
-        "External UC-09 clients connect over Streamable HTTP with scoped tokens and never bypass policy",
-        "Spec status: monorepo foundation & contracts built; UC subgraphs & Wave 1–3 hardening planned"
+        "Sole DB Gateway: Exposes 5 DB tools (list_tables, describe_table, explain_query, run_query, sample_rows n≤5), search_semantic_layer, and 2 resources (semantic://data-dictionary, semantic://metrics) over Streamable HTTP",
+        "Stages 1–4 (Auth & Guard): (1) Constant-time Bearer auth via mcp_clients.yaml (signed short-lived principal JWT in Wave 2) → (2) Scope check (schema:read, data:read, data:sensitive) → (3) Zod bounds (maxRows ≤1000) → (4) pgsql-parser full-AST sqlGuard",
+        "Stages 5–7 (Policy, Exec & Audit): (5) AccessPolicy (resolveColumns AST masking + row-scope; fail-closed on WHERE/aggregate/complex CTE sensitive refs) → (6) agent_ro BEGIN READ ONLY + 30s timeout + pg-cursor (maxRows+1) → (7) Regex PII post-scan + JSONL audit",
+        "Error Routing Matrix: Hard security codes (FORBIDDEN_*, SENSITIVE_COLUMN_DENIED, SCOPE_DENIED) abort on Attempt 1 (repairable: false); SQL/schema errors (INVALID_SQL, UNKNOWN_TABLE, SQL_EXECUTION_ERROR) feed sanitized hints to ≤3 repairs"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Plane 5B — PostgreSQL 16, 4-Tier Memory & Redacted Sinks",
+      "items": [
+        "4 Isolated DB Roles: owner (offline pnpm data:load DDL/seed only), agent_ro (MCP SELECT-only + engine RLS in Wave 2), indexer (RAG CLI writes semantic.semantic_chunks), harness_state (API writes langgraph.* & app_state.*, zero public.* grants)",
+        "4-Tier Memory: Tier 1 transient ≤1,000-row RAM validation buffer; Tier 2 PostgresSaver checkpoints (langgraph.*); Tier 3 app_state.alert_history + append-only redacted JSONL (mcp_audit.jsonl, traces/*.jsonl, failed_alerts_queue.jsonl) + LangSmith; Tier 4 semantic.semantic_chunks (pgvector HNSW + RAM BM25)",
+        "Olist VN Dataset: public.* holds ≥8 tables (order_items ≥1M rows), fake vi_VN PII (always redacted in outputs/traces), and hidden seeded RCA, anomaly, and prompt-injection scenarios"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Contracts (@shared/contracts), Boundaries & Hardening",
+      "items": [
+        "Frozen Contracts (v1.0.0): tools.ts, errors.ts (12 codes, retryable vs repairable), answers.ts, trace.ts, semantic.ts, benchmark.ts — camelCase Zod schemas depending on zod only; docs/mcp_interface.md generated via pnpm docs:interface",
+        "ESLint Package Boundaries: agent, access-policy, and web cannot import pg/pg-cursor or mcp-server/src/**; web imports @shared/contracts only; access-policy is pure AST/regex with zero DB or network I/O",
+        "5 Invariants & 3 Hardening Waves: Single DB gateway, 4-layer defense-in-depth, escaped untrusted_data + zero-tool synthesis, K7 pre-response verification, credential-bound identity; Waves W1–W3 track RLS, signed principal tokens, SemanticQueryCompiler, and FDR/seasonality"
       ]
     }
   ]
