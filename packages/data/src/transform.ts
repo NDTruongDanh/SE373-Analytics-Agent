@@ -1,11 +1,3 @@
-// Pure Vietnamization transforms (Phase 2, plan 02-02, D-01). Data in,
-// data out: no `pg` and no `node:fs` imports — the sql-guard purity rule
-// applied to the input layer so UC owners can read every mapping without
-// touching loader or database code.
-//
-// Determinism contract: every function here is total and pure. The only
-// randomness in the pipeline flows through `createSeededFaker(seed)` — never
-// Math.random or Date.now (Pitfall P7).
 import { base, en, Faker, vi } from "@faker-js/faker";
 import {
   BRL_TO_VND_RATE,
@@ -29,16 +21,6 @@ export {
   UNMAPPED_CATEGORY_FALLBACKS,
 };
 
-// 34 post-merger provinces (Res. 202/2025/QH15, effective 2025-07-01) grouped
-// into the three Bắc/Trung/Nam regions per D-01. Same rows as the regions
-// TABLE_LOADERS slice in load.ts; Task 3 asserts they stay in sync.
-
-// Deterministic map of all 27 Olist state codes to Vietnamese provinces.
-// Ordered alphabetically on both sides so the assignment is reviewable; every
-// value is a member of PROVINCES. Provinces beyond the first 27 (Đồng Tháp,
-// An Giang, Vĩnh Long, Cần Thơ, Cà Mau, plus two Nam spares) carry no Olist
-// code and are populated by synthetic expansion in plan 02-03.
-
 export function stateToProvince(stateCode: string): string {
   const province = STATE_TO_PROVINCE[stateCode];
   if (!province) {
@@ -59,18 +41,6 @@ export function regionOfProvince(province: string): string {
   return entry[1];
 }
 
-// English (translation-CSV) to Vietnamese category map. All 71 english names
-// from product_category_name_translation.csv are covered; the three values
-// the join cannot produce (Pitfall P4) fall back explicitly below.
-
-// Explicit fallbacks for the three product_category_name values the
-// translation join cannot produce (Pitfall P4, measured in RESEARCH).
-
-// Portuguese product_category_name (plus its english translation) to
-// Vietnamese. Never returns null or empty: blank input becomes
-// "Chưa phân loại", the two unmapped codes use their explicit fallbacks,
-// any other unknown english name becomes "Khác" (fail-open on display text,
-// fail-closed on shape via the seeds schema).
 export function translateCategory(
   ptName: string | null | undefined,
   enName?: string | null,
@@ -87,18 +57,9 @@ export function translateCategory(
   return "Khác";
 }
 
-// Fixed VND conversion: round(BRL × 5150 / 1000) × 1000. Rate ≈ Oct-2025
-// market 5,095–5,162, documented as a constant in README per DATA-07.
-
 export function brlToVnd(brl: number): number {
   return Math.round((brl * BRL_TO_VND_RATE) / 1000) * 1000;
 }
-
-// Date shift: +2905 days (415 weeks — weekday-preserving by construction,
-// verified Wed→Wed in RESEARCH), applied in UTC. Orders landing before
-// 2025-01-01 are clipped (return null) per Pitfall P5 so 2027 stays empty
-// and Sept-2026 scenarios land in-window. Accepts "YYYY-MM-DD" or
-// "YYYY-MM-DD HH:MM:SS" (space or T separator), preserving the time part.
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})([T ](\d{2}):(\d{2}):(\d{2}))?$/;
 
@@ -126,10 +87,7 @@ export function shiftOrderDate(input: string): string | null {
   return `${datePart} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`;
 }
 
-// The eight measured Olist order statuses folded into the three business
-// statuses. `returned` never comes from Olist — it is reserved for anomaly
-// injection only (UC-10 A1). Unknown statuses throw fail-fast so data drift
-// surfaces at load instead of silently becoming canceled.
+// 'returned' is reserved for anomaly injection; unknown statuses throw so data drift surfaces at load.
 const ORDER_STATUS_FOLD: Readonly<Record<string, string>> = {
   delivered: "delivered",
   shipped: "shipped",
@@ -153,10 +111,7 @@ export function foldOrderStatus(status: string): BusinessOrderStatus {
   return folded as BusinessOrderStatus;
 }
 
-// Synthetic PII factory (Pitfall P7): `[vi, en, base]` locale chain so thin
-// `vi` coverage falls back silently, with a single `faker.seed(seed)` as the
-// only RNG in the pipeline. Callers draw every random decision from the
-// returned instance.
+// Locale chain falls back vi -> en -> base where Faker's vi locale is sparse.
 export function createSeededFaker(seed: number): Faker {
   const faker = new Faker({ locale: [vi, en, base] });
   faker.seed(seed);

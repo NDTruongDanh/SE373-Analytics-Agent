@@ -1,8 +1,3 @@
-// Embedding providers (MCP-02, D-12, D-17): a shared Embedder interface
-// returning fixed-dim vectors, an OpenAI-compatible implementation for the
-// operator endpoint (Gemini via its OpenAI-compatible base URL), and a
-// deterministic seeded-hash fake (1536-dim, L2-normalized) used by every
-// test and CI run so no key is ever needed.
 import OpenAI from "openai";
 
 export interface Embedder {
@@ -30,9 +25,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-// Deterministic fake: seeded hashing (FNV-1a over the text, mulberry32
-// expansion) mapped to [-1, 1] and L2-normalized, so cosine similarity is
-// meaningful and repeat calls are byte-identical.
+// Deterministic L2-normalized vectors so test/CI cosine similarity is reproducible without API keys.
 export function createFakeEmbedder(dimensions = 1536): Embedder {
   return {
     dimensions,
@@ -90,9 +83,6 @@ export function createOpenAIEmbedder(
   };
 }
 
-// Operator selection: the OpenAI-compatible endpoint (Gemini) when a model
-// and key are configured, otherwise the deterministic fake (with a boot
-// warning so fake embeddings in production are always a conscious choice).
 export interface EmbedderSelection {
   embedder: Embedder;
   model: string;

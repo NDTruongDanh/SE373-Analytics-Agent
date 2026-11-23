@@ -1,9 +1,3 @@
-// Catalog-verified candidate table resolution and intent prompt builder (#89).
-// Pure and deterministic: validates model-proposed schemaEntities against
-// list_tables catalog entries, maps unmatched Vietnamese/column entities via
-// table/column semantic chunks with evidence checks, and selectively merges
-// grounded semantic tables. Never executes DB I/O or invents tables.
-
 import { NO_MATCHING_TABLE_OPTION } from "../constants.js";
 import type { AgentState, CatalogTable } from "../state.js";
 import { serializeUntrusted } from "../untrusted.js";
@@ -57,7 +51,6 @@ function sanitizeInline(text: string, maxChars: number): string {
   return text.replace(/\s+/g, " ").trim().slice(0, maxChars);
 }
 
-/** Fold Vietnamese/Unicode diacritics to lowercase ASCII tokens separated by spaces. */
 export function foldAscii(text: string): string {
   return text
     .normalize("NFD")
@@ -92,11 +85,6 @@ function containsWholePhrase(haystack: string, phrase: string): boolean {
   return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(haystack);
 }
 
-/**
- * Parse a SQL table or column identifier (`table`, `schema.table`,
- * `table.column`, `schema.table.column`, optionally double-quoted).
- * Returns null for natural-language phrases (spaces, slashes, diacritics).
- */
 export function parseTableIdentifier(raw: string): string[] | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -167,11 +155,6 @@ function findBySchemaAndName(
   );
 }
 
-/**
- * Match a model-proposed entity against the catalog (`list_tables`).
- * Handles bare `table`, `schema.table`, `table.column` (returning `table`,
- * never the column suffix), and `schema.table.column`.
- */
 export function matchEntityInCatalog(
   entity: string,
   catalogTables: readonly CatalogTable[],
@@ -188,7 +171,6 @@ export function matchEntityInCatalog(
       parts[1] as string,
     );
     if (schemaHit) return schemaHit;
-    // Qualified column `table.column`: resolve to the owning table when valid.
     return findByName(catalogTables, parts[0] as string);
   }
   return findBySchemaAndName(
@@ -320,11 +302,6 @@ function textMatchesEntityStrictly(
   return overlap >= Math.ceil(entityTokens.length * 0.67);
 }
 
-/**
- * Bind an individual unresolved entity directly to a `table` or `column`
- * semantic chunk using its actual identifiers/metadata rather than generic
- * whole-question retrieval scores (#89).
- */
 function entityMatchesChunkStrictly(
   entity: string,
   chunk: AgentState["semanticChunks"][number],
@@ -390,7 +367,6 @@ function hasTextOverlapWithQuestion(
     return overlap === 1;
   }
   if (overlap >= 2) return true;
-  // Whole-phrase match against table/chunk name when question mentions it cleanly.
   const firstIdent = text.trim().split(/\s+/)[0];
   if (firstIdent && firstIdent.length >= 3 && containsWholePhrase(foldedQuestion, foldAscii(firstIdent))) {
     return true;
@@ -439,11 +415,7 @@ function chunkHasSemanticSignal(
   );
 }
 
-/**
- * Identify metric chunks that back `terms`: prefers direct name/text overlap
- * and falls back to strong server alias/dense grounding on single-metric runs
- * (covering bilingual queries such as Vietnamese KPI names vs English metric docs).
- */
+/** Falls back to server alias/dense hits on single-metric runs (e.g. bilingual KPI names). */
 function groundedMetricChunkIds(
   chunks: AgentState["semanticChunks"],
   terms: readonly string[],
@@ -504,9 +476,7 @@ function chunkHasQuestionEvidence(
     const refsLower = resolvedRefsFromJoinRule.map((r) => r.toLowerCase());
     const alreadyInResolved = refsLower.filter((r) => resolvedSet.has(r));
     if (alreadyInResolved.length === 0) return false;
-    // Join bridge: >= 2 already-resolved tables appear in the join rule (e.g. star/bridge table).
     if (alreadyInResolved.length >= 2) return true;
-    // Otherwise only pull the target table if the question itself provides evidence for that table.
     return hasQuestionOrCatalogEvidenceForTable(
       chunk,
       tableName,
@@ -525,7 +495,6 @@ function chunkHasQuestionEvidence(
   }
 
   if (resolvedSet.size === 0) {
-    // Empty schemaEntities: allow aliasMatched / calibrated dense hits or question/synthetic evidence.
     if (
       chunk.aliasMatched === true ||
       (typeof chunk.denseScore === "number" &&
@@ -542,8 +511,7 @@ function chunkHasQuestionEvidence(
     );
   }
 
-  // Once anchor tables already resolved, require direct question/catalog evidence for additional tables
-  // so high whole-question similarity does not expand into unrelated tables (#89).
+  // Once anchor tables exist, require direct question/catalog evidence so whole-question similarity does not pull unrelated tables.
   return hasQuestionOrCatalogEvidenceForTable(
     chunk,
     tableName,
@@ -560,10 +528,6 @@ export interface IntentPromptInput {
   semanticChunks?: AgentState["semanticChunks"];
 }
 
-/**
- * Build the Profile-1 intent prompt carrying allowed catalog tables and
- * bounded semantic snippets as reference data (#89).
- */
 export function buildIntentPrompt(input: IntentPromptInput): string {
   const tables = input.catalogTables ?? [];
   const tableLines =
@@ -677,12 +641,6 @@ function dedupeStrings(items: readonly string[]): string[] {
   return out;
 }
 
-/**
- * Deterministically resolve candidate physical tables from intent entities,
- * catalog metadata (`list_tables`), and semantic chunks (`table`/`column`/`metric`/`join_rule`).
- * Rejects partial matches that would silently drop a required part of the question, while
- * distinguishing filter literal values and metric-defined concepts from missing table entities.
- */
 export function resolveCandidateTables(
   input: ResolveCandidateTablesInput,
 ): ResolveCandidateTablesResult {
@@ -786,9 +744,7 @@ export function resolveCandidateTables(
       continue;
     }
 
-    // Check if the unresolved entity is actually a metric concept already defined by retrieved metrics.
-    // Never infer metric coverage for an entity from whole-question alias/dense scores alone (#89):
-    // require direct text match against the metric chunk or against a grounded requestedMetric.
+    // Require direct text match against a metric chunk or grounded requestedMetric; never infer coverage from whole-question scores alone.
     const requestedForEntity = requestedMetrics.filter((rm) =>
       entityMatchesMetricTerm(entity, rm),
     );
@@ -872,8 +828,7 @@ export function resolveCandidateTables(
     };
   }
 
-  // Stop and ask the user to narrow the question rather than silently dropping
-  // required entity/metric tables when they already exceed maxTables (#89).
+  // Ask the user to narrow the question rather than silently dropping required tables past maxTables.
   if (requiredTables.length > maxTables) {
     return {
       ok: false,
@@ -970,11 +925,7 @@ export interface SuggestClarificationTablesInput {
   maxOptions?: number;
 }
 
-/**
- * Pick up to 3 candidate catalog tables plus an explicit escape-hatch option
- * (`NO_MATCHING_TABLE_OPTION`) for HITL `pendingClarification` (2..4 total
- * options), so the user is never forced to pick an unsuitable table.
- */
+/** Reserves one slot for NO_MATCHING_TABLE_OPTION so the user is never forced into a wrong table. */
 export function suggestClarificationTables(
   input: SuggestClarificationTablesInput,
 ): string[] {
@@ -1073,11 +1024,6 @@ function countMentionedCandidatesInText(
   return count;
 }
 
-/**
- * Strictly select semantic reference strings relevant to the resolved candidate
- * tables, question, or requested metrics. Excludes unrelated tables/rules/examples
- * and requires direct evidence when chunk metadata is incomplete (#89).
- */
 export function selectSqlReferences(
   chunks: AgentState["semanticChunks"],
   candidateTables: readonly string[],
@@ -1158,7 +1104,6 @@ export function selectSqlReferences(
         priority = 1;
       }
     } else {
-      // Unknown / incomplete metadata: require explicit candidate-table or question/metric evidence.
       const strongSignal =
         chunk.aliasMatched === true ||
         (typeof chunk.denseScore === "number" &&

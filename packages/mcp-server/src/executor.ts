@@ -1,9 +1,3 @@
-// Read-only executor (MCP-07, T-01-08-05): pooled agent_ro client per call,
-// BEGIN READ ONLY, SET LOCAL statement_timeout 30s, bounded pg-cursor reads
-// with a truncated flag, ROLLBACK plus release in finally. Every driver
-// error funnels through the shared sanitizeError choke-point (POL-05), so
-// runtime SQL errors surface as SQL_EXECUTION_ERROR — never raw, never
-// INTERNAL_ERROR for query failures.
 import { Pool } from "pg";
 import Cursor from "pg-cursor";
 import { dbToolError, type DbToolError } from "@shared/contracts";
@@ -29,7 +23,6 @@ export function getAgentRoPool(): Pool {
   return pool;
 }
 
-/** Test seam: drop the cached pool (tests only). */
 export function resetAgentRoPoolForTests(): void {
   if (pool) {
     const old = pool;
@@ -38,10 +31,6 @@ export function resetAgentRoPoolForTests(): void {
   }
 }
 
-// One logical read session: setup, bounded read, teardown. The default
-// factory below is the production pg-cursor path; tests inject a stub
-// factory so the pipeline suite stays DB-free while still proving the
-// ROLLBACK-plus-release contract via the stub's call record.
 export interface ReadSession {
   beginReadOnly(): Promise<void>;
   readBounded(
@@ -84,8 +73,7 @@ export function defaultSessionFactory(): Promise<ReadSession> {
             const rows = truncated ? raw.slice(0, maxRows) : raw;
             let columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
             if (columns.length === 0) {
-              // Zero rows carry no keys: one cheap LIMIT 0 probe in the
-              // same read-only transaction recovers the column names.
+              // Zero rows carry no keys; a LIMIT 0 probe recovers column names in the same tx.
               const probe = await client.query(
                 `SELECT * FROM (${text}) AS _cols LIMIT 0`,
               );

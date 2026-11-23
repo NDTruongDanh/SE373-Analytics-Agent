@@ -1,8 +1,3 @@
-// Append-only audit sink (MCP-08, T-01-08-04): exactly one PII-redacted
-// JSONL line per tool/resource call to logs/mcp_audit.jsonl. pino's
-// synchronous destination guarantees the line hits disk before the handler
-// returns; the record is serialized, SQL string literals are masked, and the
-// shared redactor scrubs residual PII before the single write.
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import pino from "pino";
@@ -23,9 +18,8 @@ export interface AuditRecord {
   errorCode?: string;
   explainCost?: number | null;
   piiHits: number;
-  /** Server-minted RBAC record (G5): masked `table.column` names. */
   maskedColumns: string[];
-  /** Server-minted row-scope record (G5): `{ table, column }` only, never values. */
+  /** Server-minted `{ table, column }` pairs only — never filter values. */
   rowScopeApplied: RowScopeApplied[];
 }
 
@@ -41,13 +35,11 @@ export function initAudit(auditPath: string): void {
   }) as unknown as Destination;
 }
 
-/** Test seam: direct the single-line writer at an injected sink. */
 export function setAuditDestinationForTests(sink: Destination | null): void {
   destination = sink;
 }
 
-// SQL string literals ('...') can carry PII or filter secrets; the audit
-// trail keeps shapes, never values.
+// Mask SQL string literals so filter secrets or PII never reach the audit log.
 function maskSqlLiterals(value: unknown): unknown {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(maskSqlLiterals);

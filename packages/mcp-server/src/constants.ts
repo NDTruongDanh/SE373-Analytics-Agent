@@ -1,5 +1,3 @@
-// Shared magic values (single source of truth). Original modules keep a
-// compat re-export so external importers keep working.
 import {
   DescribeTableInputSchema,
   ExplainQueryInputSchema,

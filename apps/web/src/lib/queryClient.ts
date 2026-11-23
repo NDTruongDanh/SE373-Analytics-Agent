@@ -1,6 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
 
-/** Create a QueryClient configured for interactive analytics API calls. */
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {

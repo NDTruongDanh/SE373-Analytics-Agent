@@ -1,7 +1,3 @@
-// MCP tool surface (MCP-01): the five db-tools plus search_semantic_layer.
-// Each spec names the server-side scope the pipeline enforces, the strict
-// zod input schema applied at stage 3, and whether the call carries client
-// SQL through stages 4-6. Descriptions are operator-facing; no PII here.
 import {
   DescribeTableInputSchema,
   ExplainQueryInputSchema,

@@ -1,9 +1,3 @@
-// Pure trace-tree builder for G4 (03-04): nests redacted JSONL events by
-// parentSpanId, joins MCP audit lines by runId, and derives the run_done
-// summary table. No I/O, no network, no redaction of its own — inputs are
-// already-redacted file contents parsed by the caller (scripts/trace-show).
-// Counts and column names only; cell values never flow through here.
-
 export interface TreeInputEvent {
   spanId?: string;
   parentSpanId?: string;
@@ -92,7 +86,6 @@ function asFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** Nest flat events into a forest by parentSpanId (orphans become roots). */
 export function nestEvents(events: TreeInputEvent[]): TreeNode[] {
   const nodes = new Map<string, TreeNode>();
   const order: TreeNode[] = [];
@@ -112,8 +105,7 @@ export function nestEvents(events: TreeInputEvent[]): TreeNode[] {
       ...(event.payload !== undefined ? { payload: event.payload } : {}),
       children: [],
     };
-    // First write wins: duplicate spanIds (should not happen from the
-    // writer, which mints UUIDs) keep the earliest event.
+    // First write wins if duplicate spanIds appear.
     if (!nodes.has(spanId)) {
       nodes.set(spanId, node);
       order.push(node);
@@ -146,7 +138,6 @@ export function nestEvents(events: TreeInputEvent[]): TreeNode[] {
   return roots;
 }
 
-/** Keep only audit lines for this run, projected to the viewer shape. */
 export function joinAudits(
   runId: string,
   auditLines: unknown[],
@@ -174,12 +165,7 @@ export function joinAudits(
   return out;
 }
 
-/**
- * Derive the summary table from the terminal run_done event. Totals come
- * from the run_done payload (the accumulator's reconciled roll-up); the
- * masked-column union and approval counts are re-tallied from the event
- * list so the viewer stays correct even if the payload predates them.
- */
+/** Re-tallies maskedColumns and approvals from events for backward compatibility with older run_done payloads. */
 export function deriveSummary(events: TreeInputEvent[]): TraceSummary | null {
   const runDone = [...events].reverse().find((event) => event.type === "run_done");
   if (!runDone) return null;
@@ -214,7 +200,6 @@ export function deriveSummary(events: TreeInputEvent[]): TraceSummary | null {
   };
 }
 
-/** Build the full viewer model: tree + joined audits + summary. */
 export function buildTraceTree(
   runId: string,
   events: TreeInputEvent[],

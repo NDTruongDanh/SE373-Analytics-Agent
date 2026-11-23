@@ -31,7 +31,6 @@ async function triggerReindex(persona: string): Promise<ReindexResult> {
   return ReindexResultSchema.parse(await response.json());
 }
 
-/** UC-02 Data Dictionary & Semantic Layer Admin page. */
 export function DictionaryPage({ persona }: DictionaryPageProps) {
   const reindex = useMutation({
     mutationFn: () => triggerReindex(persona),

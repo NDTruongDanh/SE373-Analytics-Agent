@@ -1,15 +1,8 @@
-// Shared magic values for the data package (single source of truth).
-// Each value used to live in its feature module; the original modules keep a
-// compat re-export so existing importers keep working. No schemas, types,
-// functions, or instances live here — only plain values.
 import { fileURLToPath } from "node:url";
 import type { OlistFileEntry } from "./download.js";
 import type { LoadScale, TableDef } from "./load.js";
 
-// ---- download.ts ----
-
-// Eight Olist CSVs feeding seven business tables plus the categories map.
-// geolocation (61MB) is intentionally excluded — sellers carry city/state.
+// geolocation CSV (61MB) is intentionally excluded — sellers already carry city/state.
 export const OLIST_FILES: readonly OlistFileEntry[] = [
   {
     name: "olist_customers_dataset.csv",
@@ -93,18 +86,12 @@ export const OLIST_FILES: readonly OlistFileEntry[] = [
   },
 ];
 
-// Cache dir resolved from this module's location so it works regardless of
-// the caller's cwd (src and dist layouts both sit two levels below the repo
-// root). No CSV is ever written outside this directory.
+// Resolved relative to this module (two levels below repo root in both src and dist) so cwd does not matter.
 export const DEFAULT_CACHE_DIR = fileURLToPath(
   new URL("../../../data/.cache", import.meta.url),
 );
 
-// ---- load.ts ----
-
-// Registry of every loadable table: physical name, COPY column order, and
-// the pk used for the canonical ORDER BY in the manifest hash. Table and
-// column names come from here — never from user input (copy.ts contract).
+// Authoritative table/column registry for COPY; identifiers never come from user input.
 export const TABLE_LOADERS: Record<string, TableDef> = {
   regions: {
     table: "public.regions",
@@ -153,9 +140,7 @@ export const TABLE_LOADERS: Record<string, TableDef> = {
   },
   order_items: {
     table: "public.order_items",
-    // Identity pk (order_item_id) is DB-assigned; COPY excludes it. The
-    // manifest still orders by it, which is insertion order — deterministic
-    // because the build order is fixed.
+    // order_item_id is DB-assigned (excluded from COPY); ordering by it is deterministic via fixed build order.
     columns: ["order_id", "product_id", "seller_id", "price_vnd", "freight_vnd"] as const,
     pk: "order_item_id",
   },
@@ -171,9 +156,7 @@ export const TABLE_LOADERS: Record<string, TableDef> = {
   },
 };
 
-// 34 post-merger provinces (Res. 202/2025/QH15, effective 2025-07-01) grouped
-// into the three Bắc/Trung/Nam regions per D-01. Mirrors PROVINCES in
-// transform.ts (same source of truth, asserted in sync by construction).
+// 34 post-merger provinces (Res. 202/2025/QH15, effective July 2025) mapped to Bắc/Trung/Nam.
 export const REGION_ROWS: (readonly [string, string])[] = [
   ["Hà Nội", "Bắc"],
   ["Hải Phòng", "Bắc"],
@@ -211,11 +194,7 @@ export const REGION_ROWS: (readonly [string, string])[] = [
   ["Cà Mau", "Nam"],
 ];
 
-// Small scale (CI per D-10): one expansion pass and a 60k-item top-up target
-// instead of nine passes plus the 1M target, so `data:load && data:verify`
-// finishes in under 2 minutes. The full FK graph, every seed scenario, and
-// the manifest reload gate are unchanged — only absolute volumes shrink, and
-// every seed magnitude is a ratio engineered against its own baseline.
+// Small scale keeps CI under 2 minutes with the same FK graph and seed ratios at reduced volume.
 export const EXPANSION_PASSES: Record<LoadScale, number> = {
   full: 9,
   small: 1,
@@ -225,36 +204,21 @@ export const EXPANSION_ITEM_TARGET: Record<LoadScale, number> = {
   small: 60_000,
 };
 
-// ---- manifest.ts ----
-
-// Manifest written by `pnpm data:load`, resolved from this module's location
-// so it works regardless of the caller's cwd.
 export const DEFAULT_MANIFEST_PATH = fileURLToPath(
   new URL("../../../data/seed_manifest.json", import.meta.url),
 );
 
-// One committed manifest per scale, so a CI small load and a local full load
-// each reproduce their own pinned checksums instead of tripping the gate.
+// Separate manifests per scale so CI small loads and local full loads each pin their own checksums.
 export const SMALL_MANIFEST_PATH = fileURLToPath(
   new URL("../../../data/seed_manifest.small.json", import.meta.url),
 );
 
 export const DATASET_VERSION = "olist-vi-2025-2026-v1";
 
-// ---- seeds.ts ----
-
-// Seeds file resolved from this module's location so the default works
-// regardless of the caller's cwd (src and dist layouts both sit two levels
-// below the repo root).
 export const DEFAULT_SEEDS_PATH = fileURLToPath(
   new URL("./seeds.json", import.meta.url),
 );
 
-// ---- transform.ts ----
-
-// 34 post-merger provinces (Res. 202/2025/QH15, effective 2025-07-01) grouped
-// into the three Bắc/Trung/Nam regions per D-01. Same rows as the regions
-// TABLE_LOADERS slice in load.ts; Task 3 asserts they stay in sync.
 export const PROVINCES: readonly (readonly [string, string])[] = [
   ["Hà Nội", "Bắc"],
   ["Hải Phòng", "Bắc"],
@@ -294,11 +258,7 @@ export const PROVINCES: readonly (readonly [string, string])[] = [
 
 export const REGION_GROUPS: readonly string[] = ["Bắc", "Trung", "Nam"];
 
-// Deterministic map of all 27 Olist state codes to Vietnamese provinces.
-// Ordered alphabetically on both sides so the assignment is reviewable; every
-// value is a member of PROVINCES. Provinces beyond the first 27 (Đồng Tháp,
-// An Giang, Vĩnh Long, Cần Thơ, Cà Mau, plus two Nam spares) carry no Olist
-// code and are populated by synthetic expansion in plan 02-03.
+// Maps the 27 Olist state codes to provinces; the remaining 7 provinces are populated by synthetic expansion.
 export const STATE_TO_PROVINCE: Readonly<Record<string, string>> = {
   AC: "Hà Nội",
   AL: "Hải Phòng",
@@ -329,9 +289,6 @@ export const STATE_TO_PROVINCE: Readonly<Record<string, string>> = {
   TO: "Đồng Nai",
 };
 
-// English (translation-CSV) to Vietnamese category map. All 71 english names
-// from product_category_name_translation.csv are covered; the three values
-// the join cannot produce (Pitfall P4) fall back explicitly below.
 export const CATEGORY_VI_BY_EN: Readonly<Record<string, string>> = {
   health_beauty: "Sức khỏe & Làm đẹp",
   computers_accessories: "Phụ kiện máy tính",
@@ -406,27 +363,20 @@ export const CATEGORY_VI_BY_EN: Readonly<Record<string, string>> = {
   security_and_services: "Bảo hiểm & Dịch vụ",
 };
 
-// Explicit fallbacks for the three product_category_name values the
-// translation join cannot produce (Pitfall P4, measured in RESEARCH).
+// Fallback Vietnamese names for the three Olist categories absent from the translation CSV.
 export const UNMAPPED_CATEGORY_FALLBACKS: Readonly<Record<string, string>> = {
   "": "Chưa phân loại",
   pc_gamer: "Máy tính & Linh kiện",
   portateis_cozinha_e_preparadores_de_alimentos: "Thiết bị nhà bếp",
 };
 
-// Fixed VND conversion: round(BRL × 5150 / 1000) × 1000. Rate ≈ Oct-2025
-// market 5,095–5,162, documented as a constant in README per DATA-07.
+// Fixed Oct-2025 BRL-to-VND rate (rounded to nearest 1,000 VND).
 export const BRL_TO_VND_RATE = 5150;
 
-// Date shift: +2905 days (415 weeks — weekday-preserving by construction,
-// verified Wed→Wed in RESEARCH), applied in UTC. Orders landing before
-// 2025-01-01 are clipped (return null) per Pitfall P5 so 2027 stays empty
-// and Sept-2026 scenarios land in-window. Accepts "YYYY-MM-DD" or
-// "YYYY-MM-DD HH:MM:SS" (space or T separator), preserving the time part.
+// 415 weeks (+2905 days) preserves weekdays in UTC while shifting Olist dates into 2025–2026;
+// orders shifting before DATASET_MIN_DATE are clipped so 2027 stays empty and Sept-2026 scenarios land in-window.
 export const SHIFT_DAYS = 2905;
 export const DATASET_MIN_DATE = "2025-01-01";
-
-// ---- index.ts ----
 
 export const DATA_SHELL =
   "Data shell: Olist download/transform/load lands in 01-07";

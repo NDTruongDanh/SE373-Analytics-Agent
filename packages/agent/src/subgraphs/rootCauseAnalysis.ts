@@ -43,7 +43,6 @@ import { loadSkill } from "../skills/loader.js";
 
 export { RCA_UC_ID } from "../constants.js";
 
-/** Diagnostic intent parsed from the user's natural language question. */
 export const RcaIntentSchema = z.object({
   metricName: z.string().min(1).default("net_revenue"),
   metricType: MetricTypeSchema.default("additive"),
@@ -64,7 +63,6 @@ export const RcaIntentSchema = z.object({
 
 export type RcaIntent = z.infer<typeof RcaIntentSchema>;
 
-/** Minimum percentage delta required for diagnostic significance (1.0%). */
 export const MIN_SIGNIFICANT_DELTA_PCT = 1.0;
 
 export interface BaselineCheckResult {
@@ -231,8 +229,6 @@ export function getDefaultAllowedQualifiers(targetTable: string = "orders"): Set
 }
 
 export function getMetricDateColumn(metricName?: string): string {
-  // All order / revenue / customer diagnostic metrics in UC-05 (net_revenue, aov, return_rate, etc.)
-  // are anchored on the orders fact table event date: orders.purchase_date.
   if (metricName && metricName.includes("review")) {
     return "review_creation_date";
   }
@@ -293,10 +289,6 @@ function columnsMatch(b1: DateBoundMatch, b2: DateBoundMatch): boolean {
   return true;
 }
 
-/**
- * Splits a SQL expression into top-level disjunctive branches (OR outside of parentheses).
- * Any OR enclosed in parentheses (e.g. (status = 'a' OR status = 'b')) is kept intact inside its branch.
- */
 function splitByTopLevelOr(text: string): string[] {
   const branches: string[] = [];
   let depth = 0;
@@ -368,7 +360,6 @@ function verifyBranchDateFilter(
     return allowUnqualified;
   };
 
-  // 1. Structural BETWEEN check
   const betweenPattern = new RegExp(
     String.raw`${dateColPattern}\s+between\s+${dateLiteralPattern(period.start)}\s+and\s+${dateLiteralPattern(period.end)}`,
     "gi",
@@ -381,7 +372,6 @@ function verifyBranchDateFilter(
     }
   }
 
-  // 2. Month truncation / formatting equality check
   const monthStart = period.start.slice(0, 7);
   const monthEnd = period.end.slice(0, 7);
   if (monthStart === monthEnd) {
@@ -407,8 +397,7 @@ function verifyBranchDateFilter(
     }
   }
 
-  // 3. Structural range conjunction check:
-  // Must bind the SAME date column on both lower bound and upper bound
+  // Both bounds must bind the same date column.
   const startLhsPattern = new RegExp(
     String.raw`${dateColPattern}\s*(?:>=|>)\s*${dateLiteralPattern(period.start)}`,
     "gi",
@@ -454,7 +443,7 @@ function verifyBranchDateFilter(
       );
     }
   } catch {
-    // ignore
+    /* ignore invalid date */
   }
 
   for (const startBound of startBounds) {
@@ -640,7 +629,6 @@ async function isSelectStmtBounded(
     }
   }
 
-  // 1. Direct WHERE filter on this SelectStmt
   if (stmt["whereClause"]) {
     const whereSql = await deparse(stmt["whereClause"]);
     if (verifyWhereClauseText(whereSql, period, allowedCols, allowedQualifiers, hasTargetTable)) {
@@ -648,7 +636,6 @@ async function isSelectStmtBounded(
     }
   }
 
-  // 2. If no direct valid WHERE filter, check if all data sources in FROM are themselves bounded
   if (fromClause.length > 0) {
     let allSourcesBounded = true;
     for (const item of fromClause) {
@@ -723,8 +710,7 @@ export async function verifySqlDateFilter(
   try {
     ast = await parse(sql);
   } catch {
-    // If not valid full SQL statement (e.g. bare WHERE condition in a legacy unit test),
-    // fall back to checking the bare expression text
+    // Fall back to bare WHERE-clause checks when given a fragment rather than a full SQL statement.
     const defaultQualifiers = getDefaultAllowedQualifiers(targetTable);
     return verifyWhereClauseText(sql, period, allowedCols, defaultQualifiers, true);
   }
@@ -741,7 +727,6 @@ export async function verifySqlDateFilter(
     return false;
   }
 
-  // Collect CTEs if present
   const cteMap = new Map<string, Record<string, unknown>>();
   const resolvedCtesQueryingTarget = new Set<string>();
   const withClause = rootSelect["withClause"] as Record<string, unknown> | undefined;
@@ -759,11 +744,10 @@ export async function verifySqlDateFilter(
     }
   }
 
-  // Collect all branches in case of set operations (UNION, UNION ALL, INTERSECT, EXCEPT)
   const branches = collectUnionBranches(rootSelect);
   if (branches.length === 0) return false;
 
-  // EVERY branch in a set operation must be bounded!
+  // Every branch in a set operation must carry a valid date bound.
   const results = await Promise.all(
     branches.map((branch) =>
       isSelectStmtBounded(branch, period, cteMap, resolvedCtesQueryingTarget, allowedCols, targetTable),
@@ -786,7 +770,7 @@ function asMcpFailure(tool: string, text: string): DbToolError {
       return parsed as DbToolError;
     }
   } catch {
-    // normalized below
+    /* non-JSON tool error normalized below */
   }
   return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${text.slice(0, 200)}`);
 }
@@ -841,7 +825,6 @@ function parseWeek(wStr: string, yearStr: string): { start: string; end: string 
   // Canonical pre-computed project weeks for 2026:
   if (y === 2026 && w === 39) return { start: "2026-09-21", end: "2026-09-27" };
   if (y === 2026 && w === 38) return { start: "2026-09-14", end: "2026-09-20" };
-  // Default ISO-like approximation
   const jan1 = new Date(Date.UTC(y, 0, 1));
   const weekStart = new Date(jan1.getTime() + (w - 1) * 7 * 86400000);
   const weekEnd = new Date(weekStart.getTime() + 6 * 86400000);
@@ -851,20 +834,14 @@ function parseWeek(wStr: string, yearStr: string): { start: string; end: string 
   };
 }
 
-/**
- * Deterministic heuristic + regex intent extractor for Vietnamese diagnostic queries.
- * Distinguishes explicit direction ("tăng", "giảm") from neutral questions ("tại sao khác").
- */
 export function parseRcaIntent(question: string): RcaIntent {
   const q = question.toLowerCase();
 
-  // 1. Direction extraction: explicit increase vs explicit decrease vs neutral
   const isIncrease = /(?:tăng|tăng vọt|tăng trưởng|đột biến|cao hơn|tăng mạnh|spike|surge|increase)/i.test(q);
   const isDecrease = /(?:giảm|sụt giảm|tụt|rơi|thấp hơn|suy giảm|giảm mạnh|drop|decrease|plummet)/i.test(q);
   const isExplicitDirection = isIncrease !== isDecrease;
   const direction: "increase" | "decrease" = isIncrease && !isDecrease ? "increase" : "decrease";
 
-  // 2. Metric extraction
   let metricName = "net_revenue";
   let metricType: MetricType = "additive";
   let formulaComponents: FormulaComponents | undefined;
@@ -890,8 +867,6 @@ export function parseRcaIntent(question: string): RcaIntent {
     metricType = "additive";
   }
 
-  // 3. Time periods extraction
-  // Pattern 0: Reversed patterns where baseline comes first: "so với [tuần/quý/tháng] X ... [tuần/quý/tháng] Y"
   const revMonthMatch = /(?:so với|vs)\s*tháng\s*(\d{1,2})(?:\/(\d{4}))?.*?(?:thì|thấy|\,|\s)+.*?tháng\s*(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
   if (revMonthMatch) {
     const mBaseline = parseInt(revMonthMatch[1], 10);
@@ -948,7 +923,6 @@ export function parseRcaIntent(question: string): RcaIntent {
     };
   }
 
-  // Pattern A: Week matching: "tuần WW/YYYY ... so với [tuần] WW/YYYY"
   const weekMatch = /tuần\s*(\d{1,2})(?:\/(\d{4}))?.*?(?:so với|vs).*?(?:tuần\s*)?(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
   if (weekMatch) {
     const y1 = weekMatch[2] ?? weekMatch[4] ?? "2026";
@@ -967,7 +941,6 @@ export function parseRcaIntent(question: string): RcaIntent {
     };
   }
 
-  // Pattern B: Quarter matching: "quý Q/YYYY ... so với [quý] Q/YYYY"
   const quarterMatch = /quý\s*(\d{1})\/(\d{4}).*?(?:so với|vs).*?(?:quý\s*)?(\d{1})\/(\d{4})/i.exec(q);
   if (quarterMatch) {
     const current = parseQuarter(quarterMatch[1], quarterMatch[2]);
@@ -984,7 +957,6 @@ export function parseRcaIntent(question: string): RcaIntent {
     };
   }
 
-  // Pattern C1: Month YoY matching: "tháng MM/YYYY ... so với cùng kỳ năm trước / năm ngoái"
   const yoyMatch = /tháng\s*(\d{1,2})\/(\d{4}).*?(?:so với\s*)?(?:cùng kỳ(?:\s*năm trước|\s*năm ngoái)?|năm ngoái)/i.exec(q);
   if (yoyMatch) {
     const m = parseInt(yoyMatch[1], 10);
@@ -1005,7 +977,6 @@ export function parseRcaIntent(question: string): RcaIntent {
     }
   }
 
-  // Pattern C2: Two explicit months: "tháng MM/YYYY ... so với [tháng] MM[/YYYY]"
   const monthMatch = /tháng\s*(\d{1,2})(?:\/(\d{4}))?.*?(?:so với|vs).*?tháng\s*(\d{1,2})(?:\/(\d{4}))?/i.exec(q);
   if (monthMatch) {
     const m1 = parseInt(monthMatch[1], 10);
@@ -1028,7 +999,6 @@ export function parseRcaIntent(question: string): RcaIntent {
     }
   }
 
-  // Pattern C3: Explicit MM/YYYY on both sides: "MM/YYYY ... so với MM/YYYY"
   const rawMonthMatch = /(\d{1,2})\/(\d{4}).*?(?:so với|vs).*?(\d{1,2})\/(\d{4})/i.exec(q);
   if (rawMonthMatch) {
     const m1 = parseInt(rawMonthMatch[1], 10);
@@ -1049,7 +1019,6 @@ export function parseRcaIntent(question: string): RcaIntent {
     }
   }
 
-  // Default fallback periods (e.g. Sept 2026 vs Aug 2026)
   return {
     metricName,
     metricType,
@@ -1083,23 +1052,15 @@ export function formatVnd(val: number): string {
 
 export function buildBaselineQuery(metricName: string, metricType: MetricType, period: TimePeriod): string {
   if (metricType === "ratio" && metricName === "aov") {
-    // AOV per semantic/metrics.yaml: merchandise revenue per delivered order (status = 'delivered' for both numerator and denominator)
+    // AOV requires status = 'delivered' for both numerator and denominator.
     return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status = 'delivered' AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
   }
   if (metricType === "ratio" && metricName === "return_rate") {
     return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o WHERE o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
   }
-  // Default: net revenue (delivered orders minus returned orders, excluding freight) per UC05.md:156
   return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned') AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
 }
 
-/**
- * Node 1: validate_baseline
- * Computes baseline and current values, checks premise direction, and distinguishes:
- * - Insignificant delta (< 1.0%): returns status="no_data"
- * - Direction mismatch when explicitly stated: returns status="false_premise"
- * - Valid premise: returns isValidBaseline=true
- */
 export async function validateBaseline(
   question: string,
   intent: RcaIntent,
@@ -1254,7 +1215,6 @@ export async function validateBaseline(
       tablesUsed = Array.from(distinctTables);
     }
   } else if (process.env.NODE_ENV === "test" && process.env.ALLOW_RCA_SYNTHETIC === "true") {
-    // Only when explicit synthetic flag is set in test environment
     baselineVal = 2_500_000_000;
     currentVal = 2_040_000_000;
     queriesExecuted = 2;
@@ -1268,7 +1228,6 @@ export async function validateBaseline(
   const absDelta = currentVal - baselineVal;
   const pctDelta = baselineVal !== 0 ? (absDelta / Math.abs(baselineVal)) * 100 : 0;
 
-  // 1. Check for insignificant delta (< MIN_SIGNIFICANT_DELTA_PCT)
   if (Math.abs(pctDelta) < MIN_SIGNIFICANT_DELTA_PCT) {
     const pctStr = Math.abs(pctDelta).toFixed(2);
     return {
@@ -1287,7 +1246,6 @@ export async function validateBaseline(
     };
   }
 
-  // 2. Check premise direction (only enforced when direction is explicitly stated)
   if (intent.isExplicitDirection) {
     if (intent.direction === "decrease" && absDelta >= 0) {
       const pctStr = Math.abs(pctDelta).toFixed(1);
@@ -1326,7 +1284,6 @@ export async function validateBaseline(
     }
   }
 
-  // Determine resolved direction without mutating the original intent
   const resolvedDirection: "increase" | "decrease" = intent.isExplicitDirection
     ? intent.direction
     : absDelta < 0
@@ -1351,10 +1308,6 @@ export async function validateBaseline(
   };
 }
 
-/**
- * Node 2: create_plan
- * Constructs a Two-Axis MECE decomposition task tree based on metric nature.
- */
 export function createPlan(
   question: string,
   intent: RcaIntent,
@@ -1375,7 +1328,6 @@ export function createPlan(
       : DEFAULT_CANDIDATE_REGIONS;
 
   if (intent.metricType === "additive") {
-    // Horizontal business dimension decomposition: region -> channel -> category -> product
     for (const r of regions) {
       steps.push({
         stepId: r.id,
@@ -1394,7 +1346,6 @@ export function createPlan(
       });
     }
   } else {
-    // Ratio Metric: Two-Axis MECE (Formula factors + Business Dimensions)
     steps.push({
       stepId: "step_factor_numerator",
       axis: "formula",
@@ -1586,7 +1537,6 @@ export function buildStepQuery(
     return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o${joinsStr} WHERE ${whereStr}`;
   }
 
-  // Default: Net Revenue
   return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status IN ('delivered', 'returned') AND ${whereStr}`;
 }
 
@@ -1629,7 +1579,6 @@ export async function executeAnalysis(
     const step = plan.steps.find((s) => s.status === "todo");
     if (!step) break;
 
-    // Skip already processed steps
     if (step.status === "done" || step.status === "failed" || step.status === "skipped") {
       continue;
     }
@@ -1656,7 +1605,7 @@ export async function executeAnalysis(
     let lastError: Error | null = null;
 
     while (attempt <= 2) {
-      // Step needs at least 2 queries (baseline + current). Stop before starting if quota insufficient.
+      // Each step requires two queries (baseline and current), so stop before exceeding quota.
       if (plan.totalQueriesCount + 2 > maxQueries) {
         step.status = "skipped";
         plan.unexploredBranches.push({
@@ -1719,7 +1668,6 @@ export async function executeAnalysis(
           const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
           plan.totalQueriesCount += baseAttempts;
 
-          // Verify baseline executor result status: MUST be 'ok' before running current query
           if (baseRes.status !== "ok") {
             const err =
               "error" in baseRes
@@ -1730,7 +1678,6 @@ export async function executeAnalysis(
             throw new Error(`Baseline query failed: ${err}`);
           }
 
-          // Run current query only if quota still permits
           if (plan.totalQueriesCount >= maxQueries) {
             step.status = "skipped";
             plan.unexploredBranches.push({
@@ -1761,7 +1708,6 @@ export async function executeAnalysis(
           deps.setAllowedDateColumns?.(null);
           deps.setTargetTable?.(null);
 
-          // Verify current executor result status: MUST be 'ok'
           if (currRes.status !== "ok") {
             const err =
               "error" in currRes
@@ -1863,14 +1809,13 @@ export async function executeAnalysis(
         }
       }
     } else {
-      // Weak branches (< 30%): marked as 'skipped' per issue requirements
       step.status = "skipped";
       plan.residualOtherAbs += Math.abs(delta);
       plan.unexploredBranches.push({
         axis: step.axis,
         dimensionOrFactor: step.dimensionOrFactor,
         dimensionValue: step.dimensionValue,
-        parentId: step.stepId,
+        parentId: step.parentId,
         reason: "PRUNED_BELOW_THRESHOLD",
       });
     }
@@ -1881,15 +1826,10 @@ export async function executeAnalysis(
   return AnalysisPlanSchema.parse(plan);
 }
 
-/**
- * Returns disjoint leaf steps from the hierarchical plan:
- * steps that are marked "done" and have no child steps in the tree.
- */
 export function getDisjointLeafNodes(steps: PlanStep[]): PlanStep[] {
   const hasDoneDimension = steps.some((s) => s.axis === "dimension" && s.status === "done");
   const candidates = hasDoneDimension ? steps.filter((s) => s.axis !== "formula") : steps;
 
-  // Any step that acts as parentId for any step in candidates has children and is not a leaf
   const parentIdsWithChildren = new Set(
     candidates
       .map((s) => s.parentId)
@@ -1901,9 +1841,6 @@ export function getDisjointLeafNodes(steps: PlanStep[]): PlanStep[] {
   );
 }
 
-/**
- * Returns disjoint skipped steps whose parents were not already skipped.
- */
 export function getDisjointSkippedNodes(steps: PlanStep[]): PlanStep[] {
   const hasDimension = steps.some((s) => s.axis === "dimension");
   const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
@@ -1912,11 +1849,7 @@ export function getDisjointSkippedNodes(steps: PlanStep[]): PlanStep[] {
   return skippedSteps.filter((s) => !s.parentId || !skippedIds.has(s.parentId));
 }
 
-/**
- * Performs Waterfall Attribution Math Check (PRD §4.3, K7 Gate):
- * Validates that sum(disjoint leaves) + residualOther balances the total delta within 5% tolerance.
- * Enforces strictly signed delta comparison to prevent false positive attribution when signs diverge.
- */
+/** Validates Waterfall balance within 5% using strictly signed deltas. */
 export function verifyWaterfallAttribution(
   leafNodes: PlanStep[],
   residualOtherAbs: number,
@@ -1936,8 +1869,7 @@ export function verifyWaterfallAttribution(
     const disjointSkipped = getDisjointSkippedNodes(steps);
     const skippedSum = disjointSkipped.reduce((sum, s) => sum + s.delta, 0);
 
-    // If a parent node was decomposed, any difference between parent.delta and the sum of all its children's deltas
-    // represents unanalyzed / unallocated residual from that parent.
+    // Unallocated difference between a parent and its children's deltas counts as residual.
     const hasDimension = steps.some((s) => s.axis === "dimension");
     const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
     const parentIds = new Set(
@@ -1960,8 +1892,7 @@ export function verifyWaterfallAttribution(
     hasSignedResidualData = disjointSkipped.length > 0 || unanalyzedParentResidual !== 0;
   }
 
-  // Only fall back to inferring sign from absDeltaTotal * residualOtherAbs when no signed residual data was provided
-  // (e.g. steps was omitted). If skipped branches exist and cancel each other out to 0, keep signedResidual = 0.
+  // Infer residual sign from absDeltaTotal only when no signed step data is available.
   if (!hasSignedResidualData && residualOtherAbs !== 0) {
     signedResidual = (absDeltaTotal < 0 ? -1 : 1) * Math.abs(residualOtherAbs);
   }
@@ -1972,7 +1903,7 @@ export function verifyWaterfallAttribution(
   if (absDeltaTotal === 0) {
     mathDiffRatio = deltaExplained === 0 ? 0 : 1;
   } else {
-    // K7 Gate: strictly signed difference. Never take absolute value before difference.
+    // Strictly signed difference: never take absolute value before subtracting.
     const diffSigned = Math.abs(deltaExplained - absDeltaTotal);
     mathDiffRatio = Number((diffSigned / Math.abs(absDeltaTotal)).toFixed(4));
   }
@@ -1986,10 +1917,6 @@ export function verifyWaterfallAttribution(
   };
 }
 
-/**
- * Identifies primary root causes from disjoint leaf nodes:
- * Selects nodes with |contributionPct| >= 50% or top 3 if none reach 50%, sorted by impact descending.
- */
 export function identifyPrimaryRootCauses(leafNodes: PlanStep[]): RootCauseItem[] {
   const sorted = [...leafNodes].sort((a, b) => Math.abs(b.contributionPct) - Math.abs(a.contributionPct));
   const highImpact = sorted.filter((n) => Math.abs(n.contributionPct) >= 50);
@@ -2019,9 +1946,6 @@ export function identifyPrimaryRootCauses(leafNodes: PlanStep[]): RootCauseItem[
   });
 }
 
-/**
- * Generates the full structured Markdown report for Root Cause Analysis.
- */
 export function generateMarkdownReport(
   plan: AnalysisPlan,
   rca: Omit<RootCauseAnswer, "finalReportMarkdown">,
@@ -2039,7 +1963,6 @@ export function generateMarkdownReport(
 
   const sections: string[] = [];
 
-  // Section 1: Hiện tượng & Mức biến động
   sections.push(`## 1. Hiện tượng & Mức biến động
 - **Chỉ số phân tích:** \`${plan.metricName}\` (${plan.metricType})
 - **Kỳ mốc (${plan.baselinePeriod.start} đến ${plan.baselinePeriod.end}):** ${baselineStr}
@@ -2047,7 +1970,6 @@ export function generateMarkdownReport(
 - **Biến động tổng thể:** ${directionText} **${absStr}** (${pctStr})
 - **Trạng thái:** Đã hoàn thành phân tích bóc tách cây nguyên nhân (${doneCount} bước hoàn thành, ${prunedCount} nhánh cắt tỉa).`);
 
-  // Section 2: Cây phân rã nguyên nhân
   const treeLines: string[] = ["## 2. Cây phân rã nguyên nhân"];
   for (const step of plan.steps) {
     const indent = "  ".repeat(step.depth);
@@ -2070,7 +1992,6 @@ export function generateMarkdownReport(
   }
   sections.push(treeLines.join("\n"));
 
-  // Section 3: Nguyên nhân cốt lõi
   const causeLines: string[] = ["## 3. Nguyên nhân cốt lõi (Primary Root Causes)"];
   if (rca.primaryCauses.length === 0) {
     causeLines.push("_Không xác định được nguyên nhân chính vượt ngưỡng ý nghĩa._");
@@ -2093,7 +2014,6 @@ export function generateMarkdownReport(
   }
   sections.push(causeLines.join("\n"));
 
-  // Section 4: Kiểm chứng số học Waterfall (K7 Gate)
   const mathStatusBadge = rca.mathVerified ? "✅ ĐẠT (PASS)" : "⚠️ CẢNH BÁO (WARNING)";
   const diffPct = (rca.mathDiffRatio * 100).toFixed(2);
   sections.push(`## 4. Kiểm chứng số học Waterfall (K7 Tolerance ≤ 5%)
@@ -2102,7 +2022,6 @@ export function generateMarkdownReport(
 - **Sai số toán học:** ${diffPct}% (ngưỡng cho phép: ≤ 5.00%)
 - **Phần dư từ các nhánh cắt tỉa (Residual Other):** ${formatVnd(rca.residualOtherAbs)}`);
 
-  // Section 5: Phần dư & Các nhánh chưa phân tích
   const unexploredLines: string[] = ["## 5. Nhánh chưa phân tích & Giới hạn"];
   if (rca.unexploredBranches.length === 0) {
     unexploredLines.push("_Tất cả các nhánh ứng viên đều đã được phân tích đầy đủ._");
@@ -2118,11 +2037,6 @@ export function generateMarkdownReport(
   return sections.join("\n\n");
 }
 
-/**
- * Node 5: synthesize_report
- * Evaluates the executed plan, filters disjoint leaves, runs Waterfall verification,
- * identifies primary causes, and returns a verified RootCauseAnswer.
- */
 export function synthesizeReport(plan: AnalysisPlan): RootCauseAnswer {
   const leafNodes = getDisjointLeafNodes(plan.steps);
   const mathResult = verifyWaterfallAttribution(
@@ -2181,10 +2095,6 @@ function readRunContext(rt?: RootRuntime): {
   return { identity, transport };
 }
 
-/**
- * Builds the UC-05 Root Cause Analysis runtime entry handler for Issue #35.
- * Coordinates validate_baseline and create_plan.
- */
 export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
   entry: UcEntryHandler;
 } {
@@ -2378,11 +2288,11 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           }
         }
       } catch {
-        // Fall back to clean baseline execution if not a resume
+        /* fall back to clean baseline execution if checkpoint cannot be read */
       }
     }
 
-    // Fail closed: if this is a resume invocation and plan could not be restored, fail with explicit error
+    // Fail closed if resuming a thread without a recoverable analysis plan.
     if (isResume && !plan) {
       return {
         status: "error",
@@ -2391,7 +2301,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     }
 
     if (!plan) {
-      // 1. validate_baseline
       try {
         baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
       } catch (err) {
@@ -2413,7 +2322,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         };
       }
 
-      // 2. create_plan
       effectiveIntent.direction = baseline.resolvedDirection;
       plan = createPlan(
         state.question,
@@ -2429,7 +2337,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       }
     }
 
-    // 3. human_review (HITL Review Gate)
     const hasExecutionBackend = Boolean(
       effectiveDeps.fetchStepMetrics ||
       deps.executeSteps ||
@@ -2517,7 +2424,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         }
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes("outside the context of a graph")) {
-          // Called in raw unit test without LangGraph execution context and skipHitlReview was not set.
+          // Allow direct unit tests without a LangGraph execution context to return the unexecuted plan.
         } else {
           throw err;
         }
@@ -2535,7 +2442,6 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       };
     }
 
-    // 4. execute_step & evaluate_branch loop
     const targetFactTable = getMetricTargetTable(plan.metricName);
     const executedPlan = await executeAnalysis(
       plan,

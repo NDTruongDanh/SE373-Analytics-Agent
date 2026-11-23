@@ -27,15 +27,6 @@ import {
 
 export { DEFAULT_ROUTE_ID } from "../constants.js";
 
-// UC seam (01-10): the SOLE file the frozen root builder (graph.ts) reads
-// for UC wiring. UC owners register handlers here — or in sibling files
-// beside this one that call registerUC() — and NEVER edit graph.ts.
-// The default route preserves the exact 01-01 tracer chain
-// (understand -> describe -> run -> answer, 8 trace events incl. llm_call) so the 27/10
-// course-checkpoint demo keeps passing while real UC subgraphs land.
-
-// Default route id. Unknown ucIds fall through to this entry (see constants.ts).
-
 const entries = new Map<string, UcEntryHandler>();
 
 export function registerUC(ucId: string, handler: UcEntryHandler): void {
@@ -58,13 +49,8 @@ export function listUcIds(): string[] {
 }
 
 /**
- * Count column of the tracer preview. A live model picks its own alias
- * (e.g. COUNT(*) AS order_count), so read the canned "n" when present, else
- * the first count-named column with count-like values, else the first column
- * whose values are all numbers or numeric strings. Booleans, nulls, and
- * empty strings never count as numeric — Number(true), Number(null), and
- * Number("") are all finite and once picked the wrong column — so an id
- * column wins only as a last resort when every value is genuinely numeric.
+ * Prefer explicit count columns because Number(true)/Number(null)/Number("") are finite;
+ * numeric-only id columns remain a last resort.
  */
 const COUNT_COLUMN_NAME = /^(n|count|total|.*_count|count_.*|num_.*)$/i;
 
@@ -97,7 +83,6 @@ export function previewCountKey(
   );
 }
 
-/** Sum of the preview's count column (shared by the route and apps/api). */
 export function previewCountTotal(
   columns: readonly string[],
   preview: readonly Record<string, unknown>[],
@@ -106,22 +91,12 @@ export function previewCountTotal(
   return preview.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
 }
 
-/** Transport context the tracer default route reads from RunnableConfig. */
 export interface TracerDefaultContext extends Omit<TracerRunConfig, "callbacks"> {
   threadId: string;
   tracesDir: string;
 }
 
-/**
- * Per-run emitter for the default route (Phase 3 G3). The frozen root
- * builder (graph.ts) cannot import telemetry directly (UC-01 seam-only
- * import boundary), so the factory lives here beside the entry that
- * consumes it. Identity comes from the host context: the emitter stamps
- * the real run principal on every event. Noted for UC-01 owner
- * (nguyenhun11): registry entry events now flow through rt.emit instead
- * of writing directly, so per-run totals accumulate; the on-disk event
- * set is unchanged.
- */
+/** Lives here beside the default entry so graph.ts does not import telemetry directly. */
 export function createTracerRunEmitter(
   ctx: TracerDefaultContext,
 ): AgentSpanEmitter {
@@ -162,8 +137,7 @@ function readTracerContext(rt: RootRuntime): TracerDefaultContext {
     (key) => ctx[key].length === 0,
   );
   if (missing.length > 0) {
-    // Fail closed: the 01-14 host populates every field; never run with
-    // partial identity (T-01-10-04: identity comes from the host, not prompts).
+    // Fail closed: run identity must come completely from the host context, never partial or from prompts.
     throw new Error(
       `tracer default route missing run context: ${missing.join(", ")}`,
     );
@@ -171,20 +145,9 @@ function readTracerContext(rt: RootRuntime): TracerDefaultContext {
   return ctx;
 }
 
-/**
- * The tracer-compatible default entry, registered under DEFAULT_ROUTE_ID.
- * Runs the unchanged 01-01 chain — propose SQL, list_tables, run_query
- * (capped), deterministic answer — writing 8 trace events (incl. llm_call), so the
- * 27/10 demo path survives the skeleton expansion. Transport identity comes
- * from RunnableConfig.configurable (populated by the 01-14 host per D-11),
- * never from prompt text. No edits outside this file may change it.
- */
 export function createTracerDefaultEntry(): UcEntryHandler {
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     const ctx = readTracerContext(rt);
-    // All default-route events flow through the run emitter: identical
-    // on-disk shape to the former direct writes, but the real principal
-    // comes from the emitter context and every event feeds the G3 roll-up.
     const trace = (
       node: string,
       type: string,
@@ -225,8 +188,6 @@ export function createTracerDefaultEntry(): UcEntryHandler {
     });
     const proposal = out.parsed;
     const llmDurationMs = Date.now() - started;
-    // G1: the demo route reports the same llm_call shape as the UC-01 path,
-    // so run_done totals carry real provider tokens; fakes record zeros.
     const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
       out.model,
       out.inputTokens,
@@ -349,10 +310,7 @@ export function createTracerDefaultEntry(): UcEntryHandler {
   };
 }
 
-// The default route is always registered; runTracerGraph (graph.ts) and the
-// root builder resolve it through this table, never by direct import.
 registerUC(DEFAULT_ROUTE_ID, createTracerDefaultEntry());
 
-// Register UC-05 Root Cause Analysis subgraph
 import { createRcaRuntime, RCA_UC_ID } from "./rootCauseAnalysis.js";
 registerUC(RCA_UC_ID, createRcaRuntime().entry);

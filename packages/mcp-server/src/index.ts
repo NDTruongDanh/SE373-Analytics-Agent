@@ -1,7 +1,3 @@
-// @shared/mcp-server public barrel: the gateway entrypoints plus the pure
-// building blocks (catalog, tool registry, config loaders, error mapping).
-// Importing this barrel never starts a server; server.ts only listens when
-// run directly.
 export {
   createGatewayApp,
   startGatewayServer,

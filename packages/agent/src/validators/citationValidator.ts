@@ -1,12 +1,3 @@
-// Deterministic CitationValidator (UC-02 K7, architecture §3.2.9).
-//
-// Verifies that 100% of IDs in `citations` exist in the semantic/schema
-// catalog AND were retrieved in the current turn, requires >= 1 `metric:*`
-// citation for metric queries, and deterministically prepends
-// `-- @citations: ...` to `SQLAnswer.sql` (<= 2 self-correction retries).
-//
-// Pure function — no model, no I/O, no pg.
-
 export const CITATION_REPAIR_LIMIT = 2;
 
 export const CITATION_HEADER_PREFIX = "-- @citations:";
@@ -49,7 +40,6 @@ function expandRetrieved(ids: string[]): Set<string> {
     // column:orders.status <-> orders.status interop (retriever catalog rule).
     if (id.startsWith("column:")) out.add(id.slice("column:".length));
     else if (/^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$/i.test(id)) out.add(`column:${id}`);
-    // metric:net_revenue <-> net_revenue interop.
     if (id.startsWith("metric:")) {
       const suffix = id.slice("metric:".length);
       if (suffix) out.add(suffix);
@@ -58,10 +48,6 @@ function expandRetrieved(ids: string[]): Set<string> {
   return out;
 }
 
-/**
- * Parse the `-- @citations: a, b` header (line 1) from SQL. Returns [] when
- * no header is present.
- */
 export function parseCitationHeader(sql: string | null | undefined): string[] {
   if (!sql) return [];
   const first = sql.split("\n")[0]?.trim() ?? "";
@@ -74,10 +60,6 @@ export function parseCitationHeader(sql: string | null | undefined): string[] {
     .filter((part) => part.length > 0);
 }
 
-/**
- * Deterministically prepend (or replace) the `-- @citations: ...` header.
- * Normalizes to `id1, id2` sorted for stable output.
- */
 export function ensureCitationHeader(
   sql: string | null | undefined,
   citations: string[],
@@ -93,13 +75,6 @@ export function ensureCitationHeader(
   return `${header}\n${sql}`;
 }
 
-/**
- * Validate citations against the catalog and the current turn's retrieved
- * set. Rules (UC-02 Feature 5):
- * 1. Every citation exists in the catalog.
- * 2. Every citation was retrieved this turn (or is its column:/metric: variant).
- * 3. Metric queries (requestedMetrics.length > 0) cite >= 1 `metric:*`.
- */
 export function validateCitations(input: ValidateCitationsInput): CitationValidation {
   const citations = input.citations.map(normalizeId).filter((id) => id.length > 0);
   const catalog = catalogSet(input);
@@ -147,12 +122,7 @@ export function validateCitations(input: ValidateCitationsInput): CitationValida
   return { ok: true, citations, sql: ensureCitationHeader(input.sql ?? null, citations) };
 }
 
-/**
- * Derive a minimal valid citation set from retrieved chunks: prefer
- * retrieved `metric:*` chunks (up to 5), else the top retrieved chunkIds.
- * Used when the SQL proposer omits citations — the harness fills them from
- * grounding rather than letting the model invent IDs.
- */
+/** Derives citations from retrieved chunks so the harness supplies grounding instead of letting the model invent IDs. */
 export function deriveCitations(
   retrievedChunkIds: string[],
   opts: { max?: number } = {},
@@ -164,11 +134,6 @@ export function deriveCitations(
   return [...new Set(base)].slice(0, Math.max(1, max));
 }
 
-/**
- * Repair loop helper (<= 2 retries): replaces invalid IDs with exact IDs
- * from the retrieved context, then re-validates. Returns the first passing
- * result, else the last failure.
- */
 export function repairCitations(
   input: ValidateCitationsInput,
   maxRepairs: number = CITATION_REPAIR_LIMIT,

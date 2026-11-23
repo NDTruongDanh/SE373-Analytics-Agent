@@ -1,10 +1,3 @@
-// MCP client (AGENT-09, 01-12): one long-lived MultiServerMCPClient holding
-// only the server URL, with per-call identity headers (Authorization Bearer
-// plus X-Run-Id, X-User-Id, X-Role-Scope) forked from RunnableConfig
-// configurable through a beforeToolCall hook — never from tool arguments, so
-// a prompt-injected header can never reach the transport. The legacy per-call
-// tracer surface stays for the 01-10 default route until 01-14 replaces it.
-
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
@@ -19,21 +12,13 @@ import {
   type ErrorCode,
 } from "@shared/contracts";
 
-// Legacy tracer surface (01-01 slice): a fresh SDK Client plus transport per
-// tool call, identity passed explicitly from the run config. Consumed by the
-// 01-10 registry default route and its demo path.
-
 export interface TracerRunConfig {
   mcpUrl: string;
   token: string;
   runId: string;
   userId: string;
   roleScope: string;
-  /**
-   * The graph node's callbacks (rt.config.callbacks). When they carry the
-   * PII-safe LangSmith tracer, each call also appears as a LangSmith tool
-   * run (#97). Never sent to the gateway.
-   */
+  /** Graph callbacks for local tracing only; never forwarded to the MCP gateway. */
   callbacks?: Callbacks;
 }
 
@@ -80,7 +65,6 @@ async function callMcpToolUntraced(
   }
 }
 
-/** Parse a tool text payload; throw a plain Error on MCP error payloads. */
 export function parseToolJson<T>(result: McpToolResult, tool: string): T {
   const parsed: unknown = JSON.parse(result.text);
   if (
@@ -101,7 +85,6 @@ function asValidErrorCode(code: string): ErrorCode {
     : "INTERNAL_ERROR";
 }
 
-/** Normalize an MCP tool error response payload into a contract DbToolError. */
 export function parseMcpToolError(tool: string, text: string): DbToolError {
   try {
     const raw: unknown = JSON.parse(text);
@@ -120,12 +103,10 @@ export function parseMcpToolError(tool: string, text: string): DbToolError {
       return dbToolError(code, msg.slice(0, 500));
     }
   } catch {
-    // Non-JSON error payloads fall through to INTERNAL_ERROR below.
   }
   return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${text.slice(0, 200)}`);
 }
 
-/** Coerce any thrown error into a contract DbToolError without leaking raw details. */
 export function toNormalizedMcpError(tool: string, thrown: unknown): DbToolError {
   const validated = DbToolErrorSchema.safeParse(thrown);
   if (validated.success) return validated.data;
@@ -146,11 +127,6 @@ export function toNormalizedMcpError(tool: string, thrown: unknown): DbToolError
   return dbToolError("INTERNAL_ERROR", `MCP tool ${tool} failed: ${msg.slice(0, 200)}`);
 }
 
-// Full 01-12 surface: per-call identity from the host-populated
-// RunnableConfig.configurable (D-11), resolved to wire headers by a pure
-// helper and injected through the adapters' beforeToolCall hook.
-
-/** Run identity the 01-14 host populates into RunnableConfig.configurable. */
 export interface RunIdentity {
   token: string;
   runId: string;
@@ -169,11 +145,7 @@ function readStringField(
   return value;
 }
 
-/**
- * Fail-closed extraction of run identity from RunnableConfig.configurable.
- * Throws on any missing or non-string field — never runs with partial
- * identity.
- */
+/** Fail closed if any identity field is missing or empty so calls never run with partial identity. */
 export function identityFromConfigurable(
   configurable: Record<string, unknown>,
 ): RunIdentity {
@@ -185,11 +157,6 @@ export function identityFromConfigurable(
   };
 }
 
-/**
- * Pure header resolution: same identity in, same headers out, no shared
- * mutable state between calls (T-01-12-01: two sequential principals must
- * produce distinct X-Run-Id values with no bleed).
- */
 export function resolveCallHeaders(identity: RunIdentity): Record<string, string> {
   return {
     authorization: `Bearer ${identity.token}`,
@@ -204,9 +171,8 @@ import { MCP_SERVER_NAME } from "./constants.js";
 export { MCP_SERVER_NAME } from "./constants.js";
 
 /**
- * beforeToolCall hook reading identity only from RunnableConfig.configurable.
- * The adapters fork the connection with the returned headers per tool call,
- * so each call carries its own run's identity.
+ * Resolve per-call auth/identity headers from RunnableConfig only so
+ * prompt-injected tool arguments cannot override them.
  */
 export function createIdentityHook(): (
   toolCall: { serverName: string; name: string; args?: unknown },
@@ -220,10 +186,7 @@ export function createIdentityHook(): (
   });
 }
 
-/**
- * One long-lived client holding only the server URL. No static auth: every
- * tool call resolves its headers through the identity hook.
- */
+/** Long-lived client without static auth; headers are resolved per call via beforeToolCall. */
 export function createMcpClient(mcpUrl: string): MultiServerMCPClient {
   return new MultiServerMCPClient({
     mcpServers: {
@@ -233,7 +196,6 @@ export function createMcpClient(mcpUrl: string): MultiServerMCPClient {
   });
 }
 
-/** Tool wrapper for the 01-11 executor seam (identity flows via config). */
 export async function getMcpTools(
   client: MultiServerMCPClient,
   serverName: string = MCP_SERVER_NAME,

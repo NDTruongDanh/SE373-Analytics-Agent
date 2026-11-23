@@ -1,21 +1,3 @@
-// SSE allowlist plus sanitized emitter (API-01/API-03, 01-14, wave 6).
-//
-// The allowlist matches exactly the 01-02 per-event zod schemas in
-// @shared/contracts (D-20): intent_parsed, schema_retrieved, sql_generated,
-// sql_repaired, query_running, viz, completed, failed, interrupt_waiting.
-// Every emit validates against its per-event schema before writing and
-// degrades to a failed event on mismatch — raw payloads never reach the
-// wire (T-01-14-02).
-//
-// Sanitization is construction-based: payload builders pick whitelisted
-// fields only (counts, column/table names, status, scrubbed message, and a
-// restricted SQL proposal after a successful query). SQL literals and row
-// cell values are not sent. The
-// canonical PII redaction stays in the trace/audit layers (01-06 redactor
-// via the 01-09 writer); the small tripwire below is defense-in-depth for
-// the two free-text fields the wire legitimately carries (answerText,
-// error message) and degrades to failed on a hit.
-
 import type { Response } from "express";
 import type { PendingClarification } from "@shared/agent";
 import {
@@ -53,18 +35,11 @@ export interface SseEnvelope {
   data?: unknown;
 }
 
-// Local wire tripwire (NOT the canonical redactor): a 10-digit 0-led run
-// (VN mobile shape from the seed data) or an @-email in free text degrades
-// the emit to failed. Counts and names can never trip it: rendered counts
-// have no leading zero and names carry no @. The run must not continue a
-// number (#115): digits inside a longer integer or after a decimal point
-// (`1090123456789`, `0.0327868852`, a cost like `0.00052410000000001`) are
-// not phones. A run after a letter or punctuation still trips, and longer
-// 0-led runs (12-digit landlines) still trip on their first ten digits.
+// Defense-in-depth wire tripwire (not the canonical redactor) for VN 10-digit 0-led phones and emails.
+// Negative lookbehind avoids matching digits inside longer integers or after decimal points.
 const PHONE_LIKE = /(?<!\d|\d[.,])0\d{9}/;
 const EMAIL_LIKE = /\S+@\S+\.\S+/;
 
-/** True when free text carries a phone/email shape that must not go on the wire. */
 export function containsWirePii(text: string): boolean {
   return PHONE_LIKE.test(text) || EMAIL_LIKE.test(text);
 }
@@ -74,7 +49,6 @@ function scrubMessage(message: string): string {
   return message.slice(0, 500);
 }
 
-/** intent_parsed payload: metric shape only; filter VALUES never leave the host. */
 export function intentPayload(intent: {
   metric: string | null;
   dimensions: string[];
@@ -89,12 +63,10 @@ export function intentPayload(intent: {
   };
 }
 
-/** schema_retrieved payload: table names plus count only. */
 export function schemaPayload(tablesUsed: string[]): Record<string, unknown> {
   return { tables: [...tablesUsed], tableCount: tablesUsed.length };
 }
 
-/** sql_generated payload: statement metadata only — the SQL text never leaves. */
 export function sqlPayload(
   sql: string | null,
   tablesUsed: string[],
@@ -108,13 +80,7 @@ export function sqlPayload(
   return { tablesUsed: [...tablesUsed], statementType };
 }
 
-/**
- * Only display a restricted, literal-free order-status demo proposal after the
- * gateway has accepted the query. Do not attempt to parse or redact arbitrary
- * SQL with regex: anything outside this vocabulary is withheld entirely,
- * including strings, comments, parameters, and model-chosen aliases.
- * The result is a proposal, not the policy-rewritten SQL sent to the DB.
- */
+// Allow only a restricted, literal-free order-status proposal after gateway acceptance; withhold everything else rather than regex-redacting.
 export function displayableSql(sql: string): string | null {
   if (sql.length === 0 || sql.length > 4000 || !/^\s*(?:select|with)\b/i.test(sql)) return null;
   if (!/^[a-zA-Z_\s.,()*+\-/;<>!=]+$/.test(sql) || /--|\/\*|\*\//.test(sql)) return null;
@@ -123,7 +89,6 @@ export function displayableSql(sql: string): string | null {
   return sql;
 }
 
-/** sql_repaired payload: attempt metadata only, no error text. */
 export function sqlRepairedPayload(
   sql: string | null,
   tablesUsed: string[],
@@ -132,12 +97,10 @@ export function sqlRepairedPayload(
   return { ...sqlPayload(sql, tablesUsed), attempt };
 }
 
-/** query_running payload: progress counts only. */
 export function runningPayload(statusGroups: number): Record<string, unknown> {
   return { statusGroups };
 }
 
-/** completed payload: status plus counts plus the tripwire-scrubbed answer. */
 export function completedPayload(input: {
   status: string;
   answerText: string;
@@ -155,7 +118,6 @@ export function completedPayload(input: {
   };
 }
 
-/** failed payload: contract error shape with a scrubbed message. */
 export function failedPayload(input: {
   code: string;
   message: string;
@@ -178,7 +140,6 @@ export interface InterruptPayloadInput {
   currentPlan?: unknown;
 }
 
-/** interrupt_waiting payload: clarification options and review plan for HITL. */
 export function interruptPayload(input: InterruptPayloadInput): Record<string, unknown> {
   const plan = input.currentPlan ?? input.plan;
   let pending: unknown;
@@ -196,11 +157,7 @@ export function interruptPayload(input: InterruptPayloadInput): Record<string, u
   };
 }
 
-/**
- * Validate-then-write one SSE event. A schema mismatch degrades to a
- * failed event (never a raw passthrough); only allowlisted names are
- * emitted. Throws nothing — Express write errors are the caller's domain.
- */
+// Validate against the event schema and degrade to a failed event on mismatch so raw payloads never reach the wire.
 export function emitSseEvent(
   res: Response,
   event: SseEventName,
