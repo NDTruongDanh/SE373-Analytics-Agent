@@ -6,6 +6,9 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "outDir": "dist",
     "rootDir": "src",
     "composite": true,
