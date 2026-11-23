@@ -110,6 +110,121 @@ describe("chat interface", () => {
     fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
     expect((await screen.findByRole("alert")).textContent).toContain("503");
   });
+
+  it("streams viz chart preview and renders verified InsightPanel with evidence highlighting on completion", async () => {
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(stream, { headers: { "content-type": "text/event-stream" } }),
+    );
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Câu hỏi"), {
+      target: { value: "Doanh thu theo khu vực?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+
+    const report = {
+      chartType: "bar" as const,
+      chartSpec: {
+        chart: "BarChart" as const,
+        labels: ["Nam", "Bac"],
+        series: [{ category: "revenue", values: [5200, 2800] }],
+        variant: "grouped" as const,
+      },
+      chartReason: "So sánh doanh thu theo khu vực bằng biểu đồ cột.",
+      insights: [
+        {
+          claim: "Khu vực Nam dẫn đầu với 5,200M VND.",
+          derivation: "cell" as const,
+          evidence: [{ column: "revenue", rowKey: "Nam", value: 5200 }],
+        },
+      ],
+      caveats: ["Dữ liệu tháng 10 mới ghi nhận 6 ngày."],
+    };
+    const openuiLang = [
+      "root = Card([title, chart, notes])",
+      'title = TextContent("Doanh thu theo khu vực?", "large-heavy")',
+      'chart = BarChart(labels, [s1], "grouped")',
+      'labels = ["Nam","Bac"]',
+      's1 = Series("revenue", [5200,2800])',
+      'notes = TextContent("Khu vực Nam dẫn đầu với 5,200M VND.", "default")',
+    ].join("\n");
+
+    const vizEvent = {
+      event: "viz",
+      runId: "run-1",
+      threadId: "chat:sales_south:thread-1",
+      data: {
+        kind: "insight_report",
+        title: "Doanh thu theo khu vực?",
+        report,
+        openuiLang,
+        truncated: true,
+        resultPreview: [
+          { region: "Nam", revenue: 5200 },
+          { region: "Bac", revenue: 2800 },
+        ],
+      },
+    };
+    streamController.enqueue(
+      new TextEncoder().encode(`event: viz\ndata: ${JSON.stringify(vizEvent)}\n\n`),
+    );
+
+    const streamingTurn = await screen.findByTestId("streaming-viz-turn");
+    expect(
+      within(streamingTurn).getByTestId("insight-chart").getAttribute("data-streaming"),
+    ).toBe("true");
+    expect(await within(streamingTurn).findByText("Doanh thu theo khu vực?")).toBeInTheDocument();
+
+    const answer: SQLAnswer = {
+      intent: { metric: "net_revenue", dimensions: ["region"], filters: [], timeRange: null },
+      sql: "SELECT region, revenue FROM orders_summary",
+      tablesUsed: ["orders"],
+      citations: ["metric:net_revenue"],
+      attempts: [{ attemptNo: 1, sql: "SELECT region, revenue FROM orders_summary", schemaRefs: [], validation: "ok", durationMs: 12 }],
+      resultPreview: [
+        { region: "Nam", revenue: 5200 },
+        { region: "Bac", revenue: 2800 },
+      ],
+      answerText: "Khu vực Nam dẫn đầu với 5,200M VND.",
+      status: "ok",
+      telemetry: { promptTokens: 10, completionTokens: 20, embeddingTokens: 0, estimatedCostUsd: 0.001, latencyMs: 35 },
+    };
+    const completedEvent = {
+      event: "completed",
+      runId: "run-1",
+      threadId: "chat:sales_south:thread-1",
+      data: { answer, vizSpec: { kind: "insight_report", report, openuiLang, truncated: true } },
+    };
+    streamController.enqueue(
+      new TextEncoder().encode(`event: completed\ndata: ${JSON.stringify(completedEvent)}\n\n`),
+    );
+    streamController.close();
+
+    await waitFor(() => expect(screen.queryByTestId("streaming-viz-turn")).toBeNull());
+    const chartEl = await screen.findByTestId("insight-chart");
+    expect(chartEl.getAttribute("data-streaming")).toBe("false");
+    expect(screen.getByTestId("insight-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("insight-chart-reason").textContent).toContain("biểu đồ cột");
+    const caveats = screen.getByTestId("insight-caveats");
+    expect(within(caveats).getByText(/6 ngày/)).toBeInTheDocument();
+    expect(within(caveats).getByText(/truncated/i)).toBeInTheDocument();
+
+    const badge = screen.getByTestId("evidence-badge");
+    fireEvent.click(badge);
+    const previewTable = screen.getByTestId("insight-preview-table");
+    expect(previewTable.querySelectorAll('tr[data-highlighted-row="true"]')).toHaveLength(1);
+    expect(previewTable.querySelectorAll('td[data-highlighted-cell="true"]')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /SQL & nguồn tham chiếu/ }));
+    const drawerDetails = document.getElementById("result-details")!;
+    expect(drawerDetails.querySelectorAll('tr[data-highlighted-row="true"]')).toHaveLength(1);
+    expect(drawerDetails.querySelectorAll('td[data-highlighted-cell="true"]')).toHaveLength(1);
+  });
 });
 
 describe("result drawer", () => {

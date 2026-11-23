@@ -139,6 +139,9 @@ function WorkspaceShell() {
   );
 }
 
+export { InsightChart } from "@/charts";
+export { InsightPanel } from "@/components/InsightPanel";
+
 export function App({ initialEntries }: AppProps = {}) {
   const client = useMemo(() => createQueryClient(), []);
 
