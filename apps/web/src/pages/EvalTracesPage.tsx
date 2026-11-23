@@ -1,5 +1,5 @@
 import { Activity } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.js";
 
 /** Observability traces & benchmark evaluation summary page. */
 export function EvalTracesPage() {

@@ -1,9 +1,9 @@
 import { useMutation } from "@tanstack/react-query";
 import { BookOpen, RefreshCw } from "lucide-react";
 import { z } from "zod";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "../components/ui/badge.js";
+import { Button } from "../components/ui/button.js";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.js";
 
 const ReindexResultSchema = z.object({
   added: z.number().int().nonnegative(),
