@@ -17,12 +17,14 @@ import {
 } from "../telemetry/retry.js";
 import { checkBudget, createBudgetState, estimateTokens, type BudgetState } from "../queryExecutor/budgets.js";
 import {
+  TRANSIENT_ROW_BUFFER_MAX,
   ValidatedQueryExecutor,
   type ChatModelLike,
   type ExecutorResult,
   type ExecutorRunInput,
   type McpToolCaller,
 } from "../queryExecutor/executor.js";
+import { setTransientQueryBuffer } from "../queryExecutor/transientBuffer.js";
 import {
   callMcpTool,
   parseMcpToolError,
@@ -300,6 +302,7 @@ const EXECUTOR_UPDATE_MAP: {
     tablesUsed: result.tablesUsed,
     columns: result.columns,
     resultPreview: result.rows.slice(0, 50),
+    resultTruncated: Boolean(result.truncated),
   }),
   no_data: (result) => ({
     status: "no_data",
@@ -307,6 +310,7 @@ const EXECUTOR_UPDATE_MAP: {
     tablesUsed: result.tablesUsed,
     columns: result.columns,
     resultPreview: [],
+    resultTruncated: false,
     answerText: result.diagnostic ?? "No matching data was found.",
   }),
   needs_clarification: (result) => ({
@@ -340,6 +344,13 @@ function updateFromExecutor(
     r: ExecutorResult,
   ) => AgentUpdate;
   const update = handler(result);
+  if (result.status === "ok" && state.runId) {
+    setTransientQueryBuffer(state.runId, {
+      columns: result.columns,
+      rows: result.rows.slice(0, TRANSIENT_ROW_BUFFER_MAX),
+      truncated: Boolean(result.truncated),
+    });
+  }
   if ((result.status === "ok" || result.status === "no_data") && typeof update.sql === "string") {
     const headed = withCitationHeader(state, update.sql, catalogIds);
     if (headed === null) {

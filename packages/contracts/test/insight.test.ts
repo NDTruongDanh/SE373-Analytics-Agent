@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AgentResponseSchema,
   CHART_TYPE_TO_COMPONENT,
+  ClaimDerivationSchema,
   EvidencePointerSchema,
   InsightChartTypeSchema,
   InsightClaimSchema,
@@ -162,6 +163,38 @@ describe("UC-03 InsightReport contracts", () => {
     expect(() => InsightClaimSchema.parse({ claim: "Revenue grew.", evidence: [] })).toThrow();
     expect(() =>
       InsightClaimSchema.parse({ claim: "", evidence: [{ column: "revenue", rowKey: "2026-09", value: 1 }] }),
+    ).toThrow();
+  });
+
+  it("accepts optional derivation values and rejects invalid derivations", () => {
+    const baseEvidence = [{ column: "revenue", rowKey: "2026-09", value: 5200 }];
+    expect(
+      InsightClaimSchema.parse({ claim: "Revenue was 5,200.", evidence: baseEvidence }).derivation,
+    ).toBeUndefined();
+    for (const derivation of [
+      "cell",
+      "pct_change",
+      "pp_change",
+      "share_of_total",
+      "sum",
+      "mean",
+      "rank",
+    ] as const) {
+      expect(ClaimDerivationSchema.parse(derivation)).toBe(derivation);
+      expect(
+        InsightClaimSchema.parse({
+          claim: "Derived claim.",
+          derivation,
+          evidence: baseEvidence,
+        }).derivation,
+      ).toBe(derivation);
+    }
+    expect(() =>
+      InsightClaimSchema.parse({
+        claim: "Invalid derivation.",
+        derivation: "median",
+        evidence: baseEvidence,
+      }),
     ).toThrow();
   });
 

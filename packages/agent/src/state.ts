@@ -154,6 +154,8 @@ export const AgentStateSchema = new StateSchema({
     .array(z.record(z.string(), z.unknown()))
     .max(RESULT_PREVIEW_MAX)
     .default([]),
+  /** Real truncation flag propagated from RunQueryOutput.truncated (H-05). */
+  resultTruncated: z.boolean().default(false),
   columns: z.array(z.string()).default([]),
   sql: z.string().nullable().default(null),
   tablesUsed: z.array(z.string()).default([]),

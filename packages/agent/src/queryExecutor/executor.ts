@@ -182,6 +182,7 @@ export type ExecutorResult =
       tablesUsed: string[];
       columns: string[];
       rows: Record<string, unknown>[];
+      truncated?: boolean;
       maskedColumns: string[];
       attempts: number;
     }
@@ -1091,6 +1092,7 @@ export class ValidatedQueryExecutor {
       const runStarted = Date.now();
       let columns: string[];
       let rows: Record<string, unknown>[];
+      let truncated = false;
       let maskedColumns: string[];
       let rowScopeApplied: RowScopeApplied[];
       try {
@@ -1120,6 +1122,7 @@ export class ValidatedQueryExecutor {
         }
         columns = parsedRun.data.columns;
         rows = parsedRun.data.rows.slice(0, TRANSIENT_ROW_BUFFER_MAX);
+        truncated = parsedRun.data.truncated;
         maskedColumns = parsedRun.data.maskedColumns;
         rowScopeApplied = parsedRun.data.rowScopeApplied;
         partials.rowsFetched = rows.length;
@@ -1132,6 +1135,7 @@ export class ValidatedQueryExecutor {
             tool: "run_query",
             ok: true,
             rowCount: parsedRun.data.rowCount,
+            truncated,
             maskedColumns,
             rowScopeApplied,
           },
@@ -1224,6 +1228,7 @@ export class ValidatedQueryExecutor {
         tablesUsed: lastTablesUsed,
         columns,
         rows,
+        truncated,
         maskedColumns,
         attempts: attempt,
       };
