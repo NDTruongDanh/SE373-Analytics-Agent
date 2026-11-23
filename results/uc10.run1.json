@@ -1,0 +1,98 @@
+{
+  "uc": "uc10",
+  "datasetVersion": "uc10-1",
+  "cases": [
+    {
+      "id": "uc10-01",
+      "status": "pass",
+      "exPass": true,
+      "ms": 24,
+      "tokens": 0,
+      "note": "Baseline Run #1: A1 detected critical spike"
+    },
+    {
+      "id": "uc10-02",
+      "status": "pass",
+      "exPass": true,
+      "ms": 6,
+      "tokens": 0,
+      "note": "Baseline Run #1: A2 detected critical drop"
+    },
+    {
+      "id": "uc10-03",
+      "status": "fail",
+      "exPass": false,
+      "ms": 5,
+      "tokens": 0,
+      "note": "Baseline Run #1 (pre-trim): historical spike inflated baseline std, masking A3 below z=3.0"
+    },
+    {
+      "id": "uc10-04",
+      "status": "pass",
+      "exPass": true,
+      "ms": 5,
+      "tokens": 0,
+      "note": "Baseline Run #1: A4 detected critical spike"
+    },
+    {
+      "id": "uc10-05",
+      "status": "pass",
+      "exPass": true,
+      "ms": 6,
+      "tokens": 0,
+      "note": "Baseline Run #1: A5 detected critical drop"
+    },
+    {
+      "id": "uc10-06",
+      "status": "fail",
+      "exPass": false,
+      "ms": 29,
+      "tokens": 0,
+      "note": "Baseline Run #1 (pre-min_support): sparse province 1/3 returned 33.3% triggered 6 FP/normal week (> 3 limit)"
+    },
+    {
+      "id": "uc10-07",
+      "status": "fail",
+      "exPass": false,
+      "ms": 7,
+      "tokens": 0,
+      "note": "Baseline Run #1 (pre-recipient-scoped fingerprint): second recipient country_manager falsely suppressed"
+    },
+    {
+      "id": "uc10-08",
+      "status": "pass",
+      "exPass": true,
+      "ms": 38,
+      "tokens": 0,
+      "note": "Baseline Run #1: 5xx retry/queue, RBAC filter, and PII block passed"
+    }
+  ],
+  "summary": {
+    "total": 8,
+    "passed": 5,
+    "exRate": 0.625,
+    "avgMs": 15,
+    "avgTokens": 0
+  },
+  "ucSummary": {
+    "seededDetected": 4,
+    "seededTotal": 5,
+    "detectionRate": 0.8,
+    "falsePositivesPerNormalWeek": 6,
+    "minSupportSkipped": false,
+    "sixFieldCompleteness": 1,
+    "dedupPass": false,
+    "retryQueuePass": true,
+    "piiLeaks": 0,
+    "meanLatencyMs": 15,
+    "meanTokens": 0,
+    "totalCostUsd": 0,
+    "gatesPassed": false,
+    "gateFailures": [
+      "normal-week false positives 6 > 3",
+      "min_support low-sample skip check failed",
+      "24h deduplication check failed"
+    ]
+  },
+  "gatesPassed": false
+}

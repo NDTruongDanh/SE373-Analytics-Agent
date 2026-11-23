@@ -1,0 +1,94 @@
+{
+  "uc": "uc10",
+  "datasetVersion": "uc10-1",
+  "cases": [
+    {
+      "id": "uc10-01",
+      "status": "pass",
+      "exPass": true,
+      "ms": 22,
+      "tokens": 0,
+      "note": "Passed: A1 severity=critical deviation=\"z=+63.74, WoW=+340.5%\" segment=\"regions.province = 'Đà Nẵng' AND categories.name_vi = 'Thực phẩm tươi sống'\""
+    },
+    {
+      "id": "uc10-02",
+      "status": "pass",
+      "exPass": true,
+      "ms": 5,
+      "tokens": 0,
+      "note": "Passed: A2 severity=critical deviation=\"z=-10.00, WoW=-51.1%\" segment=\"customers.region_group = 'Nam' AND orders.channel_id = 'shopee'\""
+    },
+    {
+      "id": "uc10-03",
+      "status": "pass",
+      "exPass": true,
+      "ms": 4,
+      "tokens": 0,
+      "note": "Passed: A3 severity=critical deviation=\"z=+29.40, WoW=+156.8%\" segment=\"regions.province = 'TP.HCM' AND channels.channel_name = 'Shopee'\""
+    },
+    {
+      "id": "uc10-04",
+      "status": "pass",
+      "exPass": true,
+      "ms": 4,
+      "tokens": 0,
+      "note": "Passed: A4 severity=critical deviation=\"z=+21.33, WoW=+101.6%\" segment=\"sellers.province = 'Hà Nội' AND sellers.seller_id = 'seller-042'\""
+    },
+    {
+      "id": "uc10-05",
+      "status": "pass",
+      "exPass": true,
+      "ms": 5,
+      "tokens": 0,
+      "note": "Passed: A5 severity=critical deviation=\"z=-3.76, WoW=-31.2%\" segment=\"channels.channel_name = 'TikTok Shop' AND categories.name_vi = 'Thời trang nữ'\""
+    },
+    {
+      "id": "uc10-06",
+      "status": "pass",
+      "exPass": true,
+      "ms": 26,
+      "tokens": 0,
+      "note": "Passed: normal-week FP=0 <= 3 (35 slices), min_support skipped sparse province, trimmed baseline resisted 10x past outlier"
+    },
+    {
+      "id": "uc10-07",
+      "status": "pass",
+      "exPass": true,
+      "ms": 6,
+      "tokens": 0,
+      "note": "Passed: run1 sent=1, run2 skippedDuplicate=1 (0 duplicate sends), run3 country_manager sent=1 (recipient-scoped fingerprint)"
+    },
+    {
+      "id": "uc10-08",
+      "status": "pass",
+      "exPass": true,
+      "ms": 37,
+      "tokens": 0,
+      "note": "Passed: 5xx retried 3x -> queued (ALERT_QUEUED, no premature history) -> flushed on recovery; RBAC regions.region='Nam' enforced; PII_BLOCKED with 0 leaks"
+    }
+  ],
+  "summary": {
+    "total": 8,
+    "passed": 8,
+    "exRate": 1,
+    "avgMs": 13.625,
+    "avgTokens": 0
+  },
+  "ucSummary": {
+    "seededDetected": 5,
+    "seededTotal": 5,
+    "detectionRate": 1,
+    "falsePositivesPerNormalWeek": 0,
+    "minSupportSkipped": true,
+    "sixFieldCompleteness": 1,
+    "dedupPass": true,
+    "retryQueuePass": true,
+    "piiLeaks": 0,
+    "meanLatencyMs": 13.625,
+    "meanTokens": 0,
+    "totalCostUsd": 0,
+    "gatesPassed": true,
+    "gateFailures": []
+  },
+  "gatesPassed": true
+}

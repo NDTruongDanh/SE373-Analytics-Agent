@@ -83,6 +83,7 @@ import {
 } from "./uc03/grader.js";
 import { gradeUc02, printUc02Report } from "./uc02/grader.js";
 import { gradeUc05, printUc05Report } from "./uc05/grader.js";
+import { gradeUc10, printUc10Report } from "./uc10/grader.js";
 import {
   parseCountValue,
   probeAgentRoWriteRefused,
@@ -655,6 +656,7 @@ const PURE_UC_RUNNERS: Record<
   uc02: { datasetVersion: "uc02-1", grade: gradeUc02, print: printUc02Report as (run: never) => void },
   uc03: { datasetVersion: "uc03-1", grade: gradeUc03, print: printUc03Report as (run: never) => void },
   uc05: { datasetVersion: "uc05-1", grade: gradeUc05, print: printUc05Report as (run: never) => void },
+  uc10: { datasetVersion: "uc10-1", grade: gradeUc10, print: printUc10Report as (run: never) => void },
 };
 
 /** True when `uc` is graded by a pure runner rather than the live harness. */
@@ -1551,7 +1553,9 @@ async function main(): Promise<void> {
   if (positional[0] === "--all") {
     ucs = discoverUcDirs(repoRoot);
   } else if (positional[0] === "--uc" && typeof positional[1] === "string") {
-    ucs = [positional[1]];
+    const rawUc = positional[1].trim();
+    const uc = /^\d+$/.test(rawUc) ? `uc${rawUc.padStart(2, "0")}` : rawUc;
+    ucs = [uc];
   } else {
     console.error("usage: pnpm eval --all | pnpm eval --uc <id> [--live] [--live-graph]");
     process.exit(1);
