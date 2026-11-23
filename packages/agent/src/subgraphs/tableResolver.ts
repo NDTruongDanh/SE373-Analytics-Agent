@@ -6,6 +6,7 @@
 
 import { NO_MATCHING_TABLE_OPTION } from "../constants.js";
 import type { AgentState, CatalogTable } from "../state.js";
+import { serializeUntrusted } from "../untrusted.js";
 
 export { NO_MATCHING_TABLE_OPTION };
 export const MAX_CANDIDATE_TABLES = 6;
@@ -610,7 +611,7 @@ export function buildIntentPrompt(input: IntentPromptInput): string {
   parts.push(
     "",
     `Skill contract:\n${input.skillContract}`,
-    `<question>${JSON.stringify(input.question)}</question>`,
+    `<question>${serializeUntrusted(input.question)}</question>`,
   );
 
   return parts.join("\n");

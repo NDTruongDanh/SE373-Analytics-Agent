@@ -4,6 +4,8 @@
 // keys, and foreign keys), bounded semantic references, and delimited user
 // text. Pure and deterministic: no I/O, no row values, no gold SQL.
 
+import { serializeUntrusted } from "../untrusted.js";
+
 export interface DescribedColumn {
   name: string;
   type: string;
@@ -117,10 +119,10 @@ export function buildSqlProposalPrompt(input: SqlPromptInput): string {
   if (input.timeRange?.trim()) {
     parts.push(
       "",
-      `<user-selected-time-range>${JSON.stringify(input.timeRange.trim())}</user-selected-time-range>`,
+      `<user-selected-time-range>${serializeUntrusted(input.timeRange.trim())}</user-selected-time-range>`,
     );
   }
-  parts.push("", `<question>${JSON.stringify(input.question)}</question>`);
+  parts.push("", `<question>${serializeUntrusted(input.question)}</question>`);
   if (input.repair) {
     parts.push(
       "",

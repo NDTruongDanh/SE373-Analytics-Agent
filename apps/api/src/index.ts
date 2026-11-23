@@ -17,7 +17,7 @@
 // by apps/api/test/tracer.test.ts, which this plan does not modify).
 
 import express from "express";
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, readSync } from "node:fs";
 import { Command, Overwrite, type BaseCheckpointSaver } from "@langchain/langgraph";
@@ -298,10 +298,14 @@ function toFailedSseData(error: unknown, fallbackMessage: string) {
   });
 }
 
+export const API_CSP_HEADER =
+  "default-src 'self'; img-src 'self' data:; connect-src 'self'";
+
 const SSE_HEADERS = {
   "content-type": "text/event-stream",
   "cache-control": "no-cache",
   connection: "keep-alive",
+  "content-security-policy": API_CSP_HEADER,
 };
 
 /**
@@ -323,6 +327,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
   const runs = new Map<string, StoredRun>();
 
   const app = express();
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("content-security-policy", API_CSP_HEADER);
+    next();
+  });
   app.use(express.json({ limit: "100kb" }));
 
   app.get("/healthz", (_req: Request, res: Response) => {
@@ -902,6 +910,10 @@ function sseSend(res: Response, event: string, data: unknown): void {
 export function createTracerApi(options: TracerApiOptions): express.Express {
   const tracesDir = options.tracesDir ?? "traces";
   const app = express();
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("content-security-policy", API_CSP_HEADER);
+    next();
+  });
   app.use(express.json({ limit: "100kb" }));
 
   app.get("/healthz", (_req: Request, res: Response) => {
@@ -939,6 +951,7 @@ export function createTracerApi(options: TracerApiOptions): express.Express {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
       connection: "keep-alive",
+      "content-security-policy": API_CSP_HEADER,
     });
 
     const base = { runId, threadId };

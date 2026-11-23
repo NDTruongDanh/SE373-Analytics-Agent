@@ -49,6 +49,7 @@ import {
   hasWhereFilter,
   localQuerySafetyGate,
 } from "./safetyGate.js";
+import { escapeUntrustedText, serializeUntrusted } from "../untrusted.js";
 import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
 export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
@@ -56,6 +57,8 @@ export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 /** Rows retained for in-process validation; checkpoint state keeps only 50. */
 export const TRANSIENT_ROW_BUFFER_MAX = 1000;
 const DIAGNOSTIC_DISTINCT_LIMIT = 20;
+const DIAGNOSTIC_MAX_OBSERVED_VALUES = 10;
+const DIAGNOSTIC_MAX_VALUE_CHARS = 200;
 const MAX_DIAGNOSTIC_FILTER_PROBES = 3;
 
 /** Structured SQL proposal the model must produce (untrusted until gated). */
@@ -534,6 +537,46 @@ function normalizeDiagnosticValue(value: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function canonicalTableSet(tables: readonly string[]): string {
+  const unique = new Set(tables.map((t) => t.toLowerCase()));
+  return JSON.stringify([...unique].sort());
+}
+
+function stripAstLocations(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map((item) => stripAstLocations(item));
+  }
+  const record = asRecord(node);
+  if (!record) return node;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(record).sort()) {
+    if (key === "location") continue;
+    out[key] = stripAstLocations(record[key]);
+  }
+  return out;
+}
+
+function canonicalSelectProjection(ast: unknown): string {
+  const projections: unknown[] = [];
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) visit(entry);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    const selectStmt = asRecord(record["SelectStmt"]);
+    if (selectStmt) {
+      projections.push(stripAstLocations(selectStmt["targetList"] ?? null));
+    }
+    for (const key of Object.keys(record).sort()) {
+      visit(record[key]);
+    }
+  };
+  visit(ast);
+  return JSON.stringify(projections);
+}
+
 /** Detect a bounded synonym signal such as "Mien Nam" versus "Nam". */
 function diagnosticMismatch(
   predicate: FilterLiteral,
@@ -542,7 +585,8 @@ function diagnosticMismatch(
   const values = rows
     .map((row) => row[predicate.column])
     .filter((value): value is string => typeof value === "string")
-    .slice(0, DIAGNOSTIC_DISTINCT_LIMIT);
+    .slice(0, DIAGNOSTIC_MAX_OBSERVED_VALUES)
+    .map((value) => value.slice(0, DIAGNOSTIC_MAX_VALUE_CHARS));
   const normalizedRequested = normalizeDiagnosticValue(predicate.literal);
   if (normalizedRequested.length < 2) return undefined;
   for (const actual of values) {
@@ -554,12 +598,12 @@ function diagnosticMismatch(
         normalizedRequested.includes(normalizedActual))
     ) {
       return [
-        "Zero-row diagnostic found one likely filter-value mismatch. Use only the evidence below to repair the SQL.",
+        "Zero-row diagnostic found one likely filter-value mismatch. Use only the evidence below to repair ONLY the filter literal; keep the tables and SELECT projection unchanged.",
         "<untrusted-diagnostic-data>",
-        `table: ${predicate.table}`,
-        `column: ${predicate.column}`,
-        `requested: ${JSON.stringify(predicate.literal)}`,
-        `observed: ${JSON.stringify(actual)}`,
+        `table: ${escapeUntrustedText(predicate.table)}`,
+        `column: ${escapeUntrustedText(predicate.column)}`,
+        `requested: ${serializeUntrusted(predicate.literal)}`,
+        `observed: ${serializeUntrusted(actual)}`,
         "</untrusted-diagnostic-data>",
       ].join("\n");
     }
@@ -746,6 +790,7 @@ export class ValidatedQueryExecutor {
     let forcedSql: string | null = input.initialSql ?? null;
     let lastTablesUsed: string[] = [];
     let timeoutSimplified = false;
+    let diagnosticBaseline: { tables: string; projection: string } | null = null;
 
     while (attemptNo < effectiveMaxAttempts) {
       attemptNo += 1;
@@ -910,6 +955,34 @@ export class ValidatedQueryExecutor {
           sql,
           attempts: attempt,
         };
+      }
+      if (diagnosticBaseline !== null) {
+        const tablesMatch =
+          canonicalTableSet(guard.tables) === diagnosticBaseline.tables;
+        const projectionMatch =
+          canonicalSelectProjection(guard.ast) === diagnosticBaseline.projection;
+        if (!tablesMatch || !projectionMatch) {
+          this.span({
+            node: "repair",
+            type: "node_done",
+            attempt,
+            payload: {
+              code: "FORBIDDEN_STATEMENT",
+              strategy: "zero_row_diagnostic_rejected",
+              tablesMatch,
+              projectionMatch,
+            },
+          });
+          return {
+            status: "restricted",
+            error: dbToolError(
+              "FORBIDDEN_STATEMENT",
+              "Diagnostic-driven SQL repair may only change filter literals; table set and SELECT projection must match attempt 1",
+            ),
+            sql,
+            attempts: attempt,
+          };
+        }
       }
       const gate = localQuerySafetyGate(sql, guard, catalog);
       if (gate.verdict === "deny") {
@@ -1110,7 +1183,11 @@ export class ValidatedQueryExecutor {
           if (diagnostic.budgetTripped) {
             return budgetTrip(diagnostic.budgetTripped, attempt);
           }
-          if (diagnostic.repairFeedback && attempt < this.maxAttempts) {
+          if (diagnostic.repairFeedback && attempt < effectiveMaxAttempts) {
+            diagnosticBaseline = {
+              tables: canonicalTableSet(guard.tables),
+              projection: canonicalSelectProjection(guard.ast),
+            };
             repairFeedback = diagnostic.repairFeedback;
             this.span({
               node: "repair",

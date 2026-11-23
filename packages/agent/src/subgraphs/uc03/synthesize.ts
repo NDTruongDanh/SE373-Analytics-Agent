@@ -21,6 +21,7 @@ import {
   type InsightReport,
 } from "@shared/contracts";
 import { UNTRUSTED_DATA_CLOSE, UNTRUSTED_DATA_OPEN } from "../../constants.js";
+import { serializeUntrusted } from "../../untrusted.js";
 import {
   checkBudget,
   estimateTokens,
@@ -98,7 +99,7 @@ export function buildInsightPrompt(input: PromptInput): string {
       ? "- The preview is truncated: note sampling limits in caveats when relevant."
       : "- The preview covers all returned rows.",
     `Columns: ${input.columns.join(", ")}`,
-    `Rows: ${UNTRUSTED_DATA_OPEN}${JSON.stringify(input.preview)}${UNTRUSTED_DATA_CLOSE}`,
+    `Rows: ${UNTRUSTED_DATA_OPEN}${serializeUntrusted(input.preview)}${UNTRUSTED_DATA_CLOSE}`,
   ].join("\n");
 }
 

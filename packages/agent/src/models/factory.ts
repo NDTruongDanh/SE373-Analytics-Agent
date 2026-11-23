@@ -45,6 +45,7 @@ import {
   UNTRUSTED_DATA_CLOSE,
   UNTRUSTED_DATA_OPEN,
 } from "../constants.js";
+import { serializeUntrusted } from "../untrusted.js";
 
 export {
   DEFAULT_MODEL_ID,
@@ -291,7 +292,7 @@ export function withStructured<S extends z.ZodType>(
 
 /** Enclose result rows so row text can never become an instruction. */
 export function wrapUntrusted(rows: Record<string, unknown>[]): string {
-  return `${UNTRUSTED_DATA_OPEN}${JSON.stringify(rows)}${UNTRUSTED_DATA_CLOSE}`;
+  return `${UNTRUSTED_DATA_OPEN}${serializeUntrusted(rows)}${UNTRUSTED_DATA_CLOSE}`;
 }
 
 /**

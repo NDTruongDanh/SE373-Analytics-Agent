@@ -9,7 +9,7 @@ import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { MemorySaver } from "@langchain/langgraph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildApp } from "../src/index.js";
+import { API_CSP_HEADER, buildApp } from "../src/index.js";
 import { SSE_ALLOWLIST } from "../src/sse.js";
 import { ModelRetryError } from "@shared/agent/telemetry";
 
@@ -165,6 +165,24 @@ describe("buildApp /api/ask", () => {
     const out = await ask({});
     expect(out.status).toBe(400);
     expect(out.json).toMatchObject({ code: "INVALID_PARAMS" });
+    expect(out.headers.get("content-security-policy")).toBe(API_CSP_HEADER);
+  });
+
+  it("sends strict Content-Security-Policy header on /healthz and SSE /api/ask responses", async () => {
+    const healthRes = await fetch(`${apiBase}/healthz`);
+    expect(healthRes.status).toBe(200);
+    expect(healthRes.headers.get("content-security-policy")).toBe(
+      "default-src 'self'; img-src 'self' data:; connect-src 'self'",
+    );
+
+    const askRes = await ask({
+      question: "How many orders per status?",
+      persona: "sales_south",
+    });
+    expect(askRes.status).toBe(200);
+    expect(askRes.headers.get("content-security-policy")).toBe(
+      "default-src 'self'; img-src 'self' data:; connect-src 'self'",
+    );
   });
 
   it("fails closed on unknown personas with no default role", async () => {
