@@ -9,15 +9,15 @@ import {
 } from "lucide-react";
 import { useMemo, useReducer, useState } from "react";
 import { BrowserRouter, MemoryRouter, NavLink, Route, Routes, useLocation } from "react-router";
-import { chatReducer, initialChat } from "./chat.js";
-import { createQueryClient } from "./lib/queryClient.js";
-import { AlertsPage } from "./pages/AlertsPage.js";
-import { ApprovalsPage } from "./pages/ApprovalsPage.js";
-import { ChatPage, type ChatMessageItem } from "./pages/ChatPage.js";
-import { DictionaryPage } from "./pages/DictionaryPage.js";
-import { EvalTracesPage } from "./pages/EvalTracesPage.js";
-import "./styles.css";
-import "./progress.css";
+import { chatReducer, initialChat } from "@/chat";
+import { createQueryClient } from "@/lib/queryClient";
+import { AlertsPage } from "@/pages/AlertsPage";
+import { ApprovalsPage } from "@/pages/ApprovalsPage";
+import { ChatPage, type ChatMessageItem } from "@/pages/ChatPage";
+import { DictionaryPage } from "@/pages/DictionaryPage";
+import { EvalTracesPage } from "@/pages/EvalTracesPage";
+import "@/styles.css";
+import "@/progress.css";
 
 const personas = [
   { value: "sales_south", label: "Kinh doanh miền Nam" },

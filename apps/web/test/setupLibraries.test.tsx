@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
-import "@testing-library/jest-dom/vitest";
 import type { ColumnDef } from "@tanstack/react-table";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../src/app.js";
-import { SafeMarkdown } from "../src/components/chat/SafeMarkdown.js";
-import { DataTable } from "../src/components/ui/data-table.js";
+import { App } from "@/app";
+import { SafeMarkdown } from "@/components/chat/SafeMarkdown";
+import { DataTable } from "@/components/ui/data-table";
 
 afterEach(() => {
   cleanup();

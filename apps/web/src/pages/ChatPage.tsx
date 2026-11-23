@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { SQLAnswerSchema, type SseEventName, type SseProgressEvent } from "@shared/contracts";
 import { ArrowUp, ArrowUpRight, MessageSquare, Sparkles } from "lucide-react";
-import type { ChatAction, ChatState } from "../chat.js";
-import { ResultDrawer } from "../drawer.js";
-import { postStream } from "../stream.js";
-import { SafeMarkdown } from "../components/chat/SafeMarkdown.js";
+import type { ChatAction, ChatState } from "@/chat";
+import { ResultDrawer } from "@/drawer";
+import { postStream } from "@/stream";
+import { SafeMarkdown } from "@/components/chat/SafeMarkdown";
 
 const labels: Record<SseEventName, string> = {
   intent_parsed: "Mình đã nhận câu hỏi và đang bắt đầu phân tích.",

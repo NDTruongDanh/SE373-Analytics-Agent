@@ -1,6 +1,6 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { cn } from "../../lib/utils.js";
+import { cn } from "@/lib/utils";
 
 export interface SafeMarkdownProps {
   content: string;
