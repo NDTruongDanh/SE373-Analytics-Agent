@@ -25,16 +25,33 @@ export interface InsightChartProps {
 export function InsightChart({ title, report, lang, streaming = false }: InsightChartProps) {
   const view = buildChartView(title, report, lang);
   if (!view.renderable) {
-    return null;
+    if (!view.fallbackText) {
+      return null;
+    }
+    return (
+      <div
+        className="insight-chart-fallback rounded-xl border border-border bg-muted/40 p-3 text-xs whitespace-pre-wrap text-foreground"
+        data-testid="insight-chart-fallback"
+      >
+        {view.fallbackText}
+      </div>
+    );
   }
   return (
-    <Renderer
-      response={view.lang}
-      library={openuiChatLibrary}
-      isStreaming={streaming}
-    />
+    <div
+      className="insight-chart my-3"
+      data-testid="insight-chart"
+      data-chart-type={report.chartType}
+      data-streaming={streaming ? "true" : "false"}
+    >
+      <Renderer
+        response={view.lang}
+        library={openuiChatLibrary}
+        isStreaming={streaming}
+      />
+    </div>
   );
 }
 
-export { buildChartView };
+export { buildChartView, isTrustedOpenuiLang } from "./chartView.js";
 export type { ChartView } from "./chartView.js";

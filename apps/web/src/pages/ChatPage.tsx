@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { SQLAnswerSchema, type SseEventName, type SseProgressEvent } from "@shared/contracts";
+import {
+  SQLAnswerSchema,
+  type EvidencePointer,
+  type SseEventName,
+  type SseProgressEvent,
+} from "@shared/contracts";
 import { ArrowUp, ArrowUpRight, MessageSquare, Sparkles } from "lucide-react";
-import type { ChatAction, ChatState } from "@/chat";
+import { InsightChart } from "@/charts";
+import { extractVizPayload, type ChatAction, type ChatState, type ChatVizState } from "@/chat";
+import { InsightPanel } from "@/components/InsightPanel";
+import { SafeMarkdown } from "@/components/chat/SafeMarkdown";
 import { ResultDrawer } from "@/drawer";
 import { postStream } from "@/stream";
-import { SafeMarkdown } from "@/components/chat/SafeMarkdown";
 
 const labels: Record<SseEventName, string> = {
   intent_parsed: "Mình đã nhận câu hỏi và đang bắt đầu phân tích.",
@@ -21,6 +28,8 @@ const labels: Record<SseEventName, string> = {
 export interface ChatMessageItem {
   role: "user" | "assistant";
   text: string;
+  viz?: ChatVizState | null;
+  resultPreview?: Record<string, unknown>[];
 }
 
 export interface ChatPageProps {
@@ -33,6 +42,7 @@ export interface ChatPageProps {
 
 export function ChatPage({ persona, state, dispatch, history, setHistory }: ChatPageProps) {
   const [question, setQuestion] = useState("");
+  const [activeEvidence, setActiveEvidence] = useState<EvidencePointer | null>(null);
   const controller = useRef<AbortController | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
 
@@ -51,6 +61,9 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
     let runId = identity?.runId;
     let threadId = identity?.threadId;
     let terminal = false;
+    let latestViz: ChatVizState | null = null;
+    const lastUserQuestion = [...history].reverse().find((item) => item.role === "user")?.text;
+    const questionTitle = body.question || lastUserQuestion || state.viz?.title || "Kết quả phân tích";
     try {
       await postStream(path, body, current.signal, (event: SseProgressEvent) => {
         if (terminal || (runId && runId !== event.runId) || (threadId && threadId !== event.threadId)) {
@@ -63,16 +76,42 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
           current.abort();
           if (controller.current === current) controller.current = null;
         }
+        if (event.event === "viz") {
+          const parsedViz = extractVizPayload(event.data, questionTitle);
+          if (parsedViz) latestViz = parsedViz;
+        }
         dispatch({ type: "event", event });
         if (event.event === "completed") {
           const data = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : null;
           const detail = SQLAnswerSchema.safeParse(data?.answer ?? event.data);
+          const completedVizRaw = extractVizPayload(event.data, questionTitle);
+          let completedViz = completedVizRaw ?? latestViz;
+          if (completedViz && completedVizRaw && !completedVizRaw.openuiLang && latestViz?.openuiLang) {
+            completedViz = { ...completedViz, openuiLang: latestViz.openuiLang };
+          }
+          if (completedViz && !completedViz.resultPreview && latestViz?.resultPreview) {
+            completedViz = { ...completedViz, resultPreview: latestViz.resultPreview };
+          }
+          const previewRows = detail.success ? detail.data.resultPreview : completedViz?.resultPreview;
+          if (completedViz && previewRows && previewRows.length > 0 && !completedViz.resultPreview) {
+            completedViz = { ...completedViz, resultPreview: previewRows };
+          }
           const answerText = detail.success
             ? detail.data.answerText
             : typeof data?.answerText === "string"
               ? data.answerText
-              : "Không có nội dung trả lời.";
-          setHistory((previous) => [...previous, { role: "assistant", text: answerText }]);
+              : typeof data?.summary === "string"
+                ? data.summary
+                : "Không có nội dung trả lời.";
+          setHistory((previous) => [
+            ...previous,
+            {
+              role: "assistant",
+              text: answerText,
+              ...(completedViz ? { viz: completedViz } : {}),
+              ...(previewRows ? { resultPreview: previewRows } : {}),
+            },
+          ]);
         }
       });
       if (!terminal) throw new Error("Kết nối đã đóng trước khi yêu cầu hoàn tất.");
@@ -95,6 +134,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
     if (!text || controller.current || state.phase === "streaming" || state.phase === "waiting") return;
     const threadId = state.threadId;
     setQuestion("");
+    setActiveEvidence(null);
     setHistory((previous) => [...previous, { role: "user", text }]);
     dispatch({ type: "start" });
     void run("/api/ask", { question: text, persona, ...(threadId ? { threadId } : {}) });
@@ -117,6 +157,10 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
   }
 
   const busy = state.phase === "streaming";
+  const lastAssistantIndex = history.reduce(
+    (lastIdx, item, idx) => (item.role === "assistant" ? idx : lastIdx),
+    -1,
+  );
 
   return (
     <div className="content">
@@ -168,21 +212,71 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
               </div>
             </div>
           )}
-          {history.map((message, index) => (
-            <div className={`message ${message.role}`} key={index}>
-              <span className="avatar">{message.role === "user" ? "B" : "✦"}</span>
-              <div className="min-w-0 flex-1">
-                <strong>{message.role === "user" ? "Bạn" : "Trợ lý phân tích"}</strong>
-                {message.role === "assistant" ? (
-                  <div className="mt-1">
-                    <SafeMarkdown content={message.text} />
-                  </div>
-                ) : (
-                  <p>{message.text}</p>
-                )}
+          {history.map((message, index) => {
+            const isLastAssistantMessage =
+              message.role === "assistant" && index === lastAssistantIndex;
+            const turnViz =
+              message.role === "assistant"
+                ? message.viz ?? (isLastAssistantMessage ? state.viz : null)
+                : null;
+            const turnPreview =
+              message.resultPreview ??
+              turnViz?.resultPreview ??
+              (isLastAssistantMessage ? state.answerDetail?.resultPreview : undefined);
+            return (
+              <div className={`message ${message.role}`} key={index}>
+                <span className="avatar">{message.role === "user" ? "B" : "✦"}</span>
+                <div className="min-w-0 flex-1">
+                  <strong>{message.role === "user" ? "Bạn" : "Trợ lý phân tích"}</strong>
+                  {message.role === "assistant" ? (
+                    <div className="mt-1 space-y-3">
+                      <SafeMarkdown content={message.text} />
+                      {turnViz && (
+                        <>
+                          <InsightChart
+                            title={turnViz.title}
+                            report={turnViz.report}
+                            lang={turnViz.openuiLang}
+                            streaming={false}
+                          />
+                          <InsightPanel
+                            report={turnViz.report}
+                            resultPreview={turnPreview}
+                            truncated={turnViz.truncated}
+                            activeEvidence={activeEvidence}
+                            onSelectEvidence={setActiveEvidence}
+                          />
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <p>{message.text}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {busy && state.viz && (
+            <div className="message assistant" data-testid="streaming-viz-turn">
+              <span className="avatar">✦</span>
+              <div className="min-w-0 flex-1 space-y-3">
+                <strong>Trợ lý phân tích</strong>
+                <InsightChart
+                  title={state.viz.title}
+                  report={state.viz.report}
+                  lang={state.viz.openuiLang}
+                  streaming={true}
+                />
+                <InsightPanel
+                  report={state.viz.report}
+                  resultPreview={state.viz.resultPreview ?? state.answerDetail?.resultPreview}
+                  truncated={state.viz.truncated}
+                  activeEvidence={activeEvidence}
+                  onSelectEvidence={setActiveEvidence}
+                />
               </div>
             </div>
-          ))}
+          )}
           {(state.events.length > 0 || busy) && (
             <details className="progress" open>
               <summary className="progress-title">
@@ -237,7 +331,11 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
             </div>
           )}
           {state.events.length > 0 && state.phase !== "idle" && (
-            <ResultDrawer events={state.events} answer={state.answerDetail ?? undefined} />
+            <ResultDrawer
+              events={state.events}
+              answer={state.answerDetail ?? undefined}
+              highlightedEvidence={activeEvidence}
+            />
           )}
         </div>
         <form className="composer" onSubmit={send}>

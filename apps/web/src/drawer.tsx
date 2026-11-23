@@ -1,7 +1,15 @@
-import type { SQLAnswer, SseProgressEvent } from "@shared/contracts";
+import type { EvidencePointer, SQLAnswer, SseProgressEvent } from "@shared/contracts";
 import { useState } from "react";
+import {
+  cellMatchesEvidence,
+  findMatchingPreviewRows,
+} from "@/components/InsightPanel";
 
-interface Props { answer?: SQLAnswer; events: SseProgressEvent[] }
+interface Props {
+  answer?: SQLAnswer;
+  events: SseProgressEvent[];
+  highlightedEvidence?: EvidencePointer | null;
+}
 
 function valueText(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -20,7 +28,7 @@ function changes(before: string, after: string): string {
   return [...oldLines.slice(0, prefix).map((line) => `  ${line}`), ...oldLines.slice(prefix, oldLines.length - suffix).map((line) => `- ${line}`), ...newLines.slice(prefix, newLines.length - suffix).map((line) => `+ ${line}`), ...oldLines.slice(oldLines.length - suffix).map((line) => `  ${line}`)].join("\n");
 }
 
-export function ResultDrawer({ answer, events }: Props) {
+export function ResultDrawer({ answer, events, highlightedEvidence = null }: Props) {
   const [open, setOpen] = useState(false);
   const sqlEvent = [...events].reverse().find((event) => event.event === "sql_generated" && event.data && typeof event.data === "object" && "sql" in event.data);
   const metadataEvent = [...events].reverse().find((event) => event.event === "sql_generated" && event.data && typeof event.data === "object" && "statementType" in event.data);
@@ -29,6 +37,9 @@ export function ResultDrawer({ answer, events }: Props) {
   const tables = Array.isArray(metadata?.tablesUsed) ? metadata.tablesUsed.filter((value): value is string => typeof value === "string") : [];
   const withheld = events.some((event) => event.event === "sql_generated" && event.data && typeof event.data === "object" && "withheld" in event.data && event.data.withheld === true);
   const columns = answer ? [...new Set(answer.resultPreview.flatMap((row) => Object.keys(row)))] : [];
+  const matchedRows = answer
+    ? findMatchingPreviewRows(answer.resultPreview, highlightedEvidence)
+    : new Set<number>();
   return <section className="details">
     <button className="details-toggle" type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="result-details">
       <span>SQL &amp; nguồn tham chiếu</span><span aria-hidden="true">{open ? "−" : "+"}</span>
@@ -54,7 +65,31 @@ export function ResultDrawer({ answer, events }: Props) {
         {answer.citations.length ? <ul>{answer.citations.map((citation, i) => <li key={`${citation}-${i}`}>{citation}</li>)}</ul> : <p>Không có nguồn tham chiếu.</p>}
         <h3>Dữ liệu xem trước <small>({answer.resultPreview.length}/50 dòng)</small></h3>
         {answer.resultPreview.length ? <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>
-          {answer.resultPreview.slice(0, 50).map((row, i) => <tr key={i}>{columns.map((column) => <td key={column}>{valueText(row[column])}</td>)}</tr>)}
+          {answer.resultPreview.slice(0, 50).map((row, i) => {
+            const rowHighlighted = matchedRows.has(i);
+            return <tr
+              key={i}
+              data-highlighted-row={rowHighlighted ? "true" : undefined}
+              className={rowHighlighted ? "bg-accent/60" : undefined}
+            >
+              {columns.map((column) => {
+                const cellHighlighted = cellMatchesEvidence(
+                  row,
+                  i,
+                  column,
+                  highlightedEvidence,
+                  matchedRows,
+                );
+                return <td
+                  key={column}
+                  data-highlighted-cell={cellHighlighted ? "true" : undefined}
+                  className={cellHighlighted ? "bg-primary/15 font-semibold text-accent-foreground" : undefined}
+                >
+                  {valueText(row[column])}
+                </td>;
+              })}
+            </tr>;
+          })}
         </tbody></table></div> : <p>Không có dòng dữ liệu.</p>}
         <h3>Thống kê</h3><p>{answer.telemetry.latencyMs} ms · {answer.telemetry.promptTokens} input tokens · {answer.telemetry.completionTokens} output tokens · {answer.telemetry.embeddingTokens} embedding tokens · ${answer.telemetry.estimatedCostUsd.toFixed(4)}</p>
       </>}
