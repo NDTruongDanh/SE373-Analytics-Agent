@@ -67,6 +67,7 @@ interface InsightFixture {
   id: string;
   fixtureRole?: "insight" | "strip_guard";
   scriptedOnly?: boolean;
+  truncated?: boolean;
   question: string;
   chartType: string;
   status: string;
@@ -145,6 +146,7 @@ function fakeState(fixture: InsightFixture): AgentState {
     },
     semanticChunks: [],
     resultPreview: fixture.rows,
+    resultTruncated: fixture.truncated ?? false,
     columns: fixture.columns,
     sql: null,
     tablesUsed: [],
@@ -351,7 +353,9 @@ export async function gradeUc03(
     const spec = out.vizSpec as Uc03VizSpec;
     const ms = Date.now() - t0;
     const buffer = { columns: fixture.columns, rows: fixture.rows };
-    const deliveredCheck = verifyNumericClaims(spec.report.insights, buffer);
+    const deliveredCheck = verifyNumericClaims(spec.report.insights, buffer, {
+      truncated: fixture.truncated ?? false,
+    });
     deliveredVerified += deliveredCheck.verified.length;
     deliveredStripped += deliveredCheck.stripped.length;
     if (spec.stripped.some((item) => /cause is unverified/.test(item.reason))) {
