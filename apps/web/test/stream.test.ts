@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SseParser, postStream, readEventStream } from "../src/stream.js";
+import { SseParser, StreamHttpError, postStream, readEventStream } from "../src/stream.js";
 
 const frame = (event: string, data: unknown = {}) =>
   `event: ${event}\r\ndata: ${JSON.stringify({ runId: "r1", threadId: "t1", event, data })}\r\n\r\n`;
@@ -26,6 +26,19 @@ describe("SSE stream", () => {
     expect(() => parser.finish()).toThrow();
     await expect(readEventStream(new Response("no", { status: 500 }), () => {})).rejects.toThrow("500");
     await expect(readEventStream(new Response("no"), () => {})).rejects.toThrow();
+
+    try {
+      await readEventStream(
+        new Response(JSON.stringify({ code: "CONFLICT", message: "stale checkpointId" }), { status: 409 }),
+        () => {},
+      );
+      expect.unreachable("expected 409 to throw StreamHttpError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(StreamHttpError);
+      expect((err as StreamHttpError).status).toBe(409);
+      expect((err as StreamHttpError).message).toContain("409");
+      expect((err as StreamHttpError).message).toContain("stale checkpointId");
+    }
   });
 
   it.each(["malformed", "identity"])("cancels on %s errors without masking them", async (kind) => {

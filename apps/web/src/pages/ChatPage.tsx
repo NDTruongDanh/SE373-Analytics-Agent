@@ -7,11 +7,20 @@ import {
 } from "@shared/contracts";
 import { ArrowUp, ArrowUpRight, MessageSquare, Sparkles } from "lucide-react";
 import { InsightChart } from "@/charts";
-import { extractVizPayload, type ChatAction, type ChatState, type ChatVizState } from "@/chat";
+import {
+  extractRootCausePayload,
+  extractVizPayload,
+  type ChatAction,
+  type ChatRootCauseState,
+  type ChatState,
+  type ChatVizState,
+} from "@/chat";
 import { InsightPanel } from "@/components/InsightPanel";
+import { PlanReviewPanel, type PlanResumeSubmission } from "@/components/PlanReviewPanel";
+import { RootCauseView } from "@/components/RootCauseView";
 import { SafeMarkdown } from "@/components/chat/SafeMarkdown";
 import { ResultDrawer } from "@/drawer";
-import { postStream } from "@/stream";
+import { postStream, StreamHttpError } from "@/stream";
 
 const labels: Record<SseEventName, string> = {
   intent_parsed: "Mình đã nhận câu hỏi và đang bắt đầu phân tích.",
@@ -29,6 +38,7 @@ export interface ChatMessageItem {
   role: "user" | "assistant";
   text: string;
   viz?: ChatVizState | null;
+  rootCause?: ChatRootCauseState | null;
   resultPreview?: Record<string, unknown>[];
 }
 
@@ -53,7 +63,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
 
   async function run(
     path: string,
-    body: Record<string, string>,
+    body: Record<string, unknown>,
     identity?: { runId: string; threadId: string },
   ) {
     const current = new AbortController();
@@ -63,7 +73,11 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
     let terminal = false;
     let latestViz: ChatVizState | null = null;
     const lastUserQuestion = [...history].reverse().find((item) => item.role === "user")?.text;
-    const questionTitle = body.question || lastUserQuestion || state.viz?.title || "Kết quả phân tích";
+    const questionTitle =
+      (typeof body.question === "string" && body.question) ||
+      lastUserQuestion ||
+      state.viz?.title ||
+      "Kết quả phân tích";
     try {
       await postStream(path, body, current.signal, (event: SseProgressEvent) => {
         if (terminal || (runId && runId !== event.runId) || (threadId && threadId !== event.threadId)) {
@@ -84,6 +98,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
         if (event.event === "completed") {
           const data = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : null;
           const detail = SQLAnswerSchema.safeParse(data?.answer ?? event.data);
+          const completedRootCause = extractRootCausePayload(event.data, state.planReview?.plan);
           const completedVizRaw = extractVizPayload(event.data, questionTitle);
           let completedViz = completedVizRaw ?? latestViz;
           if (completedViz && completedVizRaw && !completedVizRaw.openuiLang && latestViz?.openuiLang) {
@@ -102,13 +117,16 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
               ? data.answerText
               : typeof data?.summary === "string"
                 ? data.summary
-                : "Không có nội dung trả lời.";
+                : completedRootCause?.answer?.finalReportMarkdown ??
+                  completedRootCause?.message ??
+                  "Không có nội dung trả lời.";
           setHistory((previous) => [
             ...previous,
             {
               role: "assistant",
               text: answerText,
               ...(completedViz ? { viz: completedViz } : {}),
+              ...(completedRootCause ? { rootCause: completedRootCause } : {}),
               ...(previewRows ? { resultPreview: previewRows } : {}),
             },
           ]);
@@ -118,10 +136,14 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
     } catch (error) {
       if (controller.current === current) controller.current = null;
       if (!current.signal.aborted) {
-        dispatch({
-          type: "error",
-          message: error instanceof Error ? error.message : "Không thể kết nối máy chủ.",
-        });
+        if (error instanceof StreamHttpError && error.status === 409) {
+          dispatch({ type: "conflict", message: error.message });
+        } else {
+          dispatch({
+            type: "error",
+            message: error instanceof Error ? error.message : "Không thể kết nối máy chủ.",
+          });
+        }
       }
     } finally {
       if (controller.current === current) controller.current = null;
@@ -147,6 +169,22 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
     const identity = { runId: state.runId, threadId: state.threadId };
     dispatch({ type: "resume" });
     void run(`/api/runs/${encodeURIComponent(identity.runId)}/resume`, { value }, identity);
+  }
+
+  function resumePlan(submission: PlanResumeSubmission) {
+    if (!state.runId || !state.threadId || !state.planReview || controller.current || state.phase === "streaming") {
+      return;
+    }
+    const identity = { runId: state.runId, threadId: state.threadId };
+    dispatch({ type: "resume" });
+    void run(
+      `/api/runs/${encodeURIComponent(identity.runId)}/resume`,
+      {
+        value: submission.value,
+        ...(submission.checkpointId ? { checkpointId: submission.checkpointId } : {}),
+      },
+      identity,
+    );
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -185,7 +223,15 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
           </div>
           <span className="pill">
             <span className="status-dot" />
-            {busy ? "Đang xử lý" : state.phase === "waiting" ? "Chờ làm rõ" : state.phase === "failed" ? "Có lỗi" : "Sẵn sàng"}
+            {busy
+              ? "Đang xử lý"
+              : state.phase === "waiting"
+                ? state.planReview
+                  ? "Chờ duyệt kế hoạch"
+                  : "Chờ làm rõ"
+                : state.phase === "failed"
+                  ? "Có lỗi"
+                  : "Sẵn sàng"}
           </span>
         </div>
         <div className="conversation" aria-live="polite">
@@ -219,10 +265,18 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
               message.role === "assistant"
                 ? message.viz ?? (isLastAssistantMessage ? state.viz : null)
                 : null;
+            const turnRootCause =
+              message.role === "assistant"
+                ? message.rootCause ?? (isLastAssistantMessage ? state.rootCause : null)
+                : null;
             const turnPreview =
               message.resultPreview ??
               turnViz?.resultPreview ??
               (isLastAssistantMessage ? state.answerDetail?.resultPreview : undefined);
+            const showPlainMarkdown =
+              !turnRootCause ||
+              (!turnRootCause.falsePremise &&
+                message.text !== turnRootCause.answer?.finalReportMarkdown);
             return (
               <div className={`message ${message.role}`} key={index}>
                 <span className="avatar">{message.role === "user" ? "B" : "✦"}</span>
@@ -230,23 +284,63 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
                   <strong>{message.role === "user" ? "Bạn" : "Trợ lý phân tích"}</strong>
                   {message.role === "assistant" ? (
                     <div className="mt-1 space-y-3">
-                      <SafeMarkdown content={message.text} />
-                      {turnViz && (
+                      {showPlainMarkdown && <SafeMarkdown content={message.text} />}
+                      {turnRootCause ? (
                         <>
-                          <InsightChart
-                            title={turnViz.title}
-                            report={turnViz.report}
-                            lang={turnViz.openuiLang}
-                            streaming={false}
+                          <RootCauseView
+                            answer={turnRootCause.answer}
+                            plan={turnRootCause.plan}
+                            steps={turnRootCause.steps}
+                            status={turnRootCause.status}
+                            falsePremise={turnRootCause.falsePremise}
+                            message={turnRootCause.message}
+                            sql={turnRootCause.sql}
+                            metricName={turnRootCause.metricName}
+                            baselineVal={turnRootCause.baselineVal}
+                            currentVal={turnRootCause.currentVal}
+                            absDelta={turnRootCause.absDelta}
+                            pctDelta={turnRootCause.pctDelta}
+                            baselinePeriod={turnRootCause.baselinePeriod}
+                            currentPeriod={turnRootCause.currentPeriod}
+                            viz={
+                              turnViz
+                                ? {
+                                    title: turnViz.title,
+                                    report: turnViz.report,
+                                    openuiLang: turnViz.openuiLang,
+                                    streaming: false,
+                                  }
+                                : null
+                            }
                           />
-                          <InsightPanel
-                            report={turnViz.report}
-                            resultPreview={turnPreview}
-                            truncated={turnViz.truncated}
-                            activeEvidence={activeEvidence}
-                            onSelectEvidence={setActiveEvidence}
-                          />
+                          {turnViz && (
+                            <InsightPanel
+                              report={turnViz.report}
+                              resultPreview={turnPreview}
+                              truncated={turnViz.truncated}
+                              activeEvidence={activeEvidence}
+                              onSelectEvidence={setActiveEvidence}
+                            />
+                          )}
                         </>
+                      ) : (
+                        turnViz && (
+                          <>
+                            <InsightChart
+                              title={turnViz.title}
+                              report={turnViz.report}
+                              lang={turnViz.openuiLang}
+                              streaming={false}
+                            />
+                            <InsightPanel
+                              report={turnViz.report}
+                              resultPreview={turnPreview}
+                              truncated={turnViz.truncated}
+                              activeEvidence={activeEvidence}
+                              onSelectEvidence={setActiveEvidence}
+                            />
+                          </>
+                        )
                       )}
                     </div>
                   ) : (
@@ -289,11 +383,13 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
                   const label =
                     event.event === "intent_parsed" && data?.phase === "resuming"
                       ? "Mình đang tiếp tục xử lý câu trả lời của bạn."
-                      : event.event === "sql_generated" && data?.phase === "display"
-                        ? data.withheld === true
-                          ? "Truy vấn đã chạy; SQL chưa thể hiển thị an toàn trong bản demo."
-                          : "Truy vấn đã chạy. Bạn có thể xem SQL đề xuất bên dưới."
-                        : labels[event.event];
+                      : event.event === "interrupt_waiting" && data?.action === "review_analysis_plan"
+                        ? "Mình đã lập kế hoạch phân tích và đang chờ bạn kiểm duyệt."
+                        : event.event === "sql_generated" && data?.phase === "display"
+                          ? data.withheld === true
+                            ? "Truy vấn đã chạy; SQL chưa thể hiển thị an toàn trong bản demo."
+                            : "Truy vấn đã chạy. Bạn có thể xem SQL đề xuất bên dưới."
+                          : labels[event.event];
                   const tables = Array.isArray(data?.tables)
                     ? data.tables.filter((value): value is string => typeof value === "string")
                     : [];
@@ -325,7 +421,19 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
               </div>
             </div>
           )}
-          {state.error && (
+          {state.planReview && (state.phase === "waiting" || state.phase === "failed" || busy) && (
+            <PlanReviewPanel
+              plan={state.planReview.plan}
+              runId={state.runId}
+              threadId={state.threadId}
+              checkpointId={state.planReview.checkpointId}
+              asOf={state.planReview.asOf}
+              busy={busy}
+              conflictError={state.conflictError}
+              onResume={resumePlan}
+            />
+          )}
+          {state.error && !(state.planReview && state.conflictError) && (
             <div className="error" role="alert">
               {state.error}
             </div>
