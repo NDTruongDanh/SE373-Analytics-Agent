@@ -3,11 +3,13 @@
 // `createUc03Viz()` builds the `VizFn` the frozen root builder runs as
 // `vizSeam` for every `ok` / `no_data` answer:
 //
-//   ValidatedQueryExecutor → RunQueryOutput (≤50-row preview in state)
+//   ValidatedQueryExecutor → RunQueryOutput (<= 1,000-row transient buffer + truncated flag)
 //     → select_chart (deterministic selector, never model vibes)
 //     → synthesize_insights (Profile 3, ZERO tools, <untrusted_data>)
-//     → K7 render_chart validator (headless, ≤ 2 repairs, Table fallback)
-//     → K7 numeric + causal validator (≤ 1% tolerance, strip + log)
+//     → K7 render_chart validator (headless, <= 2 repairs, Table fallback)
+//     → K7 numeric/polarity/derivation/truncation/causal validator
+//        (1 targeted regeneration on failure, then strip + visible caveat
+//         + narrative downgrade if sole negative or caveat claim was stripped)
 //     → vizSpec { kind: "insight_report", report, openuiLang }
 //
 // Keyless runs (no `AGENT_MODEL_API_KEY`) take the deterministic path: the
@@ -31,6 +33,7 @@ import {
   estimateTokens,
   type BudgetState,
 } from "../../queryExecutor/budgets.js";
+import { takeTransientQueryBuffer } from "../../queryExecutor/transientBuffer.js";
 import { isRateLimitFailure } from "../../telemetry/retry.js";
 import { estimateCostUsd } from "../../telemetry/usage.js";
 import type {
@@ -50,6 +53,8 @@ import {
   type SelectorBuffer,
 } from "../../validators/chartSelector.js";
 import {
+  isCaveatClaim,
+  isNegativeMovementClaim,
   verifyNumericClaims,
   type StrippedClaim,
 } from "../../validators/claimValidator.js";
@@ -57,12 +62,20 @@ import { serializeOpenuiLang } from "./serialize.js";
 import { buildSpecForChart } from "./specBuilders.js";
 import {
   buildInsightPrompt,
+  runClaimRegeneration,
   runVizDraft,
+  type ClaimRepairDiff,
   type VizModelLike,
 } from "./synthesize.js";
 
 /** Node names for the UC-03 trace spans (all under the viz seam). */
 export const UC03_VIZ_NODE = "viz";
+
+export const TRUNCATION_CAVEAT =
+  "Query results were truncated; totals or shares cannot be inferred from the partial result set.";
+
+export const NARRATIVE_DOWNGRADE_CAVEAT =
+  "Toàn bộ nhận định đã bị ẩn để tránh báo cáo một chiều sau khi loại nhận định tiêu cực hoặc cảnh báo duy nhất.";
 
 export interface Uc03VizSpec {
   kind: "insight_report";
@@ -71,6 +84,8 @@ export interface Uc03VizSpec {
   stripped: StrippedClaim[];
   repairs: number;
   deterministic: boolean;
+  regeneratedClaims?: boolean;
+  narrativeDowngraded?: boolean;
 }
 
 export interface Uc03VizDeps {
@@ -80,8 +95,10 @@ export interface Uc03VizDeps {
    * to force deterministic mode (unit tests, keyless evals).
    */
   model?: VizModelLike | "auto" | null;
-  /** Full transient buffer override (tests/evals); defaults to state preview. */
-  buffer?: SelectorBuffer;
+  /** Full transient buffer override (tests/evals); defaults to transient store / state preview. */
+  buffer?: SelectorBuffer & { truncated?: boolean };
+  /** Explicit truncation flag override (tests/evals). */
+  truncated?: boolean;
 }
 
 function resolveModel(deps: Uc03VizDeps): VizModelLike | null {
@@ -91,9 +108,8 @@ function resolveModel(deps: Uc03VizDeps): VizModelLike | null {
   return createChatModel("synthesis") as unknown as VizModelLike;
 }
 
-function bufferOf(state: AgentState, override?: SelectorBuffer): SelectorBuffer {
-  if (override) return override;
-  return { columns: state.columns, rows: state.resultPreview };
+function hasTruncationCaveat(caveats: readonly string[]): boolean {
+  return caveats.some((c) => /(truncat|bị cắt|partial result)/i.test(c));
 }
 
 function fallbackReport(
@@ -142,22 +158,37 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     if (state.status !== "ok" && state.status !== "no_data") return {};
     const started = Date.now();
-    const buffer = bufferOf(state, deps.buffer);
+    const transient = deps.buffer ? undefined : takeTransientQueryBuffer(state.runId);
+    const buffer: SelectorBuffer = deps.buffer
+      ? { columns: deps.buffer.columns, rows: deps.buffer.rows }
+      : transient
+        ? { columns: transient.columns, rows: transient.rows }
+        : { columns: state.columns, rows: state.resultPreview };
+    const truncated = Boolean(
+      deps.truncated ??
+        deps.buffer?.truncated ??
+        transient?.truncated ??
+        state.resultTruncated,
+    );
+
     const selection = selectChartType(buffer, state.status);
     rt.emit({
       node: UC03_VIZ_NODE,
       type: "chart_selected",
       durationMs: 0,
-      payload: { chartType: selection.chartType, columns: state.columns },
+      payload: {
+        chartType: selection.chartType,
+        columns: buffer.columns,
+        truncated,
+      },
     });
 
     const model = resolveModel(deps);
-    const truncated = state.resultPreview.length >= RESULT_PREVIEW_MAX;
     const baseCaveats =
       state.status === "no_data"
         ? ["No rows matched the filters; no chart is drawn."]
         : truncated
-          ? [`Result preview is capped at ${RESULT_PREVIEW_MAX} rows.`]
+          ? [TRUNCATION_CAVEAT]
           : [];
 
     let report: InsightReport;
@@ -168,6 +199,8 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
     let completionTokens = 0;
     let modelId: string | undefined;
     let estimatedCostUsd = 0;
+    let regeneratedClaims = false;
+    let narrativeDowngraded = false;
 
     if (model === null || state.status === "no_data") {
       // Deterministic path: code-built spec, no insights, explicit caveat.
@@ -195,12 +228,16 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           `Insight synthesis skipped: run budget exceeded (${preCheck.reason}).`,
         ]);
       } else {
+        const previewRows =
+          state.resultPreview.length > 0
+            ? state.resultPreview
+            : buffer.rows.slice(0, RESULT_PREVIEW_MAX);
         const promptInput = {
           question: state.question,
           chartType: selection.chartType,
           chartReasonHint: selection.reason,
-          columns: state.columns,
-          preview: state.resultPreview,
+          columns: buffer.columns.length > 0 ? buffer.columns : state.columns,
+          preview: previewRows,
           truncated,
         };
         const promptText = buildInsightPrompt(promptInput);
@@ -217,25 +254,93 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           promptTokens = outcome.usage.inputTokens;
           completionTokens = outcome.usage.outputTokens;
           modelId = outcome.usage.model;
+
+          const eventIds = state.semanticChunks.map((chunk) => chunk.chunkId);
+          let activeDraft = outcome.draft;
+          let checked = verifyNumericClaims(activeDraft.insights, buffer, {
+            eventIds,
+            truncated,
+          });
+
+          if (checked.stripped.length > 0) {
+            const diffs: ClaimRepairDiff[] = checked.stripped.map((item) => ({
+              claimIndex: item.claimIndex,
+              ...(item.expected !== undefined ? { expected: item.expected } : {}),
+              ...(item.found !== undefined ? { found: item.found } : {}),
+              reason: item.reason,
+            }));
+            const regenStarted = Date.now();
+            const regen = await runClaimRegeneration(
+              model,
+              promptInput,
+              buffer,
+              diffs,
+              {
+                budget,
+                deadlineMs: budget.deadlineMs,
+                emit: rt.emit,
+                node: UC03_VIZ_NODE,
+              },
+            );
+            llmCalls = budget.llmCalls - startCalls;
+            if (regen !== null) {
+              regeneratedClaims = true;
+              promptTokens += regen.usage.inputTokens;
+              completionTokens += regen.usage.outputTokens;
+              modelId = regen.usage.model ?? modelId;
+              activeDraft = regen.draft;
+              checked = verifyNumericClaims(activeDraft.insights, buffer, {
+                eventIds,
+                truncated,
+              });
+              rt.emit({
+                node: UC03_VIZ_NODE,
+                type: "claim_regenerated",
+                durationMs: Date.now() - regenStarted,
+                payload: { diffs, remainingStripped: checked.stripped.length },
+              });
+            }
+          }
+
           const priced = estimateCostUsd(modelId, promptTokens, completionTokens);
           estimatedCostUsd = priced.estimatedCostUsd;
-          const eventIds = state.semanticChunks.map((chunk) => chunk.chunkId);
-          const checked = verifyNumericClaims(outcome.draft.insights, buffer, { eventIds });
           stripped = checked.stripped;
-          const caveats = [...outcome.draft.caveats, ...baseCaveats];
+
+          const caveats = [...activeDraft.caveats];
+          if (checked.truncationCaveatRequired && !hasTruncationCaveat(caveats)) {
+            caveats.push(TRUNCATION_CAVEAT);
+          }
+
+          let finalInsights = checked.verified;
           // Stripped claims are always surfaced: the user sees what was
           // removed and why (the trace carries the per-claim reason).
           if (stripped.length > 0) {
             caveats.push(
-              `${stripped.length} draft claim(s) failed numeric verification and were removed.`,
+              `${stripped.length} nhận định đã bị loại vì không khớp dữ liệu.`,
             );
+            const strippedSoleNegative =
+              stripped.some(
+                (item) =>
+                  isNegativeMovementClaim(item.claim) ||
+                  item.expected === "decrease/lower",
+              ) &&
+              !checked.verified.some((item) => isNegativeMovementClaim(item.claim));
+            const strippedSoleCaveat =
+              stripped.some((item) => isCaveatClaim(item.claim)) &&
+              !checked.verified.some((item) => isCaveatClaim(item.claim)) &&
+              activeDraft.caveats.length === 0;
+            if (strippedSoleNegative || strippedSoleCaveat) {
+              finalInsights = [];
+              narrativeDowngraded = true;
+              caveats.push(NARRATIVE_DOWNGRADE_CAVEAT);
+            }
           }
-          if (checked.verified.length === 0 && stripped.length === 0) {
+          if (finalInsights.length === 0 && stripped.length === 0) {
             caveats.push("No verifiable claims could be grounded in the query results.");
           }
           report = InsightReportSchema.parse({
-            ...outcome.draft,
-            insights: checked.verified,
+            ...activeDraft,
+            insights: finalInsights,
             caveats,
           });
         } catch (error) {
@@ -272,11 +377,14 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
 
     rt.emit({
       node: UC03_VIZ_NODE,
-      type: "chart_validated",      durationMs: 0,
+      type: "chart_validated",
+      durationMs: 0,
       payload: {
         chartType: report.chartType,
         repairs,
         strippedClaims: stripped.length,
+        regeneratedClaims,
+        narrativeDowngraded,
       },
     });
     for (const item of stripped) {
@@ -284,7 +392,12 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
         node: UC03_VIZ_NODE,
         type: "claim_stripped",
         durationMs: 0,
-        payload: { claimIndex: item.claimIndex, reason: item.reason },
+        payload: {
+          claimIndex: item.claimIndex,
+          ...(item.expected !== undefined ? { expected: item.expected } : {}),
+          ...(item.found !== undefined ? { found: item.found } : {}),
+          reason: item.reason,
+        },
       });
     }
 
@@ -304,6 +417,8 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
         outputTokens: completionTokens,
         estimatedCostUsd,
         strippedClaims: stripped.length,
+        regeneratedClaims,
+        narrativeDowngraded,
       },
     });
 
@@ -314,6 +429,8 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
       stripped,
       repairs,
       deterministic: model === null,
+      ...(regeneratedClaims ? { regeneratedClaims: true } : {}),
+      ...(narrativeDowngraded ? { narrativeDowngraded: true } : {}),
     };
     return {
       vizSpec: spec,

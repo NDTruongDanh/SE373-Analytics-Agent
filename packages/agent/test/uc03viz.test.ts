@@ -6,6 +6,7 @@ import {
   VizDraftSchema,
   type VizModelLike,
 } from "../src/subgraphs/uc03/synthesize.js";
+import { setTransientQueryBuffer } from "../src/queryExecutor/transientBuffer.js";
 import { UNTRUSTED_DATA_CLOSE, UNTRUSTED_DATA_OPEN } from "../src/constants.js";
 
 function stateOf(partial: Record<string, unknown>): AgentState {
@@ -181,7 +182,7 @@ describe("UC-03 VIZ seam", () => {
     expect(spec.report.insights).toHaveLength(0);
     expect(spec.stripped).toHaveLength(1);
     expect(spec.stripped[0].reason).toMatch(/matches no query result/);
-    expect(spec.report.caveats.join(" ")).toMatch(/failed numeric verification/);
+    expect(spec.report.caveats.join(" ")).toMatch(/nhận định đã bị loại vì không khớp dữ liệu/);
     expect(seen.spans.map((span) => span.type)).toContain("claim_stripped");
   });
 
@@ -347,5 +348,230 @@ describe("UC-03 VIZ seam", () => {
     expect(spec.report.insights).toHaveLength(1);
     expect(out.telemetry?.promptTokens).toBe(120);
     expect(out.telemetry?.completionTokens).toBe(45);
+  });
+
+  it("uses real resultTruncated flag instead of inferring truncation from 50 preview rows", async () => {
+    const fiftyRows = Array.from({ length: 50 }, (_, i) => ({
+      region: `R-${i + 1}`,
+      revenue: 1000 + i,
+    }));
+    const { rt } = harness();
+    const nonTruncated = await createUc03Viz({ model: null })(
+      stateOf({
+        status: "ok",
+        columns: ["region", "revenue"],
+        resultPreview: fiftyRows,
+        resultTruncated: false,
+      }),
+      rt,
+    );
+    const nonTruncSpec = nonTruncated.vizSpec as Uc03VizSpec;
+    expect(nonTruncSpec.report.caveats.join(" ")).not.toMatch(/truncated|capped/i);
+
+    const { rt: rtTrunc } = harness();
+    const truncated = await createUc03Viz({ model: null })(
+      stateOf({
+        status: "ok",
+        ...BAR_BUFFER,
+        resultPreview: BAR_BUFFER.rows,
+        resultTruncated: true,
+      }),
+      rtTrunc,
+    );
+    const truncSpec = truncated.vizSpec as Uc03VizSpec;
+    expect(truncSpec.report.caveats.join(" ")).toMatch(/truncated/i);
+  });
+
+  it("validates claims against the 1,000-row transient buffer beyond the 50-row preview", async () => {
+    const fullRows = Array.from({ length: 80 }, (_, i) => ({
+      region: `Province-${i + 1}`,
+      revenue: 1000 + i * 10,
+    }));
+    const runId = "run-transient-1000";
+    setTransientQueryBuffer(runId, {
+      columns: ["region", "revenue"],
+      rows: fullRows,
+      truncated: false,
+    });
+    const { seen, rt } = harness();
+    const model = scriptedModel(
+      [
+        {
+          chartType: "table",
+          chartSpec: {
+            chart: "Table",
+            columns: [
+              { label: "region", data: fullRows.map((r) => r.region) },
+              { label: "revenue", data: fullRows.map((r) => r.revenue) },
+            ],
+          },
+          chartReason: "Comparing 80 provinces in a table across the full buffer.",
+          insights: [
+            {
+              claim: "Province-60 generated 1,590M VND.",
+              derivation: "cell",
+              evidence: [{ column: "revenue", rowKey: "Province-60", value: 1590 }],
+            },
+          ],
+          caveats: [],
+        },
+      ],
+      seen,
+    );
+    const out = await createUc03Viz({ model })(
+      stateOf({
+        runId,
+        status: "ok",
+        columns: ["region", "revenue"],
+        resultPreview: fullRows.slice(0, 50),
+        resultTruncated: false,
+      }),
+      rt,
+    );
+    const spec = out.vizSpec as Uc03VizSpec;
+    expect(spec.stripped).toHaveLength(0);
+    expect(spec.report.insights).toHaveLength(1);
+    expect(spec.report.insights[0].claim).toContain("1,590");
+  });
+
+  it("runs 1 targeted claim regeneration with structured diff before stripping", async () => {
+    const trendBuffer = {
+      columns: ["month", "revenue"],
+      rows: [
+        { month: "2026-08", revenue: 5000 },
+        { month: "2026-09", revenue: 4100 },
+      ],
+    };
+    const trendSpec = {
+      chart: "LineChart",
+      labels: ["2026-08", "2026-09"],
+      series: [{ category: "revenue", values: [5000, 4100] }],
+    };
+    const badDraft = {
+      chartType: "line",
+      chartSpec: trendSpec,
+      chartReason: "Two-month revenue trend.",
+      insights: [
+        {
+          claim: "Doanh thu tháng 9 tăng 18.0% so với tháng 8 (4,100M vs 5,000M VND).",
+          derivation: "pct_change",
+          evidence: [
+            { column: "revenue", rowKey: "2026-09", value: 4100 },
+            { column: "revenue", rowKey: "2026-08", value: 5000 },
+          ],
+        },
+      ],
+      caveats: [],
+    };
+    const fixedDraft = {
+      ...badDraft,
+      insights: [
+        {
+          claim: "Doanh thu tháng 9 giảm 18.0% so với tháng 8 (4,100M vs 5,000M VND).",
+          derivation: "pct_change",
+          evidence: [
+            { column: "revenue", rowKey: "2026-09", value: 4100 },
+            { column: "revenue", rowKey: "2026-08", value: 5000 },
+          ],
+        },
+      ],
+    };
+
+    const { seen, rt } = harness();
+    const model = scriptedModel([badDraft, fixedDraft], seen);
+    const out = await createUc03Viz({ model })(
+      stateOf({ status: "ok", ...trendBuffer, resultPreview: trendBuffer.rows }),
+      rt,
+    );
+    const spec = out.vizSpec as Uc03VizSpec;
+    expect(seen.prompts).toHaveLength(2);
+    expect(seen.prompts[1]).toContain('"claimIndex":0');
+    expect(seen.prompts[1]).toContain('"expected":"decrease/lower"');
+    expect(spec.regeneratedClaims).toBe(true);
+    expect(spec.stripped).toHaveLength(0);
+    expect(spec.report.insights).toHaveLength(1);
+    expect(spec.report.insights[0].claim).toContain("giảm 18.0%");
+    expect(seen.spans.map((s) => s.type)).toContain("claim_regenerated");
+
+    // Persistent failure runs at most 1 regeneration and then strips with visible caveat
+    const { seen: seenPersist, rt: rtPersist } = harness();
+    const persistModel = scriptedModel([badDraft, badDraft, badDraft], seenPersist);
+    const persistOut = await createUc03Viz({ model: persistModel })(
+      stateOf({ status: "ok", ...trendBuffer, resultPreview: trendBuffer.rows }),
+      rtPersist,
+    );
+    const persistSpec = persistOut.vizSpec as Uc03VizSpec;
+    expect(seenPersist.prompts).toHaveLength(2);
+    expect(persistSpec.stripped).toHaveLength(1);
+    expect(persistSpec.report.caveats.join(" ")).toContain(
+      "1 nhận định đã bị loại vì không khớp dữ liệu",
+    );
+  });
+
+  it("downgrades the whole report to no narrative when sole negative-movement or caveat claim is stripped", async () => {
+    const mixedBuffer = {
+      columns: ["region", "revenue"],
+      rows: [
+        { region: "Nam", revenue: 5200 },
+        { region: "Trung", revenue: 3100 },
+        { region: "Bac", revenue: 2800 },
+      ],
+    };
+    const mixedDraft = {
+      chartType: "bar",
+      chartSpec: BAR_SPEC,
+      chartReason: "Three regions compared.",
+      insights: [
+        {
+          claim: "South led with 5,200M VND.",
+          derivation: "cell",
+          evidence: [{ column: "revenue", rowKey: "Nam", value: 5200 }],
+        },
+        {
+          claim: "North fell 50.0% to 9,999M VND.",
+          evidence: [{ column: "revenue", rowKey: "Bac", value: 2800 }],
+        },
+      ],
+      caveats: [],
+    };
+    const { seen, rt } = harness();
+    const model = scriptedModel([mixedDraft], seen);
+    const out = await createUc03Viz({ model })(
+      stateOf({ status: "ok", ...mixedBuffer, resultPreview: mixedBuffer.rows }),
+      rt,
+    );
+    const spec = out.vizSpec as Uc03VizSpec;
+    expect(spec.narrativeDowngraded).toBe(true);
+    expect(spec.report.chartType).toBe("bar");
+    expect(spec.report.insights).toEqual([]);
+    expect(spec.report.caveats.join(" ")).toContain("1 nhận định đã bị loại vì không khớp dữ liệu");
+    expect(spec.report.caveats.join(" ")).toContain("Toàn bộ nhận định đã bị ẩn");
+
+    // Sole caveat claim stripped also downgrades narrative
+    const caveatDraft = {
+      chartType: "bar",
+      chartSpec: BAR_SPEC,
+      chartReason: "Three regions compared.",
+      insights: [
+        {
+          claim: "South led with 5,200M VND.",
+          derivation: "cell",
+          evidence: [{ column: "revenue", rowKey: "Nam", value: 5200 }],
+        },
+        {
+          claim: "Warning: partial data covers only 99 days.",
+          evidence: [{ column: "revenue", rowKey: "Bac", value: 2800 }],
+        },
+      ],
+      caveats: [],
+    };
+    const { seen: seenCav, rt: rtCav } = harness();
+    const cavOut = await createUc03Viz({ model: scriptedModel([caveatDraft], seenCav) })(
+      stateOf({ status: "ok", ...mixedBuffer, resultPreview: mixedBuffer.rows }),
+      rtCav,
+    );
+    const cavSpec = cavOut.vizSpec as Uc03VizSpec;
+    expect(cavSpec.narrativeDowngraded).toBe(true);
+    expect(cavSpec.report.insights).toEqual([]);
   });
 });

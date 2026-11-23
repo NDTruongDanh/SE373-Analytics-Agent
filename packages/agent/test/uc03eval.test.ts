@@ -85,7 +85,7 @@ describe("UC-03 eval grader & numeric fidelity gate (#93)", () => {
     expect(res.summary.numericFidelity).toBe(1);
     expect(res.summary.deliveredNumericFidelity).toBe(1);
     expect(res.summary.stripGuardsPassed).toBe(res.summary.stripGuardsTotal);
-    expect(res.summary.stripGuardsTotal).toBe(4);
+    expect(res.summary.stripGuardsTotal).toBe(7);
     expect(res.summary.causalStrips).toBe(1);
     expect(res.cases.every((c) => c.exPass)).toBe(true);
   });
@@ -178,7 +178,7 @@ describe("UC-03 eval grader & numeric fidelity gate (#93)", () => {
     expect(res.summary.mode).toBe("live");
     expect(res.summary.numericFidelity).toBe(1);
     expect(res.summary.deliveredNumericFidelity).toBe(1);
-    expect(res.summary.stripGuardsPassed).toBe(4);
+    expect(res.summary.stripGuardsPassed).toBe(7);
     expect(res.gatesPassed).toBe(true);
     expect(res.cases.every((c) => c.exPass)).toBe(true);
   });

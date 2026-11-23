@@ -1,28 +1,33 @@
-// Deterministic Numeric & Causal Claim Validator (UC-03 K7,
-// architecture §3.2.9, PRD UC-03 technical requirements).
+// Deterministic Numeric, Polarity, Derivation & Causal Claim Validator (UC-03 K7,
+// architecture §3.2.9 #3, PRD UC-03 technical requirements, H-05).
 //
 // One deterministic pass over the draft insights against the transient
-// query buffer (full ≤ 1,000-row buffer in production, `resultPreview` when
+// query buffer (full <= 1,000-row buffer in production, `resultPreview` when
 // only the preview is available):
 //
 // 1. Number extraction — every numeric token in `claim` (thousands
 //    separators, K/M/B + Vietnamese nghìn/triệu/tỷ/tỉ scale suffixes,
-//    % deltas, VND/₫/đồng currency markers).
-// 2. Evidence match — each number must trace to an EvidencePointer whose
-//    `{ column, rowKey, value }` cell exists in the buffer within <= 1%
-//    rounding tolerance. Percentage deltas are recomputed from the two
-//    cited cells with the same tolerance.
-// 3. Causal gating — claims with causal language ("due to", "do …", …)
+//    % deltas, percentage points pp/điểm %, VND/₫/đồng currency markers).
+// 2. Evidence & derivation match — each number must trace to an EvidencePointer
+//    whose `{ column, rowKey, value }` cell exists in the buffer within <= 1%
+//    rounding tolerance, or deterministically recompute according to `derivation`
+//    (`cell | pct_change | pp_change | share_of_total | sum | mean | rank`).
+// 3. Polarity check — direction words (`tăng/giảm`, `cao hơn/thấp hơn`,
+//    `grew/fell`, `increase/decrease`, etc.) must agree with sign(V_curr - V_base).
+// 4. Truncation guard — when `truncated === true`, block unverified grand-total
+//    claims and result-set derivations (`share_of_total`, `sum`, `mean`, `rank`)
+//    unless backed by a SQL-computed column, and signal `truncationCaveatRequired`.
+// 5. Causal gating — claims with causal language ("due to", "do …", …)
 //    pass only when the evidence cites a dimension value present in the
-//    rows or an `event:*` chunk from the turn's semantic context; otherwise
-//    the claim is stripped, never repaired by the LLM.
-// 4. Strip + log — unverified numbers/claims are removed from `insights`
-//    and each removal is returned for the trace. The response still ships
-//    with whatever verified claims remain plus `caveats`.
+//    rows or an `event:*` chunk from the turn's semantic context.
 //
 // Pure function — no model, no I/O.
 
-import type { EvidencePointer, InsightClaim } from "@shared/contracts";
+import type {
+  ClaimDerivation,
+  EvidencePointer,
+  InsightClaim,
+} from "@shared/contracts";
 import { isTimeValue, toNumberCell } from "./chartSelector.js";
 
 /** <= 1% relative rounding tolerance (PRD UC-03 requirement). */
@@ -35,22 +40,29 @@ export interface ExtractedNumber {
   /** Digits × scale suffix ("5.2 tỷ" → 5.2e9; buffers in base units). */
   scaled: number;
   isPercent: boolean;
+  isPercentagePoint: boolean;
+  /** Start character index of the numeric token in `claim`. */
+  index: number;
 }
 
 export interface StrippedClaim {
   claimIndex: number;
   claim: string;
+  expected?: string;
+  found?: string;
   reason: string;
 }
 
 export interface ClaimsVerification {
   verified: InsightClaim[];
   stripped: StrippedClaim[];
+  truncationCaveatRequired: boolean;
 }
 
 // NOTE: never use \b next to Vietnamese diacritics — \w does not cover
 // them in this runtime (/Ỷ/ is \p{L} but not \w), so \b misfires. All
-// letter boundaries below use an explicit (?![\p{L}]) lookahead instead.
+// letter boundaries below use explicit Unicode lookarounds instead.
+const PREV_NOT_LETTER = String.raw`(?<![\p{L}])`;
 const NOT_LETTER = String.raw`(?![\p{L}])`;
 
 const SCALE_SUFFIX: Array<[RegExp, number]> = [
@@ -60,11 +72,20 @@ const SCALE_SUFFIX: Array<[RegExp, number]> = [
   [new RegExp(`^b${NOT_LETTER}`, "iu"), 1e9],
 ];
 
-// -?\d… with optional thousands separators, decimals, scale suffix, % sign.
+// -?\d… with optional thousands separators, decimals, scale suffix, %/pp sign.
 // Currency words (₫, VND, đồng, dong) are consumed as context, not value.
 const NUMBER_RE =
   /-?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?/g;
-const TRAILING_RE = new RegExp(String.raw`^\s*(%|﹪|pct|phần trăm|percent)?\s*(tỷ|tỉ|ti|triệu|trieu|nghìn|nghin|[kKmMbB])?` + NOT_LETTER + String.raw`(\s*(₫|vnd|đồng|dong))?`, "iu");
+const PP_SUFFIX_RE = new RegExp(
+  String.raw`^\s*(?:điểm\s*(?:%|phần\s*trăm)|percentage\s*points?|pct\s*pts?|pp)${NOT_LETTER}`,
+  "iu",
+);
+const TRAILING_RE = new RegExp(
+  String.raw`^\s*(%|﹪|pct|phần trăm|percent)?\s*(tỷ|tỉ|ti|triệu|trieu|nghìn|nghin|[kKmMbB])?` +
+    NOT_LETTER +
+    String.raw`(\s*(₫|vnd|đồng|dong))?`,
+  "iu",
+);
 
 // Date-like spans are not numbers: "2026-09" must not extract 2026 and
 // -9, "05/09/2026" must not extract 05, 09, 2026. Dates ground through
@@ -83,10 +104,8 @@ function dateSpans(text: string): Array<[number, number]> {
 
 /**
  * Extract every numeric token from a claim. "5,200", "5.2K", "8.0%",
- * "2,1 tỷ ₫" all parse. Scale suffixes produce BOTH the bare digits and
- * the scaled value: "5,200M VND" matches a buffer cell 5200 (M-VND units)
- * while "5.2 tỷ" matches 5_200_000_000 (base-unit buffers) — the unit word
- * is a display label, and the validator accepts either reading.
+ * "3,2 điểm %", "2,1 tỷ ₫" all parse. Scale suffixes produce BOTH the bare
+ * digits and the scaled value.
  */
 export function extractClaimNumbers(claim: string): ExtractedNumber[] {
   const out: ExtractedNumber[] = [];
@@ -99,8 +118,6 @@ export function extractClaimNumbers(claim: string): ExtractedNumber[] {
     if (spans.some(([from, to]) => start >= from && end <= to)) continue;
     const rawDigits = match[0];
     const rest = claim.slice(end);
-    const tail = TRAILING_RE.exec(rest);
-    const tailText = tail?.[0] ?? "";
     let bare: number;
     if (/[.,]/.test(rawDigits)) {
       bare = Number(normalizeDecimal(rawDigits));
@@ -108,6 +125,22 @@ export function extractClaimNumbers(claim: string): ExtractedNumber[] {
       bare = Number(rawDigits);
     }
     if (!Number.isFinite(bare)) continue;
+
+    const ppMatch = PP_SUFFIX_RE.exec(rest);
+    if (ppMatch) {
+      out.push({
+        raw: rawDigits + ppMatch[0],
+        bare,
+        scaled: bare,
+        isPercent: false,
+        isPercentagePoint: true,
+        index: start,
+      });
+      continue;
+    }
+
+    const tail = TRAILING_RE.exec(rest);
+    const tailText = tail?.[0] ?? "";
     const suffix = (tail?.[2] ?? "").toLowerCase();
     const scale = scaleOf(suffix);
     const isPercent = (tail?.[1] ?? "") !== "";
@@ -116,6 +149,8 @@ export function extractClaimNumbers(claim: string): ExtractedNumber[] {
       bare,
       scaled: bare * scale,
       isPercent,
+      isPercentagePoint: false,
+      index: start,
     });
   }
   return out;
@@ -149,6 +184,11 @@ function cellsInColumn(
   return rows.map((row) => row[column]).filter((v) => v !== undefined);
 }
 
+function approxEqual(a: number, b: number, tolerance = CLAIM_NUMBER_TOLERANCE): boolean {
+  const denom = Math.max(Math.abs(b), 1e-9);
+  return Math.abs(a - b) / denom <= tolerance;
+}
+
 /**
  * One evidence pointer is buffer-valid when its value cell exists in its
  * column (numbers within 1%, strings exact) and its rowKey names a row
@@ -179,8 +219,7 @@ function pointerValueMatches(
   for (const cell of cells) {
     const actual = toNumberCell(cell);
     if (actual === null) continue;
-    const denom = Math.max(Math.abs(actual), 1e-9);
-    if (Math.abs(pointerValue - actual) / denom <= CLAIM_NUMBER_TOLERANCE) return true;
+    if (approxEqual(pointerValue, actual)) return true;
   }
   return false;
 }
@@ -226,11 +265,142 @@ function isLabelNumber(
   return false;
 }
 
-function numberMatchesBuffer(value: number, rows: Record<string, unknown>[], columns: string[]): boolean {
+function numberMatchesBuffer(
+  value: number,
+  rows: Record<string, unknown>[],
+  columns: string[],
+): boolean {
   for (const column of columns) {
     if (pointerValueMatches(value, cellsInColumn(rows, column))) return true;
   }
   return false;
+}
+
+const POSITIVE_DIRECTION_RE = new RegExp(
+  `(?:${PREV_NOT_LETTER}(?:tăng\\s*trưởng|tăng|cao\\s+hơn|lớn\\s+hơn|nhiều\\s+hơn|vượt|cải\\s+thiện|đi\\s+lên|nhích\\s+lên|bật\\s+tăng|grew|growing|growth|grow|increased|increasing|increase|rose|rising|rise|higher|above|surged|jumped|climbed|gained|expanded|improved)${NOT_LETTER}|(?<![\\p{L}-])up(?![\\p{L}-])(?!\\s+to${NOT_LETTER}))`,
+  "iu",
+);
+
+const NEGATIVE_DIRECTION_RE = new RegExp(
+  `(?:${PREV_NOT_LETTER}(?:sụt\\s*giảm|suy\\s*giảm|giảm|thấp\\s+hơn|ít\\s+hơn|nhỏ\\s+hơn|đi\\s+xuống|lao\\s+dốc|thu\\s+hẹp|fell|falling|fall|decreased|decreasing|decrease|dropped|dropping|drop|lower|below|declined|declining|decline|slumped|shrank|contracted|lost|plunged)${NOT_LETTER}|(?<![\\p{L}-])down(?![\\p{L}-]))`,
+  "iu",
+);
+
+/**
+ * Detect narrative movement polarity from direction words in `text`.
+ * Returns `1` (positive), `-1` (negative), `"mixed"` (both present), or `0` (neutral).
+ */
+export function detectClaimPolarity(text: string): 1 | -1 | 0 | "mixed" {
+  const pos = POSITIVE_DIRECTION_RE.test(text);
+  const neg = NEGATIVE_DIRECTION_RE.test(text);
+  if (pos && neg) return "mixed";
+  if (pos) return 1;
+  if (neg) return -1;
+  return 0;
+}
+
+/**
+ * True when `claim` reports a negative movement (used to prevent shipping
+ * a one-sided positive-only report after stripping a negative claim).
+ */
+export function isNegativeMovementClaim(claim: string): boolean {
+  return NEGATIVE_DIRECTION_RE.test(claim) || /(?:^|\s)-\d+(?:[.,]\d+)?\s*(?:%|pp|điểm)/i.test(claim);
+}
+
+const CAVEAT_CLAIM_RE = new RegExp(
+  String.raw`(?:caveat|warning|caution|limitation|partial|incomplete|truncated|sample|only\s+the\s+first|missing|unknown\s+cause|cause\s+unknown|cảnh\s+báo|lưu\s+ý|hạn\s+chế|không\s+đầy\s+đủ|chưa\s+đầy\s+đủ|một\s+phần|bị\s+cắt|giới\s+hạn|thiếu\s+dữ\s+liệu|nguyên\s+nhân\s+(?:chưa|không)\s+rõ)`,
+  "iu",
+);
+
+/** True when `claim` itself acts as a caveat/limitation warning. */
+export function isCaveatClaim(claim: string): boolean {
+  return CAVEAT_CLAIM_RE.test(claim);
+}
+
+interface NumericPointer {
+  pointer: EvidencePointer;
+  value: number;
+}
+
+function numericPointersOf(evidence: EvidencePointer[]): NumericPointer[] {
+  const out: NumericPointer[] = [];
+  for (const pointer of evidence) {
+    if (/^event:/.test(pointer.column)) continue;
+    const num = typeof pointer.value === "number" ? pointer.value : toNumberCell(pointer.value);
+    if (num !== null && Number.isFinite(num)) {
+      out.push({ pointer, value: num });
+    }
+  }
+  return out;
+}
+
+function resolveCurrBase(
+  evidence: EvidencePointer[],
+): { curr: NumericPointer; base: NumericPointer } | null {
+  const nums = numericPointersOf(evidence);
+  if (nums.length < 2) return null;
+  const first = nums[0];
+  const second = nums[1];
+  if (
+    isTimeValue(first.pointer.rowKey) &&
+    isTimeValue(second.pointer.rowKey) &&
+    first.pointer.rowKey !== second.pointer.rowKey
+  ) {
+    if (first.pointer.rowKey > second.pointer.rowKey) {
+      return { curr: first, base: second };
+    }
+    return { curr: second, base: first };
+  }
+  return { curr: first, base: second };
+}
+
+interface PolarityFailure {
+  expected: string;
+  found: string;
+  reason: string;
+}
+
+function checkPolarity(
+  claim: string,
+  curr: number,
+  base: number,
+  tokenIndex?: number,
+  signedValue?: number,
+): PolarityFailure | null {
+  const actualSign = Math.sign(curr - base);
+  if (signedValue !== undefined && signedValue < 0 && actualSign > 0) {
+    return {
+      expected: "positive change (>= 0)",
+      found: `negative value (${signedValue})`,
+      reason: `polarity mismatch: evidence shows an increase (${base} -> ${curr}) while claim states a negative delta (${signedValue}).`,
+    };
+  }
+  let polarity: 1 | -1 | 0 | "mixed" = 0;
+  if (tokenIndex !== undefined) {
+    const windowStart = Math.max(0, tokenIndex - 48);
+    const local = claim.slice(windowStart, tokenIndex);
+    const localPol = detectClaimPolarity(local);
+    if (localPol === 1 || localPol === -1) polarity = localPol;
+  }
+  if (polarity === 0) {
+    const fullPol = detectClaimPolarity(claim);
+    if (fullPol === 1 || fullPol === -1) polarity = fullPol;
+  }
+  if (polarity === 1 && actualSign <= 0) {
+    return {
+      expected: actualSign < 0 ? "decrease/lower" : "unchanged",
+      found: "increase/higher",
+      reason: `polarity mismatch: claim uses upward wording while evidence moved from ${base} to ${curr}.`,
+    };
+  }
+  if (polarity === -1 && actualSign >= 0) {
+    return {
+      expected: actualSign > 0 ? "increase/higher" : "unchanged",
+      found: "decrease/lower",
+      reason: `polarity mismatch: claim uses downward wording while evidence moved from ${base} to ${curr}.`,
+    };
+  }
+  return null;
 }
 
 const CAUSAL_RE =
@@ -277,32 +447,555 @@ function causalGrounded(
   return false;
 }
 
-function deltaRecomputed(
+const SQL_AGG_COL_RE =
+  /(total|sum|grand_total|share|pct|percent|ratio|avg|mean|rank|row_num|rn|tong|ty_trong|ti_trong|trung_binh|xep_hang)/i;
+
+const TRUNCATION_AGG_CLAIM_RE = new RegExp(
+  String.raw`(?:grand\s+total|overall\s+total|total\s+across\s+all|entire\s+dataset|all\s+rows|share\s+of\s+total|overall\s+average|tổng\s+cộng|tổng\s+toàn\s+bộ|tổng\s+doanh\s+thu\s+toàn|tổng\s+tất\s+cả|tỷ\s+trọng|tỉ\s+trọng|trung\s+bình\s+toàn|xếp\s+hạng|đứng\s+thứ|hạng\s+\d|chiếm\s+\d)`,
+  "iu",
+);
+
+function isSqlComputedAggregatePointer(
+  pointer: EvidencePointer,
+  buffer: ClaimBuffer,
+  targetValue?: number,
+): boolean {
+  if (!buffer.columns.includes(pointer.column)) return false;
+  if (!SQL_AGG_COL_RE.test(pointer.column)) return false;
+  return pointerValueMatches(
+    targetValue ?? pointer.value,
+    cellsInColumn(buffer.rows, pointer.column),
+  );
+}
+
+function columnNumericValues(
+  rows: Record<string, unknown>[],
+  column: string,
+): number[] {
+  const out: number[] = [];
+  for (const row of rows) {
+    const num = toNumberCell(row[column]);
+    if (num !== null && Number.isFinite(num)) out.push(num);
+  }
+  return out;
+}
+
+function numericColumnPointer(
+  evidence: EvidencePointer[],
+  buffer: ClaimBuffer,
+): { pointer: EvidencePointer; value: number } | null {
+  for (const pointer of evidence) {
+    if (!buffer.columns.includes(pointer.column)) continue;
+    const val = typeof pointer.value === "number" ? pointer.value : toNumberCell(pointer.value);
+    if (val !== null && Number.isFinite(val)) {
+      return { pointer, value: val };
+    }
+  }
+  return null;
+}
+
+function columnFromEvidenceOrBuffer(
+  evidence: EvidencePointer[],
+  buffer: ClaimBuffer,
+): string | null {
+  for (const pointer of evidence) {
+    if (buffer.columns.includes(pointer.column)) {
+      const vals = columnNumericValues(buffer.rows, pointer.column);
+      if (vals.length > 0) return pointer.column;
+    }
+  }
+  return null;
+}
+
+function numberGroundedInBuffer(
+  number: ExtractedNumber,
+  evidence: EvidencePointer[],
+  buffer: ClaimBuffer,
+): boolean {
+  return (
+    numberMatchesBuffer(number.bare, buffer.rows, buffer.columns) ||
+    numberMatchesBuffer(number.scaled, buffer.rows, buffer.columns) ||
+    isLabelNumber(number.bare, evidence, buffer)
+  );
+}
+
+function checkTruncationGate(
+  insight: InsightClaim,
+  buffer: ClaimBuffer,
+  truncated: boolean,
+  derivedTarget?: number,
+): StrippedClaim | null {
+  if (!truncated) return null;
+  const derivation = insight.derivation;
+  if (
+    derivation === "share_of_total" ||
+    derivation === "sum" ||
+    derivation === "mean" ||
+    derivation === "rank"
+  ) {
+    const backed = insight.evidence.some((ptr) =>
+      isSqlComputedAggregatePointer(ptr, buffer, derivedTarget),
+    );
+    if (!backed) {
+      return {
+        claimIndex: -1,
+        claim: insight.claim,
+        expected: "SQL-computed column backing result-set derivation on truncated output",
+        found: `derivation=${derivation} over truncated buffer without SQL aggregate column`,
+        reason: `result set is truncated; derivation "${derivation}" cannot be computed from partial rows without a SQL-computed column.`,
+      };
+    }
+    return null;
+  }
+  if (
+    (derivation === undefined || derivation === "cell") &&
+    TRUNCATION_AGG_CLAIM_RE.test(insight.claim)
+  ) {
+    const backed = insight.evidence.some((ptr) =>
+      isSqlComputedAggregatePointer(ptr, buffer),
+    );
+    if (!backed) {
+      return {
+        claimIndex: -1,
+        claim: insight.claim,
+        expected: "SQL-computed aggregate column for grand-total/share/rank claim on truncated output",
+        found: "unbacked whole-result aggregate claim on truncated buffer",
+        reason: "result set is truncated; grand-total or whole-result aggregate claim requires a SQL-computed column.",
+      };
+    }
+  }
+  return null;
+}
+
+function verifyDeclaredDerivation(
+  derivation: ClaimDerivation,
+  insight: InsightClaim,
+  claimIndex: number,
+  numbers: ExtractedNumber[],
+  buffer: ClaimBuffer,
+  truncated: boolean,
+): StrippedClaim | null {
+  switch (derivation) {
+    case "cell": {
+      const truncIssue = checkTruncationGate(insight, buffer, truncated);
+      if (truncIssue) return { ...truncIssue, claimIndex };
+      for (const number of numbers) {
+        if (number.isPercentagePoint) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: 'derivation "pp_change" for percentage-point claim',
+            found: number.raw.trim(),
+            reason: `percentage-point value ${number.raw.trim()} cannot be claimed with derivation "cell".`,
+          };
+        }
+        if (number.isPercent) {
+          const direct = pointerValueMatches(
+            number.bare,
+            insight.evidence.map((pointer) => pointer.value),
+          );
+          if (!direct) {
+            return {
+              claimIndex,
+              claim: insight.claim,
+              expected: "direct percentage cell in evidence",
+              found: number.raw.trim(),
+              reason: `percentage ${number.raw.trim()} does not match a cited cell under derivation "cell".`,
+            };
+          }
+          continue;
+        }
+        if (!numberGroundedInBuffer(number, insight.evidence, buffer)) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: "value present in query result cell within 1% tolerance",
+            found: number.raw.trim(),
+            reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
+          };
+        }
+      }
+      return null;
+    }
+
+    case "pct_change": {
+      if (numbers.some((n) => n.isPercentagePoint)) {
+        const pp = numbers.find((n) => n.isPercentagePoint)!;
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: 'derivation "pp_change" for percentage points',
+          found: `${pp.raw.trim()} under pct_change`,
+          reason: `percentage-point token ${pp.raw.trim()} cannot be verified as pct_change (never conflate pp_change with pct_change).`,
+        };
+      }
+      const pair = resolveCurrBase(insight.evidence);
+      if (!pair || pair.base.value === 0) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: "two numeric evidence cells with non-zero base",
+          found: `${insight.evidence.length} pointer(s)`,
+          reason: "pct_change requires at least two numeric evidence cells with a non-zero baseline.",
+        };
+      }
+      const expectedPct = ((pair.curr.value - pair.base.value) / Math.abs(pair.base.value)) * 100;
+      const pctNumbers = numbers.filter((n) => n.isPercent);
+      if (pctNumbers.length === 0) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: `${expectedPct.toFixed(2)}%`,
+          found: "no percentage token in claim",
+          reason: "pct_change claim must include a percentage value matching the recomputed delta.",
+        };
+      }
+      for (const pct of pctNumbers) {
+        if (!approxEqual(Math.abs(pct.bare), Math.abs(expectedPct))) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: `${expectedPct.toFixed(2)}%`,
+            found: pct.raw.trim(),
+            reason: `percentage ${pct.raw.trim()} does not recompute from the cited evidence (expected ${expectedPct.toFixed(2)}%) within 1% tolerance.`,
+          };
+        }
+        const polErr = checkPolarity(insight.claim, pair.curr.value, pair.base.value, pct.index, pct.bare);
+        if (polErr) return { claimIndex, claim: insight.claim, ...polErr };
+      }
+      for (const number of numbers) {
+        if (number.isPercent) continue;
+        if (!numberGroundedInBuffer(number, insight.evidence, buffer)) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: "value present in query result cell within 1% tolerance",
+            found: number.raw.trim(),
+            reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
+          };
+        }
+      }
+      return null;
+    }
+
+    case "pp_change": {
+      const pair = resolveCurrBase(insight.evidence);
+      if (!pair) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: "two numeric evidence cells",
+          found: `${insight.evidence.length} pointer(s)`,
+          reason: "pp_change requires at least two numeric evidence cells.",
+        };
+      }
+      const rawDiff = pair.curr.value - pair.base.value;
+      const candidates =
+        Math.abs(pair.curr.value) <= 1 && Math.abs(pair.base.value) <= 1
+          ? [rawDiff, rawDiff * 100]
+          : [rawDiff];
+
+      const ppNumbers = numbers.filter((n) => n.isPercentagePoint);
+      const deltaTokens =
+        ppNumbers.length > 0
+          ? ppNumbers
+          : numbers.filter((n) => !n.isPercent && !numberGroundedInBuffer(n, insight.evidence, buffer));
+
+      if (deltaTokens.length === 0) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: `${rawDiff.toFixed(2)} pp`,
+          found: "no percentage-point token in claim",
+          reason: "pp_change claim must state a percentage-point delta matching (curr - base) (never conflate pp_change with pct_change).",
+        };
+      }
+
+      const matchedDelta = deltaTokens.find((tok) =>
+        candidates.some((exp) => approxEqual(Math.abs(tok.bare), Math.abs(exp))),
+      );
+      if (!matchedDelta) {
+        const expectedLabel =
+          candidates.length > 1
+            ? `${candidates[0].toFixed(2)} or ${candidates[1].toFixed(2)} pp`
+            : `${candidates[0].toFixed(2)} pp`;
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: expectedLabel,
+          found: deltaTokens[0].raw.trim(),
+          reason: `percentage-point delta ${deltaTokens[0].raw.trim()} does not match (curr - base) = ${expectedLabel} within 1% tolerance.`,
+        };
+      }
+      const polErr = checkPolarity(
+        insight.claim,
+        pair.curr.value,
+        pair.base.value,
+        matchedDelta.index,
+        matchedDelta.bare,
+      );
+      if (polErr) return { claimIndex, claim: insight.claim, ...polErr };
+
+      for (const number of numbers) {
+        if (number === matchedDelta) continue;
+        if (number.isPercent) {
+          const direct = pointerValueMatches(
+            number.bare,
+            insight.evidence.map((pointer) => pointer.value),
+          );
+          if (!direct) {
+            return {
+              claimIndex,
+              claim: insight.claim,
+              expected: "direct rate cell or pp_change token",
+              found: number.raw.trim(),
+              reason: `percentage ${number.raw.trim()} cannot substitute for pp_change.`,
+            };
+          }
+          continue;
+        }
+        if (!numberGroundedInBuffer(number, insight.evidence, buffer)) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: "value present in query result cell within 1% tolerance",
+            found: number.raw.trim(),
+            reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
+          };
+        }
+      }
+      return null;
+    }
+
+    case "share_of_total": {
+      const ptr = numericColumnPointer(insight.evidence, buffer);
+      if (!ptr) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: "numeric evidence pointer from query column",
+          found: "none",
+          reason: "share_of_total requires a numeric evidence pointer from a query column.",
+        };
+      }
+      if (truncated) {
+        const sqlShare = insight.evidence.find((p) =>
+          isSqlComputedAggregatePointer(p, buffer),
+        );
+        if (!sqlShare) {
+          const truncIssue = checkTruncationGate(insight, buffer, true);
+          return { ...truncIssue!, claimIndex };
+        }
+        const sqlShareVal = toNumberCell(sqlShare.value);
+        const pctTokens = numbers.filter((n) => n.isPercent);
+        if (
+          sqlShareVal === null ||
+          pctTokens.length === 0 ||
+          !pctTokens.some((n) => approxEqual(n.bare, sqlShareVal))
+        ) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: `${sqlShareVal ?? "SQL share"}%`,
+            found: pctTokens[0]?.raw.trim() ?? "none",
+            reason: "share_of_total does not match the SQL-computed share column within 1% tolerance.",
+          };
+        }
+        for (const number of numbers) {
+          if (number.isPercent) continue;
+          if (!numberGroundedInBuffer(number, insight.evidence, buffer)) {
+            return {
+              claimIndex,
+              claim: insight.claim,
+              expected: "value present in query result cell",
+              found: number.raw.trim(),
+              reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
+            };
+          }
+        }
+        return null;
+      }
+
+      const colValues = columnNumericValues(buffer.rows, ptr.pointer.column);
+      const total = colValues.reduce((acc, v) => acc + v, 0);
+      if (colValues.length === 0 || total === 0) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: "non-zero column total",
+          found: `${total}`,
+          reason: "share_of_total cannot be recomputed because the column total is zero.",
+        };
+      }
+      const expectedPct = (ptr.value / total) * 100;
+      const pctNumbers = numbers.filter((n) => n.isPercent);
+      if (pctNumbers.length === 0 || !pctNumbers.some((n) => approxEqual(n.bare, expectedPct))) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: `${expectedPct.toFixed(2)}%`,
+          found: pctNumbers[0]?.raw.trim() ?? "no percentage token",
+          reason: `share_of_total ${pctNumbers[0]?.raw.trim() ?? "(missing)"} does not recompute to ${expectedPct.toFixed(2)}% from the result buffer.`,
+        };
+      }
+      for (const number of numbers) {
+        if (number.isPercent) continue;
+        if (!numberGroundedInBuffer(number, insight.evidence, buffer)) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: "value present in query result cell",
+            found: number.raw.trim(),
+            reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
+          };
+        }
+      }
+      return null;
+    }
+
+    case "sum":
+    case "mean": {
+      const col = columnFromEvidenceOrBuffer(insight.evidence, buffer);
+      if (!col) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: "evidence pointer naming a numeric query column",
+          found: "none",
+          reason: `${derivation} requires an evidence pointer naming a numeric query column.`,
+        };
+      }
+      const values = columnNumericValues(buffer.rows, col);
+      const computed =
+        derivation === "sum"
+          ? values.reduce((acc, v) => acc + v, 0)
+          : values.reduce((acc, v) => acc + v, 0) / Math.max(values.length, 1);
+
+      const truncIssue = checkTruncationGate(insight, buffer, truncated, computed);
+      if (truncIssue) return { ...truncIssue, claimIndex };
+
+      const nonPct = numbers.filter((n) => !n.isPercent && !n.isPercentagePoint);
+      const matched = nonPct.find(
+        (n) => approxEqual(n.bare, computed) || approxEqual(n.scaled, computed),
+      );
+      if (!matched) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: `${computed}`,
+          found: nonPct.map((n) => n.raw.trim()).join(", ") || "none",
+          reason: `${derivation} claim does not match recomputed ${derivation} (${computed}) within 1% tolerance.`,
+        };
+      }
+      for (const number of numbers) {
+        if (number === matched) continue;
+        if (Number.isInteger(number.bare) && number.bare === values.length) continue;
+        if (number.isPercent) {
+          const direct = pointerValueMatches(
+            number.bare,
+            insight.evidence.map((p) => p.value),
+          );
+          if (!direct) {
+            return {
+              claimIndex,
+              claim: insight.claim,
+              expected: "direct percentage cell",
+              found: number.raw.trim(),
+              reason: `percentage ${number.raw.trim()} does not match cited evidence.`,
+            };
+          }
+          continue;
+        }
+        if (!numberGroundedInBuffer(number, insight.evidence, buffer)) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: "value present in query result cell",
+            found: number.raw.trim(),
+            reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
+          };
+        }
+      }
+      return null;
+    }
+
+    case "rank": {
+      const ptr = numericColumnPointer(insight.evidence, buffer);
+      if (!ptr) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: "numeric evidence pointer from ranked column",
+          found: "none",
+          reason: "rank requires a numeric evidence pointer from the ranked column.",
+        };
+      }
+      const asc = /(lowest|bottom|smallest|worst|thấp nhất|ít nhất|nhỏ nhất|cuối)/iu.test(
+        insight.claim,
+      );
+      const values = columnNumericValues(buffer.rows, ptr.pointer.column);
+      const eps = Math.max(Math.abs(ptr.value) * 1e-9, 1e-9);
+      const expectedRank =
+        1 +
+        values.filter((v) => (asc ? v < ptr.value - eps : v > ptr.value + eps)).length;
+
+      const truncIssue = checkTruncationGate(insight, buffer, truncated, expectedRank);
+      if (truncIssue) return { ...truncIssue, claimIndex };
+
+      const rankToken = numbers.find(
+        (n) => !n.isPercent && !n.isPercentagePoint && Number.isInteger(n.bare) && n.bare === expectedRank,
+      );
+      if (!rankToken) {
+        return {
+          claimIndex,
+          claim: insight.claim,
+          expected: `rank ${expectedRank}`,
+          found: numbers.map((n) => n.raw.trim()).join(", ") || "none",
+          reason: `rank claim does not match recomputed rank ${expectedRank} in buffer.`,
+        };
+      }
+      for (const number of numbers) {
+        if (number === rankToken) continue;
+        if (number.isPercent || !numberGroundedInBuffer(number, insight.evidence, buffer)) {
+          return {
+            claimIndex,
+            claim: insight.claim,
+            expected: "value present in query result cell",
+            found: number.raw.trim(),
+            reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
+          };
+        }
+      }
+      return null;
+    }
+  }
+}
+
+function findMatchingDeltaPair(
   claimedPct: number,
   evidence: EvidencePointer[],
-): boolean {
-  const values = evidence
-    .map((pointer) => (typeof pointer.value === "number" ? pointer.value : toNumberCell(pointer.value)))
-    .filter((value): value is number => value !== null && Number.isFinite(value));
-  if (values.length < 2) return false;
+): { curr: number; base: number } | null {
+  const pair = resolveCurrBase(evidence);
+  if (pair && pair.base.value !== 0) {
+    const recomputed = ((pair.curr.value - pair.base.value) / Math.abs(pair.base.value)) * 100;
+    if (approxEqual(Math.abs(claimedPct), Math.abs(recomputed))) {
+      return { curr: pair.curr.value, base: pair.base.value };
+    }
+  }
+  const values = numericPointersOf(evidence).map((item) => item.value);
+  if (values.length < 2) return null;
   for (let i = 0; i < values.length; i += 1) {
     for (let j = 0; j < values.length; j += 1) {
       if (i === j) continue;
       const base = values[j];
       if (base === 0) continue;
       const recomputed = ((values[i] - base) / Math.abs(base)) * 100;
-      const denom = Math.max(Math.abs(claimedPct), 1e-9);
-      // Sign-insensitive: "fell 10%" claims the magnitude; direction words
-      // are narrative, not numeric (manual rubric covers direction).
-      if (
-        Math.abs(recomputed - claimedPct) / denom <= CLAIM_NUMBER_TOLERANCE ||
-        Math.abs(recomputed + claimedPct) / denom <= CLAIM_NUMBER_TOLERANCE
-      ) {
-        return true;
+      if (approxEqual(Math.abs(claimedPct), Math.abs(recomputed))) {
+        return { curr: values[i], base };
       }
     }
   }
-  return false;
+  return null;
 }
 
 export interface ClaimBuffer {
@@ -313,12 +1006,15 @@ export interface ClaimBuffer {
 export interface VerifyClaimsOptions {
   /** `event:*` chunk ids from the turn's semantic context (causal gate). */
   eventIds?: readonly string[];
+  /** True when the underlying query output was truncated (`RunQueryOutput.truncated`). */
+  truncated?: boolean;
 }
 
 /**
  * Verify every insight against the buffer. Numbers without a matching
- * evidence cell, percentage deltas that do not recompute, and ungrounded
- * causal claims are stripped (never repaired). Deterministic: the same
+ * evidence cell, percentage/pp deltas that do not recompute or flip polarity,
+ * truncated result-set derivations without SQL backing, and ungrounded causal
+ * claims are stripped (never silently repaired). Deterministic: the same
  * inputs always yield the same verified set.
  */
 export function verifyNumericClaims(
@@ -329,6 +1025,8 @@ export function verifyNumericClaims(
   const verified: InsightClaim[] = [];
   const stripped: StrippedClaim[] = [];
   const eventIds = opts.eventIds ?? [];
+  const truncated = Boolean(opts.truncated);
+
   insights.forEach((insight, claimIndex) => {
     const numbers = extractClaimNumbers(insight.claim);
     // Claim-level evidence index: every pointer must name a real buffer
@@ -340,51 +1038,124 @@ export function verifyNumericClaims(
       stripped.push({
         claimIndex,
         claim: insight.claim,
+        expected: "valid cell present in query buffer",
+        found: `{column: ${badPointer.column}, rowKey: ${badPointer.rowKey}, value: ${String(badPointer.value)}}`,
         reason: `evidence pointer {column: ${badPointer.column}, rowKey: ${badPointer.rowKey}} matches no query result cell.`,
       });
       return;
     }
-    for (const number of numbers) {
-      if (number.isPercent) {
-        // Percent values pass when they either match a cited percentage cell
-        // directly (e.g. share = 35 -> "35%") or recompute as a delta from
-        // the cited evidence pair within 1% tolerance.
-        const directEvidenceMatch = pointerValueMatches(
-          number.bare,
-          insight.evidence.map((pointer) => pointer.value),
-        );
-        if (!directEvidenceMatch && !deltaRecomputed(number.bare, insight.evidence)) {
+
+    if (insight.derivation !== undefined) {
+      const derivationFailure = verifyDeclaredDerivation(
+        insight.derivation,
+        insight,
+        claimIndex,
+        numbers,
+        buffer,
+        truncated,
+      );
+      if (derivationFailure) {
+        stripped.push(derivationFailure);
+        return;
+      }
+    } else {
+      const truncIssue = checkTruncationGate(insight, buffer, truncated);
+      if (truncIssue) {
+        stripped.push({ ...truncIssue, claimIndex });
+        return;
+      }
+
+      for (const number of numbers) {
+        if (number.isPercentagePoint) {
+          const directCell = pointerValueMatches(
+            number.bare,
+            insight.evidence.map((pointer) => pointer.value),
+          );
+          if (!directCell) {
+            stripped.push({
+              claimIndex,
+              claim: insight.claim,
+              expected: 'declared derivation "pp_change" for percentage-point delta',
+              found: number.raw.trim(),
+              reason: `percentage-point delta ${number.raw.trim()} requires derivation "pp_change" or a direct evidence cell.`,
+            });
+            return;
+          }
+          continue;
+        }
+        if (number.isPercent) {
+          // Percent values pass when they either match a cited percentage cell
+          // directly (e.g. share = 35 -> "35%") or recompute as a delta from
+          // the cited evidence pair within 1% tolerance with matching polarity.
+          const directEvidenceMatch = pointerValueMatches(
+            number.bare,
+            insight.evidence.map((pointer) => pointer.value),
+          );
+          if (directEvidenceMatch) continue;
+          const deltaPair = findMatchingDeltaPair(number.bare, insight.evidence);
+          if (!deltaPair) {
+            stripped.push({
+              claimIndex,
+              claim: insight.claim,
+              expected: "percentage matching direct cell or ((curr - base) / |base|) * 100",
+              found: number.raw.trim(),
+              reason: `percentage ${number.raw.trim()} does not recompute from the cited evidence within 1% tolerance.`,
+            });
+            return;
+          }
+          const polErr = checkPolarity(
+            insight.claim,
+            deltaPair.curr,
+            deltaPair.base,
+            number.index,
+            number.bare,
+          );
+          if (polErr) {
+            stripped.push({ claimIndex, claim: insight.claim, ...polErr });
+            return;
+          }
+          continue;
+        }
+        if (!numberGroundedInBuffer(number, insight.evidence, buffer)) {
           stripped.push({
             claimIndex,
             claim: insight.claim,
-            reason: `percentage ${number.raw.trim()} does not recompute from the cited evidence within 1% tolerance.`,
+            expected: "value present in query result cell within 1% tolerance",
+            found: number.raw.trim(),
+            reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
           });
           return;
         }
-        continue;
       }
-      const grounded =
-        numberMatchesBuffer(number.bare, buffer.rows, buffer.columns) ||
-        numberMatchesBuffer(number.scaled, buffer.rows, buffer.columns) ||
-        isLabelNumber(number.bare, insight.evidence, buffer);
-      if (!grounded) {
-        stripped.push({
-          claimIndex,
-          claim: insight.claim,
-          reason: `number ${number.raw.trim()} matches no query result cell within 1% tolerance.`,
-        });
-        return;
+
+      // Enforce polarity for comparative claims with >= 2 numeric pointers in the same column
+      // even when no explicit percentage delta is stated in the claim text.
+      const pair = resolveCurrBase(insight.evidence);
+      if (pair && pair.curr.pointer.column === pair.base.pointer.column) {
+        const polErr = checkPolarity(insight.claim, pair.curr.value, pair.base.value);
+        if (polErr) {
+          stripped.push({ claimIndex, claim: insight.claim, ...polErr });
+          return;
+        }
       }
     }
+
     if (!causalGrounded(insight.claim, insight.evidence, buffer.rows, buffer.columns, eventIds)) {
       stripped.push({
         claimIndex,
         claim: insight.claim,
+        expected: "row-backed breakdown dimension or event:* citation",
+        found: "ungrounded causal wording",
         reason: "causal language with no row-backed dimension or event:* citation; cause is unverified.",
       });
       return;
     }
     verified.push(insight);
   });
-  return { verified, stripped };
+
+  return {
+    verified,
+    stripped,
+    truncationCaveatRequired: truncated,
+  };
 }

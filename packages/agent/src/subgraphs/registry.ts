@@ -16,6 +16,8 @@ import {
   type UcEntryHandler,
 } from "../state.js";
 import { DEFAULT_ROUTE_ID, RESULT_PREVIEW_MAX } from "../constants.js";
+import { TRANSIENT_ROW_BUFFER_MAX } from "../queryExecutor/executor.js";
+import { setTransientQueryBuffer } from "../queryExecutor/transientBuffer.js";
 import { loadSemanticCatalogIds } from "../semantic/catalog.js";
 import {
   deriveCitations,
@@ -313,6 +315,14 @@ export function createTracerDefaultEntry(): UcEntryHandler {
       }
     }
     const preview = runPayload.rows.slice(0, RESULT_PREVIEW_MAX);
+    const bufferRunId = state.runId || ctx.runId;
+    if (bufferRunId) {
+      setTransientQueryBuffer(bufferRunId, {
+        columns: runPayload.columns,
+        rows: runPayload.rows.slice(0, TRANSIENT_ROW_BUFFER_MAX),
+        truncated: runPayload.truncated,
+      });
+    }
     const countKey = previewCountKey(runPayload.columns, preview);
     const total = previewCountTotal(runPayload.columns, preview);
     const status = preview.length > 0 ? "ok" : "no_data";
@@ -331,6 +341,7 @@ export function createTracerDefaultEntry(): UcEntryHandler {
       tablesUsed: proposal.tablesUsed,
       columns: runPayload.columns,
       resultPreview: preview,
+      resultTruncated: runPayload.truncated,
       toolsCalled: [...state.toolsCalled, "list_tables", "run_query"],
       status,
       answerText,

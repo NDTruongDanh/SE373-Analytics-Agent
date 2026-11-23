@@ -100,8 +100,23 @@ export type EvidencePointer = z.infer<typeof EvidencePointerSchema>;
 
 // One natural-language finding plus the pointers that prove it. evidence must
 // be non-empty so no claim ships without at least one verifiable cell.
+// derivation (H-05 Wave 2, additive) declares how the claimed value relates
+// to its evidence pointers so K7 recomputes it deterministically.
+export const ClaimDerivationSchema = z.enum([
+  "cell",
+  "pct_change",
+  "pp_change",
+  "share_of_total",
+  "sum",
+  "mean",
+  "rank",
+]);
+
+export type ClaimDerivation = z.infer<typeof ClaimDerivationSchema>;
+
 export const InsightClaimSchema = z.object({
   claim: z.string().min(1).max(2000),
+  derivation: ClaimDerivationSchema.optional(),
   evidence: z.array(EvidencePointerSchema).min(1),
 });
 
