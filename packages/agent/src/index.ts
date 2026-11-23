@@ -23,3 +23,4 @@ export {
   createAnswerSynthesizer,
   synthesizeAnswer,
 } from "./answer/synthesize.js";
+export { escapeUntrustedText, serializeUntrusted } from "./untrusted.js";

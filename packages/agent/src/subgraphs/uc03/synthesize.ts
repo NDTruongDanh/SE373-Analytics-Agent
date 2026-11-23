@@ -23,6 +23,7 @@ import {
   type InsightReport,
 } from "@shared/contracts";
 import { UNTRUSTED_DATA_CLOSE, UNTRUSTED_DATA_OPEN } from "../../constants.js";
+import { serializeUntrusted } from "../../untrusted.js";
 import {
   checkBudget,
   estimateTokens,
@@ -102,7 +103,7 @@ export function buildInsightPrompt(input: PromptInput): string {
       ? "- The result set is TRUNCATED: do NOT claim grand totals, share_of_total, sum, mean, or rank unless backed by a SQL-computed column, and include a truncation caveat in caveats."
       : "- The preview covers all returned rows.",
     `Columns: ${input.columns.join(", ")}`,
-    `Rows: ${UNTRUSTED_DATA_OPEN}${JSON.stringify(input.preview)}${UNTRUSTED_DATA_CLOSE}`,
+    `Rows: ${UNTRUSTED_DATA_OPEN}${serializeUntrusted(input.preview)}${UNTRUSTED_DATA_CLOSE}`,
   ].join("\n");
 }
 
