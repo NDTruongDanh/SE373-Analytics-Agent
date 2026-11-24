@@ -1,4 +1,4 @@
-import { RCA_UC_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
+import { RCA_ROUTE, TEXT_TO_SQL_ROUTE, type Route } from "./constants.js";
 
 const DEFINITION_LOOKUP_PATTERNS = [
   /\bđịnh\s*nghĩa\b/i,
@@ -28,21 +28,18 @@ const RCA_PATTERNS = [
   /\blý\s+do\b.*?\b(giảm|tăng|sụt|biến\s+động)\b/i,
 ];
 
-export function routeQuestionToUc(question: string, explicitUcId?: string): string {
-  if (explicitUcId && explicitUcId.trim().length > 0) {
-    return explicitUcId.trim();
-  }
+export function routeQuestion(question: string): Route {
   const q = question.trim();
   // Check definitions first so overlapping RCA patterns cannot capture them.
   for (const pattern of DEFINITION_LOOKUP_PATTERNS) {
     if (pattern.test(q)) {
-      return TEXT_TO_SQL_UC_ID;
+      return TEXT_TO_SQL_ROUTE;
     }
   }
   for (const pattern of RCA_PATTERNS) {
     if (pattern.test(q)) {
-      return RCA_UC_ID;
+      return RCA_ROUTE;
     }
   }
-  return TEXT_TO_SQL_UC_ID;
+  return TEXT_TO_SQL_ROUTE;
 }

@@ -134,7 +134,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       },
     });
     const out = await graph.invoke(
-      { question: "Có bao nhiêu đơn hàng?", ucId: "text-to-sql" },
+      { question: "Có bao nhiêu đơn hàng?", route: "text-to-sql" },
       runConfig("t-invalid-intent", "r-invalid-intent"),
     );
     expect(out.status).toBe("error");
@@ -165,7 +165,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       },
     });
     const out = await graph.invoke(
-      { question: "Có bao nhiêu đơn hàng?", ucId: "text-to-sql" },
+      { question: "Có bao nhiêu đơn hàng?", route: "text-to-sql" },
       runConfig("t-fenced-intent", "r-fenced-intent"),
     );
     expect(out.status).toBe("ok");
@@ -300,7 +300,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Doanh thu thuần theo kênh bán hàng?", ucId: "text-to-sql" },
+      { question: "Doanh thu thuần theo kênh bán hàng?", route: "text-to-sql" },
       runConfig("t-rev", "r-rev"),
     );
 
@@ -375,7 +375,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Tổng cộng có bao nhiêu đơn?", ucId: "text-to-sql" },
+      { question: "Tổng cộng có bao nhiêu đơn?", route: "text-to-sql" },
       runConfig("t-empty-ent", "r-empty-ent"),
     );
 
@@ -424,7 +424,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Chỉ số NPS quý này?", ucId: "text-to-sql" },
+      { question: "Chỉ số NPS quý này?", route: "text-to-sql" },
       runConfig("t-nps", "r-nps"),
     );
 
@@ -476,7 +476,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
         },
       });
       const out = await graph.invoke(
-        { question: "Đếm số đơn hàng", ucId: "text-to-sql" },
+        { question: "Đếm số đơn hàng", route: "text-to-sql" },
         runConfig(threadId, threadId),
       );
       return { out, intentCalls, execCalls };
@@ -527,7 +527,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       },
     });
     const metricOut = await metricGraph.invoke(
-      { question: "Doanh thu thuần?", ucId: "text-to-sql" },
+      { question: "Doanh thu thuần?", route: "text-to-sql" },
       runConfig("t-sem-metric-err", "r-sem-metric-err"),
     );
     expect(metricOut.status).toBe("error");
@@ -552,7 +552,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       },
     });
     const entityOut = await entityGraph.invoke(
-      { question: "Liệt kê đơn hàng?", ucId: "text-to-sql" },
+      { question: "Liệt kê đơn hàng?", route: "text-to-sql" },
       runConfig("t-sem-ent-err", "r-sem-ent-err"),
     );
     expect(entityOut.status).toBe("error");
@@ -585,7 +585,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Doanh thu thuần được tính như thế nào?", ucId: "text-to-sql" },
+      { question: "Doanh thu thuần được tính như thế nào?", route: "text-to-sql" },
       runConfig("t-def-score", "r-def-score"),
     );
     expect(out.status).toBe("ok");
@@ -627,7 +627,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Doanh thu thuần được tính như thế nào?", ucId: "text-to-sql" },
+      { question: "Doanh thu thuần được tính như thế nào?", route: "text-to-sql" },
       runConfig("t-def", "r-def"),
     );
     expect(out.status).toBe("ok");
@@ -693,7 +693,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     const cfg = runConfig("t-hitl", "r-hitl");
     const first = (await graph.invoke(
-      { question: "Đếm tất cả đơn hàng", ucId: "text-to-sql" },
+      { question: "Đếm tất cả đơn hàng", route: "text-to-sql" },
       cfg,
     )) as Record<string, unknown>;
     expect(Array.isArray(first["__interrupt__"])).toBe(true);
@@ -725,7 +725,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     const out = await graph.invoke(
       {
         question: "Đếm số đơn hàng",
-        ucId: "text-to-sql",
+        route: "text-to-sql",
         budget: {
           llmCalls: 20,
           tokensUsed: 0,
@@ -793,7 +793,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     const cfg = runConfig("t-partial-hitl", "r-partial-hitl");
     const first = (await graph.invoke(
-      { question: "Đếm số đơn hàng của phòng CSKH", ucId: "text-to-sql" },
+      { question: "Đếm số đơn hàng của phòng CSKH", route: "text-to-sql" },
       cfg,
     )) as Record<string, unknown>;
 
@@ -849,7 +849,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     const cfg = runConfig("t-limit-hitl", "r-limit-hitl");
     const first = (await graph.invoke(
-      { question: "Thống kê 3 phần chưa rõ", ucId: "text-to-sql" },
+      { question: "Thống kê 3 phần chưa rõ", route: "text-to-sql" },
       cfg,
     )) as Record<string, unknown>;
     expect(Array.isArray(first["__interrupt__"])).toBe(true);
@@ -902,7 +902,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Báo cáo 7 bảng", ucId: "text-to-sql" },
+      { question: "Báo cáo 7 bảng", route: "text-to-sql" },
       runConfig("t-too-many", "r-too-many"),
     );
     expect(execCalls).toBe(0);
@@ -948,7 +948,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       const out = await graph.invoke(
         {
           question: "Số đơn theo kênh bán và khu vực",
-          ucId: "text-to-sql",
+          route: "text-to-sql",
           budget: {
             llmCalls: 0,
             tokensUsed: 0,
@@ -1048,7 +1048,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Số đơn hàng theo kênh bán", ucId: "text-to-sql" },
+      { question: "Số đơn hàng theo kênh bán", route: "text-to-sql" },
       runConfig("t-followup-ok", "r-followup-ok"),
     );
 
@@ -1097,7 +1097,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Số đơn hàng theo kênh bán", ucId: "text-to-sql" },
+      { question: "Số đơn hàng theo kênh bán", route: "text-to-sql" },
       runConfig("t-followup-denied", "r-followup-denied"),
     );
 
@@ -1129,7 +1129,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     const cfg = runConfig("t-abort-rephrase", "r-abort-rephrase");
     const first = (await graph.invoke(
-      { question: "Đếm số đơn hàng của bộ phận CSKH", ucId: "text-to-sql" },
+      { question: "Đếm số đơn hàng của bộ phận CSKH", route: "text-to-sql" },
       cfg,
     )) as Record<string, unknown>;
     const interrupts = first["__interrupt__"] as {
@@ -1190,7 +1190,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     const cfg = runConfig("t-custom-catalog-resume", "r-custom-catalog-resume");
     const first = (await graph.invoke(
-      { question: "Đếm số đơn hàng theo gian hàng", ucId: "text-to-sql" },
+      { question: "Đếm số đơn hàng theo gian hàng", route: "text-to-sql" },
       cfg,
     )) as Record<string, unknown>;
     const interrupts = first["__interrupt__"] as {
@@ -1251,7 +1251,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     });
 
     const out = await graph.invoke(
-      { question: "Doanh thu thuần across 6 entities", ucId: "text-to-sql" },
+      { question: "Doanh thu thuần across 6 entities", route: "text-to-sql" },
       runConfig("t-metric-cap", "r-metric-cap"),
     );
     expect(execCalls).toBe(0);

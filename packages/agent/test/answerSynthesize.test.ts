@@ -9,7 +9,7 @@ import type { AgentState, RootRuntime, SpanEvent } from "../src/state.js";
 function baseState(overrides: Partial<AgentState> = {}): AgentState {
   return {
     question: "q",
-    ucId: "text-to-sql",
+    route: "text-to-sql",
     intent: {
       metric: null,
       dimensions: [],
@@ -95,7 +95,7 @@ describe("synthesizeAnswer & createAnswerSynthesizer", () => {
     expect(multi.answerText).not.toContain("0901234567");
   });
 
-  it("provides status fallbacks and skips duplicate answer span on default tracer route", async () => {
+  it("provides status fallbacks and skips the answer span when upstream text is already set", async () => {
     expect(
       synthesizeAnswer(baseState({ status: "restricted", answerText: "" })).answerText,
     ).toMatch(/restricted/i);
@@ -113,10 +113,10 @@ describe("synthesizeAnswer & createAnswerSynthesizer", () => {
     } as unknown as RootRuntime;
     const synth = createAnswerSynthesizer();
 
-    await synth(baseState({ ucId: "tracer", answerText: "already set" }), rt);
+    await synth(baseState({ route: "text-to-sql", answerText: "already set" }), rt);
     expect(emitted).toHaveLength(0);
 
-    await synth(baseState({ ucId: "text-to-sql", resultPreview: [{ n: 9 }] }), rt);
+    await synth(baseState({ route: "text-to-sql", resultPreview: [{ n: 9 }] }), rt);
     expect(emitted).toHaveLength(1);
     expect(emitted[0]).toMatchObject({ node: "answer", type: "node_done" });
   });

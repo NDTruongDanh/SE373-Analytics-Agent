@@ -71,10 +71,8 @@ import {
   repairCitations,
   validateCitations,
 } from "../validators/citationValidator.js";
-import { registerUC } from "./registry.js";
-import { BUDGET_LIMITS, TEXT_TO_SQL_UC_ID } from "../constants.js";
+import { BUDGET_LIMITS } from "../constants.js";
 
-export { TEXT_TO_SQL_UC_ID } from "../constants.js";
 
 export const IntentProposalSchema = IntentSchema;
 export type IntentProposal = z.infer<typeof IntentProposalSchema>;
@@ -1516,4 +1514,3 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
   return { understand, entry };
 }
 
-registerUC(TEXT_TO_SQL_UC_ID, createTextToSqlRuntime().entry);

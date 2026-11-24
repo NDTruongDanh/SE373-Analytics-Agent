@@ -89,7 +89,7 @@ describe("buildApp resume", () => {
       mcpUrl: "http://127.0.0.1:1/mcp",
       tracesDir,
       env: stubEnv,
-      ucHandlers: { tracer: pausingHandler },
+      routes: { "text-to-sql": pausingHandler },
     });
     await new Promise<void>((resolve) => {
       apiServer = app.listen(0, "127.0.0.1", () => resolve());
@@ -152,7 +152,7 @@ describe("buildApp resume", () => {
   });
 
   it("pauses on interrupt then resumes on the same thread without re-running", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "sales_south", ucId: "tracer" });
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
     expect(asked.status).toBe(200);
     const askBlocks = parseSse(asked.text);
     expect(askBlocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
@@ -179,7 +179,7 @@ describe("buildApp resume", () => {
   });
 
   it("labels a direct UC clarification interrupt in its SSE and trace metadata", async () => {
-    const asked = await post("/api/ask", { question: "please clarify", persona: "sales_south", ucId: "tracer" });
+    const asked = await post("/api/ask", { question: "please clarify", persona: "sales_south" });
     expect(asked.status).toBe(200);
     const blocks = parseSse(asked.text);
     expect(blocks.map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
@@ -196,7 +196,7 @@ describe("buildApp resume", () => {
   });
 
   it("rehydrates the thread from the trace file after a host restart", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "marketing", ucId: "tracer" });
+    const asked = await post("/api/ask", { question: "please review", persona: "marketing" });
     expect(asked.status).toBe(200);
     const askBlocks = parseSse(asked.text);
     const runId = askBlocks[0].data["runId"] as string;
@@ -218,7 +218,7 @@ describe("buildApp resume", () => {
       mcpUrl: "http://127.0.0.1:1/mcp",
       tracesDir,
       env: stubEnv,
-      ucHandlers: { tracer: pausingHandler },
+      routes: { "text-to-sql": pausingHandler },
     });
     let restartedServer: { close: (cb?: () => void) => void } | null = null;
     await new Promise<void>((resolve) => {
@@ -277,7 +277,7 @@ describe("buildApp resume", () => {
       mcpUrl: "http://127.0.0.1:9",
       tracesDir: localTraces,
       env: stubEnv,
-      ucHandlers: {
+      routes: {
         "root-cause-analysis": planReviewHandler,
       },
     });
@@ -337,7 +337,7 @@ describe("buildApp resume", () => {
   });
 
   it("emits one approval_requested plus one approval_decided with metadata only", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "sales_south", ucId: "tracer" });
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
     expect(asked.status).toBe(200);
     expect(parseSse(asked.text).map((b) => b.event)).toEqual(["intent_parsed", "interrupt_waiting"]);
     const runId = parseSse(asked.text)[0].data["runId"] as string;
@@ -379,7 +379,7 @@ describe("buildApp resume", () => {
   });
 
   it("records allowlisted resume verdicts verbatim", async () => {
-    const asked = await post("/api/ask", { question: "please review", persona: "sales_south", ucId: "tracer" });
+    const asked = await post("/api/ask", { question: "please review", persona: "sales_south" });
     expect(asked.status).toBe(200);
     const runId = parseSse(asked.text)[0].data["runId"] as string;
     const resumed = await post(`/api/runs/${runId}/resume`, { value: "approve" });
@@ -409,13 +409,13 @@ describe("buildResumeInvokeOptions", () => {
     return {
       runId,
       callbacks: [],
-      tags: ["se373", "uc:tracer"],
+      tags: ["se373", "route:text-to-sql"],
       metadata: {
         runId,
         threadId: stored.threadId,
         userId: stored.userId,
         role: stored.roleScope,
-        ucId: "",
+        route: "text-to-sql",
         maskedColumns: [],
       },
     };
@@ -443,7 +443,7 @@ describe("buildResumeInvokeOptions", () => {
     expect(first.configurable["runId"]).toBe("api-run-1");
     expect(first.configurable["thread_id"]).toBe(stored.threadId);
     expect(first.callbacks).toEqual([]);
-    expect(first.tags).toEqual(["se373", "uc:tracer"]);
+    expect(first.tags).toEqual(["se373", "route:text-to-sql"]);
   });
 
   it("stays untraced when LangSmith is off", () => {
@@ -484,7 +484,7 @@ describe("buildResumeInvokeOptions", () => {
       mcpUrl: "http://127.0.0.1:1/mcp",
       tracesDir: localDir,
       env: localEnv,
-      ucHandlers: { tracer: capturing },
+      routes: { "text-to-sql": capturing },
     });
     let capturingServer: { close: (cb?: () => void) => void } | null = null;
     await new Promise<void>((resolve) => {
@@ -498,7 +498,7 @@ describe("buildResumeInvokeOptions", () => {
       const askRes = await fetch(`${base}/api/ask`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "please review", persona: "sales_south", ucId: "tracer" }),
+        body: JSON.stringify({ question: "please review", persona: "sales_south" }),
       });
       expect(askRes.status).toBe(200);
       const askBlocks = parseSse(await askRes.text());

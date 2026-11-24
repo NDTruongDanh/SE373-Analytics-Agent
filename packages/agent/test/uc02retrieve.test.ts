@@ -38,7 +38,7 @@ function fakeRuntime(): RootRuntime {
 function stateWith(intent: Partial<AgentState["intent"]>, question = "q"): AgentState {
   return {
     question,
-    ucId: "text-to-sql",
+    route: "text-to-sql",
     intent: {
       metric: null,
       dimensions: [],
@@ -97,7 +97,7 @@ describe("UC-02 unknown-term gate", () => {
     expect(out.semanticChunks?.map((c) => c.chunkId)).toEqual(["table:regions"]);
   });
 
-  it("searches semantic chunks on the tracer route so live e2e emits retrieve spans and feeds citations", async () => {
+  it("searches semantic chunks on either route so live e2e emits retrieve spans and feeds citations", async () => {
     let searched = false;
     const retrieve = createRetrieveSemantic({
       search: async () => {
@@ -115,8 +115,8 @@ describe("UC-02 unknown-term gate", () => {
         ];
       },
     });
-    const tracerState = { ...stateWith({ requestedMetrics: [] }), ucId: "tracer" };
-    const out = await retrieve(tracerState, fakeRuntime());
+    const rcaState = { ...stateWith({ requestedMetrics: [] }), route: "root-cause-analysis" };
+    const out = await retrieve(rcaState, fakeRuntime());
     expect(searched).toBe(true);
     expect(out.status).toBeUndefined();
     expect(out.semanticChunks?.map((c) => c.chunkId)).toEqual(["table:orders"]);

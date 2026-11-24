@@ -62,7 +62,6 @@ async function main(): Promise<void> {
 
   const state = {
     question: fixture.question,
-    ucId: "uc03-eval",
     intent: {
       metric: null,
       dimensions: [],

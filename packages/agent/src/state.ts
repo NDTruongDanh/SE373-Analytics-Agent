@@ -9,7 +9,12 @@ import {
   SQLAnswerStatusSchema,
 } from "@shared/contracts";
 import { z } from "zod";
-import { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
+import {
+  BUDGET_DEFAULTS,
+  RESULT_PREVIEW_MAX,
+  ROUTES,
+  TEXT_TO_SQL_ROUTE,
+} from "./constants.js";
 
 export { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
 
@@ -118,7 +123,7 @@ type TelemetryUpdate = z.infer<typeof TelemetryUpdateSchema>;
 
 export const AgentStateSchema = new StateSchema({
   question: z.string().default(""),
-  ucId: z.string().default(""),
+  route: z.enum(ROUTES).default(TEXT_TO_SQL_ROUTE),
   intent: IntentSchema.default(() => ({
     metric: null,
     dimensions: [],

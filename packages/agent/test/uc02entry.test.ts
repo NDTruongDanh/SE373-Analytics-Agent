@@ -23,7 +23,7 @@ function fakeRuntime(): RootRuntime {
 function stateWith(overrides: Partial<AgentState>): AgentState {
   return {
     question: "q",
-    ucId: "text-to-sql",
+    route: "text-to-sql",
     intent: {
       metric: null,
       dimensions: [],

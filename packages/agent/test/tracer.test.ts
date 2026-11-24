@@ -1,30 +1,20 @@
 import { mkdtempSync, readFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TraceEventSchema } from "@shared/contracts";
-import { runTracerGraph } from "../src/graph.js";
+import { describe, expect, it } from "vitest";
 import { createChatModel } from "../src/models/factory.js";
 import { TRACER_SQL_PROPOSAL } from "../src/constants.js";
-import { createTracerDefaultEntry } from "../src/subgraphs/registry.js";
-import { createSpanEmitter } from "../src/telemetry/spans.js";
-import type { AgentState, RootRuntime } from "../src/state.js";
 import { writeTraceEvent } from "../src/traces/writer.js";
-import { previewCountKey, previewCountTotal } from "../src/subgraphs/registry.js";
+import { previewCountKey, previewCountTotal } from "../src/subgraphs/previewCount.js";
 
-// Tracer slice: fake model + stub MCP transport assert at least 2 tool calls
-// per run, per-call X-Run-Id propagation, resultPreview cap, and zero raw
-// seed phones/emails in writer output. No DB, no API key needed.
+// Former tracer-slice tests for the removed runTracerGraph/default-entry
+// surface are gone with the router refactor (#98). What remains covers
+// still-existing behavior: the keyless fake model proposal, the
+// previewCount helpers (now in subgraphs/previewCount.ts), and PII
+// redaction in writer output. No DB, no API key needed.
 
 const SEED_PHONES = ["0901111111", "0905555555"];
 const SEED_EMAIL = "an.nguyen@example.vn";
-
-interface SeenCall {
-  tool: string;
-  runId: string;
-  auth: string;
-}
 
 function threeRows() {
   return [
@@ -34,177 +24,11 @@ function threeRows() {
   ];
 }
 
-function sixtyRows() {
-  return Array.from({ length: 60 }, (_, i) => ({
-    status: `s${i % 3}`,
-    n: 1,
-  }));
-}
-
-describe("tracer agent", () => {
-  let stub: Server | null = null;
-  let mcpUrl = "";
-  let tracesDir = "";
-  const seen: SeenCall[] = [];
-
-  function readBody(req: IncomingMessage): Promise<unknown> {
-    return new Promise((resolve) => {
-      let data = "";
-      req.on("data", (chunk) => (data += chunk));
-      req.on("end", () => {
-        if (!data) {
-          resolve({});
-          return;
-        }
-        resolve(JSON.parse(data));
-      });
-    });
-  }
-
-  function sse(res: import("node:http").ServerResponse, id: number, result: unknown) {
-    res.writeHead(200, { "content-type": "text/event-stream" });
-    res.end(`event: message\ndata: ${JSON.stringify({ result, jsonrpc: "2.0", id })}\n\n`);
-  }
-
-  beforeAll(async () => {
-    tracesDir = mkdtempSync(path.join(tmpdir(), "tracer-agent-"));
-    const server = createServer(async (req, res) => {
-      if (req.method !== "POST") {
-        res.writeHead(405);
-        res.end();
-        return;
-      }
-      const body = (await readBody(req!)) as {
-        id?: number;
-        method?: string;
-        params?: { protocolVersion?: string; name?: string; arguments?: unknown };
-      };
-      if (body.method === "initialize") {
-        sse(res, body.id ?? 0, {
-          protocolVersion: body.params?.protocolVersion ?? "2025-11-25",
-          capabilities: { tools: {} },
-          serverInfo: { name: "stub", version: "0" },
-        });
-        return;
-      }
-      if (body.method === "notifications/initialized") {
-        res.writeHead(202);
-        res.end();
-        return;
-      }
-      if (body.method === "tools/call") {
-        const tool = body.params?.name ?? "";
-        seen.push({
-          tool,
-          runId: String(req.headers["x-run-id"] ?? ""),
-          auth: String(req.headers["authorization"] ?? ""),
-        });
-        const aliased = String(req.headers["x-run-id"]).includes("alias");
-        const rows =
-          tool === "list_tables"
-            ? []
-            : String(req.headers["x-run-id"]).includes("cap")
-              ? sixtyRows()
-              : aliased
-                ? threeRows().map(({ status, n }) => ({ status, order_count: n }))
-                : threeRows();
-        const payload =
-          tool === "list_tables"
-            ? {
-                tables: [
-                  { name: "customers", schema: "public", columns: [] },
-                  { name: "orders", schema: "public", columns: [] },
-                ],
-              }
-            : {
-                columns: aliased ? ["status", "order_count"] : ["status", "n"],
-                rows,
-                rowCount: rows.length,
-                truncated: false,
-              };
-        sse(res, body.id ?? 0, {
-          content: [{ type: "text", text: JSON.stringify(payload) }],
-        });
-        return;
-      }
-      res.writeHead(400);
-      res.end();
-    });
-    await new Promise<void>((resolve) => {
-      stub = server.listen(0, "127.0.0.1", () => resolve());
-    });
-    const address = stub!.address();
-    const port = typeof address === "object" && address ? address.port : 0;
-    mcpUrl = `http://127.0.0.1:${port}/mcp`;
-  });
-
-  afterAll(async () => {
-    await new Promise<void>((resolve) => {
-      if (stub) stub.close(() => resolve());
-      else resolve();
-    });
-  });
-
-  function ctx(runId: string) {
-    return {
-      mcpUrl,
-      token: "stub-token",
-      runId,
-      userId: "demo-user",
-      roleScope: "sales_south",
-      threadId: `thread-${runId}`,
-      tracesDir,
-    };
-  }
-
+describe("tracer slice remnants", () => {
   it("proposes the canned SQL through the fake model by default", async () => {
     const model = createChatModel();
     const proposal = await model.proposeSql("How many orders do we have per status?");
     expect(proposal).toEqual(TRACER_SQL_PROPOSAL);
-  });
-
-  it("calls at least 2 MCP tools with per-call identity headers", async () => {
-    seen.length = 0;
-    const out = await runTracerGraph(
-      "How many orders do we have per status?",
-      ctx("run-tools-1"),
-    );
-    expect(out.toolsCalled).toEqual(["list_tables", "run_query"]);
-    expect(seen).toHaveLength(2);
-    expect(seen[0].tool).toBe("list_tables");
-    expect(seen[1].tool).toBe("run_query");
-    for (const call of seen) {
-      expect(call.runId).toBe("run-tools-1");
-      expect(call.auth).toBe("Bearer stub-token");
-    }
-    expect(out.status).toBe("ok");
-    expect(out.answerText).toContain("3 status groups, 12 orders");
-  });
-
-  it("propagates a distinct X-Run-Id per run", async () => {
-    seen.length = 0;
-    await runTracerGraph("How many orders do we have per status?", ctx("run-tools-2"));
-    const runIds = new Set(seen.map((call) => call.runId));
-    expect(runIds).toEqual(new Set(["run-tools-2"]));
-  });
-
-  it("caps the result preview at 50 rows", async () => {
-    const out = await runTracerGraph("How many orders do we have per status?", ctx("run-cap-1"));
-    expect(out.status).toBe("ok");
-    const lines = readFileSync(`${tracesDir}/run-cap-1.jsonl`, "utf8").trim().split("\n");
-    const answerEvent = lines
-      .map((line) => JSON.parse(line))
-      .find((event) => event.type === "node_done" && event.node === "answer");
-    // The stub returns 60 rows; the deterministic answer counts only the
-    // capped preview, proving the 50-row cap without exposing state.
-    expect((answerEvent.payload as { total: number }).total).toBe(50);
-  });
-
-  it("totals a live-model count alias instead of only the canned n column", async () => {
-    const out = await runTracerGraph("How many orders do we have per status?", ctx("run-alias-1"));
-    expect(out.status).toBe("ok");
-    expect(out.answerText).toContain("3 status groups, 12 orders");
-    expect(out.answerText).toContain("completed=7");
   });
 
   it("previewCountTotal reads n, a live alias, or nothing numeric", () => {
@@ -276,33 +100,8 @@ describe("tracer agent", () => {
     ).toBe("n");
   });
 
-  it("writes an 8-event redacted trace validated by the contract", async () => {
-    await runTracerGraph("How many orders do we have per status?", ctx("run-trace-1"));
-    const raw = readFileSync(`${tracesDir}/run-trace-1.jsonl`, "utf8").trim().split("\n");
-    expect(raw).toHaveLength(8);
-    for (const line of raw) {
-      const parsed = TraceEventSchema.parse(JSON.parse(line));
-      expect(parsed.runId).toBe("run-trace-1");
-      expect(parsed.spanId).toBeDefined();
-    }
-    // G1: the demo route reports its single model call; the keyless fake
-    // carries no provider usage, so counts are zero and pricing unknown.
-    const events = raw.map((line) => TraceEventSchema.parse(JSON.parse(line)));
-    const llmCalls = events.filter((event) => event.type === "llm_call");
-    expect(llmCalls).toHaveLength(1);
-    expect(llmCalls[0].node).toBe("understand");
-    expect(llmCalls[0].payload).toEqual({
-      model: "unknown",
-      inputTokens: 0,
-      outputTokens: 0,
-      estimatedCostUsd: 0,
-      pricingKnown: false,
-    });
-    const runDone = events.find((event) => event.type === "run_done");
-    expect((runDone?.payload as { llmCalls?: number } | undefined)?.llmCalls).toBe(1);
-  });
-
   it("masks raw seed PII in writer output", () => {
+    const tracesDir = mkdtempSync(path.join(tmpdir(), "tracer-agent-"));
     const runId = "run-pii-1";
     writeTraceEvent(
       {
@@ -317,195 +116,12 @@ describe("tracer agent", () => {
       },
       tracesDir,
     );
-    const content = readFileSync(`${tracesDir}/${runId}.jsonl`, "utf8");
+    const content = readFileSync(path.join(tracesDir, `${runId}.jsonl`), "utf8");
     expect(content).toContain("MASKED_PHONE");
     expect(content).toContain("MASKED_EMAIL");
     for (const phone of SEED_PHONES) {
       expect(content).not.toContain(phone);
     }
     expect(content).not.toContain(SEED_EMAIL);
-  });
-
-  it("marks the demo run_query tool_call ok:true on success", async () => {
-    await runTracerGraph("How many orders do we have per status?", ctx("run-ok-1"));
-    const events = readFileSync(`${tracesDir}/run-ok-1.jsonl`, "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    const runCalls = events.filter(
-      (event) =>
-        event["type"] === "tool_call" &&
-        (event["payload"] as { tool?: unknown })?.tool === "run_query",
-    );
-    expect(runCalls).toHaveLength(1);
-    expect(runCalls[0]["payload"]).toMatchObject({ ok: true, rowCount: 3 });
-  });
-
-  it("leaves totals sane when the demo run_query throws (no partial span)", async () => {
-    // Stub MCP: list_tables succeeds, run_query answers with a contract
-    // error payload so parseToolJson throws before any run span is written.
-    const failing = createServer(async (req, res) => {
-      if (req.method !== "POST") {
-        res.writeHead(405);
-        res.end();
-        return;
-      }
-      let data = "";
-      req.on("data", (chunk) => (data += chunk));
-      req.on("end", () => {
-        const body = JSON.parse(data) as {
-          id?: number;
-          method?: string;
-          params?: { name?: string };
-        };
-        const reply = (result: unknown): void => {
-          res.writeHead(200, { "content-type": "text/event-stream" });
-          res.end(
-            `event: message\ndata: ${JSON.stringify({ result, jsonrpc: "2.0", id: body.id ?? 0 })}\n\n`,
-          );
-        };
-        if (body.method === "initialize") {
-          reply({
-            protocolVersion: "2025-11-25",
-            capabilities: { tools: {} },
-            serverInfo: { name: "stub", version: "0" },
-          });
-          return;
-        }
-        if (body.method === "notifications/initialized") {
-          res.writeHead(202);
-          res.end();
-          return;
-        }
-        if (body.params?.name === "list_tables") {
-          reply({
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  tables: [{ name: "orders", schema: "public", columns: [] }],
-                }),
-              },
-            ],
-          });
-          return;
-        }
-        reply({
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ code: "TIMEOUT", message: "stub timeout" }),
-            },
-          ],
-        });
-      });
-    });
-    await new Promise<void>((resolve) => {
-      failing.listen(0, "127.0.0.1", () => resolve());
-    });
-    try {
-      const address = failing.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      const failCtx = {
-        ...ctx("run-throw-1"),
-        mcpUrl: `http://127.0.0.1:${port}/mcp`,
-      };
-      const seen: { type?: unknown; payload?: unknown }[] = [];
-      const entry = createTracerDefaultEntry();
-      await expect(
-        entry(
-          { question: "How many?", toolsCalled: [] } as unknown as AgentState,
-          {
-            emit: (event) => {
-              seen.push(event);
-              return `span-${seen.length}`;
-            },
-            config: { configurable: { ...failCtx } } as RootRuntime["config"],
-          },
-        ),
-      ).rejects.toThrow(/TIMEOUT/);
-      // The throw happens before the run span: no run_query attempt exists
-      // to count, so the totals fold stays at zero instead of NaN/partial.
-      expect(
-        seen.filter(
-          (event) =>
-            event.type === "tool_call" &&
-            (event.payload as { tool?: unknown } | undefined)?.tool === "run_query",
-        ),
-      ).toHaveLength(0);
-      const replay = createSpanEmitter({
-        runId: "run-throw-1",
-        threadId: "thread-run-throw-1",
-        userId: "demo-user",
-        role: "sales_south",
-        tracesDir: failCtx.tracesDir,
-      });
-      for (const event of seen) {
-        replay({
-          node: "run",
-          type: String(event.type),
-          durationMs: 0,
-          payload: event.payload,
-        });
-      }
-      expect(replay.totals()).toMatchObject({
-        sqlAttempts: 0,
-        sqlFailures: 0,
-        repairs: 0,
-      });
-    } finally {
-      await new Promise<void>((resolve) => {
-        failing.close(() => resolve());
-      });
-    }
-  });
-
-  it("validates citations against the semantic catalog on the default tracer route when chunks are present", async () => {
-    const entry = createTracerDefaultEntry();
-    const okOut = await entry(
-      {
-        question: "How many orders do we have per status?",
-        toolsCalled: [],
-        semanticChunks: [{ chunkId: "table:orders", score: 0.9, text: "orders table" }],
-        intent: {
-          metric: null,
-          dimensions: [],
-          filters: [],
-          timeRange: null,
-          requestedMetrics: [],
-          schemaEntities: ["orders"],
-          queryMode: "standard_query",
-        },
-      } as unknown as AgentState,
-      {
-        emit: () => "span-1",
-        config: { configurable: { ...ctx("run-cite-ok") } } as RootRuntime["config"],
-      },
-    );
-    expect(okOut.status).toBe("ok");
-    expect(okOut.sql).toMatch(/^-- @citations: table:orders\n/);
-
-    const badOut = await entry(
-      {
-        question: "How many orders do we have per status?",
-        toolsCalled: [],
-        semanticChunks: [{ chunkId: "metric:not_in_catalog", score: 0.1, text: "bogus" }],
-        intent: {
-          metric: null,
-          dimensions: [],
-          filters: [],
-          timeRange: null,
-          requestedMetrics: ["not_in_catalog"],
-          schemaEntities: ["orders"],
-          queryMode: "standard_query",
-        },
-      } as unknown as AgentState,
-      {
-        emit: () => "span-1",
-        config: { configurable: { ...ctx("run-cite-bad") } } as RootRuntime["config"],
-      },
-    );
-    expect(badOut.status).toBe("cannot_answer");
-    expect(badOut.answerText).toMatch(/Citation check failed/);
   });
 });
