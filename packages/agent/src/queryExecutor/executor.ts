@@ -36,8 +36,15 @@ import {
 import {
   clampLimit,
   hasWhereFilter,
+  largeScannedTables,
   localQuerySafetyGate,
 } from "./safetyGate.js";
+import {
+  ceilingsFor,
+  costBreach,
+  defaultQueryCostPolicy,
+  type QueryCostPolicy,
+} from "./costPolicy.js";
 import { escapeUntrustedText, serializeUntrusted } from "../untrusted.js";
 import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
@@ -182,6 +189,7 @@ export interface ExecutorDeps {
   mcp: McpToolCaller;
   emitSpan?: SpanSink;
   maxAttempts?: number;
+  costPolicy?: QueryCostPolicy;
 }
 
 function statusForError(code: ErrorCode): "restricted" | "error" {
@@ -253,6 +261,7 @@ function catalogFromDescribe(
       type: string;
       nullable: boolean;
       sensitive: boolean;
+      large?: boolean;
     }[];
   }[],
 ): SchemaCatalog {
@@ -265,7 +274,7 @@ function catalogFromDescribe(
         type: column.type,
         nullable: column.nullable,
         sensitive: column.sensitive,
-        large: false,
+        large: column.large ?? false,
       })),
     })),
   };
@@ -552,12 +561,14 @@ export class ValidatedQueryExecutor {
   private readonly mcp: McpToolCaller;
   private readonly emitSpan: SpanSink;
   private readonly maxAttempts: number;
+  private readonly costPolicy: QueryCostPolicy | undefined;
 
   constructor(deps: ExecutorDeps) {
     this.model = deps.model;
     this.mcp = deps.mcp;
     this.emitSpan = deps.emitSpan ?? noopSpanSink;
     this.maxAttempts = deps.maxAttempts ?? MAX_ATTEMPTS;
+    this.costPolicy = deps.costPolicy;
   }
 
   private span(
@@ -972,6 +983,30 @@ export class ValidatedQueryExecutor {
             estimatedCost: parsedExplain.data.estimatedCost,
           },
         });
+        const ceilings = ceilingsFor(
+          this.costPolicy ?? defaultQueryCostPolicy(),
+          input.principal.roleScope,
+        );
+        const breach = costBreach(parsedExplain.data, ceilings);
+        if (breach) {
+          const table =
+            largeScannedTables(guard, catalog)[0] ?? guard.tables[0];
+          this.span({
+            node: "explain",
+            type: "node_done",
+            attempt,
+            payload: { strategy: "cost_ceiling", ...breach },
+          });
+          return {
+            status: "needs_clarification",
+            reason:
+              `The query plan is too expensive (${breach.metric} ${Math.round(breach.estimate)} ` +
+              `exceeds the ${breach.ceiling} ceiling); choose a narrower time range before running it.`,
+            ...(table ? { table } : {}),
+            sql: finalSql,
+            attempts: attempt,
+          };
+        }
       } catch (thrown) {
         const error = asDbToolError("explain_query", thrown);
         const routed = this.routeMcpError(error, {

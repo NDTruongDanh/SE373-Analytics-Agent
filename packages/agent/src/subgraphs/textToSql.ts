@@ -935,10 +935,29 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         deadlineMs: budget.deadlineMs,
         emit: rt.emit,
       };
+      const intentJsonModel =
+        deps.intentJsonModel ??
+        (process.env.AGENT_MODEL_API_KEY
+          ? createChatModel("intent")
+          : createChatModel("intent", {
+              fake: {
+                responses: [
+                  JSON.stringify({
+                    metric: "order_count",
+                    dimensions: ["status"],
+                    filters: [],
+                    timeRange: "2025-01-01/2026-10-01",
+                    requestedMetrics: [],
+                    schemaEntities: ["orders"],
+                    queryMode: "standard_query",
+                  }),
+                ],
+              },
+            }));
       out = deps.intentModel && !deps.intentJsonModel
         ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, invokeOpts)
         : await invokeJsonWithUsage(
-            deps.intentJsonModel ?? createChatModel("intent"),
+            intentJsonModel,
             IntentProposalSchema,
             prompt,
             invokeOpts,
@@ -1395,7 +1414,20 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     const executor =
       deps.executor ??
       new ValidatedQueryExecutor({
-        model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
+        model:
+          deps.sqlModel ??
+          ((process.env.AGENT_MODEL_API_KEY
+            ? createChatModel("sql")
+            : createChatModel("sql", {
+                fake: {
+                  responses: [
+                    JSON.stringify({
+                      sql: "SELECT status, COUNT(*) AS n FROM public.orders WHERE purchase_date >= '2025-01-01' GROUP BY status ORDER BY status",
+                      tablesUsed: ["orders"],
+                    }),
+                  ],
+                },
+              })) as unknown as ChatModelLike),
         mcp: createRuntimeMcpCaller(transport!),
         emitSpan: (event) => {
           const payload = (event as { payload?: unknown }).payload;

@@ -59,12 +59,12 @@ function stubCatalog(): BuiltCatalog {
   return {
     catalog: {
       tables: [
-        { name: "orders", schema: "public", columns: columns("orders", [["id", false], ["status", false], ["total", false]]) },
+        { name: "orders", schema: "public", columns: columns("orders", [["id", false], ["customer_id", false], ["status", false], ["total", false]]) },
         { name: "sellers", schema: "public", columns: columns("sellers", [["id", false], ["name", false], ["region_group", false]]) },
         {
           name: "customers",
           schema: "public",
-          columns: columns("customers", [["id", false], ["phone", true], ["email", true], ["address", true], ["name", false]]),
+          columns: columns("customers", [["id", false], ["customer_id", false], ["phone", true], ["email", true], ["address", true], ["name", false], ["region_group", false]]),
         },
         {
           name: "employees",
@@ -317,7 +317,9 @@ describe("pipeline policy stage", () => {
     expect(audit["piiHits"]).toBe(1);
     // G5: the allow line carries the server-minted RBAC record.
     expect(audit["maskedColumns"]).toEqual(["customers.phone"]);
-    expect(audit["rowScopeApplied"]).toEqual([]);
+    expect(audit["rowScopeApplied"]).toEqual([
+      { table: "customers", column: "region_group" },
+    ]);
   });
 
   it("denies a sensitive column in a WHERE clause without data:sensitive", async () => {

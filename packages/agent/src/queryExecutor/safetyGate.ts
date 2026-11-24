@@ -4,7 +4,11 @@ import {
   type SchemaCatalog,
 } from "@shared/contracts";
 import type { GuardAst, GuardSuccess } from "@shared/access-policy";
-import { DETAIL_QUERY_LIMIT } from "../constants.js";
+import {
+  DETAIL_QUERY_LIMIT,
+  FANOUT_CHILD_TABLES,
+  FANOUT_SENSITIVE_AGGREGATES,
+} from "../constants.js";
 
 export { DETAIL_QUERY_LIMIT } from "../constants.js";
 
@@ -90,7 +94,7 @@ function unconditionedJoin(ast: GuardAst, sql: string): string | undefined {
   return undefined;
 }
 
-function largeScannedTables(
+export function largeScannedTables(
   guard: GuardSuccess,
   catalog: SchemaCatalog,
 ): string[] {
@@ -143,7 +147,10 @@ function functionName(node: unknown): string | undefined {
 
 function hasAggregate(ast: GuardAst): boolean {
   const root = rootSelectStmt(ast);
-  if (!root) return false;
+  return root ? selectHasAggregate(root) : false;
+}
+
+function selectHasAggregate(root: Record<string, unknown>): boolean {
   const targetList = root["targetList"];
   if (
     findNodes(targetList, "FuncCall").some((node) =>
@@ -159,7 +166,11 @@ function hasAggregate(ast: GuardAst): boolean {
 }
 
 function columnRefName(node: unknown): string | undefined {
-  const ref = asRecord(asRecord(node)?.["ColumnRef"]);
+  return columnRefFieldName(asRecord(node)?.["ColumnRef"]);
+}
+
+function columnRefFieldName(columnRef: unknown): string | undefined {
+  const ref = asRecord(columnRef);
   const fields = ref?.["fields"];
   if (!Array.isArray(fields) || fields.length === 0) return undefined;
   const finalField = asRecord(fields.at(-1));
@@ -174,33 +185,97 @@ function comparisonOperator(expression: Record<string, unknown>): string | undef
   return typeof value === "string" ? value.toUpperCase() : undefined;
 }
 
+/** Aliases computed only from purchase_date (MIN, date_trunc) keep the first-purchase CTE shape valid. */
+function purchaseDateAliases(ast: GuardAst): Set<string> {
+  const aliases = new Set(["purchase_date"]);
+  for (const node of findNodes(ast, "ResTarget")) {
+    const target = asRecord(node);
+    const name = target?.["name"];
+    if (typeof name !== "string") continue;
+    const refs = findNodes(target?.["val"], "ColumnRef").map(columnRefFieldName);
+    if (refs.length > 0 && refs.every((ref) => ref === "purchase_date")) {
+      aliases.add(name.toLowerCase());
+    }
+  }
+  return aliases;
+}
+
 /** Require a direct conjunctive comparison so IS NOT NULL or OR branches cannot bypass the time bound. */
-function hasConjunctivePurchaseDateRange(node: unknown, insideOr = false): boolean {
+function hasConjunctivePurchaseDateRange(
+  node: unknown,
+  dateColumns: ReadonlySet<string>,
+  insideOr = false,
+): boolean {
   const record = asRecord(node);
   if (!record) return false;
   const bool = asRecord(record["BoolExpr"]);
   if (bool) {
     const args = bool["args"];
     const isOr = bool["boolop"] === 1 || String(bool["boolop"]).toUpperCase() === "OR_EXPR";
-    return Array.isArray(args) && args.some((arg) => hasConjunctivePurchaseDateRange(arg, insideOr || isOr));
+    return (
+      Array.isArray(args) &&
+      args.some((arg) => hasConjunctivePurchaseDateRange(arg, dateColumns, insideOr || isOr))
+    );
   }
   const expression = asRecord(record["A_Expr"]);
   if (!expression || insideOr) return false;
   const operator = comparisonOperator(expression);
-  if (!operator || ![">", ">=", "<", "<=", "BETWEEN"].includes(operator)) return false;
-  return (
-    columnRefName(expression["lexpr"]) === "purchase_date" ||
-    columnRefName(expression["rexpr"]) === "purchase_date"
+  if (!operator || !["=", ">", ">=", "<", "<=", "BETWEEN"].includes(operator)) return false;
+  return [expression["lexpr"], expression["rexpr"]].some((side) =>
+    dateColumns.has(columnRefName(side) ?? ""),
   );
 }
 
-/** Both large fact tables require a purchase_date bound; order_items receives it via orders join. */
+/** Both large fact tables require a purchase_date bound, aggregates included; order_items receives it via orders join. */
 function hasLargeTableTimeFilter(guard: GuardSuccess, large: string[]): boolean {
   const names = new Set(large.map((table) => table.toLowerCase()));
   if (!names.has("orders") && !names.has("order_items")) return true;
+  const dateColumns = purchaseDateAliases(guard.ast);
   return findNodes(guard.ast, "whereClause").some((where) =>
-    hasConjunctivePurchaseDateRange(where),
+    hasConjunctivePurchaseDateRange(where, dateColumns),
   );
+}
+
+/** Subselects and CTEs are boundaries: their pre-aggregation removes the fan-out. */
+function joinedRelations(fromItem: unknown, out: Set<string>): void {
+  if (Array.isArray(fromItem)) {
+    for (const entry of fromItem) joinedRelations(entry, out);
+    return;
+  }
+  const record = asRecord(fromItem);
+  if (!record) return;
+  const range = asRecord(record["RangeVar"]);
+  if (range) {
+    const name = range["relname"];
+    if (typeof name === "string") out.add(name.toLowerCase());
+    return;
+  }
+  const join = asRecord(record["JoinExpr"]);
+  if (join) {
+    joinedRelations(join["larg"], out);
+    joinedRelations(join["rarg"], out);
+  }
+}
+
+function hasFanoutSensitiveAggregate(stmt: Record<string, unknown>): boolean {
+  const scope = [stmt["targetList"], stmt["havingClause"]];
+  return findNodes(scope, "FuncCall").some((node) => {
+    const call = asRecord(node);
+    if (call?.["agg_distinct"] === true) return false;
+    return FANOUT_SENSITIVE_AGGREGATES.includes(functionName(node) ?? "");
+  });
+}
+
+function fanoutChildren(ast: GuardAst): string[] | undefined {
+  for (const node of findNodes(ast, "SelectStmt")) {
+    const stmt = asRecord(node);
+    if (!stmt || !hasFanoutSensitiveAggregate(stmt)) continue;
+    const relations = new Set<string>();
+    joinedRelations(stmt["fromClause"], relations);
+    const children = FANOUT_CHILD_TABLES.filter((table) => relations.has(table));
+    if (children.length >= 2) return children;
+  }
+  return undefined;
 }
 
 /** Tail-only rewrite preserves inner subquery LIMITs and leaves parameterized LIMITs for the server. */
@@ -253,8 +328,21 @@ export function localQuerySafetyGate(
     };
   }
 
+  const fanout = fanoutChildren(guard.ast);
+  if (fanout) {
+    return {
+      verdict: "deny",
+      error: dbToolError(
+        "INVALID_SQL",
+        `Join fan-out: ${fanout.join(" and ")} are joined at the same level as SUM/AVG/COUNT, ` +
+          "which repeats rows before aggregating. Pre-aggregate each child table by order_id " +
+          "in its own CTE, then join the CTEs.",
+      ),
+    };
+  }
+
   const large = largeScannedTables(guard, catalog);
-  if (large.length > 0 && !hasAggregate(guard.ast) && !hasLargeTableTimeFilter(guard, large)) {
+  if (large.length > 0 && !hasLargeTableTimeFilter(guard, large)) {
     const table = large[0];
     return {
       verdict: "needs_clarification",

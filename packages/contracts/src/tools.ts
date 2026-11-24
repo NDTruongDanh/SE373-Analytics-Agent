@@ -28,6 +28,8 @@ const DescribeTableColumnSchema = z.object({
   type: z.string().min(1),
   nullable: z.boolean(),
   sensitive: z.boolean(),
+  // Optional so pre-1.2.0 payloads still parse; absent means not large.
+  large: z.boolean().optional(),
   description: z.string().max(500).optional(),
 });
 

@@ -4,6 +4,7 @@ import type { SensitiveColumns } from "./sensitive-columns.js";
 export const DEFAULT_SENSITIVE_COLUMNS: SensitiveColumns = {
   version: 1,
   columns: [
+    { table: "customers", column: "name" },
     { table: "customers", column: "phone" },
     { table: "customers", column: "email" },
     { table: "customers", column: "address" },
