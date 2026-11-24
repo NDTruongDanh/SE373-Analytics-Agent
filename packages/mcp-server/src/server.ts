@@ -10,7 +10,9 @@ import { z } from "zod";
 import { dbToolError } from "@shared/contracts";
 import {
   ColumnScopePolicy,
+  DEFAULT_ROW_SCOPE_LINEAGE_PATH,
   DEFAULT_SENSITIVE_COLUMNS_PATH,
+  loadRowScopeLineage,
 } from "@shared/access-policy";
 import {
   loadMcpClients,
@@ -53,6 +55,8 @@ export interface GatewayAppOptions {
   sensitiveYaml?: string;
   clientsPath?: string;
   sensitivePath?: string;
+  rowScopeYaml?: string;
+  rowScopePath?: string;
   auditPath?: string;
   sessionFactory?: SessionFactory;
   catalogOverride?: BuiltCatalog;
@@ -135,6 +139,10 @@ export async function createGatewayApp(
     );
   const clients = resolveClientTokens(loadMcpClients(clientsYaml));
   const sensitive: SensitiveColumns = loadSensitiveColumns(sensitiveYaml);
+  const rowScopeLineage = loadRowScopeLineage(
+    options.rowScopeYaml ??
+      readFileSync(options.rowScopePath ?? DEFAULT_ROW_SCOPE_LINEAGE_PATH, "utf8"),
+  );
 
   initAudit(options.auditPath ?? path.resolve("logs/mcp_audit.jsonl"));
 
@@ -168,6 +176,7 @@ export async function createGatewayApp(
     catalog: builtCatalog,
     policy: new ColumnScopePolicy(
       sensitive.columns.map((entry) => ({ ...entry })),
+      rowScopeLineage,
     ),
     sessionFactory: options.sessionFactory ?? defaultSessionFactory,
     search:

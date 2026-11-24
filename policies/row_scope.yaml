@@ -1,0 +1,21 @@
+# Row-scope lineage for row-scoped MCP clients (rowScope in mcp_clients.yaml).
+# Every table a row-scoped role can read must appear here, or the gateway
+# denies the query: direct tables carry the scope column, `via` tables are
+# scoped through a foreign key to a parent, and global tables are shared
+# lookups with no regional rows. Orders follow the buyer's region.
+version: 1
+scopes:
+  region_group:
+    tables:
+      customers: direct
+      sellers: direct
+      regions: direct
+      orders: { via: customers, column: customer_id, parentColumn: customer_id }
+      order_items: { via: orders, column: order_id, parentColumn: order_id }
+      payments: { via: orders, column: order_id, parentColumn: order_id }
+      reviews: { via: orders, column: order_id, parentColumn: order_id }
+      employees: { via: regions, column: province, parentColumn: province }
+      products: global
+      categories: global
+      channels: global
+      promotions: global
