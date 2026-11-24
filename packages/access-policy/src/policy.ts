@@ -206,6 +206,8 @@ type LevelScope = {
   aliases: Map<string, DerivedOutput>;
   // Set when FROM has unenumerable sources (e.g. SRFs) so bare * denies fail-closed instead of dropping columns.
   ungovernable: boolean;
+  // Enclosing level of a WHERE/HAVING/SELECT-list subquery, searched for correlated references.
+  parent?: LevelScope;
 };
 
 type CteDef = { name: string; query: Record<string, unknown> };
@@ -330,7 +332,11 @@ class ScopeBuilder {
     readonly extra: Set<string>,
   ) {}
 
-  build(selectNode: Record<string, unknown>, ctes: Map<string, CteDef>): LevelScope {
+  build(
+    selectNode: Record<string, unknown>,
+    ctes: Map<string, CteDef>,
+    parent?: LevelScope,
+  ): LevelScope {
     const hit = this.memo.get(selectNode);
     if (hit !== undefined) return hit;
     // Set operations have no FROM of their own; ORDER BY/GROUP BY resolve against the left branch.
@@ -340,6 +346,7 @@ class ScopeBuilder {
         entries: [],
         aliases: new Map(),
         ungovernable: false,
+        ...(parent !== undefined ? { parent } : {}),
       };
       this.memo.set(selectNode, scope);
       this.levels.push(scope);
@@ -392,6 +399,7 @@ class ScopeBuilder {
       entries: [],
       aliases: new Map(),
       ungovernable: false,
+      ...(parent !== undefined ? { parent } : {}),
     };
     this.memo.set(selectNode, scope);
     this.levels.push(scope);
@@ -431,8 +439,9 @@ class ScopeBuilder {
     ctes: Map<string, CteDef>,
     self: LevelScope,
   ): void {
-    const nested: Record<string, unknown>[] = [];
-    walk(selectNode as never, {
+    const nested: { node: Record<string, unknown>; sublink: boolean }[] = [];
+    // The walker only recognizes tagged nodes, so wrap the level to make it a SelectStmt ancestor.
+    walk({ SelectStmt: selectNode } as never, {
       SelectStmt: (path: NodePath) => {
         const node = (path as { node: Record<string, unknown> }).node;
         if (node === selectNode || node === (self.node as unknown)) return;
@@ -444,11 +453,11 @@ class ScopeBuilder {
           ancestor !== null &&
           (ancestor.node as Record<string, unknown>) === selectNode
         ) {
-          nested.push(node);
+          nested.push({ node, sublink: (path as NodePath).parent?.tag === "SubLink" });
         }
       },
     });
-    for (const node of nested) this.build(node, ctes);
+    for (const { node, sublink } of nested) this.build(node, ctes, sublink ? self : undefined);
   }
 
   private addFromItem(
@@ -713,6 +722,7 @@ class ScopeBuilder {
           };
         }
       }
+      if (scope.parent !== undefined) return this.resolveRef(val, scope.parent, "where");
       deny("UNKNOWN_TABLE", `Unknown qualifier: ${qualifier}`);
     }
     // PG name resolution: ORDER BY checks select-list aliases first, other clauses check FROM sources first.
@@ -762,6 +772,7 @@ class ScopeBuilder {
           };
         }
       }
+      if (scope.parent !== undefined) return this.resolveRef(val, scope.parent, "where");
       deny("UNKNOWN_TABLE", `Unknown column: ${name}`);
     }
     deny("UNKNOWN_TABLE", `Ambiguous column: ${name}`);
@@ -779,6 +790,8 @@ function collectColumnRefNodes(
     out.push(record);
     return;
   }
+  // Subquery columns are resolved and policed at their own level, not against this one.
+  if (record["SubLink"] !== undefined) return;
   for (const value of Object.values(record)) {
     if (Array.isArray(value)) {
       for (const item of value) collectColumnRefNodes(item, out);
@@ -951,10 +964,12 @@ function analyze(
         scope as LevelScope,
         clause,
       );
+      // A subquery's own select list feeds a comparison, not the result, so masking would still leak.
+      const inSubquery = (scope as LevelScope).parent !== undefined;
       refs.push({
-        resolved: { ...resolved, clause },
+        resolved: { ...resolved, clause: inSubquery && clause === "projection" ? "where" : clause },
         resTarget,
-        direct,
+        direct: direct && !inSubquery,
       });
     },
     SelectStmt: (path: NodePath) => {
@@ -1268,6 +1283,12 @@ export class ColumnScopePolicy implements AccessPolicy {
           throw new PolicyError("UNKNOWN_TABLE", "Cannot enumerate star expansion");
         }
         if (!job.cols.some((c) => c.sensitive)) continue;
+        if (job.level.parent !== undefined) {
+          throw new PolicyError(
+            "SENSITIVE_COLUMN_DENIED",
+            "Sensitive column without data:sensitive: star inside a subquery",
+          );
+        }
         const items: Record<string, unknown>[] = [];
         for (const col of job.cols) {
           if (col.sensitive) {
