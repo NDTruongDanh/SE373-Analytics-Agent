@@ -6,6 +6,11 @@ import { dbToolError, type RowScopeApplied } from "@shared/contracts";
 import { sqlGuard } from "./guard.js";
 import type { GuardAst } from "./guard.js";
 import { DEFAULT_SENSITIVE_COLUMNS } from "./sensitive-columns.js";
+import {
+  DEFAULT_ROW_SCOPE_LINEAGE,
+  type LineageEntry,
+  type RowScopeLineage,
+} from "./row-scope-lineage.js";
 
 export type Clause =
   | "projection"
@@ -186,7 +191,7 @@ type DerivedOutput = {
 };
 
 type ScopeEntry =
-  | { kind: "table"; tableName: string; qualifier: string }
+  | { kind: "table"; tableName: string; qualifier: string; cte?: boolean }
   | {
       kind: "derived";
       alias: string;
@@ -467,9 +472,6 @@ class ScopeBuilder {
       if (alias === undefined) {
         deny("UNKNOWN_TABLE", "Subquery in FROM must have an alias");
       }
-      if (sub["lateral"] === true) {
-        this.checkLateral(sub["subquery"], alias);
-      }
       const inner = asSelectStmt(sub["subquery"]);
       const outputs =
         inner === undefined ? null : this.enumerateOutputs(inner, ctes);
@@ -490,6 +492,7 @@ class ScopeBuilder {
             kind: "table",
             tableName: passthrough,
             qualifier,
+            cte: true,
           });
         } else {
           scope.entries.push({
@@ -510,24 +513,6 @@ class ScopeBuilder {
     }
     // Mark unenumerable FROM items (e.g. RangeFunction) ungovernable so * and refs against them fail closed.
     scope.ungovernable = true;
-  }
-
-  private checkLateral(subquery: unknown, alias: string): void {
-    for (const rel of collectRangeVars(subquery)) {
-      const table = lookupTable(this.catalog, rel);
-      if (table === undefined) continue;
-      const touchesSensitive =
-        table.columns.some((c) => c.sensitive) ||
-        table.columns.some((c) =>
-          this.extra.has(`${table.name.toLowerCase()}.${c.name.toLowerCase()}`),
-        );
-      if (touchesSensitive) {
-        deny(
-          "FORBIDDEN_STATEMENT",
-          `LATERAL over sensitive table is not supported: ${alias}`,
-        );
-      }
-    }
   }
 
   // Single-table passthrough CTEs act as a direct table alias when projecting only plain columns or stars.
@@ -846,6 +831,75 @@ function columnRefFields(val: unknown): string[] | undefined {
   return names;
 }
 
+// Read-only SELECT node vocabulary; any other parse-tree node denies, so new syntax fails closed.
+const ALLOWED_NODE_TYPES: ReadonlySet<string> = new Set([
+  "A_ArrayExpr",
+  "A_Const",
+  "A_Expr",
+  "A_Indices",
+  "A_Indirection",
+  "A_Star",
+  "Alias",
+  "BitString",
+  "BoolExpr",
+  "Boolean",
+  "BooleanTest",
+  "CaseExpr",
+  "CaseWhen",
+  "CoalesceExpr",
+  "CollateClause",
+  "ColumnRef",
+  "CommonTableExpr",
+  "Float",
+  "FuncCall",
+  "GroupingSet",
+  "Integer",
+  "JoinExpr",
+  "List",
+  "MinMaxExpr",
+  "NamedArgExpr",
+  "NullTest",
+  "RangeSubselect",
+  "RangeVar",
+  "ResTarget",
+  "RowExpr",
+  "SQLValueFunction",
+  "SelectStmt",
+  "SortBy",
+  "String",
+  "SubLink",
+  "TypeCast",
+  "TypeName",
+  "WindowDef",
+  "WithClause",
+]);
+
+const NODE_TAG = /^[A-Z][A-Za-z_]*$/;
+
+function assertAllowedNodes(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const item of node) assertAllowedNodes(item);
+    return;
+  }
+  const record = asRecord(node);
+  if (record === undefined) return;
+  for (const [key, value] of Object.entries(record)) {
+    if (NODE_TAG.test(key) && typeof value === "object" && value !== null) {
+      if (!ALLOWED_NODE_TYPES.has(key)) {
+        deny("FORBIDDEN_STATEMENT", `SQL construct is not allowed: ${key}`);
+      }
+      const inner = value as Record<string, unknown>;
+      if (key === "SelectStmt" && Array.isArray(inner["valuesLists"]) && inner["valuesLists"].length > 0) {
+        deny("FORBIDDEN_STATEMENT", "VALUES lists are not allowed");
+      }
+      if (inner["lateral"] === true) {
+        deny("FORBIDDEN_STATEMENT", "LATERAL is not allowed");
+      }
+    }
+    assertAllowedNodes(value);
+  }
+}
+
 function analyze(
   ast: GuardAst,
   catalog: SchemaCatalog,
@@ -855,6 +909,7 @@ function analyze(
   if (!Array.isArray(stmts) || stmts.length !== 1) {
     deny("FORBIDDEN_STATEMENT", "Policy expects a single-statement AST");
   }
+  for (const stmt of stmts) assertAllowedNodes((stmt as Record<string, unknown>)["stmt"]);
   const root = asSelectStmt(
     (stmts[0] as Record<string, unknown>)["stmt"],
   );
@@ -999,27 +1054,81 @@ function fragmentVal(fragmentSql: string): Promise<unknown> {
   );
 }
 
-function rowScopeTables(
-  rowScope: NonNullable<Principal["rowScope"]>,
-  catalog: SchemaCatalog,
-): string[] {
-  if (rowScope.table !== undefined) return [rowScope.table.toLowerCase()];
-  const tables: string[] = [];
-  for (const table of catalog.tables) {
-    if (table.columns.some((c) => c.name.toLowerCase() === rowScope.column.toLowerCase())) {
-      tables.push(table.name.toLowerCase());
-    }
-  }
-  return tables;
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
+
+function lineageEntry(
+  tables: Record<string, LineageEntry>,
+  table: string,
+): LineageEntry | undefined {
+  if (table in tables) return tables[table];
+  const lowered = table.toLowerCase();
+  for (const [name, entry] of Object.entries(tables)) {
+    if (name.toLowerCase() === lowered) return entry;
+  }
+  return undefined;
+}
+
+function scopedKeySubquery(
+  table: string,
+  keyColumn: string,
+  tables: Record<string, LineageEntry>,
+  rowScope: NonNullable<Principal["rowScope"]>,
+): string {
+  const entry = lineageEntry(tables, table);
+  const select = `SELECT ${quoteIdent(keyColumn)} FROM ${quoteIdent(table)}`;
+  if (entry === "direct") {
+    return `${select} WHERE ${quoteIdent(rowScope.column)} = ${sqlLiteral(rowScope.value)}`;
+  }
+  if (entry === undefined || entry === "global") {
+    throw new PolicyError("FORBIDDEN_STATEMENT", `Row-scope lineage is broken at ${table}`);
+  }
+  return `${select} WHERE ${quoteIdent(entry.column)} IN (${scopedKeySubquery(entry.via, entry.parentColumn, tables, rowScope)})`;
+}
+
+async function whereFragment(predicateSql: string): Promise<unknown> {
+  let parsed: unknown;
+  try {
+    parsed = await parse(`SELECT 1 WHERE ${predicateSql}`);
+  } catch (error) {
+    throw new PolicyError(
+      "FORBIDDEN_STATEMENT",
+      `Row-scope predicate failed to parse: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const select = asSelectStmt(
+    (parsed as { stmts?: { stmt?: unknown }[] }).stmts?.[0]?.stmt,
+  );
+  const where = select?.["whereClause"];
+  if (where === undefined) {
+    throw new PolicyError("FORBIDDEN_STATEMENT", "Row-scope predicate failed to parse");
+  }
+  return where;
+}
+
+function andWhere(node: Record<string, unknown>, key: "whereClause" | "havingClause", predicate: unknown): void {
+  const existing = node[key] as unknown;
+  node[key] =
+    existing === undefined || existing === null
+      ? predicate
+      : { BoolExpr: { boolop: "AND_EXPR", args: [existing, predicate] } };
+}
+
+export const MIN_GROUP_SIZE = 5;
 
 export class ColumnScopePolicy implements AccessPolicy {
   readonly name = "ColumnScopePolicy";
   private readonly extra: SensitiveEntry[];
+  private readonly lineage: RowScopeLineage;
 
-  constructor(extraSensitive: SensitiveEntry[] = DEFAULT_SENSITIVE_COLUMNS.columns) {
+  constructor(
+    extraSensitive: SensitiveEntry[] = DEFAULT_SENSITIVE_COLUMNS.columns,
+    lineage: RowScopeLineage = DEFAULT_ROW_SCOPE_LINEAGE,
+  ) {
     this.extra = extraSensitive.map((e) => ({ ...e }));
     Object.freeze(this.extra);
+    this.lineage = structuredClone(lineage);
   }
 
   async check(input: {
@@ -1077,35 +1186,30 @@ export class ColumnScopePolicy implements AccessPolicy {
 
     // Inject server-minted row-scope predicates per level and record table/column only (never values).
     const rowScopeApplied: RowScopeApplied[] = [];
-    if (principal.rowScope !== undefined && principal.rowScope !== null) {
-      const scoped = rowScopeTables(principal.rowScope, catalog);
-      if (scoped.length > 0) {
-        const injection = this.injectRowScopes(
-          analysis.levels,
-          principal.rowScope,
-          scoped,
-          rowScopeApplied,
-        );
-        if (injection === "deny-opaque") {
-          return {
-            allowed: false,
-            error: dbToolError(
-              "FORBIDDEN_STATEMENT",
-              "Row-scope table is referenced opaquely",
-            ),
-          };
+    try {
+      if (principal.rowScope !== undefined && principal.rowScope !== null) {
+        const lineage = Object.entries(this.lineage.scopes).find(
+          ([column]) => column.toLowerCase() === principal.rowScope?.column.toLowerCase(),
+        )?.[1];
+        if (lineage === undefined) {
+          throw new PolicyError(
+            "FORBIDDEN_STATEMENT",
+            `No row-scope lineage declared for ${principal.rowScope.column}`,
+          );
         }
-        if (injection === "deny-ambiguous") {
-          return {
-            allowed: false,
-            error: dbToolError(
-              "FORBIDDEN_STATEMENT",
-              "Row-scope placement is ambiguous",
-            ),
-          };
+        if (await this.injectRowScopes(analysis.levels, principal.rowScope, lineage.tables, rowScopeApplied)) {
+          mutated = true;
         }
-        if (injection) mutated = true;
       }
+      // Small groups can re-identify people, so roles without data:sensitive only see groups of MIN_GROUP_SIZE+.
+      if (!hasSensitive && (await this.applyGroupSizeFloor(analysis.levels[0]?.node))) {
+        mutated = true;
+      }
+    } catch (error) {
+      if (error instanceof PolicyError) {
+        return { allowed: false, error: dbToolError(error.code, error.message) };
+      }
+      throw error;
     }
 
     if (!mutated) {
@@ -1216,68 +1320,73 @@ export class ColumnScopePolicy implements AccessPolicy {
     }
   }
 
-  private injectRowScopes(
+  private async injectRowScopes(
     levels: LevelScope[],
     rowScope: NonNullable<Principal["rowScope"]>,
-    scoped: string[],
+    tables: Record<string, LineageEntry>,
     applied: RowScopeApplied[],
-  ): boolean | "deny-opaque" | "deny-ambiguous" {
+  ): Promise<boolean> {
     let injected = false;
     for (const level of levels) {
-      const direct = level.entries.filter(
-        (e): e is Extract<ScopeEntry, { kind: "table" }> =>
-          e.kind === "table" && scoped.includes(e.tableName.toLowerCase()),
-      );
-      const byTable = new Map<string, typeof direct>();
-      for (const entry of direct) {
-        const list = byTable.get(entry.tableName.toLowerCase()) ?? [];
-        list.push(entry);
-        byTable.set(entry.tableName.toLowerCase(), list);
-      }
-      for (const list of byTable.values()) {
-        if (list.length > 1) return "deny-ambiguous";
-      }
-      for (const entry of direct) {
-        applied.push({
-          table: entry.tableName.toLowerCase(),
-          column: rowScope.column,
-        });
-        const predicate = {
-          A_Expr: {
-            kind: "AEXPR_OP",
-            name: [{ String: { sval: "=" } }],
-            lexpr: {
-              ColumnRef: {
-                fields: [
-                  { String: { sval: entry.qualifier } },
-                  { String: { sval: rowScope.column } },
-                ],
-              },
-            },
-            rexpr: {
-              A_Const: { sval: { sval: rowScope.value } },
-            },
-          },
-        };
-        const where = level.node["whereClause"] as unknown;
-        if (where === undefined || where === null) {
-          level.node["whereClause"] = predicate;
-        } else {
-          level.node["whereClause"] = {
-            BoolExpr: { boolop: "AND_EXPR", args: [where, predicate] },
-          };
+      const direct = new Map<string, number>();
+      for (const entry of level.entries) {
+        if (entry.kind !== "table") continue;
+        const lineage = lineageEntry(tables, entry.tableName);
+        if (lineage === undefined) {
+          deny("FORBIDDEN_STATEMENT", `Table has no row-scope lineage: ${entry.tableName}`);
         }
+        // A pass-through CTE is scoped inside its own query level and may not expose the scope column.
+        if (lineage === "global" || entry.cte === true) continue;
+        const table = entry.tableName.toLowerCase();
+        let predicateSql: string;
+        if (lineage === "direct") {
+          direct.set(table, (direct.get(table) ?? 0) + 1);
+          if ((direct.get(table) ?? 0) > 1) {
+            deny("FORBIDDEN_STATEMENT", "Row-scope placement is ambiguous");
+          }
+          predicateSql = `${quoteIdent(entry.qualifier)}.${quoteIdent(rowScope.column)} = ${sqlLiteral(rowScope.value)}`;
+        } else {
+          predicateSql =
+            `${quoteIdent(entry.qualifier)}.${quoteIdent(lineage.column)} IN ` +
+            `(${scopedKeySubquery(lineage.via, lineage.parentColumn, tables, rowScope)})`;
+        }
+        applied.push({ table, column: rowScope.column });
+        andWhere(level.node, "whereClause", await whereFragment(predicateSql));
         injected = true;
       }
-      // Deny fail-closed if a non-enumerable derived source wraps a scoped table, hiding the predicate column.
+      // A non-enumerable derived source over a scoped table hides where the predicate must go.
       for (const entry of level.entries) {
         if (entry.kind !== "derived" || entry.outputs !== null) continue;
         for (const rel of collectRangeVars(entry.sourceNode)) {
-          if (scoped.includes(rel.toLowerCase())) return "deny-opaque";
+          if (lineageEntry(tables, rel) !== "global") {
+            deny("FORBIDDEN_STATEMENT", "Row-scope table is referenced opaquely");
+          }
         }
       }
     }
     return injected;
+  }
+
+  private async applyGroupSizeFloor(node: Record<string, unknown> | undefined): Promise<boolean> {
+    if (node === undefined) return false;
+    if (node["larg"] !== undefined || node["rarg"] !== undefined) {
+      const left = await this.applyGroupSizeFloor(asSelectStmt(node["larg"]));
+      const right = await this.applyGroupSizeFloor(asSelectStmt(node["rarg"]));
+      return left || right;
+    }
+    const group = node["groupClause"];
+    if (!Array.isArray(group) || group.length === 0) return false;
+    let parsed: unknown;
+    try {
+      parsed = await parse(`SELECT 1 HAVING count(*) >= ${MIN_GROUP_SIZE}`);
+    } catch {
+      throw new PolicyError("FORBIDDEN_STATEMENT", "Group-size floor failed to parse");
+    }
+    const having = asSelectStmt(
+      (parsed as { stmts?: { stmt?: unknown }[] }).stmts?.[0]?.stmt,
+    )?.["havingClause"];
+    andWhere(node, "havingClause", having);
+    return true;
   }
 }
 

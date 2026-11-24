@@ -16,7 +16,30 @@ import {
   resolveColumns,
 } from "../src/policy.js";
 import type { Principal } from "../src/policy.js";
+import type { RowScopeLineage } from "../src/row-scope-lineage.js";
 import { fixtureCatalog } from "./fixtures.js";
+
+const FIXTURE_LINEAGE: RowScopeLineage = {
+  version: 1,
+  scopes: {
+    region: {
+      tables: {
+        customers: "direct",
+        sellers: "direct",
+        orders: { via: "customers", column: "customer_id", parentColumn: "id" },
+        order_items: { via: "orders", column: "order_id", parentColumn: "id" },
+        payments: { via: "orders", column: "order_id", parentColumn: "id" },
+        reviews: { via: "orders", column: "order_id", parentColumn: "id" },
+        products: "global",
+        categories: "global",
+        regions: "global",
+        channels: "global",
+        employees: "global",
+        promotions: "global",
+      },
+    },
+  },
+};
 
 const VALID_YAML = `version: 1
 columns:
@@ -330,17 +353,11 @@ describe("resolveColumns", () => {
     expect(() => resolveColumns(ast, fixtureCatalog)).toThrow(/LATERAL/);
   });
 
-  it("allows LATERAL over tables without sensitive columns", async () => {
+  it("denies LATERAL even over tables without sensitive columns", async () => {
     const { ast } = await guarded(
       "SELECT s.id FROM sellers, LATERAL (SELECT id FROM orders) s",
     );
-    const refs = resolveColumns(ast, fixtureCatalog);
-    expect(refs).toContainEqual({
-      table: "orders",
-      column: "id",
-      clause: "projection",
-      sensitive: false,
-    });
+    expect(() => resolveColumns(ast, fixtureCatalog)).toThrow(/LATERAL/);
   });
 
   it("denies refs against non-enumerable subquery outputs", async () => {
@@ -359,7 +376,7 @@ describe("ColumnScopePolicy.check", () => {
     const result = await policy.check({ ast, sql, catalog: fixtureCatalog, principal: READER });
     expect(result.allowed).toBe(true);
     if (!result.allowed) return;
-    expect(result.maskedColumns).toEqual(["customers.email", "customers.phone"]);
+    expect(result.maskedColumns).toEqual(["customers.email", "customers.name", "customers.phone"]);
     expect(result.sql).toContain("****");
     // Output names preserved: the deparsed select list still yields one
     // output per input, with PG's labels (alias or bare column name).
@@ -410,6 +427,7 @@ describe("ColumnScopePolicy.check", () => {
     expect(result.maskedColumns).toEqual([
       "customers.address",
       "customers.email",
+      "customers.name",
       "customers.phone",
     ]);
     const reparsed = await parse(result.sql);
@@ -488,7 +506,7 @@ describe("ColumnScopePolicy.check", () => {
       "SELECT c.region FROM customers c JOIN sellers s ON c.region = s.region";
     const { ast } = await guarded(sql);
     const scoped: Principal = { ...READER, rowScope: { column: "region", value: "Nam" } };
-    const result = await new ColumnScopePolicy().check({
+    const result = await new ColumnScopePolicy(undefined, FIXTURE_LINEAGE).check({
       ast,
       sql,
       catalog: fixtureCatalog,
@@ -512,7 +530,7 @@ describe("ColumnScopePolicy.check", () => {
     const sql = "SELECT a.id FROM sellers a JOIN sellers b ON a.id = b.id";
     const { ast } = await guarded(sql);
     const scoped: Principal = { ...READER, rowScope: { column: "region", value: "Nam" } };
-    const result = await new ColumnScopePolicy().check({
+    const result = await new ColumnScopePolicy(undefined, FIXTURE_LINEAGE).check({
       ast,
       sql,
       catalog: fixtureCatalog,
@@ -530,7 +548,7 @@ describe("ColumnScopePolicy.check", () => {
       "SELECT s.id FROM (SELECT id FROM customers) s, (SELECT id FROM sellers UNION SELECT id FROM customers) x";
     const { ast } = await guarded(sql);
     const scoped: Principal = { ...READER, rowScope: { column: "region", value: "Nam" } };
-    const result = await new ColumnScopePolicy().check({
+    const result = await new ColumnScopePolicy(undefined, FIXTURE_LINEAGE).check({
       ast,
       sql,
       catalog: fixtureCatalog,
