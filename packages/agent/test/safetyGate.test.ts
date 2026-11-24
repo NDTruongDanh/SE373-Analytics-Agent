@@ -193,6 +193,14 @@ describe("LocalQuerySafetyGate", () => {
     expect(result.verdict).toBe("pass");
   });
 
+  it("accepts a single-day purchase_date equality (UC-10 drill-down shape)", async () => {
+    const result = await gate(
+      "SELECT status, COUNT(*) AS n FROM orders WHERE orders.purchase_date = '2026-03-04' GROUP BY status",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
+  });
+
   it("accepts a range on a date_trunc(purchase_date) alias", async () => {
     const result = await gate(
       "WITH m AS (SELECT date_trunc('month', purchase_date) AS month, COUNT(*) AS n FROM orders GROUP BY 1) SELECT m.month, m.n FROM m WHERE m.month >= '2026-01-01'",

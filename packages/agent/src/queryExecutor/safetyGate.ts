@@ -2,7 +2,8 @@
 // AFTER sqlGuard from @shared/access-policy and BEFORE any MCP call: sqlGuard
 // owns syntax/table/column validity, this gate owns the agent-side policy
 // extras — sensitive-column denial in any clause, cross/conditionless-join
-// denial, large-table clarification, and the detail-query LIMIT clamp.
+// denial, join fan-out denial, large-table clarification, and the
+// detail-query LIMIT clamp.
 // Fail-closed: every denial is a DbToolError built through the contracts
 // helper. Server-side AccessPolicy (01-06/01-08) remains authoritative.
 
@@ -116,7 +117,7 @@ function unconditionedJoin(ast: GuardAst, sql: string): string | undefined {
 }
 
 /** A table counts as large when any of its catalog columns is large-flagged. */
-function largeScannedTables(
+export function largeScannedTables(
   guard: GuardSuccess,
   catalog: SchemaCatalog,
 ): string[] {
@@ -230,7 +231,8 @@ function purchaseDateAliases(ast: GuardAst): Set<string> {
 }
 
 /**
- * True only for a direct, conjunctive comparison on a purchase_date column.
+ * True only for a direct, conjunctive comparison (single-day equality or a
+ * range) on a purchase_date column.
  * This keeps literals, IS NOT NULL, and an OR escape hatch from satisfying the
  * large-table policy while accepting qualified ColumnRef nodes and
  * CURRENT_DATE windows.
@@ -254,7 +256,7 @@ function hasConjunctivePurchaseDateRange(
   const expression = asRecord(record["A_Expr"]);
   if (!expression || insideOr) return false;
   const operator = comparisonOperator(expression);
-  if (!operator || ![">", ">=", "<", "<=", "BETWEEN"].includes(operator)) return false;
+  if (!operator || !["=", ">", ">=", "<", "<=", "BETWEEN"].includes(operator)) return false;
   return [expression["lexpr"], expression["rexpr"]].some((side) =>
     dateColumns.has(columnRefName(side) ?? ""),
   );

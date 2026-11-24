@@ -1,0 +1,13 @@
+# explain_query cost ceilings (#129, H-08), read by the agent-side loader
+# (packages/agent/src/queryExecutor/costPolicy.ts). When the planner estimate
+# for a validated query exceeds either ceiling, the ValidatedQueryExecutor
+# stops before run_query and asks the user for a narrower time range.
+# Units are Postgres EXPLAIN units: estimatedCost is the plan's total cost,
+# estimatedRows the planner's row estimate for the top node.
+version: 1
+default:
+  maxEstimatedCost: 1000000
+  maxEstimatedRows: 5000000
+# Per-role overrides replace the default for that roleScope. Any key left
+# out falls back to the default value.
+roles: {}

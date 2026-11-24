@@ -27,6 +27,17 @@ export {
 } from "./safetyGate.js";
 export { DETAIL_QUERY_LIMIT } from "../constants.js";
 export {
+  ceilingsFor,
+  costBreach,
+  defaultQueryCostPolicy,
+  loadQueryCostPolicy,
+  loadQueryCostPolicyFile,
+  QueryCostPolicySchema,
+  type CostBreach,
+  type CostCeilings,
+  type QueryCostPolicy,
+} from "./costPolicy.js";
+export {
   buildSqlProposalPrompt,
   MAX_COLUMN_DESC_CHARS,
   MAX_COLUMNS_PER_TABLE,

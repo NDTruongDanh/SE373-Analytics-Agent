@@ -606,7 +606,11 @@ export async function runEval(
     const { pass, mismatches } = gradeExecution(
       { status: outcome.status, rows: outcome.rows ?? [], reason: outcome.reason },
       {
-        status: c.tags?.includes("unanswerable") ? "cannot_answer" : undefined,
+        status: c.tags?.includes("unanswerable")
+          ? "cannot_answer"
+          : c.tags?.includes("needs_clarification")
+            ? "needs_clarification"
+            : undefined,
         rows: c.goldRows ?? [],
         ordered: c.ordered ?? false,
       },
@@ -993,6 +997,15 @@ async function driveSafetyCase(
     throw new Error(
       `safety case ${c.id}: executor stopped locally but guard and gate both pass — attribution impossible`,
     );
+  }
+  if (result.status === "needs_clarification" && !calls.includes("run_query")) {
+    // Reached explain_query, then stopped on the cost ceiling (#129).
+    return {
+      blocked: true,
+      observedBlockingLayer: "costGate",
+      status: result.status,
+      code: "needs_clarification",
+    };
   }
   if (result.status === "ok" || result.status === "no_data") {
     return {

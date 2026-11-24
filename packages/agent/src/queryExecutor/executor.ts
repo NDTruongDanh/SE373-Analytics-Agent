@@ -47,8 +47,15 @@ import {
 import {
   clampLimit,
   hasWhereFilter,
+  largeScannedTables,
   localQuerySafetyGate,
 } from "./safetyGate.js";
+import {
+  ceilingsFor,
+  costBreach,
+  defaultQueryCostPolicy,
+  type QueryCostPolicy,
+} from "./costPolicy.js";
 import { escapeUntrustedText, serializeUntrusted } from "../untrusted.js";
 import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
@@ -231,6 +238,8 @@ export interface ExecutorDeps {
   emitSpan?: SpanSink;
   /** Total-attempt cap override for tests; defaults to MAX_ATTEMPTS. */
   maxAttempts?: number;
+  /** explain_query ceilings; defaults to policies/query_cost.yaml (#129). */
+  costPolicy?: QueryCostPolicy;
 }
 
 /** Policy-restricted codes stay restricted; everything else is an error. */
@@ -618,12 +627,14 @@ export class ValidatedQueryExecutor {
   private readonly mcp: McpToolCaller;
   private readonly emitSpan: SpanSink;
   private readonly maxAttempts: number;
+  private readonly costPolicy: QueryCostPolicy | undefined;
 
   constructor(deps: ExecutorDeps) {
     this.model = deps.model;
     this.mcp = deps.mcp;
     this.emitSpan = deps.emitSpan ?? noopSpanSink;
     this.maxAttempts = deps.maxAttempts ?? MAX_ATTEMPTS;
+    this.costPolicy = deps.costPolicy;
   }
 
   private span(
@@ -1059,6 +1070,30 @@ export class ValidatedQueryExecutor {
             estimatedCost: parsedExplain.data.estimatedCost,
           },
         });
+        const ceilings = ceilingsFor(
+          this.costPolicy ?? defaultQueryCostPolicy(),
+          input.principal.roleScope,
+        );
+        const breach = costBreach(parsedExplain.data, ceilings);
+        if (breach) {
+          const table =
+            largeScannedTables(guard, catalog)[0] ?? guard.tables[0];
+          this.span({
+            node: "explain",
+            type: "node_done",
+            attempt,
+            payload: { strategy: "cost_ceiling", ...breach },
+          });
+          return {
+            status: "needs_clarification",
+            reason:
+              `The query plan is too expensive (${breach.metric} ${Math.round(breach.estimate)} ` +
+              `exceeds the ${breach.ceiling} ceiling); choose a narrower time range before running it.`,
+            ...(table ? { table } : {}),
+            sql: finalSql,
+            attempts: attempt,
+          };
+        }
       } catch (thrown) {
         const error = asDbToolError("explain_query", thrown);
         const routed = this.routeMcpError(error, {
