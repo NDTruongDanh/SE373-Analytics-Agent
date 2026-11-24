@@ -1,7 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { sqlGuard, warmupSqlGuard } from "../src/guard.js";
 import { ColumnScopePolicy, resolveColumns, type Principal } from "../src/policy.js";
+import type { RowScopeLineage } from "../src/row-scope-lineage.js";
 import { fixtureCatalog } from "./fixtures.js";
+
+const LINEAGE: RowScopeLineage = {
+  version: 1,
+  scopes: {
+    region: {
+      tables: {
+        customers: "direct",
+        sellers: "direct",
+        orders: { via: "customers", column: "customer_id", parentColumn: "id" },
+        order_items: { via: "orders", column: "order_id", parentColumn: "id" },
+        payments: { via: "orders", column: "order_id", parentColumn: "id" },
+        reviews: { via: "orders", column: "order_id", parentColumn: "id" },
+        products: "global",
+        categories: "global",
+        regions: "global",
+        channels: "global",
+        employees: "global",
+        promotions: "global",
+      },
+    },
+  },
+};
 
 const READER: Principal = { userId: "u", role: "marketing", scopes: ["schema:read", "data:read"] };
 const SENSITIVE: Principal = {
@@ -10,11 +33,16 @@ const SENSITIVE: Principal = {
   scopes: ["schema:read", "data:read", "data:sensitive"],
 };
 
-async function check(sql: string, principal: Principal = READER) {
+async function check(sql: string, principal: Principal = READER, lineage?: RowScopeLineage) {
   await warmupSqlGuard();
   const guard = await sqlGuard(sql, fixtureCatalog);
   if (!guard.ok) throw new Error(`guard rejected fixture SQL: ${guard.error.message}`);
-  return new ColumnScopePolicy().check({ ast: guard.ast, sql, catalog: fixtureCatalog, principal });
+  return new ColumnScopePolicy(undefined, lineage).check({
+    ast: guard.ast,
+    sql,
+    catalog: fixtureCatalog,
+    principal,
+  });
 }
 
 describe("subqueries outside FROM", () => {
@@ -31,7 +59,6 @@ describe("subqueries outside FROM", () => {
     ],
     ["scalar subquery in WHERE", "SELECT o.id FROM orders o WHERE o.total > (SELECT AVG(o2.total) FROM orders o2)"],
     ["scalar subquery in SELECT", "SELECT (SELECT COUNT(o.id) FROM orders o WHERE o.status = 'paid') AS n"],
-    ["subquery in HAVING", "SELECT o.status FROM orders o GROUP BY o.status HAVING COUNT(*) > (SELECT COUNT(p.id) FROM products p)"],
     [
       "subquery inside a CTE body",
       "WITH big AS (SELECT o.id FROM orders o WHERE o.customer_id IN (SELECT c.id FROM customers c WHERE c.city = 'HN')) SELECT big.id FROM big",
@@ -57,6 +84,16 @@ describe("subqueries outside FROM", () => {
       "SELECT (SELECT c.phone FROM customers c WHERE c.id = o.customer_id) AS p FROM orders o ORDER BY p",
     );
     expect(result).toMatchObject({ allowed: false, error: { code: "SENSITIVE_COLUMN_DENIED" } });
+  });
+
+  it("allows a subquery in HAVING alongside the group-size floor", async () => {
+    const result = await check(
+      "SELECT o.status FROM orders o GROUP BY o.status HAVING COUNT(*) > (SELECT COUNT(p.id) FROM products p)",
+    );
+    expect(result.allowed).toBe(true);
+    if (!result.allowed) return;
+    const sql = result.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("HAVING count(*) > ((SELECT count(p.id) FROM products AS p)) AND count(*) >= 5");
   });
 
   it("resolves the inner table before the outer one for a shared column name", async () => {
@@ -144,11 +181,25 @@ describe("subqueries outside FROM", () => {
   });
 
   it("applies row scope inside a subquery", async () => {
-    const sql = "SELECT o.id FROM orders o WHERE o.customer_id IN (SELECT c.id FROM customers c)";
-    const result = await check(sql, { ...READER, rowScope: { column: "region", value: "Nam" } });
+    const sql = "SELECT p.id FROM products p WHERE p.id IN (SELECT c.id FROM customers c)";
+    const result = await check(sql, { ...READER, rowScope: { column: "region", value: "Nam" } }, LINEAGE);
     expect(result.allowed).toBe(true);
     if (!result.allowed) return;
     expect(result.sql.replace(/\s+/g, " ")).toContain("c.region = 'Nam'");
     expect(result.rowScopeApplied).toEqual([{ table: "customers", column: "region" }]);
+  });
+
+  it("scopes a lineage table inside a correlated subquery", async () => {
+    const result = await check(
+      "SELECT p.id FROM products p WHERE EXISTS (SELECT 1 FROM order_items i WHERE i.product_id = p.id)",
+      { ...READER, rowScope: { column: "region", value: "Nam" } },
+      LINEAGE,
+    );
+    expect(result.allowed).toBe(true);
+    if (!result.allowed) return;
+    expect(result.sql.replace(/\s+/g, " ")).toContain(
+      "i.order_id IN (SELECT id FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE region = 'Nam'))",
+    );
+    expect(result.rowScopeApplied).toEqual([{ table: "order_items", column: "region" }]);
   });
 });
