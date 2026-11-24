@@ -1,27 +1,3 @@
-// pnpm external-client — MCP-09 scoped-token demo plus Inspector manual steps.
-// Uses the MCP SDK Client over StreamableHTTPClientTransport with a bearer
-// token read from the environment (never hardcoded): it calls list_tables
-// then run_query with the scoped token and prints the sanitized result, then
-// sends a DELETE through run_query and asserts the FORBIDDEN_STATEMENT
-// denial. Exits 0 with PASS lines on both legs, 1 naming the failing leg.
-//
-// Manual Inspector steps (same coverage, by hand):
-//   export MCP_TOKEN="$MCP_TOKEN_SALES_SOUTH"
-//   npx -y @modelcontextprotocol/inspector@2.12.0
-// Connect to transport type "Streamable HTTP" at
-// http://127.0.0.1:8081/mcp with header
-// `Authorization: Bearer $MCP_TOKEN`, then:
-//   1. tools/list must show the 6 db-tools (list_tables, describe_table,
-//      explain_query, run_query, sample_rows, search_semantic_layer).
-//   2. Call list_tables with {} as sales_south: ok, tables listed.
-//   3. Call run_query with a scoped SELECT: ok, masked rows.
-//   4. Call run_query with `DELETE FROM public.orders`: FORBIDDEN_STATEMENT.
-//   5. resources/list must show semantic://data-dictionary and
-//      semantic://metrics; reading metrics as sales_south withholds the
-//      restricted section, as hr it is present.
-// Never paste tokens into Inspector URLs on shared machines — pass them as
-// headers only.
-
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 

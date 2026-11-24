@@ -1,18 +1,8 @@
-// Hierarchical span emitter (AGENT-07, 01-12): stamps spanId via randomUUID
-// (D-13) plus optional parentSpanId and attempt, and delegates every write
-// to the 01-09 redacted TraceWriter — redaction-before-write is inherited,
-// never a local copy. Payloads carry counts and column names only, never
-// cell values. The base callable satisfies both the 01-10 SpanEmitter and
-// the 01-11 SpanSink (incoming spanId values are ignored: the writer mints).
-
 import { appendTraceEvent } from "../traces/writer.js";
 import type { SpanEmitter, SpanEvent } from "../state.js";
 import type { ExecutorSpan, SpanSink } from "../queryExecutor/executor.js";
 import type { RowScopeApplied } from "@shared/access-policy";
 
-// Phase 3 LangSmith export surface, re-exported here so hosts keep a
-// single `@shared/agent/telemetry` import (the package exports map points
-// that subpath at this module; the map itself stays untouched).
 export {
   buildLangSmithRunConfig,
   createLangSmithTracer,
@@ -32,9 +22,6 @@ export {
   type LangSmithRunMeta,
 } from "./langsmith.js";
 
-// Phase 3 G4 trace viewer model, re-exported here so viewers and future
-// web code share one `@shared/agent/telemetry` import (the package exports
-// map points that subpath at this module; the map itself stays untouched).
 export {
   buildTraceTree,
   deriveSummary,
@@ -64,13 +51,10 @@ export interface SpanContext {
   tracesDir?: string;
 }
 
-/** Either sibling-plan span shape; normalized before the single write path. */
 export type IncomingSpan = SpanEvent | ExecutorSpan;
 
-/** Child emitter bound to one parent span id by span(). */
 export type ChildEmit = (event: IncomingSpan) => string;
 
-/** Per-run roll-up for the terminal run_done span (Phase 3 G3). */
 export interface RunTotals {
   llmCalls: number;
   inputTokens: number;
@@ -83,11 +67,6 @@ export interface RunTotals {
 }
 
 export interface AgentSpanEmitter extends SpanEmitter, SpanSink {
-  /**
-   * Run fn between a start and an end event, handing it a child emitter
-   * bound to the start span. Resolves with fn's value; the end event is
-   * written on both success and failure (ok flag), then errors rethrow.
-   */
   span<T>(
     node: string,
     type: string,
@@ -123,14 +102,7 @@ export interface AgentSpanEmitter extends SpanEmitter, SpanSink {
       attempt?: number;
     },
   ): string;
-  /**
-   * Snapshot of the per-run roll-up so far (a copy, never live state).
-   */
   totals(): RunTotals;
-  /**
-   * Write the terminal run_done span carrying status plus the roll-up.
-   * The run_done event itself never perturbs the counters.
-   */
   emitRunDone(
     status: string,
     opts?: { parentSpanId?: string; attempt?: number },
@@ -147,16 +119,7 @@ function asPayloadRecord(event: IncomingSpan): Record<string, unknown> {
     : {};
 }
 
-/**
- * Fold one event into the per-run roll-up, inside the existing emit paths
- * so every host that shares the emitter gets consistent totals. An
- * llm_call contributes its call plus token/cost sums; every tool_call
- * contributes a tool call, and run_query ones additionally count as SQL
- * attempts (failed ones — payload ok:false — as SQL failures). Each repair
- * node_done (local guard/gate denials, TIMEOUT simplification, repairable
- * MCP errors routed to retry) counts as a repair, independent of whether a
- * run_query attempt failed.
- */
+/** Accumulate per-run totals; repair node_done counts independently of whether a run_query failed. */
 function observeTotals(totals: RunTotals, event: IncomingSpan): void {
   if (event.type === "llm_call") {
     totals.llmCalls += 1;
@@ -185,9 +148,7 @@ function observeTotals(totals: RunTotals, event: IncomingSpan): void {
 
 export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
   const tracesDir = ctx.tracesDir ?? "traces";
-  // Per-run instance state (mirroring the runs map discipline in
-  // apps/api): one emitter per run, never module globals, so concurrent
-  // runs cannot cross-talk.
+  // Per-run state only (never module globals) so concurrent runs cannot cross-talk.
   const totals: RunTotals = {
     llmCalls: 0,
     inputTokens: 0,
@@ -334,9 +295,8 @@ export function createSpanEmitter(ctx: SpanContext): AgentSpanEmitter {
       columns?: string[];
       maskedColumns?: string[];
       rowScopeApplied?: RowScopeApplied[];
-      /** run_query attempt outcome: true on success, false on failure. */
       ok?: boolean;
-      /** Contract code on a failed run_query attempt (never message/PII). */
+      /** Contract error code only — never message or PII. */
       code?: string;
       parentSpanId?: string;
       attempt?: number;

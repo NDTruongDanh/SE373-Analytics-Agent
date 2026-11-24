@@ -1,21 +1,3 @@
-// retrieveSemantic node (UC-02, architecture §3.2.3 + §2.2).
-//
-// Calls MCP `search_semantic_layer` (3-way hybrid RRF + join-rule expansion
-// server-side) and enforces the Two-Tier Unknown-Term Guardrail
-// (`requestedMetrics` vs `schemaEntities`, §3.2.3):
-// - `requestedMetrics.length === 0` passes straight through.
-// - Every requested KPI must match a retrieved `metric`/`column` chunk via
-//   `aliasMatched === true` OR dense similarity `>= 0.60`.
-// - Any unmatched KPI short-circuits to `status: cannot_answer` listing the
-//   closest valid metrics — before any SQL is generated (0 SQL queries).
-//
-// `queryMode === "definition_lookup"` retrieves chunks and lets the UC entry
-// fast-path synthesize directly from them (bypassing SQL execution).
-//
-// Injected via RootGraphDeps.retrieve (the frozen root builder owns routing;
-// this module owns MCP + guard logic). No `pg` imports: DB access goes
-// through the MCP client only.
-
 import {
   dbToolError,
   SearchSemanticLayerOutputSchema,
@@ -30,13 +12,10 @@ import {
 import type { AgentState, AgentUpdate, RootRuntime } from "../state.js";
 import { loadSemanticCatalogIds } from "./catalog.js";
 
-/** Calibrated dense-similarity threshold (text-embedding-3-small default). */
 export const UNKNOWN_TERM_DENSE_THRESHOLD = 0.6;
 
-/** Default top-K for the semantic search call. */
 export const RETRIEVE_TOP_K = 8;
 
-/** Max closest-metric suggestions in a cannot_answer message. */
 export const CLOSEST_METRICS_LIMIT = 5;
 
 export type SemanticSearchFn = (
@@ -82,10 +61,6 @@ export function toStateChunk(
   return out;
 }
 
-/**
- * Call MCP `search_semantic_layer` and validate its payload against the shared
- * contract. Shared by pre-intent retrieval and `createRetrieveSemantic`.
- */
 export async function fetchSemanticChunks(
   transport: TracerRunConfig,
   query: string,
@@ -117,10 +92,6 @@ export async function fetchSemanticChunks(
   return validated.data.chunks;
 }
 
-/**
- * Minimal chunk view shared by MCP contract chunks and checkpointed state
- * chunks (state stores `text` instead of `content` and omits docType).
- */
 export interface GroundingChunk {
   chunkId: string;
   aliasMatched?: boolean;
@@ -131,16 +102,8 @@ export interface GroundingChunk {
   text?: string;
 }
 
-/**
- * A requested metric is grounded when a retrieved metric/column chunk both
- * mentions the term (or vice versa) AND is trusted via exact alias
- * (`aliasMatched === true`) or calibrated dense similarity (`>= 0.60`).
- * The text-overlap requirement attributes a single multi-metric retrieval to
- * the term it actually defines, so "net revenue + NPS" grounds the former
- * but still short-circuits on the latter. Single-metric questions skip the
- * overlap check: `aliasMatched` already means the server matched the query
- * alias, and contract chunks do not carry the alias list to re-verify.
- */
+// Multi-metric queries require chunk text overlap so one matched KPI cannot ground an unknown sibling;
+// single-metric queries skip overlap because contract chunks omit the alias list that aliasMatched used.
 export function isMetricGrounded(
   term: string,
   chunks: GroundingChunk[],
@@ -158,7 +121,6 @@ export function isMetricGrounded(
     );
   });
   if (trusted.length === 0) return false;
-  // Single-concept question: server-side alias/dense match is sufficient.
   if (allTerms.length <= 1) return true;
   const needleTokens = new Set(
     needle.split(/[^a-z0-9\u00e0-\u1ef9]+/iu).filter((token) => token.length >= 2),
@@ -174,7 +136,6 @@ export function isMetricGrounded(
       .split(/[^a-z0-9]+/i)
       .filter((token) => token.length >= 2);
     if (metricTokens.length > 0 && metricTokens.every((token) => haystack.includes(token))) {
-      // Chunk metric name fully present; check the term shares a token.
       if (metricTokens.some((token) => needle.includes(token) || needleTokens.has(token))) {
         return true;
       }
@@ -207,10 +168,6 @@ function inferDocType(chunkId: string): string {
   return "unknown";
 }
 
-/**
- * Per-term grounding check. A term with no trusted retrieved metric/column
- * chunk mentioning it is ungrounded.
- */
 export function checkUnknownTerms(
   requestedMetrics: string[],
   chunks: GroundingChunk[],
@@ -224,7 +181,6 @@ export function checkUnknownTerms(
   };
 }
 
-/** Closest valid metrics for the cannot_answer clarification prompt. */
 export function closestMetrics(
   chunks: Pick<GroundingChunk, "chunkId">[],
   limit: number = CLOSEST_METRICS_LIMIT,
@@ -265,7 +221,6 @@ export function buildCannotAnswer(
   };
 }
 
-/** Definitional fast-path answer (RT → SYN): no SQL, verified citations. */
 export function buildDefinitionAnswer(
   requestedMetrics: string[],
   chunks: SearchSemanticLayerChunk[],
@@ -302,10 +257,6 @@ export function buildDefinitionAnswer(
   };
 }
 
-/**
- * Build the retrieve seam. Hosts inject `search` in tests/evals; production
- * resolves MCP identity from RunnableConfig (same shape as text-to-SQL).
- */
 export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
   state: AgentState,
   rt: RootRuntime,
@@ -324,8 +275,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
     const isDefinition = state.intent.queryMode === "definition_lookup";
     const needsGrounding = metrics.length > 0 || isDefinition;
 
-    // Reuse chunks already fetched in pre-intent retrieval for the same
-    // question instead of issuing a second search_semantic_layer call (#89).
+    // Reuse pre-intent retrieval for the same question to avoid a duplicate MCP search.
     if (
       state.semanticRetrieveStatus === "ok" &&
       state.semanticQuery === state.question
@@ -363,9 +313,8 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
       } else {
         const transport = readTransport(rt);
         if (!transport) {
-          // Fail closed: metrics present (or a definition lookup) but no MCP
-          // transport means we cannot ground them — never skip the gate with {}.
-          // Basic UC-01 queries without transport (unit tests) still pass through.
+          // Fail closed when metrics/definitions cannot be grounded without transport;
+          // plain data queries without transport still pass through for unit tests.
           if (!needsGrounding) return {};
           return {
             status: "error",
@@ -401,8 +350,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
           answerText: `Semantic grounding failed (${normalized.code}): ${normalized.message}`,
         };
       }
-      // Plain data questions record the retrieval failure and allow catalog-verified
-      // intent entities to continue, while preventing false out-of-schema claims (#89).
+      // Plain data queries degrade instead of failing so catalog-verified entities can proceed without false out-of-schema claims.
       rt.emit({
         node: "retrieve",
         type: "node_done",
@@ -428,7 +376,6 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
 
     const stateChunks = chunks.map(toStateChunk);
 
-    // Unknown-term gate: short-circuit before any SQL (0 SQL queries).
     if (!hasUserSuppliedFormula(state.question)) {
       const { ungrounded } = checkUnknownTerms(metrics, chunks);
       if (ungrounded.length > 0) {

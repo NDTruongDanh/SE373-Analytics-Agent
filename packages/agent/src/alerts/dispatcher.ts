@@ -21,10 +21,6 @@ export interface AlertHistoryStore {
   recordSent(record: AlertRecord): Promise<void>;
 }
 
-/**
- * In-memory implementation for tests and the explicitly mocked CLI demo.
- * Production runners must inject the AppStateStore-backed implementation.
- */
 export class InMemoryAlertHistoryStore implements AlertHistoryStore {
   private readonly records = new Map<string, AlertRecord>();
 
@@ -96,16 +92,10 @@ const DEFAULT_FAILED_QUEUE_FILE = path.resolve(
   "failed_alerts_queue.jsonl",
 );
 
-/**
- * Default mock transport that simulates delivery.
- */
 export const defaultMockTransport: SendAlertTransport = async () => {
   return { ok: true, status: 200 };
 };
 
-/**
- * Checks if an error status or exception is retryable (5xx, timeout, network error).
- */
 export function isRetryableError(status?: number, err?: unknown): boolean {
   if (status !== undefined) {
     return status >= 500 || status === 429 || status === 408;
@@ -123,7 +113,6 @@ export function isRetryableError(status?: number, err?: unknown): boolean {
   return true;
 }
 
-/** Queue contract for deferred non-critical alerts. */
 export interface AlertDigestQueue {
   enqueue(alert: AnomalyAlert): void;
   getAll(): AnomalyAlert[];
@@ -131,7 +120,6 @@ export interface AlertDigestQueue {
   size(): number;
 }
 
-/** Volatile queue for tests. Production defaults to JsonlDigestQueue. */
 export class InMemoryDigestQueue implements AlertDigestQueue {
   private readonly items: AnomalyAlert[] = [];
 
@@ -157,7 +145,6 @@ const DEFAULT_DIGEST_QUEUE_FILE = path.resolve(
   "pending_alert_digests.jsonl",
 );
 
-/** Durable pending-alert queue; queued entries survive runner restarts. */
 export class JsonlDigestQueue implements AlertDigestQueue {
   constructor(
     private readonly filePath: string = DEFAULT_DIGEST_QUEUE_FILE,
@@ -197,20 +184,6 @@ export class JsonlDigestQueue implements AlertDigestQueue {
 
 export const persistentDigestQueue: AlertDigestQueue = new JsonlDigestQueue();
 
-/**
- * Resilient send_alert Dispatcher (UC-10 §7, F10.4, F10.5)
- *
- * Implements:
- * 1. Fingerprint derivation: SHA256(recipientId + "|" + metric + "|" + dimensionKey + "|" + date + "|" + direction)
- * 2. Recipient allowlist check
- * 3. 2nd-pass regex PII scan (phone, email) -> blocks and traces PII_BLOCKED
- * 4. Deduplication check (hasFingerprint) -> skips duplicate within 24h
- * 5. Severity routing:
- *    - critical: sends immediately with <= 3 exponential backoff retries & 10s timeout
- *    - warning/info: queues into digest (or sends if flushDigest=true)
- * 6. Write-after-send order: writes to historyStore ONLY after delivery succeeds.
- *    If retries fail, writes to failed_alerts_queue.jsonl so deduplication never suppresses future retries.
- */
 export async function dispatchAlert(
   alert: AnomalyAlert,
   options: AlertDispatcherOptions,
@@ -227,7 +200,6 @@ export async function dispatchAlert(
     flushDigest = false,
   } = options;
 
-  // 1. Derive Canonical Fingerprint
   const dateStr = alert.date ?? new Date().toISOString().slice(0, 10);
   const dimensionKey = alert.drilldownSegment || "overall";
   const direction = alert.direction ?? "spike";
@@ -242,7 +214,6 @@ export async function dispatchAlert(
       direction,
     });
 
-  // 2. Recipient Allowlist Check
   if (allowlist && allowlist.length > 0 && !allowlist.includes(alert.recipientId)) {
     return {
       sent: false,
@@ -252,7 +223,6 @@ export async function dispatchAlert(
     };
   }
 
-  // 3. PII Inspection (quét regex PII lần 2 trước send_alert, §6)
   const textToCheck = [
     alert.message ?? "",
     alert.drilldownSegment ?? "",
@@ -272,7 +242,6 @@ export async function dispatchAlert(
     };
   }
 
-  // 4. Pre-send Deduplication Check
   const alreadySent = await historyStore.hasFingerprint(fingerprint);
   if (alreadySent) {
     return {
@@ -282,11 +251,9 @@ export async function dispatchAlert(
     };
   }
 
-  // 5. Severity Routing
   const isCritical = alert.severity === "critical";
 
   if (!isCritical && !flushDigest) {
-    // Non-critical alert -> queue to digest
     digestQueue.enqueue(alert);
     return {
       sent: false,
@@ -296,7 +263,6 @@ export async function dispatchAlert(
     };
   }
 
-  // 6. Resilient Transport with Timeout & Exponential Backoff Retries
   let lastError = "";
   let attempts = 0;
 
@@ -310,7 +276,6 @@ export async function dispatchAlert(
     try {
       const res = await transport(alert, signal);
       if (res.ok) {
-        // SUCCESS: WRITE TO HISTORY ONLY NOW (write-after-send)
         await historyStore.recordSent({
           recipientId: alert.recipientId,
           metric: alert.metric,
@@ -334,7 +299,7 @@ export async function dispatchAlert(
         ? `${res.status ? `${res.status} ` : ""}${res.error}`
         : `HTTP ${res.status}`;
       if (!isRetryableError(res.status)) {
-        break; // 4xx non-retryable
+        break;
       }
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
@@ -343,15 +308,13 @@ export async function dispatchAlert(
       }
     }
 
-    // Exponential backoff wait before next attempt
     if (attempt < maxRetries) {
       const backoff = initialDelayMs * Math.pow(2, attempt - 1);
       await new Promise((resolve) => setTimeout(resolve, backoff));
     }
   }
 
-  // 7. Retries exhausted: Write to failed_alerts_queue.jsonl
-  // DO NOT write to historyStore so deduplication never falsely suppresses future retries
+  // Omit from historyStore on failure so deduplication never suppresses future retries.
   const queueEntry: QueuedAlertEntry = {
     queuedAt: new Date().toISOString(),
     attempts,
@@ -387,11 +350,6 @@ export async function dispatchAlert(
   };
 }
 
-/**
- * Flushes failed alerts queue: attempts to resend all queued alerts.
- * If transport succeeds now that the channel is restored, records to
- * historyStore and removes from the queue file.
- */
 export async function flushFailedAlertsQueue(
   options: AlertDispatcherOptions,
 ): Promise<{ flushed: number; remaining: number }> {
@@ -439,16 +397,13 @@ export async function flushFailedAlertsQueue(
         stillFailed.push(entry);
       }
     } catch {
-      // Keep in queue
       try {
         stillFailed.push(JSON.parse(line));
       } catch {
-        // ignore unparseable
       }
     }
   }
 
-  // Rewrite queue file with remaining items
   const newContent = stillFailed.map((item) => JSON.stringify(item)).join("\n");
   writeFileSync(queueFilePath, newContent.length > 0 ? newContent + "\n" : "", "utf8");
 

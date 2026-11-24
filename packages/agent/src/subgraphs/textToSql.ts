@@ -76,11 +76,9 @@ import { BUDGET_LIMITS, TEXT_TO_SQL_UC_ID } from "../constants.js";
 
 export { TEXT_TO_SQL_UC_ID } from "../constants.js";
 
-/** The intent profile returns only the serializable state intent shape. */
 export const IntentProposalSchema = IntentSchema;
 export type IntentProposal = z.infer<typeof IntentProposalSchema>;
 
-/** Narrow model seam so unit tests never need an API key. */
 export interface IntentModelLike {
   withStructuredOutput(
     schema: typeof IntentProposalSchema,
@@ -90,7 +88,6 @@ export interface IntentModelLike {
   };
 }
 
-/** Narrow executor seam; text-to-SQL never opens a database connection directly. */
 export interface TextToSqlExecutorLike {
   run(input: ExecutorRunInput): Promise<ExecutorResult>;
   timeRangeOptions?(input: {
@@ -101,20 +98,14 @@ export interface TextToSqlExecutorLike {
 
 export interface TextToSqlRuntimeDeps {
   intentModel?: IntentModelLike;
-  /** Plain-JSON intent model seam for providers returning Markdown-wrapped JSON. */
   intentJsonModel?: PlainJsonModelLike;
-  /** SQL model seam; omitted in production to use the configured profile. */
   sqlModel?: ChatModelLike;
   executor?: TextToSqlExecutorLike;
-  /** Full semantic catalog IDs for K7 CitationValidator; defaults to semantic/*.yaml. */
   catalogIds?: string[] | ReadonlySet<string>;
-  /** Optional catalog table discovery override for tests; production calls MCP list_tables. */
   listTables?: (rt: RootRuntime) => Promise<CatalogTable[]>;
-  /** Optional semantic search override for pre-intent retrieval in tests. */
   semanticSearch?: SemanticSearchFn;
 }
 
-/** Root-entry guard: initialize one persistent deadline and stop before I/O. */
 export function guardTextToSqlBudget(state: AgentState): AgentUpdate {
   const fresh = createBudgetState({
     maxLlmCalls: state.budget.maxLlmCalls,
@@ -354,8 +345,7 @@ function updateFromExecutor(
   if ((result.status === "ok" || result.status === "no_data") && typeof update.sql === "string") {
     const headed = withCitationHeader(state, update.sql, catalogIds);
     if (headed === null) {
-      // Persistent K7 failure (e.g. citation_missing_metric or unknown catalog ID):
-      // fail closed rather than shipping an unverified header.
+      // Fail closed on persistent citation failure rather than shipping an unverified SQL header.
       return {
         status: "cannot_answer",
         sql: result.sql,
@@ -368,7 +358,6 @@ function updateFromExecutor(
   return update;
 }
 
-/** Definition fast-path (RT->SYN): answer from retrieved semantic chunks, no executor/models/MCP. */
 function handleDefinitionLookup(
   state: AgentState,
   catalogIds: string[] | ReadonlySet<string>,
@@ -408,8 +397,7 @@ function handleDefinitionLookup(
   }
   const lines = chunks.slice(0, 5).map((chunk) => {
     const snippet = (chunk.text ?? "").slice(0, 300);
-    // Two decimals: a raw float like 0.0327868852 contains "0" + 9 digits,
-    // which the API's phone tripwire withholds as possible PII.
+    // Fixed 2 decimals prevents raw floats like 0.0327868852 from triggering the phone-number PII tripwire.
     const score = chunk.score !== undefined ? chunk.score.toFixed(2) : undefined;
     if (snippet && score !== undefined) return `${chunk.chunkId} (score: ${score}): ${snippet}`;
     if (snippet) return `${chunk.chunkId}: ${snippet}`;
@@ -432,7 +420,6 @@ function handleDefinitionLookup(
   };
 }
 
-/** Unknown-term short-circuit (two-tier gate): fail before any MCP when retrieval ran but grounds nothing. */
 function handleUnknownTerm(
   state: AgentState,
   catalogIds: string[] | ReadonlySet<string>,
@@ -440,21 +427,13 @@ function handleUnknownTerm(
   const metrics = state.intent.requestedMetrics;
   const chunks = state.semanticChunks;
   if (metrics.length === 0) return null;
-  // Fail closed: metrics present but no retrieved chunks means nothing is
-  // grounded — never let the executor run ungrounded.
+  // Fail closed: metrics present but no retrieved chunks means nothing is grounded — never let the executor run ungrounded.
   if (chunks.length === 0) return buildCannotAnswer(metrics, [], catalogIds);
   const { ungrounded } = checkUnknownTerms(metrics, chunks);
   if (ungrounded.length === 0) return null;
   return buildCannotAnswer(ungrounded, chunks, catalogIds);
 }
 
-/**
- * K7 citation header (UC-02): derive citations from the retrieved turn
- * context, validate against the full semantic catalog + turn retrieved set
- * (with <= 2 repair retries), and prepend `-- @citations: ...` to SQL.
- * Returns null on persistent K7 failure so the caller fails closed to
- * cannot_answer instead of shipping an unverified header.
- */
 function withCitationHeader(
   state: AgentState,
   sql: string | null,
@@ -476,12 +455,9 @@ function withCitationHeader(
   if (checked.ok) return checked.sql;
   const repaired = repairCitations(input, 2);
   if (repaired.ok) return repaired.sql;
-  // Persistent failure (e.g. citation_missing_metric or unknown catalog ID):
-  // signal the caller to fail closed.
   return null;
 }
 
-/** MCP tool names the executor reports via span payloads. */
 const KNOWN_TOOL_NAMES = new Set([
   "describe_table",
   "explain_query",
@@ -501,7 +477,6 @@ function clarificationForLargeQuery(table: string | undefined, options: string[]
   });
 }
 
-/** Ask only when intent extraction has identified multiple candidate KPIs. */
 function clarificationForAmbiguousMetric(
   state: AgentState,
 ): PendingClarification | "exhausted" | null {
@@ -724,7 +699,6 @@ async function searchForUnmappedEntities(
   let calledTool = false;
   let completedCalls = 0;
   for (const entityQuery of queries) {
-    // Check budget/deadline before every follow-up semantic MCP call (#89).
     const budgetCheck = checkBudget(budget);
     if (budgetCheck.tripped) {
       rt.emit({
@@ -850,10 +824,6 @@ function buildAskNewQuestionMessage(
   );
 }
 
-/**
- * Builds the text-to-SQL understanding node and entry handler. The root graph owns
- * dispatch; this module owns model, skill, and executor wiring for the UC.
- */
 export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
   understand: (state: AgentState, rt: RootRuntime) => Promise<AgentUpdate>;
   entry: UcEntryHandler;
@@ -1014,8 +984,6 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     }
     const intent = out.parsed;
     const intentDurationMs = Date.now() - intentStarted;
-    // Real provider counts feed the budget when present; fakes fall back to
-    // the conservative local estimate.
     const realTokens = out.inputTokens + out.outputTokens;
     const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
       out.model,
@@ -1548,6 +1516,4 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
   return { understand, entry };
 }
 
-// Hosts/tests may override this handler via RootGraphDeps.textToSql
-// without changing the registry or root graph topology.
 registerUC(TEXT_TO_SQL_UC_ID, createTextToSqlRuntime().entry);

@@ -1,18 +1,3 @@
-// Pinned Olist downloader (Phase 2, plan 02-02, D-01/D-02). Downloads the
-// eight Olist CSVs at load time from Olist's official publisher repo over
-// HTTPS into the git-ignored data/.cache/ — CSVs are never committed and no
-// Kaggle token or browser step is ever required.
-//
-// Trust boundary (T-2-05): untrusted bytes enter here; the FILE table is the
-// checkpoint. Every downloaded byte stream is verified (byte size + git blob
-// SHA-1 + SHA-256) against the pinned table BEFORE any parse. Any mismatch
-// throws fail-fast naming the file. Blob SHAs were resolved once at author
-// time from the GitHub contents API for olist/work-at-olist-data; byte sizes
-// and SHA-256 were measured from the same bytes.
-//
-// Follows the access-policy fail-fast plus override-precedence idioms
-// (sensitive-columns.ts:31-52): pure verify function plus a thin IO wrapper
-// where an explicit argument beats the env override beats the default.
 import { createHash } from "node:crypto";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -22,34 +7,25 @@ import { DEFAULT_CACHE_DIR, OLIST_FILES } from "./constants.js";
 export { DEFAULT_CACHE_DIR, OLIST_FILES };
 
 export interface OlistFileEntry {
-  /** Publisher filename under datasets/. */
   name: string;
-  /** Business table this CSV feeds. */
   businessTable: string;
-  /** Exact byte size of the publisher bytes. */
   bytes: number;
-  /** Git blob SHA (api.github.com contents API) of the publisher bytes. */
   blobSha: string;
-  /** SHA-256 of the publisher bytes, measured at author time. */
   sha256: string;
-  /** How this entry is verified. All entries use pinned SHAs (API was reachable). */
   mode: "blob-sha";
-  /** True when the file starts with a UTF-8 BOM (csv-parse needs `bom: true`). */
   bom: boolean;
 }
 
 const BASE_URL =
   "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets";
 
-// Explicit argument beats env beats default (sensitive-columns idiom).
 export function resolveCacheDir(override?: string): string {
   return resolve(
     override ?? process.env["OLIST_CACHE_DIR"] ?? DEFAULT_CACHE_DIR,
   );
 }
 
-// Cache path for a registered file. Rejects anything outside the table so a
-// caller can never be tricked into writing (or reading) an arbitrary path.
+// Only registered filenames are allowed; basename prevents directory traversal.
 export function cachePathFor(name: string, dir?: string): string {
   const entry = OLIST_FILES.find((file) => file.name === name);
   if (!entry) {
@@ -57,8 +33,6 @@ export function cachePathFor(name: string, dir?: string): string {
       `Unknown Olist file "${name}" — registered: ${OLIST_FILES.map((file) => file.name).join(", ")}`,
     );
   }
-  // basename strips any directory the name might smuggle in; the lookup
-  // above already guarantees the name is a plain registered filename.
   return join(resolveCacheDir(dir), basename(entry.name));
 }
 
@@ -72,9 +46,6 @@ function sha256Hex(content: Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-// Pure verification: byte size, git blob SHA, and SHA-256 of the downloaded
-// bytes against the pinned table. Throws fail-fast naming the file and the
-// mismatch. Runs BEFORE any parse (T-2-05).
 export function verifyDownloadedBytes(name: string, content: Buffer): void {
   const entry = OLIST_FILES.find((file) => file.name === name);
   if (!entry) {
@@ -105,10 +76,6 @@ export function fileUrl(name: string): string {
   return `${BASE_URL}/${name}`;
 }
 
-// Downloads one registered file with global fetch, streaming straight into
-// data/.cache/ (cache dir created on demand). Verifies bytes before
-// returning the cache path. Network failures name the URL and the retry
-// action — never a Kaggle token or a browser step.
 export async function downloadFile(
   name: string,
   options?: { cacheDir?: string; baseUrl?: string },
@@ -150,8 +117,6 @@ export async function downloadFile(
   return dest;
 }
 
-// Downloads every registered file (or a caller-selected subset). Skips files
-// already present in the cache whose bytes still verify, so re-runs are cheap.
 export async function downloadAll(
   names: readonly string[] = OLIST_FILES.map((file) => file.name),
   options?: { cacheDir?: string; baseUrl?: string },

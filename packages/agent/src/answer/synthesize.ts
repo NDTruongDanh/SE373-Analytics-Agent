@@ -1,8 +1,3 @@
-// Zero-tools answer synthesis (answer seam for RootGraphDeps.synthesize).
-// Formats a concise, PII-redacted final answerText from validated query
-// results and optional UC-03 verified insight reports, preserving non-empty
-// upstream answers (tracer/RCA/error/clarification) after PII redaction.
-
 import { redactPII } from "@shared/access-policy";
 import { DEFAULT_ROUTE_ID } from "../constants.js";
 import type {
@@ -98,11 +93,6 @@ function formatPreviewSummary(
   return `Returned ${rows.length} rows${source}: ${formattedRows.join("; ")}${suffix}`;
 }
 
-/**
- * Pure answer synthesizer matching the SynthesizeFn contract shape.
- * Preserves existing non-empty answers (redacting any PII) and derives
- * grounded text from verified insights or preview rows for `ok` results.
- */
 export function synthesizeAnswer(state: AgentState): AgentUpdate {
   if (state.answerText.trim().length > 0) {
     const { redacted, hit } = redactPII(state.answerText);
@@ -129,15 +119,11 @@ export function synthesizeAnswer(state: AgentState): AgentUpdate {
   return { answerText: redactPII(summary).redacted };
 }
 
-/**
- * Builds the `RootGraphDeps.synthesize` hook for hosts (`apps/api`, `evals`).
- * Leaves default-route (`tracer`) spans untouched while emitting a single
- * redacted `answer` `node_done` span for synthesized UC runs.
- */
 export function createAnswerSynthesizer(): SynthesizeFn {
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     const started = Date.now();
     const update = synthesizeAnswer(state);
+    // Skip span emission when upstream handlers or the default route already answered.
     const shouldEmit =
       state.ucId !== DEFAULT_ROUTE_ID && state.answerText.trim().length === 0;
     if (shouldEmit) {

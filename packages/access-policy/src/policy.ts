@@ -1,12 +1,3 @@
-// Column resolution plus scope/row-scope enforcement (POL-01..03).
-// Pure: no DB or network I/O. The AST is shared with the 01-05 sqlGuard
-// stage (GuardSuccess.ast) so the pipeline never parses twice; every
-// deparse output is re-parsed plus re-guarded fail-closed.
-//
-// Fail-closed summary: ambiguous unqualified columns, unknown qualifiers,
-// non-enumerable subquery outputs, multi-level CTEs and LATERAL over
-// sensitive tables all deny. Masking preserves output column names;
-// row-scope predicates are AND-ed per query level with the level's alias.
 import { walk } from "@pgsql/traverse";
 import type { NodePath } from "@pgsql/traverse";
 import { deparse, parse } from "pgsql-parser";
@@ -47,13 +38,10 @@ export type PolicyResult =
       allowed: true;
       sql: string;
       maskedColumns: string[];
-      /** Server-minted row-scope record: table/column where a predicate was
-       * injected, never the scoped value itself (column names only, D-03). */
       rowScopeApplied: RowScopeApplied[];
     }
   | { allowed: false; error: DbToolError };
 
-/** One applied row-scope predicate: scoped table plus scoped column. */
 export { RowScopeAppliedSchema, type RowScopeApplied } from "@shared/contracts";
 
 export interface AccessPolicy {
@@ -66,9 +54,6 @@ export interface AccessPolicy {
   }): Promise<PolicyResult>;
 }
 
-// Thrown by resolveColumns on fail-closed shapes; ColumnScopePolicy.check
-// converts it into a deny PolicyResult. Standalone callers (01-11
-// pre-check) treat any throw as deny.
 export class PolicyError extends Error {
   readonly code: ErrorCode;
   constructor(code: ErrorCode, message: string) {
@@ -155,10 +140,7 @@ function isSensitive(
   return col?.sensitive === true;
 }
 
-// Aggregate names for the funcarg/aggregate clause split. Any ColumnRef
-// under a FuncCall with agg_star/agg_order/agg_distinct/over, or whose
-// function name is in this set, records clause `aggregate`; other function
-// arguments record `funcarg`. Both deny identically without data:sensitive.
+// AST flags (agg_star/agg_distinct/over) miss plain aggregate calls like count(col), so check known names too.
 const AGGREGATE_FUNCTIONS: ReadonlySet<string> = new Set([
   "count",
   "sum",
@@ -215,12 +197,9 @@ type ScopeEntry =
 type LevelScope = {
   node: Record<string, unknown>;
   entries: ScopeEntry[];
-  // Select-list output aliases of this level (ORDER BY prefers them, GROUP
-  // BY prefers table columns — PG name resolution, v1 bug-C2 territory).
+  // Select-list aliases: ORDER BY prefers these, whereas GROUP BY prefers table columns (PG resolution order).
   aliases: Map<string, DerivedOutput>;
-  // True when the level reads from something star expansion cannot
-  // enumerate (set-returning functions); bare `*` then denies fail-closed
-  // instead of silently dropping columns.
+  // Set when FROM has unenumerable sources (e.g. SRFs) so bare * denies fail-closed instead of dropping columns.
   ungovernable: boolean;
 };
 
@@ -273,8 +252,6 @@ function collectRangeVars(node: unknown): string[] {
   return names;
 }
 
-// Nearest enclosing SelectStmt ancestor of a walked node plus the nearest
-// ResTarget/FuncCall boundary markers on the way up.
 function climb(path: NodePath): {
   level: Record<string, unknown> | undefined;
   resTarget: Record<string, unknown> | null;
@@ -296,10 +273,7 @@ function climb(path: NodePath): {
       return {
         level: parent.node as Record<string, unknown>,
         resTarget,
-        // Direct projection hit only when the ColumnRef itself is the
-        // select-item value (not nested in an expression or call). The
-        // visitor node is the unwrapped inner object while ResTarget.val
-        // is the wrapped form, so compare through the normalizer.
+        // Direct projection only when ColumnRef is the bare ResTarget.val; normalize because visitor nodes are unwrapped.
         direct:
           resTarget !== null && innerColumnRef(resTarget["val"]) === target,
         func,
@@ -321,8 +295,7 @@ function classifyClause(keyPath: ReadonlyArray<string | number>, hasFunc: boolea
     if (seg === "quals") return "join";
     if (seg === "targetList") return "projection";
   }
-  // Unknown position (VALUES lists, window frames resolved above): treat as
-  // a non-projection clause so sensitive refs deny fail-closed.
+  // Unknown clause positions default to non-projection so sensitive refs deny fail-closed.
   return "where";
 }
 
@@ -355,8 +328,7 @@ class ScopeBuilder {
   build(selectNode: Record<string, unknown>, ctes: Map<string, CteDef>): LevelScope {
     const hit = this.memo.get(selectNode);
     if (hit !== undefined) return hit;
-    // Set operations: the level has no FROM of its own; ORDER BY/GROUP BY
-    // resolve against the left branch outputs.
+    // Set operations have no FROM of their own; ORDER BY/GROUP BY resolve against the left branch.
     if (selectNode["larg"] !== undefined || selectNode["rarg"] !== undefined) {
       const scope: LevelScope = {
         node: selectNode,
@@ -395,8 +367,7 @@ class ScopeBuilder {
         siblingNames.add(name.toLowerCase());
         defs.push({ name, query });
       }
-      // Multi-level CTE: any CTE whose subtree reads another visible CTE
-      // (sibling, self, or outer) cannot be enumerated — deny fail-closed.
+      // Deny multi-level/recursive CTEs fail-closed because their outputs cannot be safely enumerated.
       const visible = new Set<string>([...ctes.keys(), ...siblingNames]);
       for (const def of defs) {
         for (const rel of collectRangeVars(def.query)) {
@@ -438,9 +409,7 @@ class ScopeBuilder {
       }
     }
 
-    // CTE inner scopes (siblings visible; self/sibling refs already denied
-    // above so recursion terminates) plus subqueries nested outside FROM
-    // (EXISTS / IN / scalar subselects in WHERE and friends).
+    // Build CTE inner scopes (termination guaranteed by multi-level check above) and non-FROM nested subqueries.
     if (Array.isArray(cteNodes)) {
       for (const entry of cteNodes) {
         const cte = asRecord(asRecord(entry)?.["CommonTableExpr"]);
@@ -482,13 +451,12 @@ class ScopeBuilder {
     scope: LevelScope,
     ctes: Map<string, CteDef>,
   ): void {
-    // FROM items arrive tag-wrapped ({RangeVar: ...}, {RangeSubselect:
-    // ...}, {JoinExpr: ...}); unwrap one level before reading fields.
+    // FROM items arrive tag-wrapped ({RangeVar}, {RangeSubselect}, {JoinExpr}); unwrap one level.
     const wrapper = asRecord(item);
     if (wrapper === undefined) return;
     const join = asRecord(wrapper["JoinExpr"]);
     if (join !== undefined) {
-      // JoinExpr: recurse into both arms; quals belong to this level.
+      // Join quals resolve against the enclosing level.
       this.addFromItem(join["larg"], scope, ctes);
       this.addFromItem(join["rarg"], scope, ctes);
       return;
@@ -540,9 +508,7 @@ class ScopeBuilder {
       scope.entries.push({ kind: "table", tableName: (table as SchemaCatalog["tables"][number]).name, qualifier });
       return;
     }
-    // RangeFunction and anything else: star expansion cannot enumerate it,
-    // so bare `*` over this level denies fail-closed instead of dropping
-    // columns. Qualified refs against it also deny (no scope entry).
+    // Mark unenumerable FROM items (e.g. RangeFunction) ungovernable so * and refs against them fail closed.
     scope.ungovernable = true;
   }
 
@@ -564,8 +530,7 @@ class ScopeBuilder {
     }
   }
 
-  // Single-base-table passthrough: the CTE wraps one catalog table with
-  // plain columns/stars only, so the CTE name acts as a table alias.
+  // Single-table passthrough CTEs act as a direct table alias when projecting only plain columns or stars.
   private passthroughBase(
     cte: CteDef,
     ctes: Map<string, CteDef>,
@@ -598,10 +563,8 @@ class ScopeBuilder {
     val: unknown,
     scope: LevelScope,
   ): DerivedOutput {
-    // Expression outputs hide their inputs only when every column ref
-    // inside is traceable and non-sensitive; anything unresolvable or
-    // sensitive taints the output fail-closed. Bare aggregates over no
-    // columns (count(*)) are not sensitive.
+    // Derived expressions are non-sensitive only if every inner column ref resolves as non-sensitive;
+    // unresolvable refs taint fail-closed, while bare aggregates like count(*) stay non-sensitive.
     const refs: Record<string, unknown>[] = [];
     collectColumnRefNodes(val, refs);
     let sensitive = false;
@@ -671,8 +634,7 @@ class ScopeBuilder {
         });
         continue;
       }
-      // Unnamed expression output cannot be referenced by name; skip it
-      // (refs to anything else still resolve).
+      // Unnamed expression outputs cannot be referenced by name; skip without failing other outputs.
     }
     return outputs;
   }
@@ -703,8 +665,7 @@ class ScopeBuilder {
             column: col.name,
             sensitive: isSensitive(table.name, col.name, this.catalog, this.extra),
             outName: col.name,
-            // Always qualifier-anchored: bare `*` over a join would turn
-            // duplicate column names ambiguous if left unqualified.
+            // Always qualify expanded star columns so joins with duplicate column names stay unambiguous on rewrite.
             qualifier: entry.qualifier,
           });
         }
@@ -769,8 +730,7 @@ class ScopeBuilder {
       }
       deny("UNKNOWN_TABLE", `Unknown qualifier: ${qualifier}`);
     }
-    // Unqualified: ORDER BY prefers select-list aliases (PG), every other
-    // clause prefers table columns; ambiguity denies fail-closed.
+    // PG name resolution: ORDER BY checks select-list aliases first, other clauses check FROM sources first.
     if (clause === "order") {
       const alias = scope.aliases.get(name.toLowerCase());
       if (alias !== undefined) {
@@ -823,9 +783,7 @@ class ScopeBuilder {
   }
 }
 
-// Collect every ColumnRef node in a subtree (wrapped or bare) without
-// descending into a ColumnRef's own fields. Pushes the wrapped form when
-// present so resolveRef sees qualifier context uniformly.
+// Collect ColumnRef nodes without descending into their fields, preserving wrapper form for resolveRef.
 function collectColumnRefNodes(
   node: unknown,
   out: Record<string, unknown>[],
@@ -864,10 +822,7 @@ function starQualifier(val: unknown): string | null {
   return first ?? null;
 }
 
-// Walk visitors receive the tag's inner object (e.g. a ColumnRef visitor
-// gets `{fields: ...}`, not `{ColumnRef: {fields: ...}}`), while raw-tree
-// reads (ResTarget.val, targetList items) see the wrapped form. Normalize
-// both to the inner `{fields: ...}` object.
+// Normalize both unwrapped visitor ColumnRef nodes and wrapped raw-AST ColumnRefs to { fields }.
 function innerColumnRef(val: unknown): Record<string, unknown> | undefined {
   const record = asRecord(val);
   if (record === undefined) return undefined;
@@ -973,13 +928,6 @@ function analyze(
   return { memo: builder.memo, refs, stars, levels: builder.levels };
 }
 
-/**
- * Resolve every column reference in a parsed AST against the array-of-tables
- * catalog: expands `*`/`t.*`, records `{table, column, clause, sensitive}`
- * per ref. Throws PolicyError (fail-closed) on ambiguous unqualified
- * columns, unknown qualifiers, non-enumerable subquery outputs, multi-level
- * CTEs and LATERAL over sensitive tables.
- */
 export function resolveColumns(
   ast: GuardAst,
   catalog: SchemaCatalog,
@@ -987,8 +935,7 @@ export function resolveColumns(
 ): ResolvedColumnRef[] {
   const analysis = analyze(ast, catalog, extraSensitive);
   const out = analysis.refs.map((r) => r.resolved);
-  // Star expansion records one ref per expanded column so masking and audit
-  // see the same refs the rewrite pass acts on.
+  // Include star-expanded columns so audit and callers see the same refs the rewrite pass governs.
   for (const job of analysis.stars) {
     if (job.cols === null) {
       throw new PolicyError("UNKNOWN_TABLE", "Cannot enumerate star expansion");
@@ -1102,7 +1049,6 @@ export class ColumnScopePolicy implements AccessPolicy {
       ),
     });
 
-    // Clause/aggregate violations abort before any rewrite.
     if (!hasSensitive) {
       for (const ref of analysis.refs) {
         if (!ref.resolved.sensitive) continue;
@@ -1115,8 +1061,7 @@ export class ColumnScopePolicy implements AccessPolicy {
     let mutated = false;
     const maskedColumns = new Set<string>();
 
-    // Star expansion first (only stars that would expose sensitive columns
-    // without data:sensitive are rewritten; the rest stay byte-identical).
+    // Expand only stars exposing sensitive columns so non-sensitive queries stay byte-identical.
     if (!hasSensitive) {
       try {
         await this.expandSensitiveStars(analysis, catalog, maskedColumns);
@@ -1130,11 +1075,7 @@ export class ColumnScopePolicy implements AccessPolicy {
       }
     }
 
-    // Row-scope predicates, injected per query level whose FROM directly
-    // includes a scoped table (hand-built equality on the level's alias or
-    // bare name). Opaque or ambiguous placement denies FORBIDDEN_STATEMENT.
-    // Every injected predicate is recorded (table/column only, never the
-    // value) so audit and trace sinks can show scoping without PII.
+    // Inject server-minted row-scope predicates per level and record table/column only (never values).
     const rowScopeApplied: RowScopeApplied[] = [];
     if (principal.rowScope !== undefined && principal.rowScope !== null) {
       const scoped = rowScopeTables(principal.rowScope, catalog);
@@ -1255,8 +1196,7 @@ export class ColumnScopePolicy implements AccessPolicy {
       if (!ref.resolved.sensitive) continue;
       if (ref.resolved.clause !== "projection" || !ref.direct) continue;
       if (ref.resTarget === null) continue;
-      // Star-expanded items created above are already masked; skip nodes
-      // that no longer sit under a live plain-ColumnRef value slot.
+      // Skip items already rewritten by expandSensitiveStars (no longer a plain ColumnRef).
       const current = ref.resTarget["val"] as unknown;
       if (!isPlainColumnRef(current)) continue;
       const table = lookupTable(catalog, ref.resolved.table);
@@ -1276,10 +1216,6 @@ export class ColumnScopePolicy implements AccessPolicy {
     }
   }
 
-  // Returns true when a predicate was injected, false when no level names a
-  // scoped table, or a deny string when placement is impossible. Every
-  // injected predicate is appended to `applied` as a value-free
-  // { table, column } descriptor (server-minted, never request data).
   private injectRowScopes(
     levels: LevelScope[],
     rowScope: NonNullable<Principal["rowScope"]>,
@@ -1333,8 +1269,7 @@ export class ColumnScopePolicy implements AccessPolicy {
         }
         injected = true;
       }
-      // Opaque placement: a non-enumerable derived entry built over a scoped
-      // table hides the predicate column — deny instead of guessing.
+      // Deny fail-closed if a non-enumerable derived source wraps a scoped table, hiding the predicate column.
       for (const entry of level.entries) {
         if (entry.kind !== "derived" || entry.outputs !== null) continue;
         for (const rel of collectRangeVars(entry.sourceNode)) {

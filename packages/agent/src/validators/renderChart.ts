@@ -1,22 +1,3 @@
-// Headless `render_chart` validator (UC-03 K7, architecture §3.2.9).
-//
-// Local deterministic utility — no code execution, no network, no model
-// (PRD §4.1 `render_chart` row). Two layers:
-//
-// 1. `validateChartSpec` — structural check: zod `OpenuiChartSpecSchema` plus
-//    the `chartType` ↔ component match (`CHART_TYPE_TO_COMPONENT`). Returns a
-//    structured diff, never throws, so the repair loop can re-prompt with
-//    `{ code, field, hint }` instead of raw errors.
-// 2. `validateChartGrounding` — data check: every string in `labels` / Table
-//    label data must appear as a buffer cell; every number must match a
-//    numeric buffer cell within <= 1% rounding tolerance. OpenUI specs carry
-//    plucked inline data (not field references), so this check is stronger
-//    than a field-∈-columns test: the chart cannot show a number the query
-//    never returned.
-//
-// `RENDER_REPAIR_LIMIT` caps the repair loop (Loop 4, <= 2 repairs); after
-// that the caller falls back to `buildTableSpec`, never blocking the answer.
-
 import {
   CHART_TYPE_TO_COMPONENT,
   OpenuiChartSpecSchema,
@@ -25,7 +6,6 @@ import {
 } from "@shared/contracts";
 import { toNumberCell, type SelectorBuffer } from "./chartSelector.js";
 
-/** Structured validator diff consumed by the repair re-prompt. */
 export interface ChartIssue {
   code: "chart_shape" | "chart_mismatch" | "chart_grounding";
   field: string;
@@ -36,10 +16,8 @@ export type ChartValidation =
   | { ok: true; spec: OpenuiChartSpec }
   | { ok: false; issue: ChartIssue };
 
-/** Loop 4 bound: at most two targeted repairs per report. */
 export const RENDER_REPAIR_LIMIT = 2;
 
-/** <= 1% relative rounding tolerance (same bound as numeric claims). */
 export const CHART_NUMBER_TOLERANCE = 0.01;
 
 function mismatch(chartType: ChartType, got: unknown): ChartValidation {
@@ -56,10 +34,6 @@ function mismatch(chartType: ChartType, got: unknown): ChartValidation {
   };
 }
 
-/**
- * Structural validation only (no buffer needed): zod shape plus the
- * chartType ↔ component refine, normalized to a ChartIssue.
- */
 export function validateChartSpec(
   chartType: ChartType,
   spec: unknown,
@@ -192,11 +166,7 @@ function collectNumbers(spec: OpenuiChartSpec): { field: string; values: number[
   }
 }
 
-/**
- * Data-grounding validation: every label string and every plotted number
- * must trace to a buffer cell. Series/dataset *names* and axis labels are
- * display text, not data, and are not grounded.
- */
+/** Grounds plotted labels and numbers against buffer cells; series names and axis titles are display-only. */
 export function validateChartGrounding(
   spec: OpenuiChartSpec,
   buffer: SelectorBuffer,
@@ -234,7 +204,6 @@ export function validateChartGrounding(
   return { ok: true, spec };
 }
 
-/** Full headless compile: shape, then type match, then grounding. */
 export function validateChart(
   chartType: ChartType,
   spec: unknown,
@@ -257,11 +226,7 @@ function toCell(value: unknown): string | number {
   }
 }
 
-/**
- * Deterministic fallback: a Table spec plucked straight from the buffer, so
- * a failed chart never blocks the answer. Always passes grounding against
- * the buffer it was built from.
- */
+/** Deterministic Table fallback plucked from the buffer so a failed chart never blocks the answer. */
 export function buildTableSpec(
   buffer: SelectorBuffer,
   maxRows = 50,

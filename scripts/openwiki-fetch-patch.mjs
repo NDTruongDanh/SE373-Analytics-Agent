@@ -1,40 +1,5 @@
-/**
- * Node preload module (`--import`) that injects the mandatory
- * `x-opencode-session` header on every request to OpenCode Go.
- *
- * Background (researched 2026-10-25):
- * - OpenCode Go rejects requests without `x-opencode-session` with
- *   `HTTP 400 MissingSessionID` ("Request is missing x-opencode-session and
- *   cannot be routed efficiently").
- * - The header went from optional to mandatory; the official OpenCode client
- *   already sent it, so only third-party clients/proxies broke.
- * - It is NOT auth (the Bearer key is auth). It is a routing + prompt-cache
- *   hint: same conversation => same value, different conversations =>
- *   different values. Random-per-request passes the check but destroys cache
- *   reuse. Never put PII in it; the value is opaque (`ses_` + 32 hex chars).
- * - It is checked before model routing, so it applies to EVERY Go transport:
- *   `/chat/completions`, `/messages`, and `/responses`. Muse Spark 1.3
- *   Contributor is Responses-only, so this wrapper must cover `/responses`.
- * - OpenWiki (langchain-ai/openwiki) builds its ChatOpenAI client with only
- *   `{ baseURL }` for `openai` / `openai-compatible` + Responses API — no
- *   `defaultHeaders` hook — so without this patch every Go call 400s.
- *
- * Usage (local + CI):
- *   node --import ./scripts/openwiki-fetch-patch.mjs \
- *     ./node_modules/openwiki/dist/cli/cli.js code --update --print
- *
- * The session id is stable for the whole process (one CLI run = one
- * conversation, which is exactly the granularity Go wants for cache reuse):
- * - If `OPENWIKI_OPENCODE_SESSION_ID` is set and valid (`ses_` + 32 hex),
- *   it is reused (lets CI pin a value per run for traceability).
- * - Else if running in GitHub Actions, it is derived deterministically as
- *   `ses_<sha256(repo|run_id|sha|job)[0:32]>` — stable within the run,
- *   unique across runs, opaque (no PII).
- * - Else a random `ses_<32 hex>` is generated for this process.
- *
- * Existing headers are never overwritten (a proxy/router upstream value wins),
- * matching kRouter's pass-through behavior (>= v0.5.151).
- */
+// Preload patch (--import) injecting x-opencode-session on OpenCode Go requests.
+// OpenWiki omits defaultHeaders on its ChatOpenAI client, and Go rejects requests without a stable session id (HTTP 400).
 
 import { createHash, randomBytes } from "node:crypto";
 
@@ -86,7 +51,6 @@ function getRequestUrl(input) {
     if (input instanceof URL) return input.href;
     if (input && typeof input.url === "string") return input.url;
   } catch {
-    // fall through
   }
   return null;
 }
@@ -96,7 +60,6 @@ const originalFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async (input, init) => {
   const url = getRequestUrl(input);
   if (url && isOpencodeGoUrl(url)) {
-    // Collect headers without mutating the caller's objects.
     const baseHeaders =
       init?.headers ?? (input instanceof Request ? input.headers : undefined);
     const headers = new Headers(baseHeaders);
@@ -112,8 +75,7 @@ globalThis.fetch = async (input, init) => {
   return originalFetch(input, init);
 };
 
-// One stderr line so runs are traceable (which session id fed Go's router).
-// The id itself is opaque and safe to log; never log the API key here.
+// Log only the opaque session prefix for routing traceability; never log the API key.
 console.error(
   `[openwiki] x-opencode-session patch active (session ${SESSION_ID.slice(0, 12)}…, scope: opencode.ai requests only)`,
 );

@@ -7,10 +7,6 @@ import {
   OpenuiChartSpecSchema,
 } from "./render.js";
 
-// Single answer contract shared by UC-01 and UC-02 (UC-01 section 3.1/3.2,
-// UC-02 Feature 5). camelCase is the canonical shape; UC-02's snake_case
-// variants are not added — one shape per the freeze (see README).
-
 export const SqlAttemptSchema = z.object({
   attemptNo: z.number().int(),
   sql: z.string().nullable(),
@@ -66,12 +62,6 @@ export const SQLAnswerSchema = z.object({
 
 export type SQLAnswer = z.infer<typeof SQLAnswerSchema>;
 
-// AgentResponse: kind-discriminated union (CONT-07). The sql_answer variant
-// carries the full SQLAnswer shape; the analysis_plan and root_cause variants
-// carry strict UC-05 payloads, and the insight_report variant carries the
-// strict UC-03 InsightReportSchema below. Only anomaly_alert still carries an
-// unknown-typed data payload (owned by UC-10).
-
 export const SqlAnswerResponseSchema = SQLAnswerSchema.extend({
   kind: z.literal("sql_answer"),
 });
@@ -84,12 +74,6 @@ const AgentEnvelopeBaseSchema = z.object({
   data: z.unknown(),
 });
 
-// UC-03 evidence-backed insight payload (PRD UC-03, architecture §3.2 K7).
-// Every number in an insight claim must trace to an EvidencePointer whose
-// column/rowKey/value cell exists in RunQueryOutput; the numeric validator
-// re-checks the match within <= 1% rounding tolerance. camelCase is canonical.
-
-// Single query cell backing one number or label inside a claim.
 export const EvidencePointerSchema = z.object({
   column: z.string().min(1).max(128),
   rowKey: z.string().min(1).max(256),
@@ -98,10 +82,6 @@ export const EvidencePointerSchema = z.object({
 
 export type EvidencePointer = z.infer<typeof EvidencePointerSchema>;
 
-// One natural-language finding plus the pointers that prove it. evidence must
-// be non-empty so no claim ships without at least one verifiable cell.
-// derivation (H-05 Wave 2, additive) declares how the claimed value relates
-// to its evidence pointers so K7 recomputes it deterministically.
 export const ClaimDerivationSchema = z.enum([
   "cell",
   "pct_change",
@@ -122,22 +102,10 @@ export const InsightClaimSchema = z.object({
 
 export type InsightClaim = z.infer<typeof InsightClaimSchema>;
 
-// Chart selector canonical in RenderChartInputSchema (contracts/render.ts):
-// line = trends via OpenUI LineChart, bar = comparisons via BarChart,
-// pie = share of 2-6 groups via PieChart, scatter = correlations via
-// ScatterChart, table = detail rows via Table, none = scalar/no_data.
-// This alias keeps the UC-03 import surface (`InsightChartTypeSchema`) stable.
 export const InsightChartTypeSchema = ChartTypeSchema;
 
 export type InsightChartType = z.infer<typeof InsightChartTypeSchema>;
 
-// Full UC-03 report: OpenUI chart spec plus verified insights. chartSpec is
-// a strict OpenUI genui-lib mirror (render.ts) — it serializes
-// deterministically to OpenUI Lang (e.g. `chart = BarChart(labels, series)`)
-// for the web <Renderer/>. chartType must match the spec component
-// (CHART_TYPE_TO_COMPONENT). insights may be empty only for chartType
-// "none" / status "no_data" — the K7 validator strips unverified claims and
-// requires caveats there.
 export const InsightReportSchema = z.object({
   chartType: InsightChartTypeSchema,
   chartSpec: OpenuiChartSpecSchema,
@@ -180,7 +148,7 @@ export type RootCauseResponse = z.infer<typeof RootCauseResponseSchema>;
 
 export const AnomalyAlertResponseSchema = AgentEnvelopeBaseSchema.extend({
   kind: z.literal("anomaly_alert"),
-  data: AnomalyAlertSchema, // <--- Bổ sung dòng này để siết chặt validation
+  data: AnomalyAlertSchema,
 });
 
 export type AnomalyAlertResponse = z.infer<typeof AnomalyAlertResponseSchema>;
@@ -194,11 +162,6 @@ export const AgentResponseSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type AgentResponse = z.infer<typeof AgentResponseSchema>;
-
-// SSE progress payloads (D-20): one zod schema per allowlisted progress
-// event plus the SseProgressEventSchema union, so the 01-14 SSE host can
-// import them from contracts without a new file. Payloads stay unknown at
-// this layer; the 01-14 sanitizer whitelists fields before emitting.
 
 export const SseEventNameSchema = z.enum([
   "intent_parsed",

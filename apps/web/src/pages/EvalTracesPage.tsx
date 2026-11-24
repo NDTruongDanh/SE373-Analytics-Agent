@@ -1,7 +1,6 @@
 import { Activity } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-/** Observability traces & benchmark evaluation summary page. */
 export function EvalTracesPage() {
   return (
     <div className="content space-y-6">

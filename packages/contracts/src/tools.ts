@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-// Tracer slice of the db-tool contract surface: list_tables and
-// describe_table I/O schemas (UC-09 A.6/A.7, PRD 4.1 tool table).
-// Scope filtering is server-side in Phase 4, never a client claim, so
-// ListTablesInputSchema is an empty strict object.
-
+// Empty strict object because table scope filtering is enforced server-side.
 export const ListTablesInputSchema = z.strictObject({});
 
 export type ListTablesInput = z.infer<typeof ListTablesInputSchema>;
@@ -32,7 +28,6 @@ const DescribeTableColumnSchema = z.object({
   type: z.string().min(1),
   nullable: z.boolean(),
   sensitive: z.boolean(),
-  // 1.2.0: large-table flag the gateway catalog already sets (LARGE_TABLES).
   // Optional so pre-1.2.0 payloads still parse; absent means not large.
   large: z.boolean().optional(),
   description: z.string().max(500).optional(),
@@ -53,8 +48,6 @@ export const DescribeTableOutputSchema = z.object({
 
 export type DescribeTableOutput = z.infer<typeof DescribeTableOutputSchema>;
 
-// --- explain_query ---
-
 export const ExplainQueryInputSchema = z.object({
   sql: z.string().min(1).max(20000),
 });
@@ -69,8 +62,6 @@ export const ExplainQueryOutputSchema = z.object({
 
 export type ExplainQueryOutput = z.infer<typeof ExplainQueryOutputSchema>;
 
-// --- run_query (UC-09 A.6 step 10 shape) ---
-
 export const RunQueryInputSchema = z.object({
   sql: z.string().min(1).max(20000),
   maxRows: z.number().int().min(1).max(1000).default(200),
@@ -78,11 +69,7 @@ export const RunQueryInputSchema = z.object({
 
 export type RunQueryInput = z.infer<typeof RunQueryInputSchema>;
 
-/**
- * One server-minted row-scope record: scoped table plus scoped column.
- * Column names only, never the scoped value (single authority for this
- * shape; @shared/access-policy re-exports it — see policy.ts).
- */
+// Column names only, never the scoped value (single source re-exported by @shared/access-policy).
 export const RowScopeAppliedSchema = z.strictObject({
   table: z.string().min(1),
   column: z.string().min(1),
@@ -101,8 +88,6 @@ export const RunQueryOutputSchema = z.object({
 });
 
 export type RunQueryOutput = z.infer<typeof RunQueryOutputSchema>;
-
-// --- sample_rows (server cap n <= 5) ---
 
 export const SampleRowsInputSchema = z.object({
   table: z.string().min(1).max(128),

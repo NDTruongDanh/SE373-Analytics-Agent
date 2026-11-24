@@ -1,14 +1,3 @@
-// MCP database gateway (MCP-01..09): 5 db-tools plus search_semantic_layer
-// plus 2 role-filtered semantic resources over Streamable HTTP. Every tool
-// handler funnels through the fixed 7-stage pipeline (auth → scope → zod →
-// sqlGuard → AccessPolicy → executor → PII scan + audit); resource reads go
-// through the same auth/scope/audit path with section filtering. No stage
-// is skippable and no TRACER shortcut remains.
-//
-// NOTE (SDK 1.32.2, kept from the tracer slice): a stateless
-// StreamableHTTPServerTransport instance is single-use, and McpServer
-// refuses a second transport — so each POST builds a fresh server +
-// transport pair (true stateless semantics).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,15 +98,10 @@ function mcpErrorPayload(
   };
 }
 
-// The SDK validates tool arguments against the registered inputSchema before
-// the handler runs, so a strict schema there would reject malformed params
-// outside the pipeline: no audit line, and zod ahead of the scope check.
-// Register a pass-through schema so every call reaches executeToolCall,
-// where auth -> scope -> zod -> ... -> audit runs in order (UC09.md B.1).
+// Register a pass-through schema so the SDK doesn't reject malformed params before
+// executeToolCall runs auth -> scope -> zod -> ... -> audit in order.
 const PASS_THROUGH_INPUT = z.looseObject({});
 
-// tools/list still advertises the strict contract schemas: the pass-through
-// above is a dispatch detail, not the public tool interface.
 function listToolsResult(): {
   tools: {
     name: string;
@@ -246,8 +230,7 @@ export async function createGatewayApp(
         },
       );
     }
-    // Replace the SDK's tools/list handler (which would describe the
-    // pass-through schema) with the strict contract schemas.
+    // Override tools/list with strict contract schemas instead of the pass-through above.
     server.server.setRequestHandler(ListToolsRequestSchema, listToolsResult);
 
     const resourceEntries = [
@@ -306,7 +289,6 @@ export async function createGatewayApp(
   });
 
   app.post("/mcp", async (req: Request, res: Response) => {
-    // Stage 1 (auth) at the HTTP layer: no valid Bearer, no MCP dispatch.
     const auth = authenticateRequest(
       req.headers as Record<string, string | string[] | undefined>,
       clients,
@@ -315,6 +297,8 @@ export async function createGatewayApp(
       res.status(401).json(auth.error);
       return;
     }
+    // SDK 1.32.2: stateless StreamableHTTPServerTransport is single-use and McpServer
+    // refuses a second transport, so each POST builds a fresh server + transport pair.
     const requestTransport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
@@ -397,10 +381,7 @@ if (
   try {
     await startGatewayServer(port);
   } catch (error) {
-    // Boot failures (wrong-password DSN, unreachable DB) must not echo raw
-    // driver output: sanitize through the same choke point as tool errors so
-    // role names, paths, and stack frames never reach stderr (B.1 error-leak
-    // row asserts sanitized output). Fail-closed: non-zero exit, no healthz.
+    // Sanitize boot failures so driver secrets, paths, and stack frames never reach stderr.
     const clean = sanitizeError(error);
     console.error(
       `[mcp-gateway] failed to start: ${clean.code}: ${clean.message}`,

@@ -1,11 +1,5 @@
 import { z } from "zod";
 
-// CONT-08 SchemaCatalog: array-of-tables shape shared by the MCP
-// describe_table tool, the access-policy guard, and the agent pre-check.
-// `sensitive` marks PII-bearing columns (policy denies or masks them);
-// `large` marks tables that need a filter before a full scan. Additive
-// only — later plans add catalog-driven policy on top of this shape.
-
 export const SchemaCatalogTableColumnSchema = z.object({
   name: z.string().min(1).max(128),
   type: z.string().min(1),

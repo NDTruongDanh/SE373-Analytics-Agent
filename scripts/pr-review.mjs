@@ -1,20 +1,3 @@
-// PR architecture review via OpenCode Go (OpenAI-compatible Responses API).
-// Reuses the OpenWiki key setup: OPENCODE_GO_API_KEY (CI secret) or
-// OPENAI_COMPATIBLE_API_KEY (local .env). No new secret needed.
-//
-// Model is Responses-only: POST {base}/responses with
-// { model, instructions, input, reasoning: { effort: "xhigh" }, store: false }.
-// The mandatory `x-opencode-session` header mirrors
-// scripts/openwiki-fetch-patch.mjs (deterministic per CI run, random locally).
-//
-// Usage:
-//   node scripts/pr-review.mjs [--dry-run] [--base origin/main]
-//     [--max-diff-chars 90000] [--max-output-tokens 16000]
-//     [--model muse-spark-1.3-contributor] [--effort xhigh] [--pr 123]
-//     [--effort xhigh] [--pr 123]
-//
-// Advisory only: missing key, fork PRs, or API failures exit 0 with a skip
-// notice so this never blocks the `gate` branch-protection context.
 import { createHash, randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -32,7 +15,6 @@ const DEFAULT_MODEL = "muse-spark-1.3-contributor";
 const DEFAULT_EFFORT = "xhigh";
 const SESSION_RE = /^ses_[0-9a-f]{32}$/;
 
-// Diff paths that waste review tokens; still listed as skipped.
 const EXCLUDED_DIFF = [
   "pnpm-lock.yaml",
   "package-lock.yaml",
@@ -118,7 +100,6 @@ function readEventPayload() {
     const p = process.env.GITHUB_EVENT_PATH;
     if (p && existsSync(p)) return JSON.parse(readFileSync(p, "utf8"));
   } catch {
-    // Fall through to gh-based metadata.
   }
   return null;
 }
@@ -164,7 +145,6 @@ function unwrapResponse(data) {
 }
 
 function describeResponse(data) {
-  // Small, PII-free shape summary for logs (status, item types, usage only).
   try {
     const r = unwrapResponse(data);
     const output = Array.isArray(r?.output) ? r.output : [];
@@ -270,7 +250,6 @@ async function main() {
   }
   const architecture = readFileSync(archPath, "utf8");
 
-  // --- Collect diff (three-dot, fall back to two-dot) ---
   let files = [];
   let diff = "";
   try {
@@ -315,7 +294,6 @@ async function main() {
     truncated = true;
   }
 
-  // --- PR metadata (event payload preferred, gh best-effort) ---
   const event = readEventPayload();
   const prFromEvent =
     event?.pull_request?.number || event?.number || opts.pr || "";
@@ -342,12 +320,9 @@ async function main() {
         head: j.headRefName || "",
       };
     } catch {
-      // Metadata is nice-to-have; the diff is the review target.
     }
   }
   if (!opts.pr && prMeta.number) opts.pr = prMeta.number;
-  // Stamp every review with the exact commit it reviewed so pushes are
-  // visibly re-reviewed: the living PR comment is updated in place.
   let headSha = event?.pull_request?.head?.sha || "";
   if (!headSha) {
     try {
@@ -358,8 +333,6 @@ async function main() {
   }
   opts.headSha = headSha;
   opts.reviewedAt = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
-  // List every commit in the reviewed range (base..HEAD = exactly what the PR
-  // adds) so the comment shows which commits the review checked.
   const cleanSubject = (s) => String(s || "").replace(/`/g, "'").slice(0, 120);
   let commitList = [];
   try {
@@ -465,9 +438,8 @@ async function main() {
   );
   let review = "";
   try {
-    // xhigh reasoning on a ~130k-char input can burn the whole output budget
-    // on reasoning tokens, returning status=incomplete with no message item.
-    // Retry once with a doubled budget (capped) before giving up.
+    // xhigh reasoning on large diffs can exhaust max_output_tokens before emitting text;
+    // retry once with a doubled budget (capped at 64k).
     let budget = opts.maxOutputTokens;
     let data = await requestReview({
       baseUrl,
@@ -529,8 +501,7 @@ async function main() {
 const REVIEW_MARKER = "<!-- opencode-pr-review -->";
 
 function pickReviewCommentId(comments) {
-  // Pure helper (unit-tested below via --self-test): newest marker comment,
-  // preferring the github-actions bot's own so a user quote can't hijack it.
+  // Prefer github-actions[bot]'s marker comment so a user quote containing the marker cannot hijack updates.
   if (!Array.isArray(comments)) return 0;
   const marked = comments.filter(
     (c) => typeof c?.body === "string" && c.body.includes(REVIEW_MARKER),
@@ -551,7 +522,6 @@ async function postComment(body, opts) {
     try {
       writeFileSync(summaryFile, `${body.slice(0, 20000)}\n`, { flag: "a" });
     } catch {
-      // Summary is best-effort.
     }
   }
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
@@ -564,9 +534,6 @@ async function postComment(body, opts) {
   const env = { ...process.env, GH_TOKEN: token, GITHUB_TOKEN: token };
   const gh = (args, extra = {}) =>
     execFileAsync("gh", args, { cwd: root, env, maxBuffer: 4 * 1024 * 1024, ...extra });
-  // Every push re-reviews: update the living marker comment in place instead
-  // of stacking a new comment per run, so the visible review always matches
-  // the latest pushed commit.
   try {
     let repo = process.env.GITHUB_REPOSITORY || "";
     if (!repo) {

@@ -806,8 +806,8 @@ describe("6-type YAML semantic corpus & delete-aware SHA-256 indexer (UC-02 #28)
     // A formula edit flows through chunkYaml into the chunk content hash.
     const metricsText = readFileSync(path.join(UC02_SEMANTIC_DIR, "metrics.yaml"), "utf8");
     const tweakedText = metricsText.replace(
-      "SUM(order_items.price_vnd) over orders with status = 'delivered'",
-      "SUM(order_items.price_vnd) over orders with status = 'delivered' /* tweaked */",
+      "over orders with status IN ('delivered', 'returned')",
+      "over orders with status IN ('delivered', 'returned') /* tweaked */",
     );
     expect(tweakedText).not.toBe(metricsText);
     const before = chunkYaml("metrics", metricsText, "metric").find(
@@ -851,8 +851,8 @@ describe("6-type YAML semantic corpus & delete-aware SHA-256 indexer (UC-02 #28)
     try {
       const original = readFileSync(path.join(UC02_SEMANTIC_DIR, "metrics.yaml"), "utf8");
       const tweaked = original.replace(
-        "SUM(order_items.price_vnd) over orders with status = 'delivered'",
-        "SUM(order_items.price_vnd) over orders with status = 'delivered' AND o.purchase_date >= '2026-01-01'",
+        "over orders with status IN ('delivered', 'returned')",
+        "over orders with status IN ('delivered', 'returned') AND o.purchase_date >= '2026-01-01'",
       );
       expect(tweaked).not.toBe(original);
       const tmpMetrics = path.join(tmpDir, "metrics.yaml");

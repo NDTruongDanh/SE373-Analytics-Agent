@@ -75,12 +75,6 @@ function rowMatchesKey(
   return rowKey === String(rowIndex) || rowKey === `row_${rowIndex}`;
 }
 
-/**
- * Find the indices of rows in `resultPreview` that match an `EvidencePointer`.
- * When multiple rows share the same `rowKey`, rows whose `pointer.column`
- * cell matches `pointer.value` (exact or within 1% relative tolerance) are
- * preferred.
- */
 export function findMatchingPreviewRows(
   rows: Record<string, unknown>[],
   pointer: EvidencePointer | null | undefined,
@@ -103,10 +97,6 @@ export function findMatchingPreviewRows(
   return new Set(valueMatches.length > 0 ? valueMatches : keyMatches);
 }
 
-/**
- * Return true when the cell at `(rowIndex, column)` is the target cell for
- * `pointer` inside `matchedRows`.
- */
 export function cellMatchesEvidence(
   _row: Record<string, unknown>,
   rowIndex: number,
