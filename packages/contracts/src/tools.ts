@@ -32,6 +32,9 @@ const DescribeTableColumnSchema = z.object({
   type: z.string().min(1),
   nullable: z.boolean(),
   sensitive: z.boolean(),
+  // 1.2.0: large-table flag the gateway catalog already sets (LARGE_TABLES).
+  // Optional so pre-1.2.0 payloads still parse; absent means not large.
+  large: z.boolean().optional(),
   description: z.string().max(500).optional(),
 });
 

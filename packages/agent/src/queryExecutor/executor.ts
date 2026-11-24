@@ -311,6 +311,7 @@ function catalogFromDescribe(
       type: string;
       nullable: boolean;
       sensitive: boolean;
+      large?: boolean;
     }[];
   }[],
 ): SchemaCatalog {
@@ -323,7 +324,7 @@ function catalogFromDescribe(
         type: column.type,
         nullable: column.nullable,
         sensitive: column.sensitive,
-        large: false,
+        large: column.large ?? false,
       })),
     })),
   };

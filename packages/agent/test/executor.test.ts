@@ -772,3 +772,33 @@ describe("ValidatedQueryExecutor core path", () => {
     expect(result.status).toBe("ok");
   });
 });
+
+describe("ValidatedQueryExecutor large-table flag (#129)", () => {
+  const LARGE_ORDERS_COLUMNS = [
+    { name: "id", type: "integer", nullable: false, sensitive: false, large: true },
+    { name: "status", type: "text", nullable: true, sensitive: false, large: true },
+    { name: "purchase_date", type: "timestamp", nullable: true, sensitive: false, large: true },
+  ];
+
+  it("keeps describe_table large flags so an unbounded aggregate stops before MCP SQL calls", async () => {
+    const mcp = new StubMcpCaller({
+      describe_table: (args) => ({
+        table: String(args["table"]),
+        columns: LARGE_ORDERS_COLUMNS,
+        primaryKey: ["id"],
+        foreignKeys: [],
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp });
+
+    const result = await executor.run({
+      question: "How many orders are there?",
+      initialSql: "SELECT COUNT(*) AS n FROM orders",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result).toMatchObject({ status: "needs_clarification", table: "orders" });
+    expect(mcp.calls.map((call) => call.tool)).toEqual(["describe_table"]);
+  });
+});

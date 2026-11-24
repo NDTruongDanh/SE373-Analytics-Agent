@@ -17,8 +17,8 @@ import {
 // 1.0.0 breaking release: version bumped, field renames applied.
 
 describe("tracer contracts delta", () => {
-  it("keeps CONTRACTS_VERSION at 1.1.0", () => {
-    expect(CONTRACTS_VERSION).toBe("1.1.0");
+  it("keeps CONTRACTS_VERSION at 1.2.0", () => {
+    expect(CONTRACTS_VERSION).toBe("1.2.0");
   });
 
   it("inserts SQL_EXECUTION_ERROR after SENSITIVE_COLUMN_DENIED", () => {

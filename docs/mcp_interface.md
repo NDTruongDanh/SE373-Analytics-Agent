@@ -114,6 +114,9 @@ Required scope: `schema:read`.
           "sensitive": {
             "type": "boolean"
           },
+          "large": {
+            "type": "boolean"
+          },
           "description": {
             "type": "string",
             "maxLength": 500

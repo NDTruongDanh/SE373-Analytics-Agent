@@ -11,6 +11,7 @@ export interface DescribedColumn {
   type: string;
   nullable: boolean;
   sensitive: boolean;
+  large?: boolean;
   description?: string;
 }
 
