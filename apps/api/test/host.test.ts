@@ -421,6 +421,57 @@ describe("buildApp /api/ask", () => {
     expect(out.status).toBe(200);
     expect(out.json).toMatchObject({ added: 1, updated: 2, skipped: 15, deleted: 0 });
   });
+
+  it("serves read-only semantic catalog metadata with filters and updates lastUpdatedAt on reindex", async () => {
+    const res = await fetch(`${apiBase}/api/semantic/catalog`);
+    expect(res.status).toBe(200);
+    const catalog = (await res.json()) as {
+      totalChunks: number;
+      countsByDocType: Record<string, number>;
+      lastUpdatedAt: string | null;
+      items: Array<{
+        chunkId: string;
+        docType: string;
+        metricName: string | null;
+        aliases: string[];
+        sensitivity: string;
+        formula?: string;
+        summary: string;
+      }>;
+    };
+    expect(catalog.totalChunks).toBeGreaterThan(0);
+    expect(catalog.lastUpdatedAt).toBeTruthy();
+    for (const docType of ["table", "column", "metric", "join_rule", "example", "event"]) {
+      expect(catalog.countsByDocType[docType]).toBeGreaterThan(0);
+      expect(catalog.items.some((item) => item.docType === docType)).toBe(true);
+    }
+
+    const filteredRes = await fetch(
+      `${apiBase}/api/semantic/catalog?docType=metric&q=net_revenue`,
+    );
+    expect(filteredRes.status).toBe(200);
+    const filtered = (await filteredRes.json()) as typeof catalog;
+    expect(filtered.countsByDocType).toEqual(catalog.countsByDocType);
+    expect(filtered.totalChunks).toBe(catalog.totalChunks);
+    expect(filtered.items.length).toBeGreaterThan(0);
+    expect(filtered.items.every((item) => item.docType === "metric")).toBe(true);
+    expect(filtered.items.some((item) => item.chunkId === "metric:net_revenue")).toBe(true);
+
+    const invalidRes = await fetch(`${apiBase}/api/semantic/catalog?docType=bogus`);
+    expect(invalidRes.status).toBe(400);
+    expect(await invalidRes.json()).toMatchObject({ code: "INVALID_PARAMS" });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const reindexOut = await reindexCall({ persona: "data_admin" });
+    expect(reindexOut.status).toBe(200);
+
+    const afterRes = await fetch(`${apiBase}/api/semantic/catalog`);
+    expect(afterRes.status).toBe(200);
+    const afterCatalog = (await afterRes.json()) as typeof catalog;
+    expect(Date.parse(afterCatalog.lastUpdatedAt ?? "")).toBeGreaterThanOrEqual(
+      Date.parse(catalog.lastUpdatedAt ?? ""),
+    );
+  });
   it("wires createRetrieveSemantic into buildApp by default and records search_semantic_layer spans", async () => {
     const localTraces = mkdtempSync(path.join(tmpdir(), "fullhost-semantic-"));
     const mcpCalls: string[] = [];

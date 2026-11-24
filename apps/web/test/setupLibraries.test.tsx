@@ -91,12 +91,49 @@ describe("Workspace routing & React Query", () => {
 
   it("gates semantic re-index on data_admin role and shows counts on success", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ added: 2, updated: 1, skipped: 5, deleted: 0 }), {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.startsWith("/api/semantic/catalog")) {
+        return new Response(
+          JSON.stringify({
+            totalChunks: 1,
+            countsByDocType: {
+              table: 0,
+              column: 0,
+              metric: 1,
+              join_rule: 0,
+              example: 0,
+              event: 0,
+            },
+            lastUpdatedAt: "2026-11-24T08:00:00.000Z",
+            items: [
+              {
+                chunkId: "metric:net_revenue",
+                docType: "metric",
+                table: "order_items",
+                tables: ["orders", "order_items"],
+                metricName: "net_revenue",
+                aliases: ["doanh thu thuần"],
+                sensitivity: "public",
+                additive: true,
+                updatedAt: "2026-11-24T08:00:00.000Z",
+                summary: "Net revenue for delivered orders.",
+                formula: "SUM(order_items.price_vnd)",
+                caveats: [],
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      return new Response(JSON.stringify({ added: 2, updated: 1, skipped: 5, deleted: 0 }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      }),
-    );
+      });
+    });
 
     render(<App initialEntries={["/dictionary"]} />);
     const reindexButton = screen.getByRole("button", { name: /Re-index Changed Chunks/i });

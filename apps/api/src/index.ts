@@ -47,8 +47,15 @@ import {
   toModelDbToolError,
   type LangSmithRunConfig,
 } from "@shared/agent/telemetry";
-import { dbToolError, type DbToolError } from "@shared/contracts";
+import {
+  dbToolError,
+  SemanticCatalogResponseSchema,
+  SemanticDocTypeSchema,
+  type DbToolError,
+  type SemanticCatalogResponse,
+} from "@shared/contracts";
 import { createHostPorts, type HostPorts } from "./ports.js";
+import { filterSemanticCatalog, loadSemanticCatalogFromDir } from "./semanticCatalog.js";
 import {
   assertTokensPresent,
   InvalidThreadError,
@@ -121,6 +128,10 @@ export interface BuildAppOptions {
   synthesize?: SynthesizeFn;
   /** Optional semantic re-index handler (defaults to calling the MCP gateway /reindex endpoint). */
   reindex?: (ctx: { token: string; mcpUrl: string }) => Promise<ReindexResult>;
+  /** Optional semantic corpus directory override (defaults to `semantic`). */
+  semanticDir?: string;
+  /** Optional semantic catalog loader seam for tests. */
+  loadSemanticCatalog?: () => Promise<SemanticCatalogResponse> | SemanticCatalogResponse;
 }
 
 export async function defaultReindex(ctx: {
@@ -325,6 +336,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
   // mutable registry without per-request scoping — entries are keyed by
   // runId and never overwritten, so concurrent asks cannot cross identity).
   const runs = new Map<string, StoredRun>();
+  let lastReindexedAt: string | null = null;
 
   const app = express();
   app.use((_req: Request, res: Response, next: NextFunction) => {
@@ -572,6 +584,51 @@ export function buildApp(options: BuildAppOptions): express.Express {
     }
   });
 
+  app.get("/api/semantic/catalog", async (req: Request, res: Response) => {
+    const rawDocType = req.query["docType"];
+    let docType: ReturnType<typeof SemanticDocTypeSchema.parse> | undefined;
+    if (rawDocType !== undefined) {
+      const parsedDocType = SemanticDocTypeSchema.safeParse(rawDocType);
+      if (!parsedDocType.success) {
+        res
+          .status(400)
+          .json(
+            dbToolError(
+              "INVALID_PARAMS",
+              `invalid docType '${String(rawDocType)}'`,
+            ),
+          );
+        return;
+      }
+      docType = parsedDocType.data;
+    }
+    const q = typeof req.query["q"] === "string" ? req.query["q"] : undefined;
+    try {
+      const baseCatalog = options.loadSemanticCatalog
+        ? await options.loadSemanticCatalog()
+        : loadSemanticCatalogFromDir(options.semanticDir, lastReindexedAt);
+      const filtered =
+        docType !== undefined || q !== undefined
+          ? filterSemanticCatalog(baseCatalog, {
+              ...(docType !== undefined ? { docType } : {}),
+              ...(q !== undefined ? { q } : {}),
+            })
+          : baseCatalog;
+      res.status(200).json(SemanticCatalogResponseSchema.parse(filtered));
+    } catch (error) {
+      res
+        .status(500)
+        .json(
+          dbToolError(
+            "INTERNAL_ERROR",
+            error instanceof Error
+              ? error.message
+              : "failed to load semantic catalog",
+          ),
+        );
+    }
+  });
+
   app.post("/api/semantic/reindex", async (req: Request, res: Response) => {
     const persona = req.body?.["persona"] ?? req.headers["x-persona"];
     let principal: Principal;
@@ -600,6 +657,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
     try {
       const reindex = options.reindex ?? defaultReindex;
       const counts = await reindex({ token, mcpUrl: options.mcpUrl });
+      lastReindexedAt = new Date().toISOString();
       res.status(200).json(counts);
     } catch (error) {
       res

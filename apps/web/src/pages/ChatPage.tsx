@@ -48,15 +48,24 @@ export interface ChatPageProps {
   dispatch: (action: ChatAction) => void;
   history: ChatMessageItem[];
   setHistory: React.Dispatch<React.SetStateAction<ChatMessageItem[]>>;
+  question: string;
+  setQuestion: React.Dispatch<React.SetStateAction<string>>;
+  controllerRef: React.MutableRefObject<AbortController | null>;
 }
 
-export function ChatPage({ persona, state, dispatch, history, setHistory }: ChatPageProps) {
-  const [question, setQuestion] = useState("");
+export function ChatPage({
+  persona,
+  state,
+  dispatch,
+  history,
+  setHistory,
+  question,
+  setQuestion,
+  controllerRef,
+}: ChatPageProps) {
   const [activeEvidence, setActiveEvidence] = useState<EvidencePointer | null>(null);
-  const controller = useRef<AbortController | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
     if (state.phase === "completed") input.current?.focus();
   }, [state.phase]);
@@ -67,7 +76,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
     identity?: { runId: string; threadId: string },
   ) {
     const current = new AbortController();
-    controller.current = current;
+    controllerRef.current = current;
     let runId = identity?.runId;
     let threadId = identity?.threadId;
     let terminal = false;
@@ -88,7 +97,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
         terminal = ["completed", "failed", "interrupt_waiting"].includes(event.event);
         if (terminal) {
           current.abort();
-          if (controller.current === current) controller.current = null;
+          if (controllerRef.current === current) controllerRef.current = null;
         }
         if (event.event === "viz") {
           const parsedViz = extractVizPayload(event.data, questionTitle);
@@ -134,7 +143,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
       });
       if (!terminal) throw new Error("Kết nối đã đóng trước khi yêu cầu hoàn tất.");
     } catch (error) {
-      if (controller.current === current) controller.current = null;
+      if (controllerRef.current === current) controllerRef.current = null;
       if (!current.signal.aborted) {
         if (error instanceof StreamHttpError && error.status === 409) {
           dispatch({ type: "conflict", message: error.message });
@@ -146,14 +155,14 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
         }
       }
     } finally {
-      if (controller.current === current) controller.current = null;
+      if (controllerRef.current === current) controllerRef.current = null;
     }
   }
 
   function send(event: FormEvent) {
     event.preventDefault();
     const text = question.trim();
-    if (!text || controller.current || state.phase === "streaming" || state.phase === "waiting") return;
+    if (!text || controllerRef.current || state.phase === "streaming" || state.phase === "waiting") return;
     const threadId = state.threadId;
     setQuestion("");
     setActiveEvidence(null);
@@ -163,7 +172,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
   }
 
   function choose(value: string) {
-    if (!state.runId || !state.threadId || !state.clarification?.options.includes(value) || controller.current || state.phase === "streaming") {
+    if (!state.runId || !state.threadId || !state.clarification?.options.includes(value) || controllerRef.current || state.phase === "streaming") {
       return;
     }
     const identity = { runId: state.runId, threadId: state.threadId };
@@ -172,7 +181,7 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
   }
 
   function resumePlan(submission: PlanResumeSubmission) {
-    if (!state.runId || !state.threadId || !state.planReview || controller.current || state.phase === "streaming") {
+    if (!state.runId || !state.threadId || !state.planReview || controllerRef.current || state.phase === "streaming") {
       return;
     }
     const identity = { runId: state.runId, threadId: state.threadId };

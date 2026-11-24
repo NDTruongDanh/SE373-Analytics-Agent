@@ -4,15 +4,17 @@ import {
   BellRing,
   BookOpen,
   MessageSquare,
+  ScrollText,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { BrowserRouter, MemoryRouter, NavLink, Route, Routes, useLocation } from "react-router";
 import { chatReducer, initialChat } from "@/chat";
 import { createQueryClient } from "@/lib/queryClient";
 import { AlertsPage } from "@/pages/AlertsPage";
 import { ApprovalsPage } from "@/pages/ApprovalsPage";
+import { AuditLogPage } from "@/pages/AuditLogPage";
 import { ChatPage, type ChatMessageItem } from "@/pages/ChatPage";
 import { DictionaryPage } from "@/pages/DictionaryPage";
 import { EvalTracesPage } from "@/pages/EvalTracesPage";
@@ -28,10 +30,11 @@ const personas = [
 
 const NAV_ITEMS = [
   { to: "/", label: "Trợ lý phân tích", icon: MessageSquare, end: true },
-  { to: "/alerts", label: "Cảnh báo", icon: BellRing, end: false },
   { to: "/dictionary", label: "Từ điển dữ liệu", icon: BookOpen, end: false },
+  { to: "/alerts", label: "Cảnh báo", icon: BellRing, end: false },
+  { to: "/audit", label: "Nhật ký kiểm toán", icon: ScrollText, end: false },
   { to: "/approvals", label: "Phê duyệt", icon: ShieldCheck, end: false },
-  { to: "/evals", label: "Trace & Eval", icon: Activity, end: false },
+  { to: "/evals", label: "Đánh giá", icon: Activity, end: false },
 ];
 
 export interface AppProps {
@@ -43,7 +46,11 @@ function WorkspaceShell() {
   const [state, dispatch] = useReducer(chatReducer, initialChat);
   const [persona, setPersona] = useState("sales_south");
   const [history, setHistory] = useState<ChatMessageItem[]>([]);
+  const [question, setQuestion] = useState("");
+  const controllerRef = useRef<AbortController | null>(null);
   const location = useLocation();
+
+  useEffect(() => () => controllerRef.current?.abort(), []);
 
   const busy = state.phase === "streaming";
   const currentTitle =
@@ -104,6 +111,7 @@ function WorkspaceShell() {
               onChange={(event) => {
                 setPersona(event.target.value);
                 setHistory([]);
+                setQuestion("");
                 dispatch({ type: "reset" });
               }}
               aria-label="Vai trò"
@@ -126,11 +134,15 @@ function WorkspaceShell() {
                 dispatch={dispatch}
                 history={history}
                 setHistory={setHistory}
+                question={question}
+                setQuestion={setQuestion}
+                controllerRef={controllerRef}
               />
             }
           />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/dictionary" element={<DictionaryPage persona={persona} />} />
+          <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/evals" element={<EvalTracesPage />} />
         </Routes>
@@ -139,6 +151,7 @@ function WorkspaceShell() {
   );
 }
 
+export { DictionaryAdmin } from "@/components/DictionaryAdmin";
 export { InsightChart } from "@/charts";
 export { InsightPanel } from "@/components/InsightPanel";
 export { PlanReviewPanel } from "@/components/PlanReviewPanel";
