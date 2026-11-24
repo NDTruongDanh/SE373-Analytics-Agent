@@ -1,10 +1,3 @@
-// Fixed 7-stage pipeline (MCP-03, T-01-08-02): the single entry point
-// every tool and resource handler calls. Stage order is load-bearing and
-// not skippable — auth, then scope, then zod, then sqlGuard, then
-// AccessPolicy (reusing GuardSuccess.ast with no double parse), then the
-// read-only executor, then PII scan plus exactly one audit line. Non-SQL
-// tools skip stages 4-6 vacuously (there is no statement to guard); the
-// audit stage always runs, including on denials.
 import {
   dbToolError,
   type DbToolError,
@@ -60,9 +53,6 @@ function quoteIdentifier(name: string): string {
 
 const ANALYZE_PATTERN = /\banalyze\b/i;
 
-// A `## ` section whose header ends with [restricted_pii] is withheld from
-// principals lacking data:sensitive. Convention shared by the semantic
-// corpus files and the resource readers.
 export function filterResourceSections(
   text: string,
   allowRestricted: boolean,
@@ -102,9 +92,6 @@ export async function executeToolCall(
   let rowCount = 0;
   let piiHits = 0;
   let explainCost: number | null = null;
-  // Server-minted RBAC record (G5): populated from the AccessPolicy result
-  // by the SQL stages below; every audit line carries both, defaulting to
-  // empty on non-SQL tools and denials.
   let maskedColumns: string[] = [];
   let rowScopeApplied: RowScopeApplied[] = [];
 
@@ -198,7 +185,7 @@ export async function executeToolCall(
 
     const parsed = spec.inputSchema.safeParse(req.args ?? {});
     if (!parsed.success) {
-      // Field paths only — never echoed values (T-01-08-04).
+      // Emit field paths only — never echo rejected input values.
       const paths = parsed.error.issues
         .map((issue) => issue.path.join("."))
         .filter((path) => path.length > 0);

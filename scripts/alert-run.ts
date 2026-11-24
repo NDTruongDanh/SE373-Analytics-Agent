@@ -12,13 +12,11 @@ import {
 import { callMcpTool, type TracerRunConfig } from "../packages/agent/src/mcpClient.js";
 import { AppStateStore } from "../apps/api/src/store/alertStore.js";
 
-// Try loading local .env if available
 try {
   if (existsSync(".env")) {
     process.loadEnvFile?.();
   }
 } catch {
-  // Ignored if .env cannot be loaded
 }
 
 function parseArgs(): {
@@ -92,7 +90,6 @@ async function main(): Promise<void> {
   }
   console.log("-------------------------------------------------");
 
-  // Load subscriptions to preview
   try {
     const config = loadSubscriptionsConfigFile();
     console.log(`Loaded ${config.subscriptions.length} subscription(s) from config/subscriptions.yaml`);
@@ -118,8 +115,7 @@ async function main(): Promise<void> {
 
   const mcpCaller = createMcpToolCaller(transport);
 
-  // ValidatedQueryExecutor: uses fake deterministic model for alert queries since
-  // alert time-series and drill-down queries provide deterministic initialSql
+  // Alert time-series and drill-down queries provide deterministic initialSql and must never invoke an LLM.
   const queryExecutor = new ValidatedQueryExecutor({
     model: {
       invoke: async () => {
@@ -137,8 +133,6 @@ async function main(): Promise<void> {
     mcp: mcpCaller,
   });
 
-  // History Store: use durable AppStateStore when HARNESS_STATE_DATABASE_URL is set,
-  // falling back to InMemoryAlertHistoryStore in DB-less/demo environments.
   const harnessConn = process.env.HARNESS_STATE_DATABASE_URL;
   let durableStore: AppStateStore | undefined;
   let historyStore: AlertHistoryStore;

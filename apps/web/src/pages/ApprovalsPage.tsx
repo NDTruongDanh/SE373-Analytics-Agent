@@ -1,7 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-/** UC-05 HITL RCA plan review & UC-07 costly query approval queue page. */
 export function ApprovalsPage() {
   return (
     <div className="content space-y-6">

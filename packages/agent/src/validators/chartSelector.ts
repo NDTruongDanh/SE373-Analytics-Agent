@@ -1,10 +1,3 @@
-// UC-03 deterministic chart-type selector (K1, architecture §3.2.9).
-//
-// Shape-first rules from docs/UC-plan/UC03.md §1.1: the result-set shape
-// decides, never model vibes. The LLM only writes chartReason plus the data
-// arrays; the harness overrides the type when the shape demands it. Pure
-// function — no model, no I/O — so fixtures grade it without a key.
-
 import type { ChartType } from "@shared/contracts";
 
 export interface ChartSelection {
@@ -17,7 +10,6 @@ export interface SelectorBuffer {
   rows: Record<string, unknown>[];
 }
 
-/** Row-count ceiling the selector reasons about (bar groups, pie slices). */
 export const MAX_BAR_GROUPS = 12;
 export const MAX_PIE_SLICES = 6;
 export const MIN_PIE_SLICES = 2;
@@ -38,7 +30,6 @@ function cellText(value: unknown): string | null {
   return null;
 }
 
-/** Numeric cells: numbers plus numeric strings ("5,200", " 5200 "). */
 export function isNumericCell(value: unknown): boolean {
   if (typeof value === "number") return Number.isFinite(value);
   if (typeof value !== "string") return false;
@@ -67,11 +58,9 @@ export interface ColumnRoles {
   timeColumns: string[];
   numericColumns: string[];
   categoricalColumns: string[];
-  /** Distinct stringified values per column (for group-count rules). */
   distinctCounts: Map<string, number>;
 }
 
-/** Single-pass role analysis shared by the selector and the spec builders. */
 export function analyzeColumns(buffer: SelectorBuffer): ColumnRoles {
   const timeColumns: string[] = [];
   const numericColumns: string[] = [];
@@ -136,18 +125,11 @@ function shareSemantics(columns: string[], rows: Record<string, unknown>[]): boo
       sum += n;
       count += 1;
     }
-    // Shares of ~100% with at least two non-trivial slices.
     if (count >= 2 && sum >= 99 && sum <= 101) return true;
   }
   return false;
 }
 
-/**
- * Deterministic chart-type selection (§1.1 rule table).
- *
- * @param buffer Result-set shape (columns + buffer rows, preview or full).
- * @param status RunQuery status: anything but "ok" forces "none".
- */
 export function selectChartType(
   buffer: SelectorBuffer,
   status: string,
@@ -171,7 +153,6 @@ export function selectChartType(
 
   const roles = analyzeColumns(buffer);
 
-  // Time series beats everything else when a time axis exists.
   if (roles.timeColumns.length > 0 && roles.numericColumns.length > 0 && rows.length >= 2) {
     return {
       chartType: "line",
@@ -179,9 +160,7 @@ export function selectChartType(
     };
   }
 
-  // A categorical split plus numeric series: pie for small non-negative
-  // shares, bar for comparisons. Two or more categorical splits have no
-  // single chart axis (builders cannot pivot), so they list as detail.
+  // Builders cannot pivot >= 2 categorical splits, so fall back to table.
   const cat = roles.categoricalColumns[0];
   if (cat !== undefined && roles.numericColumns.length > 0) {
     if (roles.categoricalColumns.length >= 2) {
@@ -225,7 +204,6 @@ export function selectChartType(
     };
   }
 
-  // Two numeric variables with no categorical split: correlation view.
   if (
     roles.numericColumns.length >= 2 &&
     roles.categoricalColumns.length === 0 &&
@@ -237,7 +215,6 @@ export function selectChartType(
     };
   }
 
-  // Single row with several metrics, or anything the rules above miss.
   return {
     chartType: "table",
     reason: "The result mixes types or has no single chartable axis, so a table shows the detail.",

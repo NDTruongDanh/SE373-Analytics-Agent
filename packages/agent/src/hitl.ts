@@ -1,9 +1,3 @@
-// HITL plumbing (AGENT-08, 01-12): pure clarification plus interrupt and
-// resume helpers over stable thread ids. Keep interrupted nodes small with a
-// single interrupt each. Live PostgresSaver resume proof belongs to 01-13
-// and the restart-proof host endpoint belongs to 01-14 — this module stays
-// DB-free: semantics only, proven on MemorySaver.
-
 import { Command, interrupt, isGraphInterrupt } from "@langchain/langgraph";
 import { NO_MATCHING_TABLE_OPTION, THREAD_ID_MAX_LENGTH } from "./constants.js";
 import type {
@@ -14,10 +8,7 @@ import type {
 export { isGraphInterrupt };
 export { NO_MATCHING_TABLE_OPTION, THREAD_ID_MAX_LENGTH } from "./constants.js";
 
-/**
- * Build chat:{userId}:{sessionId}. Throws on empty parts or over-length ids
- * (fail-closed: never resume into a truncated thread).
- */
+/** Fail closed on empty parts or over-length ids so threads are never silently truncated. */
 export function makeThreadId(userId: string, sessionId: string): string {
   if (!userId || !sessionId) {
     throw new Error("makeThreadId requires non-empty userId and sessionId");
@@ -31,7 +22,6 @@ export function makeThreadId(userId: string, sessionId: string): string {
   return threadId;
 }
 
-/** Thread equality: resume only on the same thread_id. */
 export function isSameThread(a: string, b: string): boolean {
   return a === b;
 }
@@ -52,10 +42,6 @@ export interface ClarificationPayload {
   pendingClarification: PendingClarification;
 }
 
-/**
- * needs_clarification status payload carrying the pendingClarification
- * options the answer node offers. The caller sets attempts.
- */
 export function requestClarification(
   req: ClarificationRequest,
 ): ClarificationPayload {
@@ -82,12 +68,10 @@ export function requestClarification(
   };
 }
 
-/** Pause a query at the structured UC-01 clarification edge. */
 export function pauseForClarification(request: PendingClarification): unknown {
   return interrupt({ action: "clarify_then_query", pendingClarification: request });
 }
 
-/** A resume response is accepted only when it exactly matches a presented option. */
 export function isClarificationOption(
   request: PendingClarification,
   value: unknown,
@@ -127,11 +111,6 @@ export function isAbortClarificationChoice(value: unknown): boolean {
   return ABORT_REPHRASE_ALIASES.has(normalizeChoiceText(trimmed));
 }
 
-/**
- * Evaluate a user's table-clarification resume value: accepts the explicit
- * "no matching table / rephrase" option, any presented option, or any valid
- * catalog table name even when it fell outside the top-3 suggested options.
- */
 export function classifyTableClarificationValue(
   request: PendingClarification,
   value: unknown,
@@ -164,20 +143,11 @@ export interface ReviewPayload {
   planId?: string;
 }
 
-/**
- * Pause the node carrying the review payload. Call inside a node only; the
- * graph suspends here and resumes when the host invokes resumeDecision's
- * Command on the same thread_id.
- */
 export function pauseForApproval(review: ReviewPayload): unknown {
   return interrupt(review);
 }
 
-/**
- * Build the resume Command for invocation on the same thread_id — never a
- * fresh input object (fresh inputs re-run generation and can double-execute
- * side effects).
- */
+/** Resume on the same thread_id via Command; fresh inputs re-run generation and can double-execute side effects. */
 export function resumeDecision(value: unknown): Command {
   return new Command({ resume: value });
 }

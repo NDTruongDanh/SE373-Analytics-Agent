@@ -9,9 +9,6 @@ function col(
   return { name, type, nullable: true, sensitive, large };
 }
 
-/**
- * Standard SchemaCatalog for UC-10 anomaly queries, matching the Olist VN schema.
- */
 export const DEFAULT_ANOMALY_CATALOG: SchemaCatalog = {
   tables: [
     {

@@ -1,12 +1,3 @@
-// Workspace invariant checker (node stdlib only, no new deps).
-// Verifies the pnpm workspace linking contract:
-//  1. All intra-@shared deps use `workspace:*` (never a published version).
-//  2. Every packages/* library with src/index.ts exposes exports["."]
-//     -> dist (apps are deployables and exempt).
-//  3. CONTRACTS_VERSION matches packages/contracts/package.json version.
-//  4. node_modules/@shared/* symlinks resolve (catches broken Windows links).
-//  5. Direct workspace deps are covered by tsconfig project references
-//     (catches stale-dist incremental builds, e.g. apps/api -> @shared/agent).
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
@@ -30,7 +21,6 @@ const pkgDirs = [
 const readJson = (rel) =>
   JSON.parse(readFileSync(join(ROOT, rel), "utf8"));
 
-// 1 + 2 + 5
 for (const dir of pkgDirs) {
   const pkg = readJson(`${dir}/package.json`);
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
@@ -40,8 +30,7 @@ for (const dir of pkgDirs) {
     }
   }
   if (existsSync(join(ROOT, dir, "src", "index.ts"))) {
-    // Apps are deployables, never imported (eslint bans importing them),
-    // so only packages/* libraries must expose a dist entry point.
+    // Apps are deployables and never imported, so only packages/* must expose a dist entry point.
     if (dir.startsWith("packages/")) {
       const target = pkg?.exports?.["."]?.default;
       if (target !== "./dist/index.js") {
@@ -71,10 +60,8 @@ for (const dir of pkgDirs) {
   }
 }
 
-// 3. contracts version consistency
 const contractsPkg = readJson("packages/contracts/package.json");
-// CONTRACTS_VERSION lives in constants.ts since the magic-values refactor
-// (index.ts only re-exports it); accept a direct definition in either file.
+// Check both constants.ts and index.ts since index.ts only re-exports CONTRACTS_VERSION.
 let m = null;
 for (const rel of [
   "packages/contracts/src/constants.ts",
@@ -88,7 +75,6 @@ for (const rel of [
       break;
     }
   } catch {
-    // Missing file — fall through to the failure below.
   }
 }
 if (!m) fail("packages/contracts/src/index.ts: CONTRACTS_VERSION not found");
@@ -98,9 +84,7 @@ else if (m[1] !== contractsPkg.version) {
   );
 }
 
-// 4. symlinks resolve (pnpm isolated layout: each consumer carries its own
-// node_modules/@shared/* links; the root only has the two it directly uses,
-// so verify per-consumer links, including the root itself).
+// Under pnpm's isolated layout each consumer holds its own node_modules/@shared/* links, so check every consumer.
 const consumers = [".", ...pkgDirs];
 for (const dir of consumers) {
   const pkg = readJson(`${dir === "." ? "" : `${dir}/`}package.json`);

@@ -1,10 +1,3 @@
-// Semantic catalog ID loader (UC-02 K7, architecture §3.2.9).
-//
-// Loads valid chunk/metric/table/column identifiers from the versioned
-// `semantic/*.yaml` corpus so live `CitationValidator` calls enforce full
-// catalog membership without opening a database connection or importing
-// mcp-server internals.
-
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -86,10 +79,6 @@ function collectEntryIds(
   }
 }
 
-/**
- * Load all valid citation IDs from `semantic/*.yaml`. Caches the default repo
- * directory in memory; explicit `semanticDir` overrides bypass the cache.
- */
 export function loadSemanticCatalogIds(
   semanticDir: string = DEFAULT_SEMANTIC_DIR,
 ): ReadonlySet<string> {
@@ -111,7 +100,6 @@ export function loadSemanticCatalogIds(
   return ids;
 }
 
-/** Test seam: clear the cached catalog IDs. */
 export function resetSemanticCatalogCacheForTests(): void {
   cachedCatalog = null;
 }

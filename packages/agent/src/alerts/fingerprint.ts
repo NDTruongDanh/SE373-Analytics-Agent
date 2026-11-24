@@ -8,12 +8,7 @@ export interface AlertFingerprintInput {
   direction: string;
 }
 
-/**
- * Canonical alert fingerprint calculation:
- * SHA-256 hex digest over recipientId|metric|dimensionKey|date|direction.
- * Matches UC-10 §7 and apps/api AppStateStore exactly so identical
- * fingerprints are produced across agent and host.
- */
+/** Must stay identical to apps/api AppStateStore so agent and host deduplicate on the same fingerprint. */
 export function calculateAlertFingerprint(input: AlertFingerprintInput): string {
   return createHash("sha256")
     .update(

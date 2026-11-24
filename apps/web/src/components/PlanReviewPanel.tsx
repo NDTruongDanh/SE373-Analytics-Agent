@@ -397,7 +397,6 @@ export function PlanReviewPanel({
             }
           }
         } catch {
-          // Ignore non-JSON body on 409
         }
         setInternalConflict(
           `Checkpoint đã cũ hoặc phiên phân tích đang bị xung đột (HTTP 409 Conflict).${serverDetail}`,

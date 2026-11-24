@@ -1,19 +1,9 @@
-// COPY ingest over the owner role (Phase 2, plan 02-01). Operator tooling —
-// never imported by agent code. Mirrors the mcp-server error-path shape
-// (db.ts:115-154): connect in its own try, work in a second try, ROLLBACK on
-// failure, release() in finally, every driver catch funneled through one
-// formatter that redacts credentials and paths.
 import { Pool, type PoolClient } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
 
-// postgres://user:pass@host:port/db — kills credentials, host, port, dbname.
 const DSN_PATTERN = /postgres(ql)?:\/\/[^\s"'`]+/gi;
-// host=… fragments in connection errors.
 const HOST_ASSIGN_PATTERN = /host\s*=\s*[^\s;,]+/gi;
-// Bare IPv4 literals.
 const IPV4_PATTERN = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
-// Filesystem paths. The copy path streams in-memory rows only, but a driver
-// error may still embed a path — redact it (message may contain SQL `/`).
 const PATH_PATTERN = /\/[\w.\-/~]+(\.\w{1,5})?/g;
 
 function redactInfra(text: string): string {
@@ -23,8 +13,7 @@ function redactInfra(text: string): string {
     .replace(IPV4_PATTERN, "<redacted>");
 }
 
-// Single choke point for copy-path driver errors: redacted message, pg `code`
-// preserved so callers can assert on SQLSTATE.
+// Redacts DSN/IP/path leaks from driver errors while preserving pg SQLSTATE code.
 export function sanitizeCopyError(err: unknown): Error {
   const raw = err instanceof Error ? err.message : String(err);
   const message = redactInfra(raw).replace(PATH_PATTERN, "<redacted-path>");
@@ -37,8 +26,6 @@ export function sanitizeCopyError(err: unknown): Error {
   return wrapped;
 }
 
-// Owner pool for load/verify runs. Throws fail-fast when the URL is unset so
-// a misconfigured shell cannot silently load into the wrong database.
 export function createOwnerPool(): Pool {
   const connectionString = process.env["OWNER_DATABASE_URL"];
   if (!connectionString) {
@@ -49,7 +36,6 @@ export function createOwnerPool(): Pool {
   return new Pool({ connectionString });
 }
 
-// BEGIN / COMMIT with ROLLBACK-on-failure and release-in-finally.
 export async function withOwnerTx<T>(
   pool: Pool,
   work: (client: PoolClient) => Promise<T>,
@@ -77,7 +63,6 @@ export async function withOwnerTx<T>(
   }
 }
 
-// COPY TEXT escaping: tab-delimited lines, backslash escapes, \N for NULL.
 function toCopyLine(values: readonly unknown[]): string {
   return (
     values
@@ -93,9 +78,7 @@ function toCopyLine(values: readonly unknown[]): string {
   );
 }
 
-// Streams row arrays through `COPY <table> (<columns>) FROM STDIN` inside the
-// caller's transaction (pair with withOwnerTx). Table/column names come from
-// the internal TABLE_LOADERS registry — never from user input.
+// Callers must pass table/column names only from TABLE_LOADERS, never user input.
 export async function copyTable(
   client: PoolClient,
   table: string,

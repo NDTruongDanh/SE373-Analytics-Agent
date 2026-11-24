@@ -1,9 +1,3 @@
-// Skill loader (AGENT-06, 01-12): reads skills/<name>/SKILL.md, parses front
-// matter plus body with zod, validates the eight D-14 canonical sections
-// case-insensitively, returns the contract text for prompt injection, and
-// emits a skill_call span through the injected emitter. Section semantics
-// mirror scripts/skills-check.ts (same D-14 gate, programmatic form).
-
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,7 +62,6 @@ function headingsOf(body: string): string[] {
 export interface LoadedSkill {
   name: string;
   description?: string;
-  /** Body text for prompt injection (front matter stripped). */
   contract: string;
 }
 
@@ -77,11 +70,6 @@ export interface LoadSkillOptions {
   emit?: SpanEmitter;
 }
 
-/**
- * Load and validate a skill. Throws when the skill is missing, the front
- * matter is invalid, or any D-14 section is absent. Emits one skill_call
- * span on success only.
- */
 export function loadSkill(name: string, opts: LoadSkillOptions = {}): LoadedSkill {
   if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) {
     throw new Error(`invalid skill name: ${JSON.stringify(name)}`);

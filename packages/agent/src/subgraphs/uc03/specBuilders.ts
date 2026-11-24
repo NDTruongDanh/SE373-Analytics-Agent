@@ -1,10 +1,3 @@
-// Deterministic chart-spec builders (UC-03, docs/UC-plan/UC03.md §2.1).
-//
-// Code-built specs plucked straight from the buffer: used for the keyless
-// deterministic path (no model key → no LLM call) and as the Loop-4
-// fallback when LLM repairs are exhausted. Built specs always pass
-// `validateChartGrounding` against the buffer they were built from.
-
 import type { ChartType, OpenuiChartSpec } from "@shared/contracts";
 import { buildTableSpec } from "../../validators/renderChart.js";
 import {
@@ -13,7 +6,6 @@ import {
   type SelectorBuffer,
 } from "../../validators/chartSelector.js";
 
-/** Max series the builders emit (contract cap is 8). */
 export const MAX_SPEC_SERIES = 8;
 
 function stringCell(value: unknown): string {
@@ -27,7 +19,6 @@ function stringCell(value: unknown): string {
   }
 }
 
-/** Rows where every listed column is numeric-coercible. */
 function numericRows(
   buffer: SelectorBuffer,
   columns: string[],
@@ -112,11 +103,6 @@ function buildScatter(buffer: SelectorBuffer): OpenuiChartSpec | null {
   };
 }
 
-/**
- * Build a valid spec for the selected chart type from buffer cells.
- * Returns null when the buffer cannot back the type (caller falls back
- * to `buildTableSpec`, then to `None`).
- */
 export function buildSpecForChart(
   chartType: ChartType,
   buffer: SelectorBuffer,

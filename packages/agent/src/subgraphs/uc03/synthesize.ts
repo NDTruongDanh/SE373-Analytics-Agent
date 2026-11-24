@@ -1,22 +1,3 @@
-// UC-03 tool-free insight synthesis (Profile 3, architecture §1.2.3).
-//
-// `buildInsightPrompt` wraps the <= 50-row `resultPreview` in
-// `<untrusted_data>` delimiters and instructs the model that rows are
-// string literals: seeded injection rows (PRD §2.1/§4.3 case #3, e.g. a
-// product name saying "ignore previous instructions …") can never trigger
-// a tool call because this path binds ZERO tools — `withStructuredOutput`
-// only, never `bindTools`. The callbacks surface is accepted for
-// call-site compatibility but deliberately NEVER forwarded: rows
-// serialize into the prompt string, and a traced model invoke would ship
-// row text to LangSmith past the row-array drop (same rationale as
-// models/factory.ts `synthesize`).
-//
-// `draftInsightReport` proposes one `InsightReport` draft; `runVizDraft`
-// drives the Loop-4 repair loop (<= 2 targeted repairs) against the
-// structured `ChartIssue` diffs from the headless validator;
-// `runClaimRegeneration` drives 1 targeted regeneration against structured
-// numeric/polarity/truncation diffs before stripping.
-
 import {
   InsightReportSchema,
   type ChartType,
@@ -41,7 +22,6 @@ import {
 import { RENDER_REPAIR_LIMIT, validateChart, type ChartIssue } from "../../validators/renderChart.js";
 import type { SelectorBuffer } from "../../validators/chartSelector.js";
 
-/** Draft schema is the strict contract: fail-closed on malformed drafts. */
 export const VizDraftSchema = InsightReportSchema;
 export type VizDraft = InsightReport;
 
@@ -72,16 +52,9 @@ export interface PromptInput {
   chartReasonHint: string;
   columns: string[];
   preview: Record<string, unknown>[];
-  /** Truncation flag for the caveats instruction. */
   truncated: boolean;
 }
 
-/**
- * Build the Profile-3 prompt. Every number in `claim` must copy a cell
- * value into `evidence` or declare a `derivation`; percentage deltas and
- * derivations are recomputed by the caller; causal language without
- * row/event backing is stripped, so the prompt demands "cause unknown".
- */
 export function buildInsightPrompt(input: PromptInput): string {
   return [
     "Draft a verified chart-plus-insights report using ONLY the rows below.",
@@ -107,7 +80,7 @@ export function buildInsightPrompt(input: PromptInput): string {
   ].join("\n");
 }
 
-/** One repair re-prompt: structured diff only, never raw errors or PII. */
+/** Structured diff only — never include raw errors or PII. */
 export function buildRepairPrompt(
   issue: ChartIssue,
   attempt: number,
@@ -120,7 +93,6 @@ export function buildRepairPrompt(
   ].join("\n");
 }
 
-/** Structured validator diff passed to the single targeted claim regeneration. */
 export interface ClaimRepairDiff {
   claimIndex: number;
   expected?: string;
@@ -128,7 +100,6 @@ export interface ClaimRepairDiff {
   reason: string;
 }
 
-/** Targeted claim-repair prompt (1 regeneration pass before stripping). */
 export function buildClaimRepairPrompt(diffs: ClaimRepairDiff[]): string {
   return [
     "Claim verification failed for the following insights (structured diffs):",
@@ -170,16 +141,7 @@ async function invokeDraftModel(
       );
 }
 
-/**
- * Draft + bounded repair: validates each draft headlessly and re-prompts
- * with the structured diff until it passes or `RENDER_REPAIR_LIMIT` is hit.
- * Malformed drafts (schema parse failures, e.g. a chartType/spec mismatch)
- * count as repair attempts with a shape diff — they never abort the loop
- * early. Transport rate-limit, auth, abort, and budget errors rethrow
- * immediately without burning chart repair attempts. Throws the last issue
- * when the model never converges — the caller falls back to the
- * deterministic Table spec.
- */
+/** Schema parse failures consume chart repair attempts; transport/rate-limit/budget errors rethrow immediately. */
 export async function runVizDraft(
   model: VizModelLike,
   input: PromptInput,
@@ -262,12 +224,7 @@ export interface ClaimRegenerationOutcome {
   usage: InvokeUsageResult<VizDraft>;
 }
 
-/**
- * Run exactly one targeted regeneration pass with the claim validator's
- * structured diff before stripping failing claims. Returns null on budget trip,
- * invalid chart/schema, or model error so the caller safely strips the
- * original draft instead of losing the verified report.
- */
+/** Returns null on budget trip or invalid output so callers strip the original draft instead of losing the report. */
 export async function runClaimRegeneration(
   model: VizModelLike,
   input: PromptInput,

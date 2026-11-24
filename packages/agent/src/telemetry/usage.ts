@@ -1,9 +1,3 @@
-// LLM usage helper (Phase 3 G1): read real provider token counts off the
-// raw AIMessage preserved by `withStructuredOutput(..., { includeRaw: true })`
-// and shape-detect the bare-parsed result that fakes and scripted stubs
-// return (FakeListChatModel ignores the includeRaw config, so the result
-// IS the parsed value with zero usage). Missing or malformed usage never
-// throws — the caller falls back to estimateTokens.
 import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { estimateCostUsd } from "./pricing.js";
@@ -16,7 +10,6 @@ import {
   type RetrySpanEmit,
 } from "./retry.js";
 
-/** Minimal structured-output surface; satisfied by ChatModelLike and AnyChatModel. */
 export interface StructuredModelLike<S extends z.ZodType> {
   withStructuredOutput(
     schema: S,
@@ -32,9 +25,7 @@ export interface LlmUsage {
 export interface InvokeUsageResult<T> extends LlmUsage {
   parsed: T;
   model: string | undefined;
-  /** Ms from call start to the first streamed chunk (reasoning or content). */
   firstTokenMs?: number;
-  /** Total provider attempts made (1 + rate-limit retries). */
   attempts?: number;
 }
 
@@ -71,11 +62,6 @@ function asCount(value: unknown): number {
     : 0;
 }
 
-/**
- * Read provider token counts off a raw message. Accepts the AIMessage
- * itself or any object carrying `usage_metadata` ({ input_tokens,
- * output_tokens }); anything else yields zeros, never throws.
- */
 export function usageFromMessage(raw: unknown): LlmUsage {
   const usage = asRecord(asRecord(raw)?.["usage_metadata"]) ?? {};
   return {
@@ -84,11 +70,6 @@ export function usageFromMessage(raw: unknown): LlmUsage {
   };
 }
 
-/**
- * Read the model id off a raw message's response_metadata (`model`, then
- * `model_name`); absent or non-string yields undefined so pricing resolves
- * to unknown instead of throwing.
- */
 export function modelFromMessage(raw: unknown): string | undefined {
   const meta = asRecord(asRecord(raw)?.["response_metadata"]);
   for (const key of ["model", "model_name"] as const) {
@@ -98,9 +79,7 @@ export function modelFromMessage(raw: unknown): string | undefined {
   return undefined;
 }
 
-// Real includeRaw result: own `{ raw, parsed }` keys with an
-// AIMessage-like raw (always carries `content`). Anything else — the fake
-// and scripted-stub shape — is already-parsed output with zero usage.
+// Distinguish real { raw, parsed } includeRaw envelopes (where raw carries content) from fake/stub parsed outputs.
 function asRawParsed(
   out: unknown,
 ): { raw: unknown; parsed: unknown } | null {
@@ -144,15 +123,7 @@ function retryOptionsFrom(
   };
 }
 
-/**
- * Structured call preserving provider usage. Real path returns the parsed
- * value plus real counts and the raw model id; fake/stub path returns the
- * parsed value with zero counts and undefined model. The model position is
- * anchored to z.ZodType so S infers from the schema argument alone.
- * Schema violations still throw (fail-closed, same as the direct call it
- * replaces). Rate-limit/overload errors (429/503) retry through the shared
- * retry helper honoring backoff+jitter, Retry-After, budget, and deadline.
- */
+/** Model parameter is typed to z.ZodType so S infers from schema alone; fails closed on invalid output. */
 export async function invokeWithUsage<S extends z.ZodType>(
   model: StructuredModelLike<z.ZodType>,
   schema: S,
@@ -222,7 +193,6 @@ export async function invokeWithUsage<S extends z.ZodType>(
   };
 }
 
-/** Minimal streaming JSON surface; satisfied by every chat model and FakeListChatModel. */
 export interface PlainJsonModelLike {
   invoke(input: string, config?: { callbacks?: Callbacks }): Promise<unknown>;
   stream(
@@ -231,7 +201,6 @@ export interface PlainJsonModelLike {
   ): AsyncIterable<unknown> | Promise<AsyncIterable<unknown>>;
 }
 
-/** Read the text out of an AIMessage-like (string or content-block array). */
 function messageText(message: unknown): string | null {
   const content = asRecord(message)?.["content"];
   if (typeof content === "string") return content;
@@ -250,10 +219,6 @@ function messageText(message: unknown): string | null {
   return null;
 }
 
-/**
- * Scan balanced `{...}` spans outside JSON string literals so prose around
- * a JSON object (even prose containing stray braces) does not defeat extraction.
- */
 function* balancedObjectSpans(text: string): Generator<string> {
   let depth = 0;
   let start = -1;
@@ -288,23 +253,18 @@ function* balancedObjectSpans(text: string): Generator<string> {
   }
 }
 
-/**
- * Parse a JSON document out of model text: verbatim first, then any fenced
- * code block, then the outermost `{...}` span or balanced `{...}` spans.
- * Throws SyntaxError (never echoing raw output, which may carry sensitive
- * values) so callers keep their existing parse-failure mapping.
- */
+/** Throws SyntaxError without echoing raw model text (which may contain sensitive values). */
 function extractJsonDocument(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
-    // Fall through to fenced/span extraction below.
+    /* try fenced JSON next */
   }
   for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
     try {
       return JSON.parse(match[1]);
     } catch {
-      // Try next fenced block before falling through to span extraction.
+      /* try next fenced block */
     }
   }
   const start = text.indexOf("{");
@@ -313,26 +273,20 @@ function extractJsonDocument(text: string): unknown {
     try {
       return JSON.parse(text.slice(start, end + 1));
     } catch {
-      // Fall through to balanced-span scan below.
+      /* try balanced object spans next */
     }
   }
   for (const candidate of balancedObjectSpans(text)) {
     try {
       return JSON.parse(candidate);
     } catch {
-      // Keep scanning remaining balanced spans.
+      /* continue scanning */
     }
   }
   throw new SyntaxError("Model output is not valid JSON");
 }
 
-/**
- * Fallback parser for SQL proposal models that ignore JSON-only instructions
- * and answer in markdown prose with a fenced SQL block. Every extracted query
- * still passes SqlProposalSchema, sqlGuard, LocalQuerySafetyGate, explain_query,
- * and run_query before touching any data; tablesUsed is populated downstream by
- * sqlGuard from the parsed AST.
- */
+/** Extracted SQL still passes SqlProposalSchema, sqlGuard, LocalQuerySafetyGate, explain, and run_query. */
 export function extractFencedSqlProposal(
   text: string,
 ): { sql: string; tablesUsed: string[] } | undefined {
@@ -354,27 +308,14 @@ export function extractFencedSqlProposal(
 }
 
 /**
- * Plain-JSON call preserving provider usage: streams the model WITHOUT
- * `withStructuredOutput` (no `response_format` on the wire) and parses the
- * assembled text against the schema. Reasoning models emit long
- * chain-of-thought before the first answer token (measured 16.5k reasoning
- * chars / 42s to first content on the tracer SQL proposal), so progress is
- * counted per streamed chunk — reasoning or content — and only silence
- * trips the idle budget; an absolute total cap still bounds runaways.
- * Streaming callbacks also let LangChain record first_token_time from the
- * first reasoning chunk instead of the first content token.
- * Schema violations still throw (fail-closed). Usage and model id come off
- * the streamed chunks exactly like the structured variant; fakes degrade to
- * zero-usage instead of throwing.
+ * Streams without response_format; resets idle timer on any chunk (including reasoning)
+ * so slow thinking does not false-timeout.
  */
 export interface JsonStreamOptions extends ModelRetryContextOptions {
   name?: string;
   callbacks?: Callbacks;
-  /** Abort when no chunk (reasoning or content) arrives within this long. */
   idleMs?: number;
-  /** Absolute cap for the whole stream; the model client's timeout still applies. */
   totalMs?: number;
-  /** Optional fallback extractor when the model answers in prose without JSON. */
   fallbackParse?: (text: string) => unknown;
 }
 

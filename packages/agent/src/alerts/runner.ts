@@ -58,8 +58,8 @@ export interface AnomalyRunnerResult {
 export interface AnomalyRunnerOptions {
   subscriptions?: Subscription[];
   configPath?: string;
-  targetDate?: string; // YYYY-MM-DD
-  subscriptionId?: string; // single subscription filter
+  targetDate?: string;
+  subscriptionId?: string;
   manual?: boolean;
   flushDigest?: boolean;
   catalog?: SchemaCatalog;
@@ -72,9 +72,6 @@ export interface AnomalyRunnerOptions {
   mockSeriesProvider?: (subscription: Subscription, targetDate: string) => TimeSeriesPoint[];
 }
 
-/**
- * Computes date string minus N days: returns YYYY-MM-DD.
- */
 export function subtractDays(dateStr: string, days: number): string {
   AlertDateSchema.parse(dateStr);
   const d = new Date(dateStr + "T00:00:00Z");
@@ -101,10 +98,6 @@ function seriesCandidateTables(
   return hasRegionScope ? ["reviews", "orders", "regions"] : ["reviews"];
 }
 
-/**
- * Builds the 35-day time-series query (28-day baseline + 7-day WoW window)
- * with RBAC condition injected from recipient role (UC-10 §6).
- */
 export function buildTimeSeriesQuery(options: {
   metricId: string;
   startDate: string;
@@ -191,7 +184,6 @@ export function buildTimeSeriesQuery(options: {
     );
   }
 
-  // Default: net_revenue
   return (
     `SELECT orders.purchase_date::text AS date, ` +
     `COUNT(*) AS support_count, ` +
@@ -204,12 +196,6 @@ export function buildTimeSeriesQuery(options: {
   );
 }
 
-/**
- * Periodic Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)
- *
- * Can be run via scheduled cron (07:00 daily) or manually via CLI:
- * `pnpm alert:run --manual [--date X] [--flush-digest]`
- */
 export async function runAnomalyRunner(
   options: AnomalyRunnerOptions,
 ): Promise<AnomalyRunnerResult> {
@@ -232,7 +218,6 @@ export async function runAnomalyRunner(
     logger,
   };
 
-  // 1. Load subscriptions
   let subs = options.subscriptions;
   if (!subs) {
     const config = loadSubscriptionsConfigFile(options.configPath);
@@ -251,7 +236,6 @@ export async function runAnomalyRunner(
   let alertsSkippedDuplicate = 0;
   let alertsBlocked = 0;
 
-  // 2. Iterate each subscription with Fault Isolation (K5 checkpointing per-metric)
   for (const subscription of subs) {
     try {
       let series: TimeSeriesPoint[];
@@ -259,7 +243,6 @@ export async function runAnomalyRunner(
       if (mockSeriesProvider) {
         series = mockSeriesProvider(subscription, targetDate);
       } else {
-        // Query historical window: 35 days (28 days baseline + 7 days WoW)
         const startDate = subtractDays(targetDate, 35);
         const querySql = buildTimeSeriesQuery({
           metricId: subscription.metricId,
@@ -303,11 +286,9 @@ export async function runAnomalyRunner(
         continue;
       }
 
-      // Current point is the last point in series
       const current = series[series.length - 1];
       const history = series.slice(0, -1);
 
-      // 3. Statistical Anomaly Detection (Pure Code, 0 LLM cost on normal days)
       const anomaly = detectAnomaly({
         history,
         current,
@@ -334,7 +315,6 @@ export async function runAnomalyRunner(
         continue;
       }
 
-      // 4. Anomaly Found: Invoke 1-2 Dimension Drill-Down Analyzer (LLM)
       anomaliesDetected++;
       const drillDown = await runDrillDownAnalysis({
         subscription,
@@ -346,7 +326,6 @@ export async function runAnomalyRunner(
         recipientRole: subscription.recipientRole,
       });
 
-      // 5. Dispatch Alert via Resilient send_alert Dispatcher
       const dispatchResult = await dispatchAlert(drillDown.alert, dispatcherOpts);
 
       if (dispatchResult.sent) {
@@ -372,7 +351,7 @@ export async function runAnomalyRunner(
         dispatchResult,
       });
     } catch (err) {
-      // Fault isolation: error in 1 slice/subscription does NOT crash the entire runner!
+      // Isolate failures per subscription so one bad slice does not abort the batch.
       const errorMsg = err instanceof Error ? err.message : String(err);
       failures.push({
         subscriptionId: subscription.id,
@@ -393,7 +372,6 @@ export async function runAnomalyRunner(
     }
   }
 
-  // 6. Handle digest flushing if requested
   let flushedDigestCount = 0;
   if (flushDigest && digestQueue.size() > 0) {
     const items = digestQueue.getAll();
@@ -433,14 +411,11 @@ export async function runAnomalyRunner(
   };
 }
 
-/**
- * Cron scheduler for UC-10 using node-cron (runs daily at 07:00 by default).
- */
 export function scheduleAnomalyCron(
   options: AnomalyRunnerOptions & {
-    cronExpression?: string; // e.g. "0 7 * * *", overrides hour/minute if provided
-    hour?: number; // 0-23, default 7 (07:00 daily)
-    minute?: number; // 0-59, default 0
+    cronExpression?: string;
+    hour?: number;
+    minute?: number;
     onComplete?: (result: AnomalyRunnerResult) => void;
   },
 ): { stop: () => void } {

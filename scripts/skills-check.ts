@@ -1,19 +1,8 @@
-// skills:check (EVAL-04, D-14): gate behind `pnpm skills:check`, run in CI
-// before any loadSkill consumer (01-12). Scans skills/**/*.md only (so
-// .gitkeep files never trip it), fails on executable extensions plus
-// key-block, URL connection-string, and DSN content, and validates the
-// eight canonical D-14 section headings case-insensitively. Exits zero
-// with a no-skills-yet message while no SKILL.md exists (01-12 seeds land
-// in wave five). Pure node — no dependencies.
-
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 const EXECUTABLE_EXTENSIONS = new Set([".js", ".ts", ".sh", ".py"]);
 
-// One matcher per canonical D-14 section (name/metadata, description,
-// when-to-use/triggers, inputs/outputs, steps, constraints/guardrails,
-// examples, final check). Each must match at least one ATX heading.
 const SECTION_MATCHERS: { label: string; test: (heading: string) => boolean }[] = [
   { label: "name/metadata", test: (h) => /skill\s*name|^name\b|metadata/.test(h) },
   { label: "description", test: (h) => /description/.test(h) },
@@ -34,7 +23,7 @@ function collectMarkdown(dir: string, out: string[] = []): string[] {
   try {
     entries = readdirSync(dir);
   } catch {
-    return out; // skills/ absent — treated as no-skills-yet by the caller.
+    return out;
   }
   for (const entry of entries) {
     if (entry === "node_modules" || entry === "dist") continue;

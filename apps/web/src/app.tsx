@@ -35,7 +35,6 @@ const NAV_ITEMS = [
 ];
 
 export interface AppProps {
-  /** Optional initial routes for isolated component tests. */
   initialEntries?: string[];
 }
 

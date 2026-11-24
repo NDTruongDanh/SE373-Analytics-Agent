@@ -1,6 +1,5 @@
 import { SseProgressEventSchema, type SseProgressEvent } from "@shared/contracts";
 
-/** Decode SSE frames incrementally. A frame is dispatched only after a blank line. */
 export class SseParser {
   private buffer = "";
   private eventName = "message";
@@ -97,7 +96,6 @@ async function parseHttpError(response: Response): Promise<StreamHttpError> {
       }
     }
   } catch {
-    // Non-JSON or unreadable error body; fall back to status-based message.
   }
 
   if (response.status === 409) {
@@ -135,7 +133,6 @@ export async function readEventStream(
     try {
       await reader.cancel();
     } catch {
-      // Keep the original parsing or callback error.
     }
     throw error;
   } finally {

@@ -9,19 +9,19 @@ export interface AbsoluteThreshold {
 }
 
 export interface TimeSeriesPoint {
-  date: string; // YYYY-MM-DD
-  value: number; // numeric metric value
-  supportCount?: number; // total count/volume for the slice on that day (e.g. order count)
+  date: string;
+  value: number;
+  supportCount?: number;
 }
 
 export interface AnomalyDetectorInput {
-  history: TimeSeriesPoint[]; // historical window (t-28 .. t-1)
-  current: TimeSeriesPoint; // current point to evaluate (t)
+  history: TimeSeriesPoint[];
+  current: TimeSeriesPoint;
   metricId?: string;
-  minSupport?: MinSupport; // default 15 orders; metric floors are an explicit alternative
+  minSupport?: MinSupport;
   absoluteThreshold?: AbsoluteThreshold;
-  eps?: number; // default 1e-6 (or floor for small numbers/currency)
-  trimRatio?: number; // default 0.05 (5% - 95% trimming)
+  eps?: number;
+  trimRatio?: number;
 }
 
 export interface AnomalyDetectorOutput {
@@ -29,7 +29,7 @@ export interface AnomalyDetectorOutput {
   severity: AlertSeverity | "none";
   direction: AlertDirection | "none";
   currentValue: number;
-  expectedValue: number; // mu_trim
+  expectedValue: number;
   zScore: number;
   wowPercent: number | null;
   deviationSummary: string;
@@ -37,9 +37,6 @@ export interface AnomalyDetectorOutput {
   caveat?: string;
 }
 
-/**
- * Robust Trimmed Mean (cắt trimRatio đầu và cuối để loại trừ ngoại lai / quá khứ ô nhiễm)
- */
 export function trimmedMean(values: number[], trimRatio = 0.05): number {
   if (values.length === 0) return 0;
   if (values.length < 4) {
@@ -54,9 +51,6 @@ export function trimmedMean(values: number[], trimRatio = 0.05): number {
   return trimmed.reduce((sum, v) => sum + v, 0) / trimmed.length;
 }
 
-/**
- * Robust Trimmed Standard Deviation
- */
 export function trimmedStd(values: number[], trimRatio = 0.05): number {
   if (values.length <= 1) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -71,10 +65,6 @@ export function trimmedStd(values: number[], trimRatio = 0.05): number {
   return Math.sqrt(variance);
 }
 
-/**
- * Calculate effective sigma (sigma_eff) with noise floor and signal proportion
- * sigma_eff = max(sigma_raw, EPS, 0.05 * |mu_trim|)
- */
 export function calculateEffectiveSigma(
   sigmaRaw: number,
   muTrim: number,
@@ -83,10 +73,6 @@ export function calculateEffectiveSigma(
   return Math.max(sigmaRaw, eps, 0.05 * Math.abs(muTrim));
 }
 
-/**
- * Week-over-Week percentage change:
- * WoW% = (x_t - x_{t-7}) / max(|x_{t-7}|, EPS) * 100%
- */
 export function calculateWoW(
   currentValue: number,
   weekAgoValue: number,
@@ -110,9 +96,6 @@ function dateDaysBefore(date: string, days: number): string | undefined {
   return parsed.toISOString().slice(0, 10);
 }
 
-/**
- * Check if current value breaches absolute threshold
- */
 export function isAbsoluteThresholdBreached(
   currentValue: number,
   threshold?: AbsoluteThreshold,
@@ -127,16 +110,6 @@ export function isAbsoluteThresholdBreached(
   return false;
 }
 
-/**
- * Pure-Code Contamination-Resistant Statistical Anomaly Detector
- *
- * Implements UC-10 §4 statistical specification:
- * - Deterministic pure code (0 LLM cost on normal days)
- * - Contamination resistance via trimmed mean/std (5%-95% historical baseline)
- * - Immune to indirect prompt injection (operates on numeric aggregates only)
- * - Division by zero guarded via EPS floor
- * - Low-support suppression (minSupport >= 15) to prevent false positives in sparse slices
- */
 export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutput {
   const {
     history,
@@ -154,7 +127,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   const historyValues = history.map((h) => h.value);
   const insufficientHistory = historyValues.length < 14;
 
-  // 1. Min support check (chống FP ở tỉnh/kênh có quá ít đơn hàng)
   const muTrim = trimmedMean(historyValues, trimRatio);
   const hasMetricFloor =
     minMetricTrimmedMean !== undefined && muTrim >= minMetricTrimmedMean;
@@ -178,14 +150,11 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
     };
   }
 
-  // 2. Contamination-resistant baseline calculation
   const sigmaRaw = trimmedStd(historyValues, trimRatio);
   const sigmaEff = calculateEffectiveSigma(sigmaRaw, muTrim, eps);
 
-  // 3. Z-score calculation
   const zScore = (current.value - muTrim) / sigmaEff;
 
-  // 4. Week-over-Week (t-7) calculation if available
   let wowPercent: number | null = null;
   const weekAgoDate = dateDaysBefore(current.date, 7);
   if (weekAgoDate !== undefined) {
@@ -195,16 +164,13 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
     }
   }
 
-  // 5. Direction classification
   const direction: AlertDirection = current.value >= muTrim ? "spike" : "drop";
 
-  // 6. Absolute threshold check
   const breachedAbsolute = isAbsoluteThresholdBreached(
     current.value,
     absoluteThreshold,
   );
 
-  // 7. Severity classification (UC-10 §4.4)
   const absZ = Math.abs(zScore);
   const absWoW = wowPercent !== null ? Math.abs(wowPercent) : 0;
 
@@ -242,10 +208,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   };
 }
 
-/**
- * Convenient helper to run detection on a chronological series of points
- * The last point is treated as current, all preceding points as history.
- */
 export function detectAnomalyFromSeries(
   series: TimeSeriesPoint[],
   options?: Omit<AnomalyDetectorInput, "history" | "current">,

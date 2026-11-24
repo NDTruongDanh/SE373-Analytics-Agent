@@ -1,11 +1,3 @@
-// LocalQuerySafetyGate (GUARD-03, 01-11). Pure agent-side pre-check that runs
-// AFTER sqlGuard from @shared/access-policy and BEFORE any MCP call: sqlGuard
-// owns syntax/table/column validity, this gate owns the agent-side policy
-// extras — sensitive-column denial in any clause, cross/conditionless-join
-// denial, large-table clarification, and the detail-query LIMIT clamp.
-// Fail-closed: every denial is a DbToolError built through the contracts
-// helper. Server-side AccessPolicy (01-06/01-08) remains authoritative.
-
 import {
   dbToolError,
   type DbToolError,
@@ -27,7 +19,6 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-/** Generic recursive walk over the raw pgsql-parser JSON (no traverse dep). */
 function findNodes(root: unknown, key: string): unknown[] {
   const out: unknown[] = [];
   const visit = (node: unknown): void => {
@@ -54,13 +45,7 @@ function rootSelectStmt(ast: GuardAst): Record<string, unknown> | undefined {
   return asRecord(asRecord(stmt)?.["SelectStmt"]);
 }
 
-/**
- * Sensitive-column check (01-06 set semantics, agent-side): deny when a
- * catalog-marked sensitive column of a scanned table appears anywhere in the
- * query. GuardSuccess.columns already collects named refs from every clause
- * (projection, WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY, function and
- * aggregate args), so one set-membership test covers all clauses.
- */
+/** GuardSuccess.columns already collects refs from every clause, so one set check covers all clauses. */
 function sensitiveRef(
   guard: GuardSuccess,
   catalog: SchemaCatalog,
@@ -81,13 +66,7 @@ function sensitiveRef(
   return undefined;
 }
 
-/**
- * Join check: deny any JoinExpr with no ON/USING condition (CROSS JOIN and
- * conditionless joins both parse to an unconditioned JoinExpr) and any
- * comma-separated FROM list (an implicit cross join). NATURAL JOIN is left
- * to the server-side guard — it carries join semantics the agent cannot
- * resolve without output mapping.
- */
+/** NATURAL JOIN is left to the server guard because resolving it requires output-column mapping. */
 function unconditionedJoin(ast: GuardAst, sql: string): string | undefined {
   for (const node of findNodes(ast, "JoinExpr")) {
     const join = asRecord(node);
@@ -111,7 +90,6 @@ function unconditionedJoin(ast: GuardAst, sql: string): string | undefined {
   return undefined;
 }
 
-/** A table counts as large when any of its catalog columns is large-flagged. */
 function largeScannedTables(
   guard: GuardSuccess,
   catalog: SchemaCatalog,
@@ -126,7 +104,6 @@ function largeScannedTables(
     .map((table) => table.name);
 }
 
-/** True when any WHERE clause exists anywhere in the tree (filter present). */
 export function hasWhereFilter(ast: GuardAst): boolean {
   return findNodes(ast, "whereClause").some(
     (value) => value !== undefined && value !== null,
@@ -164,7 +141,6 @@ function functionName(node: unknown): string | undefined {
   return typeof name === "string" ? name.toLowerCase() : undefined;
 }
 
-/** Aggregate = a known aggregate call, or a GROUP BY / HAVING at the root. */
 function hasAggregate(ast: GuardAst): boolean {
   const root = rootSelectStmt(ast);
   if (!root) return false;
@@ -198,11 +174,7 @@ function comparisonOperator(expression: Record<string, unknown>): string | undef
   return typeof value === "string" ? value.toUpperCase() : undefined;
 }
 
-/**
- * True only for a direct, conjunctive comparison on purchase_date. This keeps
- * literals, IS NOT NULL, and an OR escape hatch from satisfying the large-table
- * policy while accepting qualified ColumnRef nodes and CURRENT_DATE windows.
- */
+/** Require a direct conjunctive comparison so IS NOT NULL or OR branches cannot bypass the time bound. */
 function hasConjunctivePurchaseDateRange(node: unknown, insideOr = false): boolean {
   const record = asRecord(node);
   if (!record) return false;
@@ -222,12 +194,7 @@ function hasConjunctivePurchaseDateRange(node: unknown, insideOr = false): boole
   );
 }
 
-/**
- * UC-01 performance policy: both large fact tables must be bounded by the
- * indexed parent-order timestamp. `order_items` gets its bound through the
- * required join to `orders`; province/region can further narrow a query but
- * cannot replace the time bound.
- */
+/** Both large fact tables require a purchase_date bound; order_items receives it via orders join. */
 function hasLargeTableTimeFilter(guard: GuardSuccess, large: string[]): boolean {
   const names = new Set(large.map((table) => table.toLowerCase()));
   if (!names.has("orders") && !names.has("order_items")) return true;
@@ -236,12 +203,7 @@ function hasLargeTableTimeFilter(guard: GuardSuccess, large: string[]): boolean 
   );
 }
 
-/**
- * Clamp or append a top-level LIMIT. Operates on the statement tail so inner
- * subquery LIMITs are untouched; non-numeric LIMITs (parameters) are left
- * for the server. Returns the SQL unchanged when a LIMIT at or under the cap
- * is already present.
- */
+/** Tail-only rewrite preserves inner subquery LIMITs and leaves parameterized LIMITs for the server. */
 export function clampLimit(sql: string, cap: number): string {
   const body = sql.replace(/;+\s*$/, "");
   const limited = /\bLIMIT\s+(ALL|\d+)(\s+OFFSET\s+\d+)?\s*$/i.exec(body);
@@ -258,8 +220,6 @@ export function clampLimit(sql: string, cap: number): string {
     return sql;
   }
   if (/\bLIMIT\b/i.test(body)) {
-    // A LIMIT the tail pattern cannot parse (e.g. a parameter) — leave it
-    // for the server-side guard rather than producing invalid SQL.
     return sql;
   }
   const offsetOnly = /\bOFFSET\s+\d+\s*$/i.exec(body);

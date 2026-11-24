@@ -1,8 +1,3 @@
-// Hybrid retriever (MCP-02, D-18, UC-02): 3-way hybrid — dense pgvector,
-// in-memory Okapi BM25 (hot-reloaded), and deterministic alias/identifier
-// matcher fused by weighted RRF at k=60 with join-rule graph expansion.
-// Storage snake_case maps to the camelCase SearchSemanticLayer contract
-// shapes at the boundary.
 import type { SearchSemanticLayerChunk } from "@shared/contracts";
 import {
   BM25_B,
@@ -44,8 +39,6 @@ FROM semantic.semantic_chunks`;
 const CATALOG_SQL = `SELECT chunk_id, doc_type, table_name, tables, metric_name, aliases, sensitivity, content, updated_at
 FROM semantic.semantic_chunks`;
 
-// Pure boundary mapper: storage row plus fusion score to the frozen
-// contract shape (exported for unit tests).
 export function toContractChunk(
   row: Record<string, unknown>,
   score: number,
@@ -77,10 +70,6 @@ export function toContractChunk(
 function vectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;
 }
-
-// ---------------------------------------------------------------------------
-// BM25 text normalization
-// ---------------------------------------------------------------------------
 
 export function foldAscii(text: string): string {
   return text
@@ -139,10 +128,6 @@ export function tokenizeForBm25(text: string): string[] {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// In-memory Okapi BM25
-// ---------------------------------------------------------------------------
-
 function compositeText(row: Record<string, unknown>): string {
   const parts: string[] = [];
   const content = row["content"];
@@ -178,12 +163,6 @@ function compositeText(row: Record<string, unknown>): string {
   return parts.join(" ");
 }
 
-/**
- * Single-term Okapi BM25 contribution with the standard non-negative IDF.
- * `tf` is the term frequency in the doc, `df` the number of docs containing
- * the term, `N` the collection size, `dl` the doc length and `avgdl` the
- * average doc length.
- */
 export function scoreBm25(
   tf: number,
   df: number,
@@ -285,10 +264,6 @@ export class Bm25Retriever {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Cross-process hot-reload catalog
-// ---------------------------------------------------------------------------
-
 let cachedMaxTs: string | null = null;
 let cachedTotal: number | null = null;
 let catalogRows: Record<string, unknown>[] = [];
@@ -340,10 +315,6 @@ export function resetSemanticCache(): void {
   bm25Retriever = null;
   catalogInitialized = false;
 }
-
-// ---------------------------------------------------------------------------
-// Leg 3: deterministic alias & identifier matcher
-// ---------------------------------------------------------------------------
 
 function candidatesForRow(row: Record<string, unknown>): string[] {
   const candidates: string[] = [];
@@ -400,11 +371,6 @@ function containsOnBoundaries(haystack: string, needle: string): boolean {
   return false;
 }
 
-/**
- * Deterministic alias & identifier matcher. Returns matching chunk_ids
- * ranked with exact matches first, then by matched phrase length descending,
- * then by chunk_id ascending.
- */
 export function matchAliases(
   queryText: string,
   rows: Record<string, unknown>[],
@@ -471,10 +437,6 @@ export function matchAliases(
   return matches.map((match) => match.id);
 }
 
-// ---------------------------------------------------------------------------
-// Automatic join-rule graph expansion
-// ---------------------------------------------------------------------------
-
 function parseTablesField(row: Record<string, unknown>): string[] {
   const out: string[] = [];
   const tableName = row["table_name"];
@@ -503,10 +465,6 @@ function contractTables(chunk: SearchSemanticLayerChunk): string[] {
   return out;
 }
 
-/**
- * Inject join_rule chunks whose tables overlap with >= 2 tables from the
- * top-5 fused chunks, keeping the result length within topK.
- */
 export function expandJoinRules(
   fused: SearchSemanticLayerChunk[],
   allRows: Record<string, unknown>[],
@@ -542,7 +500,6 @@ export function expandJoinRules(
       table_name: row["table_name"],
       tables: row["tables"],
     });
-    // Also parse tables stored as comma string directly.
     const overlap = tables.filter((table) => candidateTables.has(table)).length;
     if (overlap >= 2) {
       const baseScore = scoreById.get(chunkId);
@@ -592,10 +549,6 @@ export function expandJoinRules(
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// 3-way hybrid search
-// ---------------------------------------------------------------------------
-
 export async function hybridSearch(
   query: RetrieverQuery,
   embedder: Embedder,
@@ -620,12 +573,11 @@ export async function hybridSearch(
         const rows = (catalog.rows ?? []) as Record<string, unknown>[];
         rebuildCatalog(rows, maxTs, total);
       } catch {
-        // Graceful: fall back to cached or vector rows below.
+        // Non-fatal: fall back to cached or vector rows below.
       }
     }
   } catch {
-    // Graceful: a mock query function may not implement the watermark
-    // probe; continue with cached or vector-row fallback.
+    // Non-fatal: continue with cached or vector-row fallback if watermark probe fails.
   }
 
   const restriction = allowRestricted ? "" : `AND sensitivity != 'restricted_pii'`;

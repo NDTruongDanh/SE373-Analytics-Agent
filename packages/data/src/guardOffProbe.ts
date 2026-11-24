@@ -1,11 +1,3 @@
-// Direct agent_ro write-refusal probe (issue #39, D-03). Operator tooling:
-// packages/data is the pg exemption precedent (COPY/load/verify already hold
-// role connections here), so the eval harness borrows a probe from this
-// package instead of importing pg from unscoped eval code (unresolvable under
-// pnpm isolation). No server switch, no guard bypass: the probe connects with
-// the given role URL, asserts the role reads back agent_ro, attempts one
-// bounded single-row DELETE inside a rolled-back transaction, and reports the
-// SQLSTATE plus before/after counts. Never call with an owner/indexer URL.
 import { Client } from "pg";
 
 const COUNT_TABLE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -17,12 +9,7 @@ export interface GuardOffProbeResult {
   rowCountAfter: number;
 }
 
-/**
- * Coerce a COUNT(*) cell to a finite number. node-pg returns int8 counts as
- * decimal strings, while the gateway JSON path may already carry numbers —
- * accept both, reject everything else so callers fail closed instead of
- * comparing against NaN.
- */
+// node-pg returns int8 COUNT(*) as decimal strings while JSON paths use numbers; reject non-finite values.
 export function parseCountValue(value: unknown): number | undefined {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : undefined;
@@ -34,7 +21,6 @@ export function parseCountValue(value: unknown): number | undefined {
   return undefined;
 }
 
-/** Narrow one cell of the first result row (node-pg rows are untyped). */
 function firstCell(rows: unknown, key: string): unknown {
   if (!Array.isArray(rows) || rows.length === 0) return undefined;
   const row: unknown = rows[0];
@@ -42,7 +28,6 @@ function firstCell(rows: unknown, key: string): unknown {
   return (row as Record<string, unknown>)[key];
 }
 
-/** SQLSTATE of a driver error, or undefined when the shape carries none. */
 export function pgErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null) return undefined;
   const code = (error as Record<string, unknown>)["code"];

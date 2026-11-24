@@ -1,18 +1,3 @@
-// LangSmith `tool` child runs for MCP calls (#97).
-//
-// MCP tools are called over the SDK client, not as LangChain tools, so
-// LangSmith never saw them: only `traces/*.jsonl` had describe_table /
-// run_query. This wraps one MCP call in LangChain tool callbacks so the
-// run's PiiSafeLangChainTracer records it as a child of the current graph
-// node. The JSONL sink stays authoritative; this is display only.
-//
-// Privacy: a tool run is opened ONLY when our anonymizing tracer is among
-// the handlers (never a bare env auto-tracer). Inputs are the tool args the
-// gateway already receives (no identity fields); outputs are a summary of
-// counts and column names, never rows or chunk text. Both still pass
-// through the tracer's piiSafeProcessor before upload. Errors are reported
-// by contract code only.
-
 import {
   CallbackManager,
   type Callbacks,
@@ -28,7 +13,6 @@ function handlersOf(callbacks: Callbacks | undefined): unknown[] {
   return callbacks.handlers;
 }
 
-/** True when our anonymizing tracer will receive the tool run. */
 export function hasPiiSafeTracer(callbacks: Callbacks | undefined): boolean {
   return handlersOf(callbacks).some(
     (handler) => handler instanceof PiiSafeLangChainTracer,
@@ -49,10 +33,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/**
- * Counts and names only. Rows, chunk content, and sample values are never
- * copied; an unparsable payload reports just its length.
- */
+/** Counts and names only — never copy rows, chunk content, or sample values. */
 export function summarizeMcpResult(
   text: string,
   isError: boolean,
@@ -95,11 +76,6 @@ export function summarizeMcpResult(
   return summary;
 }
 
-/**
- * Run `fn` (one MCP call) inside a LangSmith tool run named after the tool.
- * Without our tracer in `callbacks` it is a plain passthrough. Callback
- * failures never fail the MCP call.
- */
 export async function withMcpToolRun<T extends { text: string; isError?: boolean }>(
   callbacks: Callbacks | undefined,
   tool: string,

@@ -7,11 +7,7 @@ export interface SafeMarkdownProps {
   className?: string;
 }
 
-/**
- * Render model-produced Markdown safely per architecture §1.2 Invariant 3:
- * raw HTML, remote images, and auto-links are disabled so untrusted DB rows
- * cannot inject scripts or exfiltrate data via external image/link beacons.
- */
+// Disable raw HTML, remote images, and links so untrusted DB rows cannot inject scripts or exfiltrate via beacons.
 export function SafeMarkdown({ content, className }: SafeMarkdownProps) {
   return (
     <div className={cn("space-y-2 text-[13px] leading-relaxed text-foreground", className)}>
