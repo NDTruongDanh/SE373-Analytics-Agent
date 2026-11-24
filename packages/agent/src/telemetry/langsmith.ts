@@ -339,7 +339,7 @@ export interface LangSmithRunMeta {
   threadId: string;
   userId: string;
   role: string;
-  ucId: string;
+  route: string;
   /** Column names only — never values. */
   maskedColumns?: string[];
 }
@@ -359,13 +359,13 @@ export function buildLangSmithRunConfig(
   return {
     runId: meta.runId,
     callbacks: [tracer],
-    tags: ["se373", `uc:${meta.ucId === "" ? "tracer" : meta.ucId}`],
+    tags: ["se373", `route:${meta.route}`],
     metadata: {
       runId: meta.runId,
       threadId: meta.threadId,
       userId: meta.userId,
       role: meta.role,
-      ucId: meta.ucId,
+      route: meta.route,
       maskedColumns: [...(meta.maskedColumns ?? [])],
     },
   };

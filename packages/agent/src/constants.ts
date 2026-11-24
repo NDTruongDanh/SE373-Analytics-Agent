@@ -17,11 +17,13 @@ export const TIMEOUT_RETRY_LIMIT = 50;
 
 export const DETAIL_QUERY_LIMIT = 200;
 
-export const TEXT_TO_SQL_UC_ID = "text-to-sql";
+export const ROUTES = ["text-to-sql", "root-cause-analysis"] as const;
 
-export const RCA_UC_ID = "root-cause-analysis";
+export type Route = (typeof ROUTES)[number];
 
-export const DEFAULT_ROUTE_ID = "tracer";
+export const TEXT_TO_SQL_ROUTE = "text-to-sql" satisfies Route;
+
+export const RCA_ROUTE = "root-cause-analysis" satisfies Route;
 
 export const THREAD_ID_MAX_LENGTH = 255;
 
