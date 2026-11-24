@@ -27,6 +27,32 @@ const ADMIN_TOKEN = process.env["MCP_TOKEN_ADMIN"] ?? "";
 const LIVE = HARNESS_URL.length > 0 && AGENT_RO_URL.length > 0 && SALES_TOKEN.length > 0;
 
 const DEMO_QUESTION = "How many orders do we have per status?";
+
+// The live DB and gateway are under test, not the model: CI runs without a model key,
+// so intent and SQL proposals come from deterministic fakes wired through buildApp.
+const DEMO_INTENT = {
+  metric: "order_count",
+  dimensions: ["status"],
+  filters: [],
+  timeRange: "2025-01-01/2026-10-01",
+  requestedMetrics: [],
+  schemaEntities: ["orders"],
+  queryMode: "standard_query" as const,
+};
+const DEMO_SQL = JSON.stringify({
+  sql: "SELECT status, COUNT(*) AS n FROM public.orders WHERE purchase_date >= '2025-01-01' AND purchase_date < '2026-10-01' GROUP BY status ORDER BY status",
+  tablesUsed: ["orders"],
+});
+
+function fakeModel(text: string, structured: unknown) {
+  return {
+    invoke: async () => ({ content: text }),
+    async *stream() {
+      yield { content: text };
+    },
+    withStructuredOutput: () => ({ invoke: async () => structured }),
+  };
+}
 const GATEWAY_PORT = 18081;
 // Canonical UUIDs (runId/threadId/spanId/parentSpanId) can randomly contain
 // `0\d{9}` in their 12-hex node segment and trip PHONE_LIKE in containsWirePii.
@@ -143,6 +169,10 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       store: ports.store,
       mcpUrl: gatewayUrl,
       tracesDir,
+      textToSql: {
+        intentModel: fakeModel(JSON.stringify(DEMO_INTENT), DEMO_INTENT) as never,
+        sqlModel: fakeModel(DEMO_SQL, JSON.parse(DEMO_SQL)) as never,
+      },
     });
     await new Promise<void>((resolve) => {
       apiServer = app.listen(0, "127.0.0.1", () => resolve());
@@ -162,7 +192,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     }
   });
 
-  it("runs the explicit tracer demo end to end with redacted trace and clean SSE", async () => {
+  it("runs a data question end to end through the router with redacted trace and clean SSE", async () => {
     // Live PII literals for the leak assertions: real phone/email cells
     // fetched through the pipeline as admin (never through the SSE path).
     const probe = (await mcpCall(
