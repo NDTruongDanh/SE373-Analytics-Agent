@@ -1,10 +1,3 @@
-// Provider-independent model rate-limit & overload retry helper (issue #91).
-// Pure TypeScript (no new dependencies): classifies HTTP 429 / 503 and
-// provider wait hints, computes capped exponential backoff with jitter while
-// honoring Retry-After and runDeadlineMs, records actual attempts in the run
-// budget (zero tokens on failed calls), emits PII/secret-free trace spans, and
-// maps exhausted or deadline-stopped runs to RATE_LIMITED.
-
 import { dbToolError, type DbToolError } from "@shared/contracts";
 import {
   checkBudget,
@@ -29,11 +22,8 @@ export const MODEL_RETRY_BOUNDS = {
 } as const;
 
 export interface ModelRetryConfig {
-  /** Max retries AFTER the initial request (0 disables retries; default 3). */
   maxRetries: number;
-  /** Initial backoff base in ms (default 1000). */
   baseMs: number;
-  /** Maximum delay per retry wait in ms (default 30000). */
   maxWaitMs: number;
 }
 
@@ -58,11 +48,6 @@ function parseBoundedInt(
   return Math.min(max, value);
 }
 
-/**
- * Resolve retry configuration from environment variables with safe bounds.
- * Invalid, negative, or non-integer env values fall back to safe defaults;
- * overrides (used in tests) allow sub-50ms delays for fast deterministic runs.
- */
 export function resolveModelRetryConfig(
   env: NodeJS.ProcessEnv = process.env,
   overrides: ModelRetryOverrides = {},
@@ -261,11 +246,7 @@ function findHeader(
   return undefined;
 }
 
-/**
- * Parse an HTTP `Retry-After` header value (seconds or HTTP-date) into ms.
- * Invalid, negative, or non-finite values yield `undefined`. Past HTTP-dates
- * (clock skew or already elapsed) yield `0` so exponential backoff applies.
- */
+/** Past HTTP-dates return 0 so exponential backoff applies; invalid or negative values return undefined. */
 export function parseRetryAfterHeaderMs(
   headerValue: string | null | undefined,
   nowMs: number = Date.now(),
@@ -301,11 +282,6 @@ function unitMultiplierMs(unit: string): number | undefined {
   return undefined;
 }
 
-/**
- * Extract an explicit wait hint from a provider message (e.g. "try again in 2.5s",
- * "try again in 250ms", "try again in 1m30s"). Hints without an explicit unit are
- * ignored so we never guess ms vs seconds.
- */
 export function parseRetryAfterMessageMs(message: string | null | undefined): number | undefined {
   if (typeof message !== "string" || message.length === 0) return undefined;
   const compound = COMPOUND_HINT_RE.exec(message);
@@ -378,11 +354,6 @@ function isNonRetryableShape(
   return undefined;
 }
 
-/**
- * Classify a thrown model/provider error into either a provider-independent
- * RATE_LIMITED condition (with optional Retry-After ms) or non-retryable failure.
- * Never returns raw headers, secrets, or prompts.
- */
 export function classifyModelError(
   error: unknown,
   nowMs: number = Date.now(),
@@ -467,7 +438,6 @@ export function classifyModelError(
     };
   }
 
-  // Only inspect raw message text when no other HTTP status code was found.
   if (status === undefined && allMessages.length > 0) {
     if (RATE_LIMIT_TEXT_RE.test(allMessages)) {
       const retryAfterMs = extractRetryAfterMs(chain, nowMs);
@@ -541,11 +511,6 @@ export function isRateLimitFailure(error: unknown): boolean {
   return classifyModelError(error).code === "RATE_LIMITED";
 }
 
-/**
- * Convert any model-call failure into a safe DbToolError (RATE_LIMITED when
- * rate-limited or overloaded, INTERNAL_ERROR otherwise) without exposing raw
- * headers, credentials, or prompts.
- */
 export function toModelDbToolError(
   error: unknown,
   prefix = "Model call failed",
@@ -567,7 +532,6 @@ export function toModelDbToolError(
 }
 
 export interface RetryDelayInput {
-  /** 1-based retry index (1 for the wait before attempt 2). */
   retryIndex: number;
   retryAfterMs?: number;
   baseMs: number;
@@ -593,11 +557,6 @@ function clamp01(value: number): number {
   return value;
 }
 
-/**
- * Compute capped exponential backoff with jitter while respecting Retry-After
- * and the run deadline. Never sleeps past deadlineMs and never retries earlier
- * than Retry-After.
- */
 export function planRetryDelay(input: RetryDelayInput): RetryDelayPlan {
   const { retryIndex, retryAfterMs, baseMs, maxWaitMs, deadlineMs, nowMs } = input;
   if (retryAfterMs !== undefined && retryAfterMs > maxWaitMs) {
@@ -671,10 +630,6 @@ export interface AttemptAbortHandle {
   cleanup: () => void;
 }
 
-/**
- * Manage per-attempt idle/total/deadline timers and an optional external
- * AbortSignal. Guarantees timer and listener cleanup on every exit path.
- */
 export function createAttemptAbort(opts: {
   totalMs?: number;
   idleMs?: number;
@@ -774,9 +729,7 @@ export interface RetryModelCallOptions {
 
 export interface RetryModelCallResult<T> {
   value: T;
-  /** Total model requests attempted in this call (1 + retries). */
   attempts: number;
-  /** Number of failed attempts before success (0 on first-try success). */
   failedAttempts: number;
 }
 
@@ -807,11 +760,6 @@ function buildRateLimitMessage(opts: {
   return `RATE_LIMITED: model provider rate limit or overload (${statusTag}) after ${opts.attempts} attempt(s)`;
 }
 
-/**
- * Execute one logical model call with bounded rate-limit/overload retries,
- * backoff + jitter, Retry-After compliance, deadline/abort enforcement,
- * actual-attempt budget counting, and secret-free trace spans.
- */
 export async function retryModelCall<T>(
   fn: (ctx: RetryAttemptContext) => Promise<T>,
   opts: RetryModelCallOptions,
@@ -907,14 +855,12 @@ export async function retryModelCall<T>(
       const attemptDurationMs = Math.max(0, now() - attemptStarted);
       const cls = classifyModelError(error, now());
 
-      // External caller cancellation stops immediately without retrying.
       if (opts.signal?.aborted) {
         if (opts.budget) recordLlmCall(opts.budget, 0);
         throw error;
       }
 
-      // If a deadline aborted an in-flight retry after an earlier rate limit,
-      // preserve RATE_LIMITED semantics instead of leaking a raw TimeoutError.
+      // Preserve RATE_LIMITED semantics if a deadline aborts an in-flight retry after a rate limit.
       if (
         retryAttempt > 0 &&
         (cls.reason === "timeout" || cls.reason === "aborted") &&
@@ -954,7 +900,6 @@ export async function retryModelCall<T>(
         });
       }
 
-      // Count every actual request attempt made (0 tokens since no usage was returned).
       if (opts.budget) {
         recordLlmCall(opts.budget, 0);
       }

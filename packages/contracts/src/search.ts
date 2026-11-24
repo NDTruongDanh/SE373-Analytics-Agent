@@ -1,10 +1,5 @@
 import { z } from "zod";
 
-// SearchSemanticLayer wire minimum (CONT-02, UC-02 retrieval surface).
-// Field names follow the camelCase metadata contract (chunkId, docType,
-// metricName); the retrieval tuning (weights, thresholds) is UC-02 owned.
-// Agent and UC surface only — never an MCP db-tool.
-
 export const SearchSemanticLayerInputSchema = z.object({
   query: z.string().min(1).max(2000),
   topK: z.number().int().min(1).max(20).default(5),

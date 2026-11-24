@@ -1,11 +1,3 @@
-// Schema catalog builder (MCP-01): constructs the frozen CONT-08
-// array-of-tables SchemaCatalog at boot from information_schema columns via
-// agent_ro, merged with the sensitive flags from sensitive_columns.yaml. A
-// documented LARGE_TABLES constant marks tables that need a filter before a
-// full scan (a later wave may promote this to config). Boot fails closed:
-// an empty catalog throws so the server never serves nothing as something.
-// Primary keys and foreign keys ride alongside (describe_table shape) but
-// are not part of the frozen catalog zod shape.
 import type { SchemaCatalog } from "@shared/contracts";
 import type { SensitiveColumns } from "@shared/access-policy";
 import { LARGE_TABLES } from "./constants.js";
@@ -144,7 +136,6 @@ export function buildCatalog(
   };
 }
 
-/** Case-insensitive table lookup; undefined when the table is unknown. */
 export function findTable(
   catalog: BuiltCatalog,
   name: string,

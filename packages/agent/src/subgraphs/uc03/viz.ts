@@ -1,27 +1,3 @@
-// UC-03 VIZ seam (docs/UC-plan/UC03.md §2.1, architecture §2.2 VERIFY).
-//
-// `createUc03Viz()` builds the `VizFn` the frozen root builder runs as
-// `vizSeam` for every `ok` / `no_data` answer:
-//
-//   ValidatedQueryExecutor → RunQueryOutput (<= 1,000-row transient buffer + truncated flag)
-//     → select_chart (deterministic selector, never model vibes)
-//     → synthesize_insights (Profile 3, ZERO tools, <untrusted_data>)
-//     → K7 render_chart validator (headless, <= 2 repairs, Table fallback)
-//     → K7 numeric/polarity/derivation/truncation/causal validator
-//        (1 targeted regeneration on failure, then strip + visible caveat
-//         + narrative downgrade if sole negative or caveat claim was stripped)
-//     → vizSpec { kind: "insight_report", report, openuiLang }
-//
-// Keyless runs (no `AGENT_MODEL_API_KEY`) take the deterministic path: the
-// spec is code-built from buffer cells, insights stay empty, and a caveat
-// records that synthesis was skipped — chart validity holds with zero LLM
-// calls. The live path drafts the full report through Profile 3 and
-// verifies it the same way.
-//
-// Never throws for chart failures: after exhausted repairs the harness
-// falls back to the deterministic Table spec, then to None. Never touches
-// answerText/toolsCalled/status — the answer seam owns those.
-
 import {
   InsightReportSchema,
   type ChartType,
@@ -68,7 +44,6 @@ import {
   type VizModelLike,
 } from "./synthesize.js";
 
-/** Node names for the UC-03 trace spans (all under the viz seam). */
 export const UC03_VIZ_NODE = "viz";
 
 export const TRUNCATION_CAVEAT =
@@ -89,15 +64,8 @@ export interface Uc03VizSpec {
 }
 
 export interface Uc03VizDeps {
-  /**
-   * Profile-3 model. "auto" (default) uses the synthesis profile when
-   * `AGENT_MODEL_API_KEY` is set, else the deterministic path. Pass null
-   * to force deterministic mode (unit tests, keyless evals).
-   */
   model?: VizModelLike | "auto" | null;
-  /** Full transient buffer override (tests/evals); defaults to transient store / state preview. */
   buffer?: SelectorBuffer & { truncated?: boolean };
-  /** Explicit truncation flag override (tests/evals). */
   truncated?: boolean;
 }
 
@@ -130,9 +98,7 @@ function fallbackReport(
     effective = "table";
   }
   const validated = validateChart(effective, built, buffer);
-  // Code-built specs validate by construction (cells plucked from the same
-  // buffer), so the None branch is unreachable — kept fail-closed so a
-  // validator regression can never ship a bad spec.
+  // Fail-closed guard: unreachable for code-built specs unless a validator regression rejects them.
   if (!validated.ok) {
     return InsightReportSchema.parse({
       chartType: "none" as const,
@@ -203,7 +169,6 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
     let narrativeDowngraded = false;
 
     if (model === null || state.status === "no_data") {
-      // Deterministic path: code-built spec, no insights, explicit caveat.
       const caveats =
         model === null && state.status === "ok"
           ? [...baseCaveats, "Insight synthesis skipped: no model key configured."]
@@ -312,8 +277,6 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           }
 
           let finalInsights = checked.verified;
-          // Stripped claims are always surfaced: the user sees what was
-          // removed and why (the trace carries the per-claim reason).
           if (stripped.length > 0) {
             caveats.push(
               `${stripped.length} nhận định đã bị loại vì không khớp dữ liệu.`,
@@ -346,8 +309,6 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
         } catch (error) {
           llmCalls = budget.llmCalls - startCalls;
           if (isRateLimitFailure(error)) {
-            // Model rate-limited or deadline-stopped: record exact attempts,
-            // keep 0 tokens when no usage was returned, fall back cleanly.
             rateLimitedFallback = true;
             repairs = 0;
             promptTokens = 0;
@@ -357,8 +318,7 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
               "Insight synthesis skipped: model rate-limited.",
             ]);
           } else {
-            // Model or repair failure: deterministic fallback, traced below.
-            // The failed attempts still spent budget — account for all of them.
+            // Failed attempts still spent budget; account for them before falling back.
             repairs = RENDER_REPAIR_LIMIT;
             if (llmCalls === 0) llmCalls = 1 + RENDER_REPAIR_LIMIT;
             promptTokens = estimateTokens(promptText, "fallback");

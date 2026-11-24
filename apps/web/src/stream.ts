@@ -1,6 +1,5 @@
 import { SseProgressEventSchema, type SseProgressEvent } from "@shared/contracts";
 
-/** Decode SSE frames incrementally. A frame is dispatched only after a blank line. */
 export class SseParser {
   private buffer = "";
   private eventName = "message";
@@ -60,11 +59,62 @@ export class SseParser {
   }
 }
 
+export class StreamHttpError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly retryable?: boolean;
+
+  constructor(
+    status: number,
+    message: string,
+    code?: string,
+    retryable?: boolean,
+  ) {
+    super(message);
+    this.name = "StreamHttpError";
+    this.status = status;
+    this.code = code;
+    this.retryable = retryable;
+  }
+}
+
+async function parseHttpError(response: Response): Promise<StreamHttpError> {
+  let code: string | undefined;
+  let serverMessage: string | undefined;
+  let retryable: boolean | undefined;
+  try {
+    const raw = await response.text();
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const rec = parsed as Record<string, unknown>;
+        if (typeof rec.code === "string") code = rec.code;
+        if (typeof rec.message === "string" && rec.message.trim().length > 0) {
+          serverMessage = rec.message.trim();
+        }
+        if (typeof rec.retryable === "boolean") retryable = rec.retryable;
+      }
+    }
+  } catch {
+  }
+
+  if (response.status === 409) {
+    const base =
+      "Checkpoint đã cũ hoặc phiên phân tích đang có yêu cầu khác đang xử lý (HTTP 409 Conflict).";
+    const message = serverMessage ? `${base} ${serverMessage}` : base;
+    return new StreamHttpError(409, message, code, retryable);
+  }
+
+  const fallback = `Không thể xử lý yêu cầu (HTTP ${response.status}).`;
+  const message = serverMessage ? `${fallback} ${serverMessage}` : fallback;
+  return new StreamHttpError(response.status, message, code, retryable);
+}
+
 export async function readEventStream(
   response: Response,
   onEvent: (event: SseProgressEvent) => void,
 ): Promise<void> {
-  if (!response.ok) throw new Error(`Không thể xử lý yêu cầu (HTTP ${response.status}).`);
+  if (!response.ok) throw await parseHttpError(response);
   if (!response.body || !response.headers.get("content-type")?.toLowerCase().includes("text/event-stream")) {
     throw new Error("Máy chủ không trả về luồng sự kiện hợp lệ.");
   }
@@ -83,7 +133,6 @@ export async function readEventStream(
     try {
       await reader.cancel();
     } catch {
-      // Keep the original parsing or callback error.
     }
     throw error;
   } finally {
@@ -93,7 +142,7 @@ export async function readEventStream(
 
 export async function postStream(
   path: string,
-  body: Record<string, string>,
+  body: Record<string, unknown>,
   signal: AbortSignal,
   onEvent: (event: SseProgressEvent) => void,
 ): Promise<void> {

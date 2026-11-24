@@ -1,20 +1,10 @@
 import { z } from "zod";
 
-// RenderChart OpenUI-spec contract (CONT-03, UC-03 verification surface).
-// chartSpec mirrors the upstream @openuidev/react-ui genui-lib component
-// props 1:1 (LineChart, BarChart, PieChart, ScatterChart, Table) so a
-// validated spec serializes deterministically to OpenUI Lang
-// (e.g. `chart = BarChart(labels, series)`) for the web <Renderer/>.
-// Contracts assert the shape only — no @openuidev runtime dependency here,
-// and no code execution happens through this contract.
-
-// Chart-type selector shared with InsightReportSchema (answers.ts). Keep the
-// six values frozen: eval fixtures label chart types with these names.
+// Keep these six values frozen: eval fixtures label chart types with these names.
 export const ChartTypeSchema = z.enum(["line", "bar", "pie", "scatter", "table", "none"]);
 
 export type ChartType = z.infer<typeof ChartTypeSchema>;
 
-// Component names in the upstream genui-lib these specs serialize to.
 export const OpenuiChartNameSchema = z.enum([
   "LineChart",
   "BarChart",
@@ -26,7 +16,6 @@ export const OpenuiChartNameSchema = z.enum([
 
 export type OpenuiChartName = z.infer<typeof OpenuiChartNameSchema>;
 
-// One named data series for line/bar charts: { category, values }.
 export const OpenuiSeriesSchema = z.object({
   category: z.string().min(1).max(128),
   values: z.array(z.number()).min(1).max(200),
@@ -122,9 +111,7 @@ export const OpenuiScatterChartSpecSchema = z.object({
 
 export type OpenuiScatterChartSpec = z.infer<typeof OpenuiScatterChartSpecSchema>;
 
-// Column-oriented table (upstream Col: label + plucked data array). Data is
-// restricted to string/number cells — no nested components or actions — so
-// the numeric validator can check every cell against RunQueryOutput.
+// Restricted to string/number cells so the numeric validator can verify every cell against RunQueryOutput.
 export const OpenuiTableColSchema = z.object({
   label: z.string().min(1).max(128),
   data: z.array(z.union([z.string().min(1).max(1000), z.number()])).max(200),
@@ -151,7 +138,6 @@ export const OpenuiTableChartSpecSchema = z.object({
 
 export type OpenuiTableChartSpec = z.infer<typeof OpenuiTableChartSpecSchema>;
 
-// Sentinel for chartType "none" (single scalar or no_data): no chart to draw.
 export const OpenuiNoneChartSpecSchema = z.object({
   chart: z.literal("None"),
 });
@@ -169,9 +155,6 @@ export const OpenuiChartSpecSchema = z.discriminatedUnion("chart", [
 
 export type OpenuiChartSpec = z.infer<typeof OpenuiChartSpecSchema>;
 
-// Canonical selector -> component mapping, shared with answers.ts and the
-// UC-03 validator: line -> LineChart, bar -> BarChart, pie -> PieChart,
-// scatter -> ScatterChart, table -> Table, none -> None.
 export const CHART_TYPE_TO_COMPONENT = {
   line: "LineChart",
   bar: "BarChart",

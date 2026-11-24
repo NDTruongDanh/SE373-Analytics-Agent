@@ -13,7 +13,7 @@ Source and `eslint.config.mjs` stay authoritative; this file names the shape so 
 ## Naming — files and identifiers
 
 - Files lowercase single-word (`guard.ts`, `server.ts`); kebab-case only on collision (`sensitive-columns.ts`).
-- Name by capability, not UC number — files, variables, functions, types (`textToSql.ts`, `buildTextToSqlGraph()`, `TextToSqlResult`, not `uc01.ts`, `handleUc01()`, `Uc01Result`); keep the UC mapping in the registry and comments.
+- Name by capability, not UC number — files, variables, functions, types (`textToSql.ts`, `buildTextToSqlGraph()`, `TextToSqlResult`, not `uc01.ts`, `handleUc01()`, `Uc01Result`); keep the UC mapping in the registry.
 - Types/schemas/classes `PascalCase`, functions `camelCase`, shared sets/versions `SCREAMING_SNAKE` (`CONTRACTS_VERSION`, `FORBIDDEN_FUNCTIONS`).
 
 ## Zod — contracts owns shapes
@@ -40,3 +40,9 @@ Source and `eslint.config.mjs` stay authoritative; this file names the shape so 
 
 - Flat `src/*.ts` per concern (`index, server, pipeline, executor, tools, errors, config, catalog, audit, auth`); `queryExecutor/` subdir only for the SQL path.
 - Tests in `packages/<pkg>/test/*.test.ts`; validate with `pnpm typecheck && pnpm lint`.
+
+## Comments — why only, never what
+
+- Allowed: concise comments explaining non-obvious **why**, security/fail-closed invariants, library/runtime workarounds, and tool directives (`eslint-disable*`, `@ts-expect-error`, `@ts-ignore`, `@vitest-environment`, `v8/c8/istanbul ignore`, `prettier-ignore`, `@license`, `@preserve`, `/// <reference>`).
+- Banned: "what" narration, obvious JSDoc restating names/types, section divider banners (`// ----`, `// ====`), empty comments, stale plan/wave/decision/ticket IDs (`01-14`, `wave 6`, `D-01`, `API-01`, `#88`), and commented-out code.
+- Enforced mechanically on `packages/*/src/**`, `apps/*/src/**`, `scripts/**`, and `eslint.config.mjs` via `local/no-unnecessary-comments` in `eslint.config.mjs`.

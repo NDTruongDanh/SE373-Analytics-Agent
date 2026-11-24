@@ -1,20 +1,3 @@
-// PII-safe LangSmith export (Phase 3, plan 03-02, D-02..D-05).
-//
-// The JSONL sink stays authoritative (D-01); this module is the ONLY path
-// that may construct a LangSmith `Client` or `LangChainTracer` in product
-// code. Every run payload crosses `piiSafeProcessor` before upload: query
-// result row arrays are dropped (only rowCount, column names, truncated,
-// and maskedColumns survive) and the remainder is scanned with the shared
-// `redactPII` / `redactRow` from `@shared/access-policy`. No new redactor
-// lives here. Any processor failure closes fail-safe to `{}` — nothing
-// raw is ever sent.
-//
-// Enablement (D-04): the tracer exists only when ALL of
-// LANGSMITH_TRACING=true, LANGSMITH_API_KEY, and LANGSMITH_PROJECT are set.
-// LangChain/LangGraph auto-tracing from env alone uses a bare singleton
-// client with no anonymizer, so every graph.invoke MUST carry our tracer
-// explicitly in RunnableConfig `callbacks` (the handler name
-// "langchain_tracer" suppresses the bare auto-tracer copy-safely).
 import { Client } from "langsmith";
 import {
   LangChainTracer,
@@ -23,14 +6,9 @@ import {
 import { redactPII, redactRow } from "@shared/access-policy";
 import { estimateCostBreakdownUsd } from "./pricing.js";
 
-/** Owner-chosen LangSmith project (D-05); separate from the OpenWiki project. */
 export const LANGSMITH_PROJECT_DEFAULT = "se373-analytics-agent";
 
-/**
- * Every tracing flag LangChain/LangGraph reads for auto-tracing. Our gate
- * only honors LANGSMITH_TRACING, but eval/tests must scrub ALL four so no
- * un-anonymized auto-tracer can fire in-process.
- */
+/** Scrub all four LangChain/LangGraph env flags so un-anonymized auto-tracing cannot fire in-process. */
 export const LANGSMITH_ENV_FLAGS = [
   "LANGSMITH_TRACING",
   "LANGSMITH_TRACING_V2",
@@ -38,17 +16,12 @@ export const LANGSMITH_ENV_FLAGS = [
   "LANGCHAIN_TRACING_V2",
 ] as const;
 
-/** Delete every tracing flag in-process (eval + test guardrail, D-04). */
 export function scrubLangSmithEnv(env: NodeJS.ProcessEnv = process.env): void {
   for (const flag of LANGSMITH_ENV_FLAGS) {
     delete env[flag];
   }
 }
 
-/**
- * True only when ALL of LANGSMITH_TRACING=true, LANGSMITH_API_KEY, and
- * LANGSMITH_PROJECT are set (D-04). Default OFF everywhere else.
- */
 export function isLangSmithEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return (
     env["LANGSMITH_TRACING"] === "true" &&
@@ -57,12 +30,6 @@ export function isLangSmithEnabled(env: NodeJS.ProcessEnv = process.env): boolea
   );
 }
 
-/**
- * Object keys whose array values are query result rows. Dropped to `[]`
- * before upload; sibling `rowCount` / `columns` / `truncated` /
- * `maskedColumns` survive untouched (same rule as the JSONL sink: counts
- * and column names, never cell values).
- */
 const ROW_ARRAY_KEYS = new Set([
   "rows",
   "resultPreview",
@@ -71,12 +38,7 @@ const ROW_ARRAY_KEYS = new Set([
   "sampleRows",
 ]);
 
-/**
- * Deep-clone `value`, dropping row arrays under ROW_ARRAY_KEYS and masking
- * direct string fields of every plain object via the shared `redactRow`.
- * Circular references collapse to "[Circular]" so the later stringify scan
- * cannot throw on them. Never mutates the input.
- */
+/** Deep-clone without mutating input; circular refs collapse to "[Circular]" so JSON.stringify cannot throw. */
 function stripRowArrays(value: unknown, path: Set<object>): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripRowArrays(item, path));
@@ -92,9 +54,7 @@ function stripRowArrays(value: unknown, path: Set<object>): unknown {
           : stripRowArrays(entry, path);
     }
     path.delete(value);
-    // Shared redactor over this level's string cells (defense in depth;
-    // the JSON stringify-scan below is the backstop for bare strings in
-    // arrays and any nesting this walk does not cover).
+    // Redact string fields per object; piiSafeProcessor's JSON scan covers nested array strings.
     redactRow(clone);
     return clone;
   }
@@ -103,13 +63,7 @@ function stripRowArrays(value: unknown, path: Set<object>): unknown {
 
 export type AnonymizerValues = Record<string, unknown>;
 
-/**
- * The single `anonymizer` covering LangSmith inputs, outputs, and metadata
- * on both create and update paths: drop row arrays, keep counts/columns,
- * then redactPII-scan the serialized remainder. Fail-closed: ANY failure
- * (stringify, redact, parse) yields `{}` so the client sends no payload
- * rather than a raw one.
- */
+/** Fail-closed LangSmith anonymizer: drops row arrays, runs redactPII, and returns {} on any failure. */
 export function piiSafeProcessor(values: AnonymizerValues): AnonymizerValues {
   try {
     const stripped = stripRowArrays(values, new Set());
@@ -127,25 +81,15 @@ export function piiSafeProcessor(values: AnonymizerValues): AnonymizerValues {
 }
 
 export interface CreateTracerOptions {
-  /** Stub transport for tests (never a live key or network in suites). */
   fetchImplementation?: typeof fetch;
-  /** API key override; defaults to LANGSMITH_API_KEY from env. */
   apiKey?: string;
-  /** API URL override; defaults to the client default. */
   apiUrl?: string;
-  /** Project override; defaults to LANGSMITH_PROJECT from env. */
   projectName?: string;
 }
 
 const liveClients = new Set<Client>();
 
-/**
- * Process-wide client cache (one entry per apiKey/apiUrl/transport triple):
- * every tracer for the same LangSmith endpoint shares a single Client, so
- * per-run tracer construction cannot grow `liveClients` without bound. The
- * fetchImplementation is part of the key by reference so a test injecting a
- * different stub transport still gets its own client.
- */
+/** Keyed by endpoint and fetchImplementation so shared clients avoid unbounded growth while isolating test stubs. */
 const cachedClients: {
   apiKey: string;
   apiUrl: string | undefined;
@@ -179,15 +123,7 @@ function getSharedClient(
   return client;
 }
 
-/**
- * Scrub a LangChain `serialized` model blob the SDK uploads WITHOUT
- * passing it through the client anonymizer: drop `kwargs.configuration`
- * structurally (ChatOpenAI embeds the live API key there in plaintext and
- * its `lc_secrets` aliasing does not cover it), then run the shared
- * piiSafeProcessor over the rest (covers fake-model canned responses and
- * any PII strings). Fail-closed to `{}`. No new redactor: structural drop
- * plus the shared redactPII/redactRow only.
- */
+/** SDK uploads serialized without the client anonymizer; strip kwargs.configuration (plaintext API key) and redact fail-closed to {}. */
 export function scrubSerialized(serialized: unknown): AnonymizerValues {
   try {
     if (typeof serialized !== "object" || serialized === null || Array.isArray(serialized)) {
@@ -229,7 +165,6 @@ function asObject(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-/** Model id from the first generation's response_metadata, then ls_model_name. */
 function llmRunModel(run: LlmRunLike): string | undefined {
   const batches = run.outputs?.generations;
   if (Array.isArray(batches)) {
@@ -248,10 +183,6 @@ function llmRunModel(run: LlmRunLike): string | undefined {
   return typeof lsModel === "string" && lsModel.length > 0 ? lsModel : undefined;
 }
 
-/**
- * Add input_cost / output_cost / total_cost to the LLM run's
- * usage_metadata from our pricing table. Exported for tests.
- */
 export function attachUsageCost(run: LlmRunLike): void {
   const usage = asObject(run.extra?.metadata?.["usage_metadata"]);
   if (usage === undefined) return;
@@ -270,16 +201,8 @@ type TracerRun = Parameters<LangChainTracer["onRunCreate"]>[0] & {
 };
 
 /**
- * LangChainTracer whose run TREES are scrubbed BEFORE the RunTree posts or
- * patches: the SDK anonymizer never sees `serialized` or `events`, so
- * without this override the model blob (live API key, fake responses,
- * canary text) uploads raw. Note the `run` argument to onRunCreate is a
- * converted plain copy — the post reads the tree in `runTreeMap`, so the
- * scrub targets `getRun(id)`. Keeps the inherited handler name
- * "langchain_tracer" so bare env auto-tracing stays suppressed. The
- * `copyWithTracingConfig` override below keeps this scrub alive across the
- * per-invoke tracer copy chat models always build (they pass
- * `tracerInheritableMetadata`).
+ * Scrubs runTreeMap entries (SDK anonymizer skips serialized/events, and onRunCreate receives a copy);
+ * keeps handler name "langchain_tracer" so env auto-tracing stays suppressed.
  */
 export class PiiSafeLangChainTracer extends LangChainTracer {
   override async onRunCreate(run: TracerRun): Promise<void> {
@@ -292,13 +215,7 @@ export class PiiSafeLangChainTracer extends LangChainTracer {
     await super.onRunUpdate(run as Parameters<LangChainTracer["onRunUpdate"]>[0]);
   }
 
-  /**
-   * LangSmith has no price for our models (e.g. openai/gpt-oss-120b), so
-   * total_cost stayed empty (#97). After the base class copies token usage
-   * into `extra.metadata.usage_metadata`, add input/output/total cost from
-   * policies/model_pricing.yaml (the same table the JSONL llm_call spans
-   * use). Unknown models get no cost fields rather than a fake zero.
-   */
+  /** Populate usage_metadata cost fields from local pricing because LangSmith lacks pricing for our custom models. */
   override onLLMEnd(run: Parameters<LangChainTracer["onLLMEnd"]>[0]): void {
     super.onLLMEnd(run);
     try {
@@ -325,14 +242,7 @@ export class PiiSafeLangChainTracer extends LangChainTracer {
     }
   }
 
-  /**
-   * Preserve the scrub across LangChain's per-invoke tracer copy: chat
-   * models always pass `tracerInheritableMetadata`, which rebuilds the
-   * handler via this method — the base version hardcodes a base
-   * `LangChainTracer` and would silently drop the override above for
-   * every model.invoke. Merge semantics mirror the base exactly; only
-   * the constructed class differs.
-   */
+  /** Base copyWithTracingConfig hardcodes LangChainTracer and would silently drop our scrub overrides on model.invoke. */
   override copyWithTracingConfig(opts: {
     metadata?: Record<string, unknown>;
     tags?: string[];
@@ -367,13 +277,6 @@ export class PiiSafeLangChainTracer extends LangChainTracer {
   }
 }
 
-/**
- * Build our anonymizing tracer, or `undefined` when the three-var gate is
- * closed (callers pass `callbacks: tracer ? [tracer] : undefined`). The
- * client sets `omitTracedRuntimeInfo` as defense in depth. The underlying
- * Client is shared per process (one per endpoint/transport), so every
- * created client is tracked and `flushLangSmith` can drain the tail.
- */
 export function createLangSmithTracer(
   env: NodeJS.ProcessEnv = process.env,
   opts: CreateTracerOptions = {},
@@ -392,12 +295,7 @@ export function createLangSmithTracer(
   });
 }
 
-/**
- * Await every tracked client's pending batches. Call after each served run
- * and on server shutdown — auto-batching otherwise loses the tail on exit.
- * The drain never rejects (a failed tail must not fail the run) and accepts
- * a timeout bound: late batches are abandoned, never awaited unbounded.
- */
+/** Drain pending auto-batched traces before exit; never rejects so tail errors cannot fail served runs. */
 export async function flushLangSmith(
   opts: { timeoutMs?: number } = {},
 ): Promise<void> {
@@ -407,7 +305,7 @@ export async function flushLangSmith(
         [...liveClients].map((client) => client.awaitPendingTraceBatches()),
       );
     } catch {
-      // Swallowed: flush is best-effort on every path that calls it.
+      /* flush is best-effort */
     }
   })();
   if (opts.timeoutMs === undefined) {
@@ -427,18 +325,15 @@ export async function flushLangSmith(
   }
 }
 
-/** Test seam: drop tracked clients so suites stay isolated. */
 export function resetLangSmithForTests(): void {
   liveClients.clear();
   cachedClients.length = 0;
 }
 
-/** Test seam: number of tracked clients (proves the per-process sharing). */
 export function langSmithClientCountForTests(): number {
   return liveClients.size;
 }
 
-/** Run identity attached to every traced invoke for UI filtering (D-05). */
 export interface LangSmithRunMeta {
   runId: string;
   threadId: string;
@@ -450,18 +345,13 @@ export interface LangSmithRunMeta {
 }
 
 export interface LangSmithRunConfig {
-  /** UUID equal to the JSONL runId: one logical run, one root run. */
   runId: string;
   callbacks: LangChainTracer[];
   tags: string[];
   metadata: Record<string, unknown>;
 }
 
-/**
- * RunnableConfig fragment for ask AND resume: the same shape on both, so
- * one logical run stays correlatable by threadId metadata. Pass
- * `callbacks` explicitly so the bare env auto-tracer is suppressed.
- */
+/** Explicit callbacks suppress the bare env auto-tracer; threadId metadata correlates ask and resume. */
 export function buildLangSmithRunConfig(
   tracer: LangChainTracer,
   meta: LangSmithRunMeta,

@@ -1,9 +1,3 @@
-// pnpm trace:show <runId> [--json] — G4 trace viewer (03-04).
-// Reads only already-redacted files (traces/<runId>.jsonl plus
-// logs/mcp_audit.jsonl), performs no DB or network I/O, and passes values
-// through without transformation (T-03-11). The tree model comes from the
-// shared @shared/agent/telemetry builder so future web code reuses it.
-
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { buildTraceTree } from "@shared/agent/telemetry";
@@ -53,7 +47,7 @@ function parseArgs(argv: string[]): {
   if (!runId) {
     fail("usage: pnpm trace:show <runId> [--json] [--traces-dir <dir>] [--audit <path>]");
   }
-  // Same traversal guard as the API resume path: the run id names a file.
+  // Reject path traversal segments because runId maps directly to a trace filename.
   if (runId.includes("/") || runId.includes("\\") || runId.includes("..")) {
     fail(`invalid runId '${runId}'`);
   }

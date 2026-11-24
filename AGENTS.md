@@ -65,6 +65,7 @@ Wiki scripts (`pnpm wiki:init | wiki:update | wiki:dry-run`) need
 - Keep skills declarative (Markdown/YAML contracts only): no runnable scripts,
   no DB connections, no credentials.
 - Keep traces redacted: no raw PII values in `traces/*.jsonl` or `logs/mcp_audit.jsonl`.
+- Ban unnecessary comments in source code (`packages/*/src/**`, `apps/*/src/**`, `scripts/**`, `eslint.config.mjs`): write comments only for non-obvious "why", security invariants, library/runtime workarounds, or tool directives (`eslint-disable`, `@ts-expect-error`, etc.). Never add "what" narration, obvious JSDoc, divider banners, empty comments, stale plan/wave/decision/ticket IDs, or commented-out code.
 
 ## Boundaries — always / ask first / never (ESLint + CI enforce)
 
@@ -75,7 +76,8 @@ Wiki scripts (`pnpm wiki:init | wiki:update | wiki:dry-run`) need
   `CONTRACTS_VERSION` major bumps.
 - 🚫 Never: commit secrets/`.env`, hand-edit `docs/mcp_interface.md` (run
   `pnpm docs:interface`), import `pg`/`pg-cursor` in `agent`/`web`, import
-  `mcp-server/src/**` in `agent`, push directly to `main`.
+  `mcp-server/src/**` in `agent`, add unnecessary comments (enforced by
+  `local/no-unnecessary-comments` in `eslint.config.mjs`), push directly to `main`.
 
 ## Contracts evolution
 

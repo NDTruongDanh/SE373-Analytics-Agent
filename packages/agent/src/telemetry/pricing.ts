@@ -1,9 +1,3 @@
-// Model pricing loader (Phase 3 G1): strict zod schema plus the `yaml`
-// package plus a thin filesystem wrapper, mirroring loadSensitiveColumns
-// in @shared/access-policy. Invalid config throws fail-fast so a corrupt
-// table can never silently zero every cost; unknown models resolve to
-// cost 0 with pricingKnown false and never throw (pricing is display
-// only — it never feeds the budget-trip thresholds).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
@@ -22,16 +16,11 @@ export const ModelPricingSchema = z.strictObject({
 
 export type ModelPricing = z.infer<typeof ModelPricingSchema>;
 
-// Repo-root policies file, resolved from this module's location so the
-// default works regardless of the caller's cwd (src and dist layouts both
-// sit four levels below the repo root).
+// Resolved from module URL (both src and dist sit four levels below repo root) so cwd does not matter.
 export const DEFAULT_MODEL_PRICING_PATH = fileURLToPath(
   new URL("../../../../policies/model_pricing.yaml", import.meta.url),
 );
 
-// Pure function: YAML text in, validated pricing table out. Throws on
-// malformed YAML or any schema violation (wrong version, negative rates,
-// extra keys via strictObject).
 export function loadModelPricing(yamlText: string): ModelPricing {
   let parsed: unknown;
   try {
@@ -44,9 +33,6 @@ export function loadModelPricing(yamlText: string): ModelPricing {
   return ModelPricingSchema.parse(parsed);
 }
 
-// IO wrapper: reads the file, then delegates to the pure loader. The env
-// override exists for tests and relocated deployments; the explicit path
-// argument beats both.
 export function loadModelPricingFile(
   path: string = DEFAULT_MODEL_PRICING_PATH,
   override?: string,
@@ -62,7 +48,6 @@ export interface CostEstimate {
 
 let cached: ModelPricing | null = null;
 
-/** Test seam: drop the cached table so file/env changes take effect. */
 export function resetPricingCacheForTests(): void {
   cached = null;
 }
@@ -72,17 +57,12 @@ function getPricingTable(): ModelPricing {
   try {
     cached = loadModelPricingFile();
   } catch {
-    // Fail-closed display default: an unreadable table prices nothing
-    // instead of throwing inside span emission or budget accounting.
+    // Fail-closed display default: unreadable table prices nothing instead of throwing.
     cached = { version: 1, models: {} };
   }
   return cached;
 }
 
-/**
- * Price one LLM call against the cached table. Unknown or undefined
- * models cost 0 with pricingKnown false; never throws.
- */
 export function estimateCostUsd(
   model: string | undefined,
   inputTokens: number,
@@ -102,10 +82,6 @@ export interface CostBreakdown {
   pricingKnown: boolean;
 }
 
-/**
- * Same pricing as estimateCostUsd, split into input and output cost (the
- * LangSmith usage_metadata shape, #97). Unknown models price 0; never throws.
- */
 export function estimateCostBreakdownUsd(
   model: string | undefined,
   inputTokens: number,

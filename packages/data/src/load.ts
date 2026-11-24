@@ -1,30 +1,3 @@
-// Full deterministic loader (Phase 2, plan 02-03, D-01/D-02/D-04/D-10/D-11):
-// downloads all eight Olist CSVs into data/.cache/, stream-parses them with
-// csv-parse, Vietnamizes every row through transform.ts maps row by row, and
-// COPY-loads all twelve business tables through the copy.ts owner helpers
-// inside owner transactions. After the base load it expands at order level
-// (whole-order clones roughly nine times plus a top-up until order_items
-// reaches 1,000,000 rows), then injects the seeds.json scenarios last per
-// Pitfall P6 as data mutations (UC-05 deletes/updates, UC-10 anomaly and
-// returned-status synthesis, injection product rows), and finally computes
-// per-table row counts plus canonical ORDER BY pk hashes, compares the
-// overlapping tables against any existing data/seed_manifest.json (refusing
-// to finish on mismatch), and writes the merged manifest.
-//
-// Data-only by D-10: zero DDL here (schema lives in 03_public.sql). No
-// schema-catalog export by D-11: data:catalog is deferred to Phase 4.
-//
-// Determinism contract: the single seeded faker instance created per dataset
-// build is the ONLY RNG (never Math.random/Date.now). Same SEED_DATA plus
-// the same pinned publisher bytes always yields byte-identical manifests.
-//
-// Scale: `pnpm data:load` runs the full pipeline (nine expansion passes,
-// 1M order_items, ~6 min). `pnpm data:load --scale=small` runs the same
-// pipeline with one pass and a 60k target (<2 min, CI per D-10); the FK
-// graph, seed scenarios, and reload gate are identical, only volumes shrink.
-// The scale is recorded in dataset_version, and each scale pins its own
-// manifest (data/seed_manifest.json for full, data/seed_manifest.small.json
-// for small), so either scale reloads against its own committed checksums.
 import { createReadStream } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -71,9 +44,7 @@ export {
 
 const SEED = Number(process.env["SEED_DATA"] ?? 42);
 
-// Legacy module-level instance (Phase 2, plan 02-01): kept so existing
-// importers keep working. The pipeline itself mints one fresh seeded faker
-// per dataset build, so repeated builds in one process stay deterministic.
+// Legacy module-level instance kept for external importers; buildDataset creates a fresh RNG per run.
 export const faker = new Faker({ locale: [vi, en, base] });
 faker.seed(SEED);
 
@@ -108,11 +79,7 @@ const CHANNEL_ROWS: (readonly [string, string])[] = [
 ];
 const CHANNEL_IDS = CHANNEL_ROWS.map(([id]) => id);
 
-// Weighted spread cycle for the seven Olist-unmapped provinces plus the two
-// thin scenario provinces (Đà Nẵng, Hà Nội). Every 4th customer/seller is
-// reassigned to the next entry, so all 34 provinces carry real base volume
-// and the seeded TP.HCM / Đà Nẵng / Hà Nội scenarios have measurable
-// baselines. Deterministic by construction (fixed cycle, file order).
+// Spreads every 4th customer/seller across unmapped and thin scenario provinces so all 34 provinces have baseline volume.
 const SPREAD_CYCLE: readonly string[] = [
   "TP.HCM", "TP.HCM", "TP.HCM", "TP.HCM", "TP.HCM", "TP.HCM",
   "Đà Nẵng", "Đà Nẵng", "Đà Nẵng",
@@ -162,9 +129,6 @@ function parseTablesFilter(argv: readonly string[]): string[] {
   return LOAD_ORDER.filter((name) => wanted.includes(name));
 }
 
-// Stream-parse one cached CSV with csv-parse (columns from the header row,
-// BOM honored per the download registry). Rows come out in file order, which
-// keeps every downstream draw deterministic.
 function readCachedCsv(
   cacheDir: string,
   name: string,
@@ -211,8 +175,6 @@ const intOrNull = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 };
 
-// ---- In-memory working set (post-expansion, pre-COPY) ----
-
 interface BuiltOrder {
   id: string;
   customerId: string;
@@ -221,9 +183,9 @@ interface BuiltOrder {
   purchaseDate: string; // "YYYY-MM-DD HH:MM:SS" UTC
 }
 
-// order_items COPY columns: order_id, product_id, seller_id, price_vnd, freight_vnd
+// [order_id, product_id, seller_id, price_vnd, freight_vnd]
 type BuiltItem = [string, string, string, number, number];
-// payments COPY columns: order_id, payment_type, installments, value_vnd
+// [order_id, payment_type, installments, value_vnd]
 type BuiltPayment = [string, string, number, number];
 interface BuiltReview {
   id: string;
@@ -254,11 +216,7 @@ async function buildDataset(
 ): Promise<{ rows: Map<string, (readonly unknown[])[]>; stats: BuildStats }> {
   const wanted = new Set(tableNames);
   const full = LOAD_ORDER.every((name) => wanted.has(name));
-  // -- Partial loads (non-full table sets) are iteration-only: they build
-  // just the requested tables and skip the manifest gate below, leaving the
-  // stored manifest untouched. Child-row FK filtering is tolerant when the
-  // parent table is not part of this build (the database FKs then enforce
-  // truthfully at COPY time). Run a full load before verify.
+  // Partial builds skip manifest checks and tolerate missing parent tables (DB FKs enforce on COPY).
   const ordersBuilt = wanted.has("orders");
   const rng = createSeededFaker(SEED);
   const stats: BuildStats = {
@@ -273,7 +231,6 @@ async function buildDataset(
   };
   const rows = new Map<string, (readonly unknown[])[]>();
 
-  // -- Static synthetic tables (no CSV, no RNG) --
   if (wanted.has("regions")) {
     rows.set("regions", REGION_ROWS.map(([a, b]) => [a, b] as const));
   }
@@ -281,8 +238,6 @@ async function buildDataset(
     rows.set("channels", CHANNEL_ROWS.map(([a, b]) => [a, b] as const));
   }
   if (wanted.has("promotions")) {
-    // 30 deterministic promos cycling 2025-01..2026-09: name, month span,
-    // discount from a fixed ladder. Standalone (no FKs) per research.
     const discounts = [5, 10, 15, 20, 25, 30];
     const out: (readonly unknown[])[] = [];
     for (let i = 0; i < 30; i++) {
@@ -304,8 +259,6 @@ async function buildDataset(
     rows.set("promotions", out);
   }
   if (wanted.has("employees")) {
-    // ~200 synthetic employees; province cycles the 34 so every region group
-    // is covered. Names + salaries flow from the single seeded faker.
     const out: (readonly unknown[])[] = [];
     for (let i = 0; i < 200; i++) {
       const province = REGION_ROWS[i % REGION_ROWS.length];
@@ -320,9 +273,6 @@ async function buildDataset(
     rows.set("employees", out);
   }
 
-  // -- Categories from the translation CSV (71 EN→VI + fallbacks) --
-  // category_id is the EN key for mapped rows and a stable fallback: id
-  // otherwise, so products can resolve PT names without touching the DB.
   let ptToCategoryId = new Map<string, string>();
   const viByCategoryId = new Map<string, string>();
   if (wanted.has("categories") || wanted.has("products")) {
@@ -377,7 +327,6 @@ async function buildDataset(
   const categoryIdForPt = (pt: string): string =>
     ptToCategoryId.get(pt) ?? "fallback:other";
 
-  // -- Customers / sellers (synthetic PII via the seeded faker) --
   const customerById = new Map<string, { province: string; region: string }>();
   if (wanted.has("customers")) {
     await downloadAll(["olist_customers_dataset.csv"], { cacheDir });
@@ -387,9 +336,6 @@ async function buildDataset(
     let rowIndex = 0;
     for (const row of raw) {
       const id = str(row["customer_id"]);
-      // Every 4th customer spreads into the weighted cycle so the seven
-      // Olist-unmapped provinces (and thin scenario provinces) gain real
-      // base volume; the rest keep their mapped province.
       let province = stateToProvince(str(row["customer_state"]));
       if (rowIndex % 4 === 3) {
         const spreadProvince = SPREAD_CYCLE[spread % SPREAD_CYCLE.length];
@@ -433,7 +379,6 @@ async function buildDataset(
     rows.set("sellers", out);
   }
 
-  // -- Products (category resolved, synthetic catalog names/prices) --
   const productCategory = new Map<string, string>();
   if (wanted.has("products")) {
     await downloadAll(["olist_products_dataset.csv"], { cacheDir });
@@ -462,7 +407,6 @@ async function buildDataset(
     rows.set("products", out);
   }
 
-  // -- Orders (date-shifted, clipped pre-2025, folded statuses) --
   const orders: BuiltOrder[] = [];
   const validOrderIds = new Set<string>();
   const orderById = new Map<string, BuiltOrder>();
@@ -473,7 +417,7 @@ async function buildDataset(
       const id = str(row["order_id"]);
       const shifted = shiftOrderDate(str(row["order_purchase_timestamp"]));
       if (shifted === null) {
-        stats.clippedOrders += 1; // Pre-2025 after shift (Pitfall P5) — children filtered below.
+        stats.clippedOrders += 1; // Pre-2025 after shift; children filtered below.
         continue;
       }
       const customerId = str(row["customer_id"]);
@@ -494,7 +438,6 @@ async function buildDataset(
     }
   }
 
-  // -- order_items / payments / reviews (children of surviving orders) --
   const items: BuiltItem[] = [];
   const payments: BuiltPayment[] = [];
   const reviews: BuiltReview[] = [];
@@ -509,8 +452,7 @@ async function buildDataset(
       const orderId = str(row["order_id"]);
       const productId = str(row["product_id"]);
       const sellerId = str(row["seller_id"]);
-      // Tolerant when the parent table is not part of a partial build: the
-      // database FKs enforce truthfully at COPY time instead.
+      // Partial builds skip parent checks so DB FKs enforce at COPY time.
       if (
         (ordersBuilt && !validOrderIds.has(orderId)) ||
         !productKnown(productId) ||
@@ -576,7 +518,6 @@ async function buildDataset(
     }
   }
 
-  // -- Expansion + injection run only on the full twelve-table build --
   if (full) {
     expandToMillion(orders, items, payments, reviews, orderById, rng, stats, scale);
     injectSeeds(
@@ -594,7 +535,6 @@ async function buildDataset(
     );
   }
 
-  // -- Convert the working set to COPY row arrays --
   if (wanted.has("orders")) {
     rows.set(
       "orders",
@@ -616,13 +556,8 @@ async function buildDataset(
   return { rows, stats };
 }
 
-// Clone whole orders (new surrogate ids, same customer/channel, child rows
-// cloned under the new order id) until order_items reaches 1,000,000 rows:
-// nine full passes over the base orders, then a top-up cycling base orders.
-// Same-weekday guarantee: clones keep the calendar DATE (delta 0 is the only
-// same-weekday offset within ±3 days); variance comes from jittered clock
-// time (±) and ±5% money jitter. All randomness flows through the seeded
-// faker — the sole RNG.
+// Clone whole orders to reach target item volume; keeping the same calendar date preserves
+// weekdays while clock and ±5% price jitter come solely from the seeded faker.
 function expandToMillion(
   orders: BuiltOrder[],
   items: BuiltItem[],
@@ -717,10 +652,7 @@ function expandToMillion(
   stats.topUpClones = topUp;
 }
 
-// Seed injection AFTER expansion per Pitfall P6, as data mutations on the
-// working set (deletes/updates/inserts, never DDL). Magnitudes are engineered
-// against post-expansion baselines so cloning cannot drown them; 02-04
-// asserts each seeds.json reference_sql still returns its designed signal.
+// Inject scenarios after expansion so cloning does not dilute their magnitudes.
 function injectSeeds(
   orders: BuiltOrder[],
   items: BuiltItem[],
@@ -745,10 +677,7 @@ function injectSeeds(
   const monthOf = (purchaseDate: string): string => purchaseDate.slice(0, 7);
   const dayOf = (purchaseDate: string): string => purchaseDate.slice(0, 10);
 
-  // Revenue-delete helper: delete a revenue-ordered prefix of the slice until
-  // at least `removeRevenue` is gone (sorted by order_id — effectively
-  // price-blind, deterministic given the build order). Returns the removed
-  // revenue and the removed share of the slice total.
+  // Delete deterministically by order_id prefix (price-blind) until removeRevenue is reached.
   const deleteRevenueAmount = (
     slice: BuiltItem[],
     removeRevenue: number,
@@ -767,7 +696,6 @@ function injectSeeds(
     return { removed, pct: total === 0 ? 0 : -removed / total };
   };
 
-  // Slice revenue partitioned by month (August baseline vs September effect).
   const sliceRevenueByMonth = (
     slice: BuiltItem[],
   ): { aug: number; sept: number } => {
@@ -794,13 +722,9 @@ function injectSeeds(
     return categoryViOf(item[1]) === categoryVi;
   };
 
-  // Injection order (all post-expansion, Pitfall P6): September synthesis
-  // and S3 slice seeding establish the September population; the AOV cut
-  // lands first so the proportional S1/S3/A2 cuts are computed on final
-  // prices; spikes then flips; cascade last.
+  // Run September synthesis first, AOV cut before proportional S1/S3/A2 cuts, and cascade last.
 
-  // Child-row indexes (built once, post-expansion) so spike cloning stays
-  // linear instead of scanning the million-row arrays per clone.
+  // Index child rows once so spike cloning stays O(1) instead of scanning million-row arrays.
   const itemsByOrder = new Map<string, BuiltItem[]>();
   for (const item of items) {
     const list = itemsByOrder.get(item[0]);
@@ -820,9 +744,7 @@ function injectSeeds(
     else reviewsByOrder.set(review.orderId, [review]);
   }
 
-  // Whole-order cloner for spike synthesis (new ids, retargeted date).
-  // Cloned child rows are registered in the maps too, so later clones may
-  // themselves source from synthesized rows. Returns the new order id.
+  // Register cloned child rows in the maps so subsequent clones can chain off synthesized orders.
   let spikeSeq = 0;
   const cloneForSpike = (
     source: BuiltOrder,
@@ -874,12 +796,8 @@ function injectSeeds(
     return newId;
   };
 
-  // September synthesis: the shifted publisher tail (Sept 2018) is thin and
-  // canceled, so September 2026 has no delivered base rows for the
-  // seeds.json scenarios to act on. Clone delivered August 2026 orders
-  // round-robin across September 01..30 (whole orders, jittered clock) to
-  // establish the September population first; scenario magnitudes below are
-  // then engineered against this baseline. Deterministic (id-sorted pool).
+  // Shifted publisher tail (Sept 2026) is thin and canceled; clone delivered Aug 2026
+  // orders round-robin across Sept 01..30 to form a baseline for scenario mutations.
   const septemberPool = orders
     .filter((order) => {
       if (order.status !== "delivered") return false;
@@ -898,12 +816,8 @@ function injectSeeds(
   });
   note(`september-synthesis: cloned ${String(septemberPool.length)} August delivered orders across September 01..30`);
 
-  // S3 slice seeding: the Lazada × Nam × Điện-gia-dụng September intersection
-  // is naturally empty (three-way sparsity), so no proportional cut is
-  // possible. Clone 60 delivered September Nam orders (Lazada channel, one
-  // item retargeted to a Điện-gia-dụng product) to establish the slice; the
-  // S3 cut below then engineers the -12% against it. Clones keep their
-  // source day and never enter S1's slice (channel + category both differ).
+  // Lazada × Nam × Điện gia dụng is naturally empty in Sept; clone 150 Nam orders into
+  // this slice (different channel/category from S1) so the -12% cut has a non-zero baseline.
   const dienGDCategoryId = [...viByCategoryId.entries()].find(
     ([, viName]) => viName === "Điện gia dụng",
   )?.[0];
@@ -931,11 +845,7 @@ function injectSeeds(
     if (firstItem) firstItem[1] = product;
   });
   note(`s3-seeding: cloned ${String(s3SeedPool.length)} September Nam orders into the Lazada × Điện-gia-dụng slice`);
-  // August mirror of the S3 slice: the S3 reference SQL divides by the
-  // August slice revenue, which is naturally zero. Clone each -s3s September
-  // seed back into August (same items and prices, fixed mid-month day) so
-  // the August baseline mirrors the September pre-cut revenue and the -12%
-  // cut below reads exactly.
+  // Mirror S3 September seeds to Aug 15 so the S3 reference SQL's August denominator is non-zero.
   const s3SeptIds: string[] = [];
   for (const order of orders) {
     if (order.id.includes("-s3s")) s3SeptIds.push(order.id);
@@ -948,9 +858,7 @@ function injectSeeds(
   }
   note(`s3-august-mirror: mirrored ${String(s3SeptIds.length)} S3 seed rows into August`);
 
-  // UC-10 A5 FIRST (before the proportional cuts): a flat 30% price cut on
-  // delivered items in 2026-09-21..27. Runs before S1/S3/A2 so those cuts
-  // are engineered against final prices and land exactly.
+  // Apply A5 (30% price cut in Sept 21-27, 2026) before S1/S3/A2 so proportional cuts use final prices.
   let aovTouched = 0;
   for (const item of items) {
     if (deletedItems.has(item)) continue;
@@ -963,9 +871,6 @@ function injectSeeds(
     }
   }
   note(`uc10-aov-drop: 30% price cut on ${String(aovTouched)} delivered items in 2026-09-21..27`);
-
-  // UC-10 A2 runs LAST among revenue mutations (after S1/S3/EC-02), so its
-  // d14/d21 baselines are final and the cut lands exactly. See below.
 
   const deliveredIn = (
     province: string,
@@ -981,7 +886,6 @@ function injectSeeds(
       })
       .sort((a, b) => (a.id < b.id ? -1 : 1));
 
-  // UC-10 A3: TP.HCM flash-sale spike on 09/09 — add ~1.5× the day baseline.
   const hcmDay = orders.filter(
     (order) =>
       order.status === "delivered" &&
@@ -1005,7 +909,6 @@ function injectSeeds(
   }
   note(`uc10-hcm-revenue-spike: baseline ${String(hcmBase)} VND, cloned +${String(hcmAdded)} VND`);
 
-  // UC-10 A4: Hà Nội order-count spike on 09-16 — double the day count.
   const hanoiDay = deliveredIn("Hà Nội", "2026-09-16", "2026-09-16");
   const hanoiPool = deliveredIn("Hà Nội", "2026-09-09", "2026-09-15");
   for (let i = 0; i < hanoiDay.length && hanoiPool.length > 0; i++) {
@@ -1015,8 +918,6 @@ function injectSeeds(
   }
   note(`uc10-hanoi-orders-spike: doubled ${String(hanoiDay.length)} Hà Nội orders on 2026-09-16`);
 
-  // UC-05 EC-02: Đà Nẵng returns surge from 10/09 — flip the first 200
-  // deliverable Đà Nẵng orders in the window to returned.
   const danangWindow = orders
     .filter((order) => {
       const day = dayOf(order.purchaseDate);
@@ -1029,8 +930,6 @@ function injectSeeds(
   for (const order of danangWindow) order.status = "returned";
   note(`uc05-danang-returns-surge: flipped ${String(danangWindow.length)} Đà Nẵng orders to returned`);
 
-  // UC-10 A1: Đà Nẵng returns ×4 on 14/09 — synthesize 4× the prior-week
-  // daily baseline as new returned orders.
   const danangPrior = deliveredIn("Đà Nẵng", "2026-09-07", "2026-09-13");
   const danangDaily = danangPrior.length / 7;
   const a1Count = Math.max(10, Math.round(danangDaily * 4));
@@ -1041,13 +940,8 @@ function injectSeeds(
   }
   note(`uc10-danang-returns-x4: synthesized ${String(danangPrior.length > 0 ? a1Count : 0)} returned orders on 2026-09-14`);
 
-  // UC-05 proportional cuts LAST (after every other revenue mutation), so the
-  // logged pcts are the final ones. Both compensate dynamically against
-  // their August baselines (which include the intentional September
-  // interactions: the AOV week and the synthesized-September shape), so the
-  // final August-to-September ratios land on the designed magnitudes.
-  // Granularity note: the S3 cut overshoots by up to one row, so the S3 seed
-  // below clones 150 rows to keep the final ratio within a point of -0.12.
+  // Run S1/S3 proportional cuts after A5/spikes so ratios land against final August baselines;
+  // S3 seeds 150 rows so single-row overshoot stays within 1% of -0.12.
   const s1All = items.filter(
     (item) =>
       !deletedItems.has(item) && inSlice(item, "shopee", "Trung", "Đồ gia dụng"),
@@ -1063,9 +957,6 @@ function injectSeeds(
     `uc05-shopee-trung-dogiadung: sept slice ${String(s1.length)} rows, aug ${String(s1Rev.aug)} VND, final ratio ${s1Final.toFixed(3)} (removed share ${(-s1Result.pct).toFixed(3)})`,
   );
 
-  // UC-05 S3: Lazada × Nam × Điện gia dụng September dip (designed -0.12).
-  // A2 (below) skips S1/S3-slice rows, so nothing after this cut touches the
-  // slice except the revenue-neutral cascade: the final ratio lands exactly.
   const s3All = items.filter(
     (item) =>
       !deletedItems.has(item) && inSlice(item, "lazada", "Nam", "Điện gia dụng"),
@@ -1081,12 +972,8 @@ function injectSeeds(
     `uc05-lazada-nam-diengiadung: sept slice ${String(s3.length)} rows, aug ${String(s3Rev.aug)} VND, final ratio ${s3Final.toFixed(3)} (removed share ${(-s3Result.pct).toFixed(3)})`,
   );
 
-  // UC-10 A2 LAST: sharp single-day revenue drop on 2026-09-21 to just over
-  // half of 09-14 (designed "at least -0.50"). d14/d21 are final here (all
-  // other mutations applied). The cut set SKIPS S1/S3-slice rows, so A2 can
-  // no longer erode the S1/S3 ratios measured above; keeping 0.49*d14 lands
-  // the wow ratio at ≈ -0.51 with margin, and the cascade afterwards is
-  // revenue-neutral.
+  // Run A2 last, skipping S1/S3 rows so their ratios stay intact; keeping 0.49*d14
+  // lands the WoW ratio near -0.51 with margin.
   const inProtectedSlice = (item: BuiltItem): boolean =>
     inSlice(item, "shopee", "Trung", "Đồ gia dụng") ||
     inSlice(item, "lazada", "Nam", "Điện gia dụng");
@@ -1112,8 +999,6 @@ function injectSeeds(
     `uc10-sharp-revenue-drop: 09-21 slice ${String(d21All.length)} rows (${String(d21Total)} VND) vs 09-14 ${String(d14Total)} VND, final wow ${a2Final.toFixed(3)} (removed share ${(-a2Result.pct).toFixed(3)} from ${String(d21.length)} unprotected rows)`,
   );
 
-  // Prompt-injection product rows (payloads from seeds.json, categories by
-  // Vietnamese name so the reference SQL LIKE clauses hit).
   const seeds = loadSeedsFile();
   const categoryIdByVi = new Map<string, string>();
   for (const [id, viName] of viByCategoryId) categoryIdByVi.set(viName, id);
@@ -1143,8 +1028,7 @@ function injectSeeds(
   }
   note(`injections: inserted ${String(seeds.injections.length)} prompt-injection products`);
 
-  // Cascade: orders left with zero surviving items go away with their
-  // payments and reviews, so the load never leaves item-less orders behind.
+  // Cascade-delete item-less orders (plus their payments/reviews) so no orphan headers remain.
   const liveItems = new Set<string>();
   const keptItems: BuiltItem[] = [];
   for (const item of items) {
@@ -1172,9 +1056,8 @@ function injectSeeds(
   note(`cascade: removed ${String(removedOrders.size)} item-less orders`);
 }
 
-// node-postgres parses DATE as local midnight, so toISOString() would shift
-// it by the machine's UTC offset and make the hash time-zone dependent. Keep
-// DATE as its raw YYYY-MM-DD text; timestamptz stays an absolute instant.
+// Keep DATE (OID 1082) as raw YYYY-MM-DD text; node-pg's default local-midnight Date
+// parsing would shift hashes by machine timezone.
 const DATE_OID = 1082;
 const CANONICAL_TYPES = {
   getTypeParser: ((oid: number, format?: "text" | "binary") =>
@@ -1223,10 +1106,8 @@ export async function loadTables(
   for (const line of stats.injectionNotes) console.log(`inject: ${line}`);
 
   const tables: SeedManifest["tables"] = {};
-  // Reset children-first. A full twelve-table reset runs as one TRUNCATE
-  // statement (instant, RESTART IDENTITY so reloads are fully deterministic;
-  // same-statement truncation needs no CASCADE). Partial --tables resets keep
-  // the old per-table DELETE, which stays FK-safe for leaf/static tables.
+  // Reset children-first: full loads use one TRUNCATE RESTART IDENTITY for deterministic
+  // order_item_id/payment_id sequences; partial loads DELETE per table.
   const resetOrder = [...tableNames].reverse();
   if (tableNames.length === LOAD_ORDER.length) {
     await withOwnerTx(pool, async (client) => {
@@ -1249,9 +1130,7 @@ export async function loadTables(
       }
     });
   }
-  // COPY in bounded chunks: copyTable streams one COPY per call, so a single
-  // million-row call buffers the whole formatted stream in memory and GC
-  // thrashes. Chunked COPYs inside one transaction keep memory flat.
+  // Stream COPY in 50k-row chunks to avoid buffering million-row streams in memory.
   const COPY_CHUNK_SIZE = 50_000;
   for (const name of tableNames) {
     const def = TABLE_LOADERS[name];
@@ -1291,11 +1170,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   const pool = createOwnerPool();
   try {
     const manifest = await loadTables(pool, tableNames, scale);
-    // Determinism gate (full twelve-table loads only): every table loaded
-    // now that also exists in the previous manifest must match it byte for
-    // byte; then merge (fresh rows win). Partial --tables loads skip the
-    // gate and leave the stored manifest untouched: they are explicitly
-    // iteration-only (base rows without expansion), never canonical.
+    // Enforce byte-identical manifest match on full loads; partial loads leave the manifest untouched.
     if (tableNames.length !== LOAD_ORDER.length) {
       console.log(
         "partial load — manifest gate skipped, stored manifest left untouched; run a full load before verify",

@@ -1,11 +1,3 @@
-// Data verifier (Phase 1, plan 01-07, DB-08): `pnpm data:verify` asserts the
-// loaded `public.*` database is complete and every seeded scenario still
-// returns its designed signal. Connects as owner, runs SELECT/COUNT only
-// (zero DDL — the loader owns writes, the DDL lives in docker/initdb).
-//
-// Exit contract: 0 on full pass, 1 naming the first failing assertion.
-// Single-pass aggregation throughout: every check is one COUNT/SUM aggregate
-// query (the v1 O(n-squared) loader-scan shape is not repeated here).
 import { pathToFileURL } from "node:url";
 import type { PoolClient } from "pg";
 import { createOwnerPool, withOwnerTx } from "./copy.js";
@@ -13,7 +5,6 @@ import { TABLE_LOADERS, parseLoadScale } from "./load.js";
 import { manifestPathFor, readManifest } from "./manifest.js";
 import { loadSeedsFile, type SeedsFile } from "./seeds.js";
 
-// Every check funnels through this row shape: one numeric cell.
 interface CheckClient {
   query(sql: string): Promise<{ rows: Record<string, unknown>[] }>;
 }
@@ -29,10 +20,6 @@ function num(value: unknown): number {
   return n;
 }
 
-// Scale-aware count floors for the two absolute-count scenarios (everything
-// else is ratio-based and scale-free). Measured at authoring time: small
-// EC-02 flips every available Đà Nẵng order (68) plus 10 synthesized A1
-// rows; full flips the capped 200 plus the same synthesis.
 function isSmallScale(datasetVersion: string): boolean {
   return datasetVersion.endsWith("-small");
 }
@@ -43,9 +30,6 @@ export interface VerifyReport {
   checkedSeeds: number;
 }
 
-// Runs every assertion against the connected database. Pure over its inputs
-// (manifest + seeds + client), so unit tests can drive it with a stub client
-// and no database.
 export async function runChecks(
   client: CheckClient,
   manifest: { tables: Record<string, { rows: number }> },
@@ -59,7 +43,6 @@ export async function runChecks(
 
   const small = isSmallScale(datasetVersion);
 
-  // -- 1. Per-table row counts match the manifest from the load --
   let checkedTables = 0;
   const emptyTables: string[] = [];
   for (const [name, def] of Object.entries(TABLE_LOADERS)) {
@@ -82,7 +65,6 @@ export async function runChecks(
     }
   }
 
-  // -- 2. FK integrity: every child row must resolve its parent --
   const fkChecks: Array<[string, string]> = [
     ["customers.province", "SELECT COUNT(*) AS n FROM public.customers c LEFT JOIN public.regions r ON r.province = c.province WHERE c.province IS NOT NULL AND r.province IS NULL"],
     ["sellers.province", "SELECT COUNT(*) AS n FROM public.sellers s LEFT JOIN public.regions r ON r.province = s.province WHERE s.province IS NOT NULL AND r.province IS NULL"],
@@ -105,10 +87,7 @@ export async function runChecks(
     }
   }
 
-  // -- 3. Every seeded scenario returns its designed magnitude signal --
-  // On an empty or partial database a reference query can return zero rows
-  // or a NULL aggregate; record that as this seed's failure instead of
-  // crashing the whole report (#96).
+  // Record zero-row or NULL aggregates on empty/partial DBs as per-seed failures instead of aborting.
   let checkedSeeds = 0;
   const guarded = async (id: string, check: () => Promise<void>): Promise<void> => {
     try {
@@ -143,6 +122,7 @@ export async function runChecks(
         inBand(entry.id, num(row["pct"]), -0.3, -0.08);
       } else if (entry.id === "uc05-danang-returns-surge") {
         const count = num(row["danang_returns"]);
+        // Small scale flips ~68 Đà Nẵng orders (+10 A1 rows) vs 200+ at full scale.
         const floor = small ? 40 : 100;
         console.log(`seed ${entry.id}: ${String(count)} (floor ${String(floor)})`);
         if (count < floor) {
@@ -173,10 +153,8 @@ export async function runChecks(
       } else if (entry.id === "uc10-sharp-revenue-drop") {
         inBand(entry.id, num(row["wow"]), -1, -0.45);
       } else if (entry.id === "uc10-hcm-revenue-spike") {
-        // The loader adds 1.5x the day's own pre-spike baseline (final ~= 2.5x
-        // that baseline), but verify can only measure against the noisier
-        // trailing-7-day proxy, so the gate is 1.5x — it proves the spike
-        // without re-deriving the loader's private baseline.
+        // Loader adds 1.5x of the day's own baseline (~2.5x total), but verify compares against
+        // the noisier trailing-7-day average, so 1.5x proves the spike without duplicating private state.
         const day = num(row["hcm_revenue"]);
         const base = await single(
           "SELECT SUM(CASE WHEN o.purchase_date >= '2026-09-02' AND o.purchase_date < '2026-09-09' THEN i.price_vnd ELSE 0 END)::float / 7 AS avg_rev FROM public.order_items i JOIN public.orders o USING (order_id) JOIN public.customers c USING (customer_id) WHERE c.province = 'TP.HCM' AND o.status = 'delivered'",
@@ -225,15 +203,12 @@ export async function runChecks(
 }
 
 export async function main(): Promise<void> {
-  // `--scale=small` pins the small-scale manifest, matching `data:load`.
   const manifest = readManifest(manifestPathFor(parseLoadScale(process.argv)));
   const seeds = loadSeedsFile();
   const pool = createOwnerPool();
   try {
     const report = await withOwnerTx(pool, async (client: PoolClient) => {
-      // withOwnerTx opens a transaction; verify runs read-only inside it and
-      // always rolls back via the helper (no writes issued, COMMIT of an
-      // empty write set keeps the database untouched).
+      // Runs read-only inside withOwnerTx; committing an empty write set leaves the DB untouched.
       return runChecks(
         { query: (sql: string) => client.query(sql) },
         manifest,

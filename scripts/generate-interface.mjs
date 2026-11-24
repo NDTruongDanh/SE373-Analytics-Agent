@@ -1,7 +1,4 @@
-// Generates docs/mcp_interface.md from the frozen zod schemas.
-// Run: pnpm docs:interface  (tsx resolves the .ts imports below)
-// Uses node builtins plus the zod import only — never zod-to-json-schema
-// (that package is v3-only and throws on v4 schemas).
+// Use zod v4's built-in z.toJSONSchema rather than zod-to-json-schema (v3-only).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

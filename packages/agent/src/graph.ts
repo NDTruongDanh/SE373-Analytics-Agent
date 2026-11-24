@@ -1,4 +1,4 @@
-// FROZEN root builder (AGENT-01). UC owners MUST NOT edit topology; extend via registry.ts (registerUC) and RootGraphDeps seams (retrieve/ucHandlers/viz/synthesize/emitSpan/textToSql). Budget guard here is generic run governance, not UC logic. Keep topology generic.
+// FROZEN root builder: extend via registry.ts (registerUC) and RootGraphDeps seams, never by editing topology here.
 import {
   END,
   MemorySaver,
@@ -31,28 +31,19 @@ import {
 import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
 import { routeQuestionToUc } from "./router.js";
 
-
 export interface RootGraphDeps {
-  /** Defaults to MemorySaver; 01-13/01-14 inject PostgresSaver. Never falls back silently. */
   checkpointer?: BaseCheckpointSaver | boolean;
-  /** Defaults to a no-op (returns {}); 01-11 injects the executor describe path. */
   retrieve?: RetrieveFn;
-  /** Merged OVER the registry table at build time; never edits graph.ts. */
   ucHandlers?: Record<string, UcEntryHandler>;
-  /** Defaults to a no-op; the VIZ seam owner injects the renderer. */
   viz?: VizFn;
-  /** Defaults to keep-or-derive synthesis; 01-12 injects the zero-tools writer. */
   synthesize?: SynthesizeFn;
-  /** Defaults to a no-op sink; runTracerGraph wires the redacted writer. */
   emitSpan?: SpanEmitter;
-  /** Text-to-SQL model/executor seams; production uses defaults, tests inject fakes. */
   textToSql?: TextToSqlRuntimeDeps;
 }
 
 const noopEmit: SpanEmitter = () => "";
 const noopUpdate = async (): Promise<AgentUpdate> => ({});
 
-/** Default synthesis: keep a handler-written answer, else derive one. */
 async function defaultSynthesize(state: AgentState): Promise<AgentUpdate> {
   if (state.answerText.length > 0) {
     return {};
@@ -106,11 +97,8 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   };
 
   const graph = new StateGraph(AgentStateSchema)
-    // Generic run governance (not UC logic): guardTextToSqlBudget only reads
-    // budget counters/deadline and seeds the absolute deadline (no model or
-    // I/O), so it is safe to reuse for the text-to-SQL path. Other UCs get an
-    // inline budget-only trip check (no executor import: the frozen root stays
-    // off the queryExecutor seam) returning cannot_answer on trip, {} otherwise.
+    // Keep the frozen root off queryExecutor: text-to-SQL delegates budget init/check
+    // (pure, no I/O); other UCs use an inline counter/deadline check.
     .addNode("budgetGuard", async (state: AgentState): Promise<AgentUpdate> => {
       if (state.ucId === TEXT_TO_SQL_UC_ID) return guardTextToSqlBudget(state);
       const reason =
@@ -130,10 +118,8 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
       }
       return {};
     })
-    // BGT runs before UND and a tripped status short-circuits straight to
-    // answer below, so the skill-contract load inside textToSql.understand
-    // never runs after a trip (arch START->BGT->SKL->UND collapsed into
-    // BGT->UND with SKL inside UND: no I/O after the trip).
+    // budgetGuard runs first and short-circuits trips straight to answer, so
+    // skill-contract loading inside understand never runs after a budget trip.
     .addNode("understand", runWithRuntime((state, rt) => {
       if (state.ucId === TEXT_TO_SQL_UC_ID) return textToSql.understand(state, rt);
       return Promise.resolve({
@@ -185,8 +171,6 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .addNode("vizSeam", runWithRuntime((state, rt) => viz(state, rt)))
     .addNode("answer", runWithRuntime((state, rt) => synthesize(state, rt)))
     .addEdge(START, "budgetGuard")
-    // Generic trip bypass: any budgetGuard cannot_answer skips understand
-    // (and its skill/model I/O) straight to answer.
     .addConditionalEdges("budgetGuard", (state: AgentState) =>
       state.status === "cannot_answer" ? "answer" : "understand",
     )
@@ -208,8 +192,6 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
 }
 
 export type TracerGraphContext = TracerDefaultContext;
-// runTracerGraph input: MCP transport plus trace identity. The 01-14 host
-// populates the same fields into RunnableConfig.configurable per D-11.
 
 export interface TracerRunResult {
   status: "ok" | "no_data";
@@ -219,20 +201,11 @@ export interface TracerRunResult {
   tracePath: string;
 }
 
-/**
- * 01-01 demo path, preserved through the registered default route: builds
- * the frozen root with the tracer entry and invokes it on the demo question.
- * Per-call run identity headers still flow from this ctx on every MCP call
- * (the 01-12 per-call hook owns that path going forward).
- */
 export async function runTracerGraph(
   question: string,
   ctx: TracerGraphContext,
 ): Promise<TracerRunResult> {
-  // One emitter per run (G3): the default-route entry writes through it,
-  // so every event feeds the roll-up read back at run_done below. No
-  // topology change — buildRootGraph wiring only. Noted for UC-01 owner
-  // (nguyenhun11): this runTracerGraph touch plus the role fix.
+  // Share one emitter per run so all node events feed the run_done roll-up.
   const emit = createTracerRunEmitter(ctx);
   const graph = buildRootGraph({ checkpointer: new MemorySaver(), emitSpan: emit });
   const out = (await graph.invoke(
