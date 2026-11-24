@@ -772,3 +772,120 @@ describe("ValidatedQueryExecutor core path", () => {
     expect(result.status).toBe("ok");
   });
 });
+
+describe("ValidatedQueryExecutor large-table flag (#129)", () => {
+  const LARGE_ORDERS_COLUMNS = [
+    { name: "id", type: "integer", nullable: false, sensitive: false, large: true },
+    { name: "status", type: "text", nullable: true, sensitive: false, large: true },
+    { name: "purchase_date", type: "timestamp", nullable: true, sensitive: false, large: true },
+  ];
+
+  it("keeps describe_table large flags so an unbounded aggregate stops before MCP SQL calls", async () => {
+    const mcp = new StubMcpCaller({
+      describe_table: (args) => ({
+        table: String(args["table"]),
+        columns: LARGE_ORDERS_COLUMNS,
+        primaryKey: ["id"],
+        foreignKeys: [],
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp });
+
+    const result = await executor.run({
+      question: "How many orders are there?",
+      initialSql: "SELECT COUNT(*) AS n FROM orders",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result).toMatchObject({ status: "needs_clarification", table: "orders" });
+    expect(mcp.calls.map((call) => call.tool)).toEqual(["describe_table"]);
+  });
+});
+
+describe("ValidatedQueryExecutor explain_query cost ceiling (#129)", () => {
+  const BOUNDED_SQL =
+    "SELECT status, COUNT(*) AS n FROM orders WHERE purchase_date >= '2025-01-01' GROUP BY status";
+  const LARGE_ORDERS_COLUMNS = [
+    { name: "status", type: "text", nullable: true, sensitive: false, large: true },
+    { name: "purchase_date", type: "timestamp", nullable: true, sensitive: false, large: true },
+  ];
+  const describeLarge = (args: Record<string, unknown>) => ({
+    table: String(args["table"]),
+    columns: LARGE_ORDERS_COLUMNS,
+    primaryKey: [],
+    foreignKeys: [],
+  });
+  const costPolicy = {
+    version: 1 as const,
+    default: { maxEstimatedCost: 1000, maxEstimatedRows: 5000 },
+    roles: { analyst: { maxEstimatedCost: 1e9 } },
+  };
+
+  it("stops an over-cost plan before run_query and asks for a narrower range", async () => {
+    const mcp = new StubMcpCaller({
+      describe_table: describeLarge,
+      explain_query: () => ({ estimatedCost: 2_500_000, estimatedRows: 40 }),
+    });
+    const { sink, seen } = spans();
+    const executor = new ValidatedQueryExecutor({
+      model: new FakeChatModel([]),
+      mcp,
+      emitSpan: sink,
+      costPolicy,
+    });
+
+    const result = await executor.run({
+      question: "Orders by status since 2025",
+      initialSql: BOUNDED_SQL,
+      timeRange: "2025-01-01/2026-09-30",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result).toMatchObject({ status: "needs_clarification", table: "orders" });
+    if (result.status !== "needs_clarification") return;
+    expect(result.reason).toContain("narrower time range");
+    expect(mcp.calls.map((call) => call.tool)).toEqual(["describe_table", "explain_query"]);
+    expect(seen.some((span) => span.payload?.["strategy"] === "cost_ceiling")).toBe(true);
+  });
+
+  it("stops on the row-estimate ceiling too", async () => {
+    const mcp = new StubMcpCaller({
+      describe_table: describeLarge,
+      explain_query: () => ({ estimatedCost: 10, estimatedRows: 6000 }),
+    });
+    const executor = new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp, costPolicy });
+    const result = await executor.run({
+      question: "Orders by status since 2025",
+      initialSql: BOUNDED_SQL,
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+    expect(result.status).toBe("needs_clarification");
+    expect(mcp.calls.map((call) => call.tool)).not.toContain("run_query");
+  });
+
+  it("applies the per-role override from the policy", async () => {
+    const mcp = new StubMcpCaller({
+      describe_table: describeLarge,
+      explain_query: () => ({ estimatedCost: 2_500_000, estimatedRows: 40 }),
+      run_query: () => ({
+        columns: ["status", "n"],
+        rows: [{ status: "delivered", n: 3 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 2,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp, costPolicy });
+    const result = await executor.run({
+      question: "Orders by status since 2025",
+      initialSql: BOUNDED_SQL,
+      candidateTables: ["orders"],
+      principal: { ...PRINCIPAL, roleScope: "analyst" },
+    });
+    expect(result.status).toBe("ok");
+  });
+});

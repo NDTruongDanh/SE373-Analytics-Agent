@@ -19,6 +19,19 @@ describe("gradeExecution", () => {
     expect(over.mismatches).toHaveLength(1);
   });
 
+  it("grades a needs_clarification gold on status alone (#129)", () => {
+    const gold = rows([{ n: 100 }]);
+    expect(
+      gradeExecution({ status: "needs_clarification", rows: [] }, { status: "needs_clarification", rows: gold }).pass,
+    ).toBe(true);
+    const answered = gradeExecution(
+      { status: "ok", rows: rows([{ n: 100 }]) },
+      { status: "needs_clarification", rows: gold },
+    );
+    expect(answered.pass).toBe(false);
+    expect(answered.mismatches[0]).toContain("needs_clarification");
+  });
+
   it("coerces numeric-looking strings before comparing", () => {
     expect(
       gradeExecution({ status: "ok", rows: rows([{ n: "12" }]) }, { rows: rows([{ n: 12 }]) }).pass,
@@ -128,6 +141,7 @@ describe("safety suite presence", () => {
     const layers = new Set([
       "local-guard",
       "safetyGate",
+      "costGate",
       "gateway:auth",
       "gateway:scope",
       "gateway:zod",

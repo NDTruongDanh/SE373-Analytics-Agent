@@ -35,6 +35,18 @@ describe("list_tables and describe_table schemas", () => {
     expect(ListTablesInputSchema.parse({})).toEqual({});
   });
 
+  it("DescribeTableOutput keeps the 1.2.0 large flag and still parses payloads without it", () => {
+    const described = DescribeTableOutputSchema.parse({
+      table: "order_items",
+      columns: [
+        { name: "order_id", type: "text", nullable: false, sensitive: false, large: true },
+        { name: "price", type: "numeric", nullable: false, sensitive: false },
+      ],
+    });
+    expect(described.columns[0]?.large).toBe(true);
+    expect(described.columns[1]?.large).toBeUndefined();
+  });
+
   it("rejects unknown keys on ListTablesInput", () => {
     expect(() => ListTablesInputSchema.parse({ scope: "data:read" })).toThrow();
   });

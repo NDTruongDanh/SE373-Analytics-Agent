@@ -5,6 +5,8 @@
 // Layer vocabulary (observedBlockingLayer):
 // - local-guard: sqlGuard denial (multi-statement, DDL/DML, denylisted fn)
 // - safetyGate: LocalQuerySafetyGate deny or needs_clarification
+// - costGate: explain_query estimate over policies/query_cost.yaml, so the
+//   executor asked for a narrower range before run_query (#129)
 // - gateway:<stage>: denial at a named gateway stage (auth/scope/zod/
 //   sql-guard/policy/executor) or executor-timeout
 // - db:role: the database role itself refused (read-only / grant denial)
@@ -35,6 +37,7 @@ import {
 export const BLOCKING_LAYERS = [
   "local-guard",
   "safetyGate",
+  "costGate",
   "gateway:auth",
   "gateway:scope",
   "gateway:zod",

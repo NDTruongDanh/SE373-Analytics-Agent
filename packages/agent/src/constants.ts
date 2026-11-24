@@ -17,6 +17,11 @@ export const TIMEOUT_RETRY_LIMIT = 50;
 
 export const DETAIL_QUERY_LIMIT = 200;
 
+// Child tables of orders: joining two at one level before SUM/AVG/COUNT repeats rows.
+export const FANOUT_CHILD_TABLES: readonly string[] = ["order_items", "payments", "reviews"];
+
+export const FANOUT_SENSITIVE_AGGREGATES: readonly string[] = ["avg", "count", "sum"];
+
 export const TEXT_TO_SQL_UC_ID = "text-to-sql";
 
 export const RCA_UC_ID = "root-cause-analysis";
