@@ -85,7 +85,7 @@ function canaryPayload(): Record<string, unknown> {
       threadId: "chat:proof:1",
       userId: "proof-user",
       role: "sales_south",
-      ucId: "tracer",
+      route: "text-to-sql",
       maskedColumns: ["customers.phone"],
     },
   };
@@ -379,19 +379,19 @@ describe("buildLangSmithRunConfig", () => {
       threadId: "chat:u:run-cfg-1",
       userId: "u",
       role: "sales_south",
-      ucId: "",
+      route: "text-to-sql",
       maskedColumns: masked,
     });
     expect(config.runId).toBe("run-cfg-1");
     expect(config.callbacks).toEqual([tracer]);
     expect(config.tags).toContain("se373");
-    expect(config.tags).toContain("uc:tracer");
+    expect(config.tags).toContain("route:text-to-sql");
     expect(config.metadata).toMatchObject({
       runId: "run-cfg-1",
       threadId: "chat:u:run-cfg-1",
       userId: "u",
       role: "sales_south",
-      ucId: "",
+      route: "text-to-sql",
     });
     expect(config.metadata["maskedColumns"]).toEqual(["customers.phone"]);
     expect(config.metadata["maskedColumns"]).not.toBe(masked);

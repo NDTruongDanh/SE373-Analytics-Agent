@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { MemorySaver, StateGraph, START, END } from "../../packages/agent/node_modules/@langchain/langgraph/dist/index.js";
 import { buildRootGraph } from "../../packages/agent/src/graph.js";
-import { RCA_UC_ID } from "../../packages/agent/src/constants.js";
+import { RCA_ROUTE } from "../../packages/agent/src/constants.js";
 import { createChatModel } from "../../packages/agent/src/models/factory.js";
 import {
   createRcaRuntime,
@@ -73,7 +73,6 @@ function fakeRuntime(): RootRuntime {
 function fakeState(question: string): AgentState {
   return {
     question,
-    ucId: "root-cause-analysis",
     status: "ok",
     answerText: "",
     sql: null,
@@ -395,7 +394,8 @@ export async function gradeUc05(
           ? `Passed: Hard quota respected (${totalQueries} queries <= 3), remaining branches recorded as MAX_QUERIES_REACHED`
           : `Failed: totalQueries=${totalQueries}, hasMaxQueriesReached=${hasMaxQueriesReached}, hasSkipped=${hasSkippedStep}`;
       } else if (c.caseId === "EC-08" || c.isLiveGraph) {
-        // Live graph execution (Issue #94): ucId unset, routed dynamically by RCA regex patterns
+        // Live graph execution (Issue #94): the router picks the route from the
+        // question via RCA regex patterns against the seeded slice
         // against seeded slice (Lazada x Nam x Điện gia dụng).
         // Queries real database over live MCP gateway when available, validating seeded baseline.
         // Reaches HITL plan interrupt and verifies skill_call event is emitted.
@@ -463,13 +463,12 @@ WHERE o.status = 'delivered'
             emittedSpans.push(evt);
             return `span_${emittedSpans.length}`;
           },
-          ucHandlers: { [RCA_UC_ID]: rcaRuntime.entry },
+          routes: { [RCA_ROUTE]: rcaRuntime.entry },
         });
 
         const out = await rootGraph.invoke(
           {
             question: c.question,
-            ucId: "", // Deliberately unset to test router dynamic dispatch
           },
           {
             configurable: {
@@ -559,7 +558,7 @@ WHERE o.status = 'delivered'
             isMathConsistent,
         );
         note = exPass
-          ? `Passed: Live graph routed via router (ucId unset), queried real DB via live MCP run_query (baseline=${plan?.baselineVal}, current=${plan?.currentVal}, pctDelta=${plan?.pctDelta?.toFixed(2)}% in verify.ts band [-20%, -5%], target magnitude ${expectedPct}%), skill loaded (skill_call emitted), reached HITL plan interrupt`
+          ? `Passed: Live graph router picked the root-cause-analysis route, queried real DB via live MCP run_query (baseline=${plan?.baselineVal}, current=${plan?.currentVal}, pctDelta=${plan?.pctDelta?.toFixed(2)}% in verify.ts band [-20%, -5%], target magnitude ${expectedPct}%), skill loaded (skill_call emitted), reached HITL plan interrupt`
           : `Failed: hasInterrupt=${hasInterrupt}, isPlanInterrupt=${isPlanInterrupt}, isValidBaseline=${isValidBaseline}, hasSkillCall=${hasSkillCall}, isDeltaInBand=${isDeltaInBand} (got ${plan?.pctDelta}%, required [-20%, -5%]), isNearExpectedMagnitude=${isNearExpectedMagnitude} (target ${expectedPct}%), isAbsDeltaConsistent=${isAbsDeltaConsistent}, isPctDeltaConsistent=${isPctDeltaConsistent}`;
       } else if (c.caseId === "EC-09") {
         // EC-09: AOV Mix-Shift / Formula Decomposition (Issue #133)

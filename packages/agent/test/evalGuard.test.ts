@@ -20,7 +20,7 @@ import {
   createEvalEmitter,
   prepareEvalEnv,
 } from "../../../evals/run.js";
-import { TEXT_TO_SQL_UC_ID } from "../src/constants.js";
+import { TEXT_TO_SQL_ROUTE } from "../src/constants.js";
 import { isLangSmithEnabled } from "../src/telemetry/langsmith.js";
 
 const FLAGS = [
@@ -327,7 +327,7 @@ describe("buildEvalGraph semantic wiring (#88)", () => {
       const dataOut = await dataGraph.invoke(
         {
           question: "Có bao nhiêu tỉnh/thành trong dữ liệu?",
-          ucId: TEXT_TO_SQL_UC_ID,
+          route: TEXT_TO_SQL_ROUTE,
           runId: dataRunId,
           threadId: `chat:sales_south:${dataRunId}`,
         },
@@ -393,7 +393,7 @@ describe("buildEvalGraph semantic wiring (#88)", () => {
       const npsOut = await npsGraph.invoke(
         {
           question: "Chỉ số NPS của chúng ta là bao nhiêu?",
-          ucId: TEXT_TO_SQL_UC_ID,
+          route: TEXT_TO_SQL_ROUTE,
           runId: npsRunId,
           threadId: `chat:sales_south:${npsRunId}`,
         },
@@ -450,7 +450,7 @@ describe("buildEvalGraph semantic wiring (#88)", () => {
       const defOut = await defGraph.invoke(
         {
           question: "Khách hàng hoạt động được tính thế nào?",
-          ucId: TEXT_TO_SQL_UC_ID,
+          route: TEXT_TO_SQL_ROUTE,
           runId: defRunId,
           threadId: `chat:sales_south:${defRunId}`,
         },
