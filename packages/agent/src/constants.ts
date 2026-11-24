@@ -27,6 +27,15 @@ export const TIMEOUT_RETRY_LIMIT = 50;
 /** Cap applied to non-aggregate detail queries (GUARD-03). */
 export const DETAIL_QUERY_LIMIT = 200;
 
+/**
+ * Child tables of `orders` (FK order_id). Joining two of them at the same
+ * level as SUM/AVG/COUNT multiplies rows before aggregation (#129 H-08).
+ */
+export const FANOUT_CHILD_TABLES: readonly string[] = ["order_items", "payments", "reviews"];
+
+/** Aggregates whose result changes when join fan-out duplicates rows. */
+export const FANOUT_SENSITIVE_AGGREGATES: readonly string[] = ["avg", "count", "sum"];
+
 /** Stable registry key for the text-to-SQL entry. */
 export const TEXT_TO_SQL_UC_ID = "text-to-sql";
 

@@ -37,9 +37,11 @@ const baseCatalog: SchemaCatalog = {
       name: "orders",
       columns: [
         { ...col("id"), type: "integer", nullable: false },
+        { ...col("order_id") },
         { ...col("customer_id"), type: "integer" },
         { ...col("status") },
         { ...col("purchase_date"), type: "timestamp" },
+        { ...col("delivered_date"), type: "timestamp" },
         { ...col("total"), type: "numeric" },
       ],
     },
@@ -49,6 +51,14 @@ const baseCatalog: SchemaCatalog = {
         { ...col("id"), type: "integer", nullable: false },
         { ...col("order_id"), type: "integer", nullable: false },
         { ...col("product_id"), type: "integer", nullable: false },
+        { ...col("price"), type: "numeric" },
+      ],
+    },
+    {
+      name: "payments",
+      columns: [
+        { ...col("order_id"), nullable: false },
+        { ...col("amount"), type: "numeric" },
       ],
     },
     {
@@ -159,9 +169,69 @@ describe("LocalQuerySafetyGate", () => {
     expect(result.sql).toContain(`LIMIT ${DETAIL_QUERY_LIMIT}`);
   });
 
-  it("allows aggregate metrics that use their own derived date field", async () => {
+  it("returns needs_clarification for an unfiltered aggregate over a large table (#129)", async () => {
     const result = await gate(
       "SELECT COUNT(*) AS new_customers FROM orders",
+      largeCatalog,
+    );
+    expect(result).toMatchObject({ verdict: "needs_clarification", table: "orders" });
+  });
+
+  it("returns needs_clarification for an unfiltered SUM over order_items (#129)", async () => {
+    const result = await gate(
+      "SELECT SUM(i.price) AS revenue FROM order_items i",
+      largeCatalog,
+    );
+    expect(result).toMatchObject({ verdict: "needs_clarification", table: "order_items" });
+  });
+
+  it("passes an aggregate bounded by purchase_date", async () => {
+    const result = await gate(
+      "SELECT COUNT(*) AS n FROM orders WHERE purchase_date >= '2026-01-01' AND purchase_date < '2026-04-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
+  });
+
+  it("accepts a range on a date_trunc(purchase_date) alias", async () => {
+    const result = await gate(
+      "WITH m AS (SELECT date_trunc('month', purchase_date) AS month, COUNT(*) AS n FROM orders GROUP BY 1) SELECT m.month, m.n FROM m WHERE m.month >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
+  });
+
+  it("does not accept a range on an alias that mixes purchase_date with other columns", async () => {
+    const result = await gate(
+      "WITH t AS (SELECT COALESCE(purchase_date, delivered_date) AS d, COUNT(*) AS n FROM orders GROUP BY 1) SELECT t.d, t.n FROM t WHERE t.d >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("needs_clarification");
+  });
+
+  it("denies a flat orders x order_items x payments SUM as repairable fan-out (#129)", async () => {
+    const result = await gate(
+      "SELECT SUM(i.price) AS revenue, SUM(p.amount) AS paid FROM orders o JOIN order_items i ON i.order_id = o.order_id JOIN payments p ON p.order_id = o.order_id WHERE o.purchase_date >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("deny");
+    if (result.verdict !== "deny") return;
+    expect(result.error.code).toBe("INVALID_SQL");
+    expect(result.error.repairable).toBe(true);
+    expect(result.error.message).toContain("CTE");
+  });
+
+  it("passes the same metrics when each child is pre-aggregated in a CTE", async () => {
+    const result = await gate(
+      "WITH items AS (SELECT order_id, SUM(price) AS revenue FROM order_items GROUP BY order_id), pays AS (SELECT order_id, SUM(amount) AS paid FROM payments GROUP BY order_id) SELECT SUM(items.revenue) AS revenue, SUM(pays.paid) AS paid FROM orders o JOIN items ON items.order_id = o.order_id JOIN pays ON pays.order_id = o.order_id WHERE o.purchase_date >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("pass");
+  });
+
+  it("allows COUNT(DISTINCT) and MIN/MAX across a child fan-out join", async () => {
+    const result = await gate(
+      "SELECT COUNT(DISTINCT o.order_id) AS orders, MAX(p.amount) AS top FROM orders o JOIN order_items i ON i.order_id = o.order_id JOIN payments p ON p.order_id = o.order_id WHERE o.purchase_date >= '2026-01-01'",
       largeCatalog,
     );
     expect(result.verdict).toBe("pass");
