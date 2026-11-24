@@ -181,7 +181,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     const res = await fetch(`${apiBase}/api/ask`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south", ucId: "tracer" }),
+      body: JSON.stringify({ question: DEMO_QUESTION, persona: "sales_south" }),
     });
     expect(res.status).toBe(200);
     const sseText = await res.text();
@@ -203,21 +203,24 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(runId).toMatch(/^[0-9a-f-]{36}$/);
 
     // Trace proof: full redacted event log with tool spans in call order.
-    // 2 UC-02 retrieve spans (search_semantic_layer tool_call + retrieve
-    // node_done) + 8 base spans + 3 UC-03 VIZ spans (chart_selected,
-    // chart_validated, node_done in deterministic mode — no model key in CI,
-    // so no claim_stripped lines for this grounded bar chart).
+    // The question runs the real text-to-sql pipeline: the router span,
+    // understand's catalog list_tables plus its pre-retrieve semantic
+    // search, the executor's describe_table calls and run_query execution,
+    // then the UC-03 VIZ spans. Repair loops can append extra spans, so
+    // assert presence and order anchors rather than an exact line count.
     const tracePath = `${tracesDir}/${runId}.jsonl`;
     const lines = readFileSync(tracePath, "utf8").trim().split("\n");
-    expect(lines.length).toBe(13);
+    expect(lines.length).toBeGreaterThanOrEqual(10);
     const tools: string[] = [];
+    let routerRoute: unknown;
     for (const line of lines) {
       const event = JSON.parse(line) as {
         runId?: string;
         threadId?: string;
         spanId?: string;
+        node?: string;
         type?: string;
-        payload?: { tool?: string };
+        payload?: { tool?: string; route?: string };
       };
       expect(event.runId).toBe(runId);
       expect(typeof event.threadId).toBe("string");
@@ -229,12 +232,22 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       for (const literal of liveLiterals) {
         expect(line).not.toContain(literal);
       }
+      if (event.node === "router" && event.type === "node_done") {
+        routerRoute = event.payload?.route;
+      }
       if (event.type === "tool_call" && event.payload?.tool) {
         tools.push(event.payload.tool);
       }
     }
-    expect(tools).toEqual(["search_semantic_layer", "list_tables", "run_query"]);
-    expect(completed.toolsCalled).toEqual(["list_tables", "run_query"]);
+    expect(routerRoute).toBe("text-to-sql");
+    expect(tools[0]).toBe("list_tables");
+    expect(tools).toContain("search_semantic_layer");
+    expect(tools).toContain("describe_table");
+    expect(tools).toContain("run_query");
+    expect(tools.indexOf("list_tables")).toBeLessThan(tools.indexOf("run_query"));
+    for (const tool of ["list_tables", "describe_table", "run_query"]) {
+      expect(completed.toolsCalled).toContain(tool);
+    }
     const vizTypes = lines
       .map((line) => (JSON.parse(line) as { node?: string; type?: string }).type)
       .filter((type) =>
@@ -243,15 +256,13 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     expect(vizTypes).toContain("chart_selected");
     expect(vizTypes).toContain("chart_validated");
 
-    // SSE proof: no seed PII shapes, no live row cell value, no token.
+    // SSE proof: no seed PII shapes, no live row cell value, no token. The
+    // SQL proposal/display pair is covered by the replay tests in
+    // host.test.ts; the live pipeline emits no understand proposal span.
     expect(containsWirePii(sseText.replace(UUID_RE, "<uuid>"))).toBe(false);
     for (const literal of liveLiterals) {
       expect(sseText).not.toContain(literal);
     }
     expect(sseText).not.toContain(SALES_TOKEN);
-    const displayed = blocks.find((block) => block.event === "sql_generated" && (block.data["data"] as Record<string, unknown>)?.["phase"] === "display");
-    expect(displayed).toBeDefined();
-    const sqlData = displayed?.data["data"] as Record<string, unknown>;
-    expect(typeof sqlData["sql"] === "string" || sqlData["withheld"] === true).toBe(true);
   }, 120_000);
 });
