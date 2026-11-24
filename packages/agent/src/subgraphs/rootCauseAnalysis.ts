@@ -142,6 +142,7 @@ export interface RcaRuntimeDeps {
   candidateChannels?: string[];
   candidateCategories?: string[];
   candidateProducts?: string[];
+  shiftShareSegments?: ShiftShareSegment[];
   fetchStepMetrics?: (
     step: PlanStep,
     baselinePeriod: TimePeriod,
@@ -854,7 +855,7 @@ export function parseRcaIntent(question: string): RcaIntent {
       denominator: "delivered_orders",
       formula: "net_revenue / delivered_orders",
     };
-  } else if (/(?:tỷ lệ hoàn|return rate|hoàn đơn)/i.test(q)) {
+  } else if (/(?:tỷ lệ hoàn|tỷ lệ trả hàng|return[-_ ]?rate|hoàn đơn)/i.test(q)) {
     metricName = "return_rate";
     metricType = "ratio";
     formulaComponents = {
@@ -1316,6 +1317,11 @@ export function createPlan(
     "isValidBaseline" | "baselineVal" | "currentVal" | "absDelta" | "pctDelta" | "queriesExecuted"
   >,
   candidateRegions: Array<{ id: string; name: string }> = DEFAULT_CANDIDATE_REGIONS,
+  options?: {
+    includeFormulaAxisForAdditive?: boolean;
+    deliveredOrdersBaseline?: number;
+    deliveredOrdersCurrent?: number;
+  },
 ): AnalysisPlan | null {
   if (!baseline.isValidBaseline) {
     return null;
@@ -1327,7 +1333,62 @@ export function createPlan(
       ? candidateRegions
       : DEFAULT_CANDIDATE_REGIONS;
 
+  const isZeroOrders =
+    options?.deliveredOrdersBaseline === 0 ||
+    options?.deliveredOrdersCurrent === 0;
+
   if (intent.metricType === "additive") {
+    // Additive Formula Axis decomposition: Delivered Revenue = Delivered Orders * Delivered AOV - Return Deductions
+    // Zero Orders Guard: Omit formula axis if Delivered Orders = 0 in either period
+    if (options?.includeFormulaAxisForAdditive && !isZeroOrders) {
+      steps.push({
+        stepId: "step_factor_delivered_orders",
+        axis: "formula",
+        dimensionOrFactor: "delivered_orders",
+        dimensionValue: null,
+        dimensionPath: ["formula", "delivered_orders"],
+        parentId: null,
+        depth: 0,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+        hypothesis: "Biến động số lượng đơn giao thành công (Delivered Orders)",
+      });
+      steps.push({
+        stepId: "step_factor_delivered_aov",
+        axis: "formula",
+        dimensionOrFactor: "delivered_aov",
+        dimensionValue: null,
+        dimensionPath: ["formula", "delivered_aov"],
+        parentId: null,
+        depth: 0,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+        hypothesis: "Biến động giá trị đơn trung bình của đơn giao thành công (Delivered AOV)",
+      });
+      steps.push({
+        stepId: "step_factor_return_deductions",
+        axis: "formula",
+        dimensionOrFactor: "return_deductions",
+        dimensionValue: null,
+        dimensionPath: ["formula", "return_deductions"],
+        parentId: null,
+        depth: 0,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+        hypothesis: "Biến động khấu trừ từ hàng hoàn (Return Deductions)",
+      });
+    }
+
+    // Horizontal business dimension decomposition: region -> channel -> category -> product
     for (const r of regions) {
       steps.push({
         stepId: r.id,
@@ -1346,36 +1407,40 @@ export function createPlan(
       });
     }
   } else {
-    steps.push({
-      stepId: "step_factor_numerator",
-      axis: "formula",
-      dimensionOrFactor: intent.formulaComponents?.numerator ?? "numerator",
-      dimensionValue: null,
-      dimensionPath: ["formula", intent.formulaComponents?.numerator ?? "numerator"],
-      parentId: null,
-      depth: 0,
-      status: "todo",
-      delta: 0,
-      contributionPct: 0,
-      sql: null,
-      retryCount: 0,
-      hypothesis: `Biến động của thành phần tử số (${intent.formulaComponents?.numerator ?? "tử số"})`,
-    });
-    steps.push({
-      stepId: "step_factor_denominator",
-      axis: "formula",
-      dimensionOrFactor: intent.formulaComponents?.denominator ?? "denominator",
-      dimensionValue: null,
-      dimensionPath: ["formula", intent.formulaComponents?.denominator ?? "denominator"],
-      parentId: null,
-      depth: 0,
-      status: "todo",
-      delta: 0,
-      contributionPct: 0,
-      sql: null,
-      retryCount: 0,
-      hypothesis: `Biến động của thành phần mẫu số (${intent.formulaComponents?.denominator ?? "mẫu số"})`,
-    });
+    // Ratio Metric: Two-Axis MECE (Formula factors + Business Dimensions)
+    // Zero Orders Guard: If delivered orders = 0, formula factors cannot be evaluated safely
+    if (!isZeroOrders) {
+      steps.push({
+        stepId: "step_factor_numerator",
+        axis: "formula",
+        dimensionOrFactor: intent.formulaComponents?.numerator ?? "numerator",
+        dimensionValue: null,
+        dimensionPath: ["formula", intent.formulaComponents?.numerator ?? "numerator"],
+        parentId: null,
+        depth: 0,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+        hypothesis: `Biến động của thành phần tử số (${intent.formulaComponents?.numerator ?? "tử số"})`,
+      });
+      steps.push({
+        stepId: "step_factor_denominator",
+        axis: "formula",
+        dimensionOrFactor: intent.formulaComponents?.denominator ?? "denominator",
+        dimensionValue: null,
+        dimensionPath: ["formula", intent.formulaComponents?.denominator ?? "denominator"],
+        parentId: null,
+        depth: 0,
+        status: "todo",
+        delta: 0,
+        contributionPct: 0,
+        sql: null,
+        retryCount: 0,
+        hypothesis: `Biến động của thành phần mẫu số (${intent.formulaComponents?.denominator ?? "mẫu số"})`,
+      });
+    }
     for (const r of regions) {
       steps.push({
         stepId: r.id,
@@ -1482,7 +1547,7 @@ export function buildStepQuery(
   const joins: string[] = [];
   const whereClauses: string[] = [];
 
-  const isDenominatorOnly = axis === "formula" && factor === "denominator";
+  const isDenominatorOnly = axis === "formula" && (factor === "denominator" || factor === "delivered_orders");
   const isReturnRateOnly = metricType === "ratio" && metricName === "return_rate";
   const baseTableIsOrdersOnly = isDenominatorOnly || isReturnRateOnly;
 
@@ -1525,8 +1590,16 @@ export function buildStepQuery(
     return `SELECT COUNT(DISTINCT o.order_id)::float AS val FROM public.orders o${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
   }
 
-  if (axis === "formula" && factor === "numerator") {
-    return `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+  if (axis === "formula") {
+    if (factor === "numerator" || factor === "delivered_revenue") {
+      return `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+    }
+    if (factor === "delivered_aov" || factor === "aov") {
+      return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'delivered' AND ${whereStr}`;
+    }
+    if (factor === "return_deductions" || factor === "returns") {
+      return `SELECT COALESCE(SUM(i.price_vnd), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id)${joinsStr} WHERE o.status = 'returned' AND ${whereStr}`;
+    }
   }
 
   if (metricType === "ratio" && metricName === "aov") {
@@ -1554,6 +1627,8 @@ export async function executeAnalysis(
   plan.maxQueriesLimit = maxQueries;
   plan.maxDepthLimit = maxDepth;
   plan.drilldownThreshold = threshold;
+
+  const stepValues = new Map<string, { bVal: number; cVal: number }>();
 
   const markAllRemainingSkipped = (reason: "MAX_QUERIES_REACHED" | "MAX_DEPTH_REACHED") => {
     for (const s of plan.steps) {
@@ -1756,12 +1831,20 @@ export async function executeAnalysis(
 
     const bVal = baselineVal ?? 0;
     const cVal = currentVal ?? 0;
+    stepValues.set(step.stepId, { bVal, cVal });
     const delta = cVal - bVal;
     step.delta = delta;
     step.sql = sqlExecuted;
 
     const contributionPct = plan.absDelta !== 0 ? (delta / plan.absDelta) * 100 : 0;
     step.contributionPct = Number(contributionPct.toFixed(2));
+
+    // Formula steps do not drill down into sub-dimensions; their exact attribution is resolved after execution
+    if (step.axis === "formula") {
+      step.status = "done";
+      await deps.onStepExecuted?.(step, plan);
+      continue;
+    }
 
     const isSignificant = Math.abs(contributionPct) >= threshold;
 
@@ -1823,12 +1906,118 @@ export async function executeAnalysis(
     await deps.onStepExecuted?.(step, plan);
   }
 
+  // Post-Execution Mathematical Synthesis:
+  // 1. Formula Axis Decomposition
+  const formulaSteps = plan.steps.filter((s) => s.axis === "formula");
+  if (formulaSteps.length > 0) {
+    if (plan.metricType === "additive") {
+      const ordersStep = plan.steps.find((s) => s.axis === "formula" && s.dimensionOrFactor === "delivered_orders");
+      const aovStep = plan.steps.find((s) => s.axis === "formula" && s.dimensionOrFactor === "delivered_aov");
+      const returnsStep = plan.steps.find((s) => s.axis === "formula" && s.dimensionOrFactor === "return_deductions");
+
+      if (ordersStep && aovStep) {
+        const oVal = stepValues.get(ordersStep.stepId) ?? { bVal: 0, cVal: 0 };
+        const aVal = stepValues.get(aovStep.stepId) ?? { bVal: 0, cVal: 0 };
+        const rVal = returnsStep ? (stepValues.get(returnsStep.stepId) ?? { bVal: 0, cVal: 0 }) : { bVal: 0, cVal: 0 };
+
+        const factorDecomp = decomposeRevenueFactors({
+          orders0: oVal.bVal,
+          orders1: oVal.cVal,
+          aov0: aVal.bVal,
+          aov1: aVal.cVal,
+          returns0: rVal.bVal,
+          returns1: rVal.cVal,
+        });
+
+        if (factorDecomp.methodUsed === "zero_orders_omitted") {
+          // Zero Orders or Invalid AOV Guard: Omit entire formula axis so 100% of delta is attributed via dimensions
+          ordersStep.status = "skipped";
+          aovStep.status = "skipped";
+          if (returnsStep) {
+            returnsStep.status = "skipped";
+          }
+          plan.unexploredBranches.push({
+            axis: "formula",
+            dimensionOrFactor: "formula_axis",
+            dimensionValue: null,
+            parentId: null,
+            reason: "PRUNED_BELOW_THRESHOLD",
+          });
+        } else {
+          ordersStep.delta = factorDecomp.effectOrders;
+          ordersStep.contributionPct = plan.absDelta !== 0 ? Number(((factorDecomp.effectOrders / plan.absDelta) * 100).toFixed(2)) : 0;
+          ordersStep.status = "done";
+
+          aovStep.delta = factorDecomp.effectAov;
+          aovStep.contributionPct = plan.absDelta !== 0 ? Number(((factorDecomp.effectAov / plan.absDelta) * 100).toFixed(2)) : 0;
+          aovStep.status = "done";
+
+          if (returnsStep) {
+            returnsStep.delta = factorDecomp.effectReturns;
+            returnsStep.contributionPct = plan.absDelta !== 0 ? Number(((factorDecomp.effectReturns / plan.absDelta) * 100).toFixed(2)) : 0;
+            returnsStep.status = "done";
+          }
+        }
+      }
+    } else {
+      // Ratio Metric Formula Decomposition
+      const numStep = plan.steps.find((s) => s.axis === "formula" && (s.dimensionOrFactor === "numerator" || s.dimensionOrFactor === intent.formulaComponents?.numerator));
+      const denomStep = plan.steps.find((s) => s.axis === "formula" && (s.dimensionOrFactor === "denominator" || s.dimensionOrFactor === intent.formulaComponents?.denominator));
+
+      if (numStep && denomStep) {
+        const numVal = stepValues.get(numStep.stepId) ?? { bVal: 0, cVal: 0 };
+        const denomVal = stepValues.get(denomStep.stepId) ?? { bVal: 0, cVal: 0 };
+
+        if (denomVal.bVal <= 0 || denomVal.cVal <= 0) {
+          // Zero denominator in either period: omit ratio formula axis
+          numStep.status = "skipped";
+          denomStep.status = "skipped";
+          plan.unexploredBranches.push({
+            axis: "formula",
+            dimensionOrFactor: "ratio_formula_axis",
+            dimensionValue: null,
+            parentId: null,
+            reason: "PRUNED_BELOW_THRESHOLD",
+          });
+        } else {
+          const ratioDecomp = decomposeRatioFormula(numVal.bVal, numVal.cVal, denomVal.bVal, denomVal.cVal);
+          numStep.delta = ratioDecomp.effectNumerator;
+          numStep.contributionPct = plan.absDelta !== 0 ? Number(((ratioDecomp.effectNumerator / plan.absDelta) * 100).toFixed(2)) : 0;
+          numStep.status = "done";
+
+          denomStep.delta = ratioDecomp.effectDenominator;
+          denomStep.contributionPct = plan.absDelta !== 0 ? Number(((ratioDecomp.effectDenominator / plan.absDelta) * 100).toFixed(2)) : 0;
+          denomStep.status = "done";
+        }
+      }
+    }
+  }
+
+  // 2. Ratio Metric Shift-Share Decomposition (Rate / Mix Attribution across segments)
+  if (plan.metricType === "ratio" && deps.shiftShareSegments && deps.shiftShareSegments.length > 0) {
+    const shiftShareRes = shiftShareDecompose(deps.shiftShareSegments);
+    for (const seg of shiftShareRes.segments) {
+      const matchStep = plan.steps.find(
+        (s) => s.axis === "dimension" && (s.stepId.includes(seg.id) || s.dimensionValue === seg.name),
+      );
+      if (matchStep) {
+        matchStep.delta = seg.totalEffect;
+        matchStep.contributionPct = plan.absDelta !== 0 ? Number(((seg.totalEffect / plan.absDelta) * 100).toFixed(2)) : 0;
+        matchStep.hypothesis = `Shift-Share (${seg.type}): RateEffect=${seg.rateEffect.toFixed(4)}, MixEffect=${seg.mixEffect.toFixed(4)}`;
+      }
+    }
+  }
+
   return AnalysisPlanSchema.parse(plan);
 }
 
-export function getDisjointLeafNodes(steps: PlanStep[]): PlanStep[] {
-  const hasDoneDimension = steps.some((s) => s.axis === "dimension" && s.status === "done");
-  const candidates = hasDoneDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+/**
+ * Returns disjoint leaf steps from the hierarchical plan:
+ * steps that are marked "done" and have no child steps in the tree.
+ * When axisFilter is provided, filters strictly for leaves belonging to that axis.
+ */
+export function getDisjointLeafNodes(steps: PlanStep[], axisFilter?: PlanStepAxis): PlanStep[] {
+  const candidates = axisFilter ? steps.filter((s) => s.axis === axisFilter) : steps;
 
   const parentIdsWithChildren = new Set(
     candidates
@@ -1841,37 +2030,599 @@ export function getDisjointLeafNodes(steps: PlanStep[]): PlanStep[] {
   );
 }
 
-export function getDisjointSkippedNodes(steps: PlanStep[]): PlanStep[] {
-  const hasDimension = steps.some((s) => s.axis === "dimension");
-  const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+/**
+ * Returns disjoint skipped steps whose parents were not already skipped.
+ * When axisFilter is provided, filters strictly for skipped steps belonging to that axis.
+ */
+export function getDisjointSkippedNodes(steps: PlanStep[], axisFilter?: PlanStepAxis): PlanStep[] {
+  const candidates = axisFilter ? steps.filter((s) => s.axis === axisFilter) : steps;
   const skippedSteps = candidates.filter((s) => s.status === "skipped");
   const skippedIds = new Set(skippedSteps.map((s) => s.stepId));
   return skippedSteps.filter((s) => !s.parentId || !skippedIds.has(s.parentId));
 }
 
-/** Validates Waterfall balance within 5% using strictly signed deltas. */
+/**
+ * Zero Orders Guard (Section 1.1):
+ * When Delivered Orders = 0 in either period or AOV is non-positive / undefined,
+ * returns false to indicate that the formula axis Orders x AOV must be omitted safely.
+ */
+export function canDecomposeOrdersAov(
+  orders0: number,
+  orders1: number,
+  aov0?: number,
+  aov1?: number,
+): boolean {
+  if (!Number.isFinite(orders0) || !Number.isFinite(orders1)) return false;
+  if (orders0 <= 0 || orders1 <= 0) return false;
+  if (aov0 !== undefined && (!Number.isFinite(aov0) || aov0 <= 0)) return false;
+  if (aov1 !== undefined && (!Number.isFinite(aov1) || aov1 <= 0)) return false;
+  return true;
+}
+
+export interface LmdiDecompositionResult {
+  effectOrders: number;
+  effectAov: number;
+  residual: number;
+  deltaDeliveredRevenue: number;
+}
+
+/**
+ * Exact LMDI-I formula using Math.log1p and IEEE 754 residual allocation (Section 1.2):
+ * For Delivered Revenue Y = Orders * AOV with orders0, orders1 > 0 and aov0, aov1 > 0:
+ * - When Y1 === Y0 (delta = 0):
+ *   effectOrders = Y0 * ln(orders1 / orders0)
+ *   effectAov = Y0 * ln(aov1 / aov0)
+ *   Total effect is 0, individual forces cancel out completely.
+ * - When Y1 !== Y0:
+ *   delta = (Y1 - Y0) / Y0
+ *   L = |delta| < 1e-12 ? Y0 * (1 + delta / 2) : (Y1 - Y0) / Math.log1p(delta)
+ *   effectOrders = L * ln(orders1 / orders0)
+ *   effectAov = L * ln(aov1 / aov0)
+ * - Allocates residual = deltaDeliveredRevenue - (effectOrders + effectAov) to largest magnitude effect.
+ * When orders or aov are non-positive or non-finite, returns a safe fallback allocating delta to residual without throwing.
+ */
+export function lmdiDecompose(
+  orders0: number,
+  orders1: number,
+  aov0: number,
+  aov1: number,
+  deltaDeliveredRevenueTarget?: number,
+): LmdiDecompositionResult {
+  if (
+    !Number.isFinite(orders0) ||
+    !Number.isFinite(orders1) ||
+    !Number.isFinite(aov0) ||
+    !Number.isFinite(aov1) ||
+    (deltaDeliveredRevenueTarget !== undefined && !Number.isFinite(deltaDeliveredRevenueTarget))
+  ) {
+    const fallbackTarget =
+      deltaDeliveredRevenueTarget !== undefined && Number.isFinite(deltaDeliveredRevenueTarget)
+        ? deltaDeliveredRevenueTarget
+        : 0;
+    return {
+      effectOrders: 0,
+      effectAov: 0,
+      residual: fallbackTarget,
+      deltaDeliveredRevenue: fallbackTarget,
+    };
+  }
+
+  const y0 = Math.max(0, orders0 * aov0);
+  const y1 = Math.max(0, orders1 * aov1);
+  const deltaY = deltaDeliveredRevenueTarget !== undefined ? deltaDeliveredRevenueTarget : (y1 - y0);
+
+  if (orders0 <= 0 || orders1 <= 0 || aov0 <= 0 || aov1 <= 0) {
+    return {
+      effectOrders: 0,
+      effectAov: 0,
+      residual: deltaY,
+      deltaDeliveredRevenue: deltaY,
+    };
+  }
+
+  let effectOrders = 0;
+  let effectAov = 0;
+
+  if (y0 === y1) {
+    // Zero revenue change: individual forces cancel out, total effect equals deltaY (default 0)
+    effectOrders = y0 * Math.log(orders1 / orders0);
+    effectAov = y0 * Math.log(aov1 / aov0);
+    const residual = deltaY - (effectOrders + effectAov);
+    if (Math.abs(effectOrders) >= Math.abs(effectAov)) {
+      effectOrders += residual;
+    } else {
+      effectAov += residual;
+    }
+    return {
+      effectOrders,
+      effectAov,
+      residual,
+      deltaDeliveredRevenue: deltaY,
+    };
+  }
+
+  const delta = (y1 - y0) / y0;
+  const L = Math.abs(delta) < 1e-12 ? y0 * (1 + delta / 2) : (y1 - y0) / Math.log1p(delta);
+
+  effectOrders = L * Math.log(orders1 / orders0);
+  effectAov = L * Math.log(aov1 / aov0);
+
+  const residual = deltaY - (effectOrders + effectAov);
+  if (Math.abs(effectOrders) >= Math.abs(effectAov)) {
+    effectOrders += residual;
+  } else {
+    effectAov += residual;
+  }
+
+  return {
+    effectOrders,
+    effectAov,
+    residual,
+    deltaDeliveredRevenue: deltaY,
+  };
+}
+
+export interface ShapleyDecompositionResult {
+  effectOrders: number;
+  effectAov: number;
+  deltaDeliveredRevenue: number;
+}
+
+/**
+ * Closed-form 2-factor Shapley decomposition fallback (Section 1.1 / 1.2):
+ * Strictly requires positive finite orders and positive finite aov.
+ */
+export function shapleyTwoFactor(
+  orders0: number,
+  orders1: number,
+  aov0: number,
+  aov1: number,
+): ShapleyDecompositionResult {
+  if (
+    !Number.isFinite(orders0) ||
+    !Number.isFinite(orders1) ||
+    !Number.isFinite(aov0) ||
+    !Number.isFinite(aov1) ||
+    orders0 <= 0 ||
+    orders1 <= 0 ||
+    aov0 <= 0 ||
+    aov1 <= 0
+  ) {
+    throw new Error("Shapley 2-factor decomposition requires positive Orders and positive AOV in both periods");
+  }
+  const effectOrders = 0.5 * (orders1 - orders0) * (aov0 + aov1);
+  const effectAov = 0.5 * (aov1 - aov0) * (orders0 + orders1);
+  const deltaDeliveredRevenue = orders1 * aov1 - orders0 * aov0;
+  return {
+    effectOrders,
+    effectAov,
+    deltaDeliveredRevenue,
+  };
+}
+
+/**
+ * Return Effect with strictly negative sign convention (Section 1.2):
+ * E_returns = -(Returns1 - Returns0)
+ */
+export function calculateReturnEffect(returns0: number, returns1: number): number {
+  if (!Number.isFinite(returns0) || !Number.isFinite(returns1)) {
+    return 0;
+  }
+  return -(returns1 - returns0);
+}
+
+export interface RevenueFactorDecompositionResult {
+  effectOrders: number;
+  effectAov: number;
+  effectReturns: number;
+  deltaNetRevenue: number;
+  methodUsed: "lmdi" | "shapley" | "zero_orders_omitted";
+  notes?: string;
+}
+
+/**
+ * High-level Revenue Factor Decomposition (Net Revenue = Delivered Orders * AOV - Returns):
+ * Integrates Zero Orders Guard, LMDI-I / Shapley, and Return Effect.
+ */
+export function decomposeRevenueFactors(params: {
+  orders0: number;
+  orders1: number;
+  aov0: number;
+  aov1: number;
+  returns0: number;
+  returns1: number;
+  method?: "lmdi" | "shapley";
+}): RevenueFactorDecompositionResult {
+  const effectReturns = calculateReturnEffect(params.returns0, params.returns1);
+
+  if (
+    !Number.isFinite(params.orders0) ||
+    !Number.isFinite(params.orders1) ||
+    !Number.isFinite(params.aov0) ||
+    !Number.isFinite(params.aov1) ||
+    !Number.isFinite(params.returns0) ||
+    !Number.isFinite(params.returns1)
+  ) {
+    return {
+      effectOrders: 0,
+      effectAov: 0,
+      effectReturns,
+      deltaNetRevenue: effectReturns,
+      methodUsed: "zero_orders_omitted",
+      notes: "Non-finite values encountered in revenue factors. Formula axis omitted.",
+    };
+  }
+
+  if (!canDecomposeOrdersAov(params.orders0, params.orders1, params.aov0, params.aov1)) {
+    // Zero Orders Guard / Invalid AOV Guard: Omit formula axis Orders x AOV entirely
+    const deltaDeliveredRev = (params.orders1 * (params.aov1 > 0 ? params.aov1 : 0)) -
+                              (params.orders0 * (params.aov0 > 0 ? params.aov0 : 0));
+    const isZeroOrders = params.orders0 <= 0 || params.orders1 <= 0;
+    return {
+      effectOrders: 0,
+      effectAov: 0,
+      effectReturns,
+      deltaNetRevenue: deltaDeliveredRev + effectReturns,
+      methodUsed: "zero_orders_omitted",
+      notes: isZeroOrders
+        ? "Delivered Orders = 0 in at least one period. Formula axis Orders x AOV omitted; AOV is undefined."
+        : "AOV <= 0 in at least one period. Formula axis Orders x AOV omitted; AOV is non-positive.",
+    };
+  }
+
+  if (params.method === "shapley") {
+    const shapley = shapleyTwoFactor(params.orders0, params.orders1, params.aov0, params.aov1);
+    return {
+      effectOrders: shapley.effectOrders,
+      effectAov: shapley.effectAov,
+      effectReturns,
+      deltaNetRevenue: shapley.deltaDeliveredRevenue + effectReturns,
+      methodUsed: "shapley",
+    };
+  }
+
+  const lmdi = lmdiDecompose(params.orders0, params.orders1, params.aov0, params.aov1);
+  return {
+    effectOrders: lmdi.effectOrders,
+    effectAov: lmdi.effectAov,
+    effectReturns,
+    deltaNetRevenue: lmdi.deltaDeliveredRevenue + effectReturns,
+    methodUsed: "lmdi",
+  };
+}
+
+export interface RatioFormulaDecompositionResult {
+  effectNumerator: number;
+  effectDenominator: number;
+  deltaRatio: number;
+}
+
+/**
+ * Closed-form 2-factor decomposition for Ratio metrics R = Y / X (e.g. AOV = Net Revenue / Delivered Orders):
+ * Preserves effectNumerator + effectDenominator === deltaRatio exactly.
+ */
+export function decomposeRatioFormula(
+  y0: number,
+  y1: number,
+  x0: number,
+  x1: number,
+): RatioFormulaDecompositionResult {
+  if (
+    !Number.isFinite(y0) ||
+    !Number.isFinite(y1) ||
+    !Number.isFinite(x0) ||
+    !Number.isFinite(x1) ||
+    x0 <= 0 ||
+    x1 <= 0
+  ) {
+    const r0 = Number.isFinite(x0) && x0 > 0 && Number.isFinite(y0) ? y0 / x0 : 0;
+    const r1 = Number.isFinite(x1) && x1 > 0 && Number.isFinite(y1) ? y1 / x1 : 0;
+    return {
+      effectNumerator: 0,
+      effectDenominator: 0,
+      deltaRatio: r1 - r0,
+    };
+  }
+  const r0 = y0 / x0;
+  const r1 = y1 / x1;
+  const deltaRatio = r1 - r0;
+
+  const effectNumerator = ((y1 - y0) / 2) * (1 / x0 + 1 / x1);
+  const effectDenominator = -((x1 - x0) / 2) * (y0 / (x0 * x1) + y1 / (x0 * x1));
+
+  return {
+    effectNumerator,
+    effectDenominator,
+    deltaRatio,
+  };
+}
+
+export interface ShiftShareSegment {
+  id: string;
+  name: string;
+  n0: number; // baseline numerator (e.g. returns count)
+  d0: number; // baseline denominator (e.g. orders count)
+  n1: number; // current numerator
+  d1: number; // current denominator
+}
+
+export type ShiftShareClassification =
+  | "insignificant_change"
+  | "mix_dominated"
+  | "mix_induced_reversal"
+  | "simpsons_paradox"
+  | "rate_driven";
+
+export interface ShiftShareSegmentResult {
+  id: string;
+  name: string;
+  type: "continuing" | "entry" | "exit";
+  w0: number;
+  w1: number;
+  r0: number;
+  r1: number;
+  deltaR: number;
+  rateEffect: number;
+  mixEffect: number;
+  totalEffect: number;
+}
+
+export interface ShiftShareDecompositionResult {
+  r0: number;
+  r1: number;
+  deltaR: number;
+  totalRateEffect: number;
+  totalMixEffect: number;
+  classification: ShiftShareClassification;
+  segments: ShiftShareSegmentResult[];
+}
+
+/**
+ * Shift-Share Rate/Mix Decomposition with Structural Entry/Exit & Simpson's Paradox Guard (Section 1.3):
+ * Ratio scale [0.0, 1.0], tolerance epsilon = 1e-4.
+ * - Structural Entry (d0 === 0, d1 > 0): RateEffect = 0, MixEffect = w1 * (r1 - R0)
+ * - Structural Exit (d0 > 0, d1 === 0): RateEffect = 0, MixEffect = w0 * (R0 - r0)
+ * - Continuing (d0 > 0, d1 > 0): RateEffect = w0 * deltaR, MixEffect = deltaW * (r1 - R0)
+ * Preserves 100% total delta: sum(RateEffect + MixEffect) === deltaR.
+ * Simpson's Paradox is flagged only when 100% of comparable subgroups with |deltaR_i| >= 1e-4 reverse direction.
+ */
+export function shiftShareDecompose(
+  segments: ShiftShareSegment[],
+  epsilon = 1e-4,
+): ShiftShareDecompositionResult {
+  const d0Total = segments.reduce((acc, s) => acc + s.d0, 0);
+  const n0Total = segments.reduce((acc, s) => acc + s.n0, 0);
+  const d1Total = segments.reduce((acc, s) => acc + s.d1, 0);
+  const n1Total = segments.reduce((acc, s) => acc + s.n1, 0);
+
+  const r0 = d0Total > 0 ? n0Total / d0Total : 0;
+  const r1 = d1Total > 0 ? n1Total / d1Total : 0;
+  const deltaR = r1 - r0;
+
+  const segmentResults: ShiftShareSegmentResult[] = [];
+  let totalRateEffect = 0;
+  let totalMixEffect = 0;
+
+  for (const seg of segments) {
+    const w0 = d0Total > 0 ? seg.d0 / d0Total : 0;
+    const w1 = d1Total > 0 ? seg.d1 / d1Total : 0;
+    const isEntry = seg.d0 === 0 && seg.d1 > 0;
+    const isExit = seg.d0 > 0 && seg.d1 === 0;
+    const isContinuing = seg.d0 > 0 && seg.d1 > 0;
+
+    const r0Seg = seg.d0 > 0 ? seg.n0 / seg.d0 : 0;
+    const r1Seg = seg.d1 > 0 ? seg.n1 / seg.d1 : 0;
+    const deltaRSeg = r1Seg - r0Seg;
+
+    let rateEffect = 0;
+    let mixEffect = 0;
+    let type: "continuing" | "entry" | "exit" = "continuing";
+
+    if (isEntry) {
+      type = "entry";
+      rateEffect = 0;
+      mixEffect = w1 * (r1Seg - r0);
+    } else if (isExit) {
+      type = "exit";
+      rateEffect = 0;
+      mixEffect = w0 * (r0 - r0Seg);
+    } else if (isContinuing) {
+      type = "continuing";
+      rateEffect = w0 * (r1Seg - r0Seg);
+      mixEffect = (w1 - w0) * (r1Seg - r0);
+    }
+
+    const totalEffect = rateEffect + mixEffect;
+    totalRateEffect += rateEffect;
+    totalMixEffect += mixEffect;
+
+    segmentResults.push({
+      id: seg.id,
+      name: seg.name,
+      type,
+      w0,
+      w1,
+      r0: r0Seg,
+      r1: r1Seg,
+      deltaR: deltaRSeg,
+      rateEffect,
+      mixEffect,
+      totalEffect,
+    });
+  }
+
+  // Floating-point residual allocation to largest mix effect to maintain strict equality
+  const residual = deltaR - (totalRateEffect + totalMixEffect);
+  if (Math.abs(residual) > 0 && segmentResults.length > 0) {
+    let maxIdx = 0;
+    let maxAbs = Math.abs(segmentResults[0].mixEffect);
+    for (let i = 1; i < segmentResults.length; i++) {
+      const absVal = Math.abs(segmentResults[i].mixEffect);
+      if (absVal > maxAbs) {
+        maxAbs = absVal;
+        maxIdx = i;
+      }
+    }
+    segmentResults[maxIdx].mixEffect += residual;
+    segmentResults[maxIdx].totalEffect += residual;
+    totalMixEffect += residual;
+  }
+
+  // Classification logic (Section 1.3)
+  let classification: ShiftShareClassification = "rate_driven";
+
+  if (Math.abs(deltaR) < epsilon) {
+    classification = "insignificant_change";
+  } else if (Math.abs(totalRateEffect) < epsilon) {
+    classification = "mix_dominated";
+  } else if (Math.sign(deltaR) !== Math.sign(totalRateEffect)) {
+    const comparable = segmentResults.filter((s) => s.type === "continuing");
+    const activeComparable = comparable.filter((s) => Math.abs(s.deltaR) >= epsilon);
+
+    if (
+      activeComparable.length >= 2 &&
+      activeComparable.every((s) => Math.sign(s.deltaR) !== Math.sign(deltaR))
+    ) {
+      classification = "simpsons_paradox";
+    } else {
+      classification = "mix_induced_reversal";
+    }
+  }
+
+  return {
+    r0,
+    r1,
+    deltaR,
+    totalRateEffect,
+    totalMixEffect,
+    classification,
+    segments: segmentResults,
+  };
+}
+
+export interface OffsettingGuardResult {
+  retainedLeaves: PlanStep[];
+  residualOtherStep: PlanStep | null;
+  isOffsettingActive: boolean;
+  grossDeltaSum: number;
+}
+
+export function applyOffsettingGuard(
+  leaves: PlanStep[],
+  totalDelta: number,
+  thresholdContributionPct = 30.0,
+): OffsettingGuardResult {
+  const grossDeltaSum = leaves.reduce((sum, s) => sum + Math.abs(s.delta), 0);
+
+  if (grossDeltaSum === 0 || Math.abs(totalDelta) >= 0.1 * grossDeltaSum) {
+    return {
+      retainedLeaves: leaves,
+      residualOtherStep: null,
+      isOffsettingActive: false,
+      grossDeltaSum,
+    };
+  }
+
+  const retained: PlanStep[] = [];
+  const pruned: PlanStep[] = [];
+
+  for (const leaf of leaves) {
+    const grossPct = (Math.abs(leaf.delta) / grossDeltaSum) * 100;
+    if (grossPct >= thresholdContributionPct) {
+      retained.push(leaf);
+    } else {
+      pruned.push(leaf);
+    }
+  }
+
+  if (pruned.length === 0) {
+    return {
+      retainedLeaves: leaves,
+      residualOtherStep: null,
+      isOffsettingActive: true,
+      grossDeltaSum,
+    };
+  }
+
+  const residualDelta = pruned.reduce((sum, s) => sum + s.delta, 0);
+  const residualContributionPct = totalDelta !== 0 ? (residualDelta / totalDelta) * 100 : 0;
+
+  const residualOtherStep: PlanStep = {
+    stepId: "step_residual_other",
+    axis: leaves[0]?.axis ?? "dimension",
+    dimensionOrFactor: "residual_other",
+    dimensionValue: "Các thành phần biến động nhỏ (<30%)",
+    dimensionPath: ["residual_other"],
+    parentId: null,
+    depth: 0,
+    status: "done",
+    delta: residualDelta,
+    contributionPct: Number(residualContributionPct.toFixed(2)),
+    sql: null,
+    retryCount: 0,
+    hypothesis: "Gộp các thành phần biến động nhỏ dưới 30% do tác động triệt tiêu (Offsetting Guard)",
+  };
+
+  return {
+    retainedLeaves: [...retained, residualOtherStep],
+    residualOtherStep,
+    isOffsettingActive: true,
+    grossDeltaSum,
+  };
+}
+
+/**
+ * Performs Waterfall Attribution Math Check (PRD §4.3, K7 Gate):
+ * Validates that sum(disjoint leaves) + residualOther balances the total delta within 5% tolerance.
+ * Enforces strictly signed delta comparison to prevent false positive attribution when signs diverge.
+ */
 export function verifyWaterfallAttribution(
   leafNodes: PlanStep[],
   residualOtherAbs: number,
   absDeltaTotal: number,
   steps?: PlanStep[],
+  axisFilter?: PlanStepAxis,
 ): {
   deltaExplained: number;
   mathDiffRatio: number;
   mathVerified: boolean;
+  axisResults?: Partial<Record<PlanStepAxis, { deltaExplained: number; mathDiffRatio: number; mathVerified: boolean }>>;
 } {
-  const leafDeltaSum = leafNodes.reduce((sum, n) => sum + n.delta, 0);
+  const allSteps = steps ?? leafNodes;
+  const hasDim = allSteps.some((s) => s.axis === "dimension" && s.status === "done");
+  const hasFormula = allSteps.some((s) => s.axis === "formula" && s.status === "done");
+
+  // When no axisFilter is specified and both axes exist, validate each axis independently
+  // to avoid double-counting formula and dimension leaves.
+  if (!axisFilter && hasDim && hasFormula) {
+    const dimResult = verifyWaterfallAttribution(leafNodes, residualOtherAbs, absDeltaTotal, steps, "dimension");
+    const formulaResult = verifyWaterfallAttribution(leafNodes, 0, absDeltaTotal, steps, "formula");
+    const mathVerified = dimResult.mathVerified && formulaResult.mathVerified;
+    const mathDiffRatio = Math.max(dimResult.mathDiffRatio, formulaResult.mathDiffRatio);
+    return {
+      deltaExplained: dimResult.deltaExplained,
+      mathDiffRatio,
+      mathVerified,
+      axisResults: {
+        dimension: dimResult,
+        formula: formulaResult,
+      },
+    };
+  }
+
+  const targetLeaves = axisFilter ? leafNodes.filter((n) => n.axis === axisFilter) : leafNodes;
+  const targetSteps = axisFilter && steps ? steps.filter((s) => s.axis === axisFilter) : steps;
+
+  const leafDeltaSum = targetLeaves.reduce((sum, n) => sum + n.delta, 0);
 
   let signedResidual = 0;
   let hasSignedResidualData = false;
 
-  if (steps && steps.length > 0) {
-    const disjointSkipped = getDisjointSkippedNodes(steps);
+  if (targetSteps && targetSteps.length > 0) {
+    const disjointSkipped = getDisjointSkippedNodes(targetSteps, axisFilter);
     const skippedSum = disjointSkipped.reduce((sum, s) => sum + s.delta, 0);
 
-    // Unallocated difference between a parent and its children's deltas counts as residual.
-    const hasDimension = steps.some((s) => s.axis === "dimension");
-    const candidates = hasDimension ? steps.filter((s) => s.axis !== "formula") : steps;
+    const candidates = targetSteps;
     const parentIds = new Set(
       candidates
         .map((s) => s.parentId)
@@ -1892,8 +2643,10 @@ export function verifyWaterfallAttribution(
     hasSignedResidualData = disjointSkipped.length > 0 || unanalyzedParentResidual !== 0;
   }
 
-  // Infer residual sign from absDeltaTotal only when no signed step data is available.
-  if (!hasSignedResidualData && residualOtherAbs !== 0) {
+  // Only fall back to inferring sign from absDeltaTotal * residualOtherAbs when no signed residual data was provided
+  // (e.g. steps was omitted). If skipped branches exist and cancel each other out to 0, keep signedResidual = 0.
+  // Formula axis leaves sum to total delta directly without residualOtherAbs.
+  if (!hasSignedResidualData && residualOtherAbs !== 0 && axisFilter !== "formula") {
     signedResidual = (absDeltaTotal < 0 ? -1 : 1) * Math.abs(residualOtherAbs);
   }
 
@@ -2016,11 +2769,20 @@ export function generateMarkdownReport(
 
   const mathStatusBadge = rca.mathVerified ? "✅ ĐẠT (PASS)" : "⚠️ CẢNH BÁO (WARNING)";
   const diffPct = (rca.mathDiffRatio * 100).toFixed(2);
-  sections.push(`## 4. Kiểm chứng số học Waterfall (K7 Tolerance ≤ 5%)
-- **Trạng thái kiểm chứng:** ${mathStatusBadge}
-- **Tổng biến động cần giải trình:** ${absStr}
-- **Sai số toán học:** ${diffPct}% (ngưỡng cho phép: ≤ 5.00%)
-- **Phần dư từ các nhánh cắt tỉa (Residual Other):** ${formatVnd(rca.residualOtherAbs)}`);
+  const mathLines = [
+    `## 4. Kiểm chứng số học Waterfall (K7 Tolerance ≤ 5%)`,
+    `- **Trạng thái kiểm chứng:** ${mathStatusBadge}`,
+    `- **Tổng biến động cần giải trình:** ${absStr}`,
+    `- **Sai số toán học:** ${diffPct}% (ngưỡng cho phép: ≤ 5.00%)`,
+    `- **Phần dư từ các nhánh cắt tỉa (Residual Other):** ${formatVnd(rca.residualOtherAbs)}`,
+  ];
+  if (
+    plan.steps.some((s) => s.axis === "formula" && s.status === "done") &&
+    plan.steps.some((s) => s.axis === "dimension" && s.status === "done")
+  ) {
+    mathLines.push(`- **Xác minh đa trục:** Cả hai trục Nhân tố (Formula) và Chiều phân rã (Dimension) đều được kiểm chứng số học độc lập.`);
+  }
+  sections.push(mathLines.join("\n"));
 
   const unexploredLines: string[] = ["## 5. Nhánh chưa phân tích & Giới hạn"];
   if (rca.unexploredBranches.length === 0) {
@@ -2038,14 +2800,46 @@ export function generateMarkdownReport(
 }
 
 export function synthesizeReport(plan: AnalysisPlan): RootCauseAnswer {
-  const leafNodes = getDisjointLeafNodes(plan.steps);
+  const hasDim = plan.steps.some((s) => s.axis === "dimension" && s.status === "done");
+  const hasFormula = plan.steps.some((s) => s.axis === "formula" && s.status === "done");
+
+  let dimLeaves: PlanStep[] = [];
+  if (hasDim) {
+    dimLeaves = getDisjointLeafNodes(plan.steps, "dimension");
+    const dimOffsetting = applyOffsettingGuard(dimLeaves, plan.absDelta);
+    if (dimOffsetting.isOffsettingActive && dimOffsetting.residualOtherStep) {
+      dimLeaves = dimOffsetting.retainedLeaves;
+    }
+  }
+
+  let formulaLeaves: PlanStep[] = [];
+  if (hasFormula) {
+    formulaLeaves = getDisjointLeafNodes(plan.steps, "formula");
+    const formulaOffsetting = applyOffsettingGuard(formulaLeaves, plan.absDelta);
+    if (formulaOffsetting.isOffsettingActive && formulaOffsetting.residualOtherStep) {
+      formulaLeaves = formulaOffsetting.retainedLeaves;
+    }
+  }
+
+  const allLeaves = hasDim && hasFormula
+    ? [...formulaLeaves, ...dimLeaves]
+    : (hasDim ? dimLeaves : (hasFormula ? formulaLeaves : getDisjointLeafNodes(plan.steps)));
+
   const mathResult = verifyWaterfallAttribution(
-    leafNodes,
+    allLeaves,
     plan.residualOtherAbs,
     plan.absDelta,
     plan.steps,
   );
-  const primaryCauses = identifyPrimaryRootCauses(leafNodes);
+
+  let primaryCauses: RootCauseItem[] = [];
+  if (hasFormula && hasDim) {
+    const fCauses = identifyPrimaryRootCauses(formulaLeaves);
+    const dCauses = identifyPrimaryRootCauses(dimLeaves);
+    primaryCauses = [...fCauses, ...dCauses];
+  } else {
+    primaryCauses = identifyPrimaryRootCauses(allLeaves);
+  }
 
   const partialAnswer = {
     question: plan.question,

@@ -174,7 +174,7 @@ export async function gradeUc05(
         // KB2: AOV ratio drop in Southern region, week 39/2026
         // TikTok Shop x Thời trang nữ voucher bug
         const stepMetricsMap: Record<string, { baselineVal: number; currentVal: number }> = {
-          step_factor_numerator: { baselineVal: 450_000, currentVal: 450_000 },
+          step_factor_numerator: { baselineVal: 450_000, currentVal: 334_350 },
           step_factor_denominator: { baselineVal: 1, currentVal: 1 },
           step_region_south: { baselineVal: 450_000, currentVal: 334_350 }, // -115,650 (100%) -> expand
           step_region_central: { baselineVal: 450_000, currentVal: 450_000 }, // 0 -> skipped
@@ -561,6 +561,86 @@ WHERE o.status = 'delivered'
         note = exPass
           ? `Passed: Live graph routed via router (ucId unset), queried real DB via live MCP run_query (baseline=${plan?.baselineVal}, current=${plan?.currentVal}, pctDelta=${plan?.pctDelta?.toFixed(2)}% in verify.ts band [-20%, -5%], target magnitude ${expectedPct}%), skill loaded (skill_call emitted), reached HITL plan interrupt`
           : `Failed: hasInterrupt=${hasInterrupt}, isPlanInterrupt=${isPlanInterrupt}, isValidBaseline=${isValidBaseline}, hasSkillCall=${hasSkillCall}, isDeltaInBand=${isDeltaInBand} (got ${plan?.pctDelta}%, required [-20%, -5%]), isNearExpectedMagnitude=${isNearExpectedMagnitude} (target ${expectedPct}%), isAbsDeltaConsistent=${isAbsDeltaConsistent}, isPctDeltaConsistent=${isPctDeltaConsistent}`;
+      } else if (c.caseId === "EC-09") {
+        // EC-09: AOV Mix-Shift / Formula Decomposition (Issue #133)
+        // Two-Axis MECE: decomposes AOV into formula factors (net_revenue & delivered_orders)
+        // and dimension hierarchy with Shift-Share Rate/Mix attribution.
+        const stepMetricsMap: Record<string, { baselineVal: number; currentVal: number }> = {
+          step_factor_numerator: { baselineVal: 2_500_000_000, currentVal: 2_000_000_000 },
+          step_factor_denominator: { baselineVal: 10_000, currentVal: 10_000 },
+          step_region_north: { baselineVal: 250_000, currentVal: 200_000 },
+          step_region_central: { baselineVal: 250_000, currentVal: 200_000 },
+          step_region_south: { baselineVal: 250_000, currentVal: 200_000 },
+        };
+
+        const shiftShareSegments = [
+          { id: "step_region_north", name: "Miền Bắc", n0: 1_000_000_000, d0: 4_000, n1: 700_000_000, d1: 3_500 },
+          { id: "step_region_central", name: "Miền Trung", n0: 1_000_000_000, d0: 4_000, n1: 800_000_000, d1: 4_000 },
+          { id: "step_region_south", name: "Miền Nam", n0: 500_000_000, d0: 2_000, n1: 500_000_000, d1: 2_500 },
+        ];
+
+        const deps: RcaRuntimeDeps = {
+          skipHitlReview: true,
+          shiftShareSegments,
+          fetchBaseline: async () => 250_000,
+          fetchStepMetrics: async (step) =>
+            stepMetricsMap[step.stepId] ?? { baselineVal: 250_000, currentVal: 200_000 },
+          candidateChannels: [],
+        };
+
+        // Alternate baseline check to return -50k delta
+        let callCount = 0;
+        deps.fetchBaseline = async () => {
+          callCount++;
+          return callCount % 2 === 1 ? 250_000 : 200_000;
+        };
+
+        const runtime = createRcaRuntime(deps);
+        const out = await runtime.entry(fakeState(c.question), fakeRuntime());
+
+        const mathVerified = Boolean(out.rootCauseAnswer?.mathVerified);
+        const numStep = out.analysisPlan?.steps.find((s) => s.stepId === "step_factor_numerator");
+        const hasFormulaAttribution = Boolean(numStep && numStep.delta !== 0);
+        const hasShiftShareInHypothesis = Boolean(
+          out.analysisPlan?.steps.some((s) => s.hypothesis?.includes("Shift-Share")),
+        );
+
+        exPass = out.status === "ok" && mathVerified && hasFormulaAttribution && hasShiftShareInHypothesis;
+        note = exPass
+          ? `Passed: AOV formula decomposition (-50k VND) + Shift-Share rate/mix verified, mathVerified=true`
+          : `Failed: status=${out.status}, mathVerified=${mathVerified}, hasFormula=${hasFormulaAttribution}, hasShiftShare=${hasShiftShareInHypothesis}`;
+      } else if (c.caseId === "EC-10") {
+        // EC-10: Offsetting Movement Guard with Residual Other (Issue #133)
+        // Net delta is small (-5M), but gross movement is large (99M).
+        // Components < 30% gross are pruned into residual_other while preserving 100% attribution.
+        const totalDelta = -5_000_000;
+        const stepMetricsMap: Record<string, { baselineVal: number; currentVal: number }> = {
+          step_region_central: { baselineVal: 100_000_000, currentVal: 55_000_000 },  // -45M (45.5% gross >= 30%) -> retain
+          step_region_north: { baselineVal: 60_000_000, currentVal: 100_000_000 },    // +40M (40.4% gross >= 30%) -> retain
+          step_region_south: { baselineVal: 50_000_000, currentVal: 50_000_000 },     // 0M -> skipped
+        };
+
+        const deps: RcaRuntimeDeps = {
+          skipHitlReview: true,
+          drilldownThreshold: 30,
+          candidateChannels: [],
+          fetchBaseline: async (_m, _t, period) =>
+            period.start.includes("08") ? 500_000_000 : 495_000_000, // -5M net delta
+          fetchStepMetrics: async (step) =>
+            stepMetricsMap[step.stepId] ?? { baselineVal: 50_000_000, currentVal: 50_000_000 },
+        };
+
+        const runtime = createRcaRuntime(deps);
+        const out = await runtime.entry(fakeState(c.question), fakeRuntime());
+
+        const mathVerified = Boolean(out.rootCauseAnswer?.mathVerified && out.rootCauseAnswer?.absDelta === totalDelta);
+        const primaryCauses = out.rootCauseAnswer?.primaryCauses ?? [];
+        const hasMajorDrivers = primaryCauses.some((c) => c.dimensionValue === "Miền Trung" || c.dimensionValue === "Miền Bắc");
+
+        exPass = out.status === "ok" && mathVerified && hasMajorDrivers;
+        note = exPass
+          ? `Passed: Offsetting movement handled, net delta (-5M) reconciled with gross movements, mathVerified=true`
+          : `Failed: status=${out.status}, mathVerified=${mathVerified}, hasMajorDrivers=${hasMajorDrivers}`;
       }
     } catch (err) {
       exPass = false;
