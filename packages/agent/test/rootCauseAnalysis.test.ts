@@ -19,6 +19,14 @@ import {
   validateBaseline,
   verifySqlDateFilter,
   verifyWaterfallAttribution,
+  canDecomposeOrdersAov,
+  lmdiDecompose,
+  shapleyTwoFactor,
+  calculateReturnEffect,
+  decomposeRevenueFactors,
+  decomposeRatioFormula,
+  shiftShareDecompose,
+  applyOffsettingGuard,
   RCA_UC_ID,
 } from "../src/subgraphs/rootCauseAnalysis.js";
 import { routeQuestionToUc } from "../src/router.js";
@@ -3186,3 +3194,742 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
   });
 });
 
+describe("Issue #133 Acceptance Tests (TC-05-01 through TC-05-08)", () => {
+  it("TC-05-01: Returns surge between two periods produces negative Return Effect and balances Delta Net Revenue", () => {
+    // Baseline: Orders=1000, AOV=500k -> Delivered Rev=500M, Returns=20M -> Net Rev=480M
+    // Current: Orders=1000, AOV=500k -> Delivered Rev=500M, Returns=80M -> Net Rev=420M
+    // Delta Net Revenue = -60M
+    const res = decomposeRevenueFactors({
+      orders0: 1000,
+      orders1: 1000,
+      aov0: 500_000,
+      aov1: 500_000,
+      returns0: 20_000_000,
+      returns1: 80_000_000,
+    });
+
+    expect(calculateReturnEffect(20_000_000, 80_000_000)).toBe(-60_000_000);
+    expect(res.effectReturns).toBe(-60_000_000);
+    expect(res.effectReturns).toBeLessThan(0);
+    expect(res.effectOrders).toBe(0);
+    expect(res.effectAov).toBe(0);
+    expect(res.deltaNetRevenue).toBe(-60_000_000);
+    expect(res.effectOrders + res.effectAov + res.effectReturns).toBe(res.deltaNetRevenue);
+
+    // Verify waterfall attribution passes
+    const steps: PlanStep[] = [
+      {
+        stepId: "step_orders",
+        axis: "formula",
+        dimensionOrFactor: "delivered_orders",
+        dimensionValue: null,
+        dimensionPath: ["formula", "delivered_orders"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: res.effectOrders,
+        contributionPct: 0,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_aov",
+        axis: "formula",
+        dimensionOrFactor: "delivered_aov",
+        dimensionValue: null,
+        dimensionPath: ["formula", "delivered_aov"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: res.effectAov,
+        contributionPct: 0,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+      {
+        stepId: "step_returns",
+        axis: "formula",
+        dimensionOrFactor: "return_deductions",
+        dimensionValue: null,
+        dimensionPath: ["formula", "return_deductions"],
+        parentId: null,
+        depth: 0,
+        status: "done",
+        delta: res.effectReturns,
+        contributionPct: 100,
+        sql: "SELECT ...",
+        retryCount: 0,
+      },
+    ];
+
+    const waterfall = verifyWaterfallAttribution(steps, 0, -60_000_000, steps, "formula");
+    expect(waterfall.mathVerified).toBe(true);
+    expect(waterfall.deltaExplained).toBe(-60_000_000);
+    expect(waterfall.mathDiffRatio).toBe(0);
+  });
+
+  it("TC-05-02: Zero Delivered Orders in one period omits formula axis and attributes 100% via Dimension Waterfall", () => {
+    // Delivered Orders = 0 in baseline period
+    expect(canDecomposeOrdersAov(0, 100)).toBe(false);
+    expect(canDecomposeOrdersAov(100, 0)).toBe(false);
+
+    // decomposeRevenueFactors handles zero orders safely without throwing Shapley error
+    const decomp = decomposeRevenueFactors({
+      orders0: 0,
+      orders1: 100,
+      aov0: 0,
+      aov1: 200_000,
+      returns0: 0,
+      returns1: 5_000_000,
+    });
+    expect(decomp.methodUsed).toBe("zero_orders_omitted");
+    expect(decomp.effectOrders).toBe(0);
+    expect(decomp.effectAov).toBe(0);
+    expect(decomp.notes).toContain("Delivered Orders = 0");
+
+    // Shapley strictly rejects zero orders
+    expect(() => shapleyTwoFactor(0, 100, 0, 200_000)).toThrow(/positive Orders and positive AOV/);
+
+    // createPlan omits formula axis when delivered orders = 0
+    const intent = parseRcaIntent("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?");
+    const plan = createPlan(
+      "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      intent,
+      {
+        isValidBaseline: true,
+        baselineVal: 200_000_000,
+        currentVal: 150_000_000,
+        absDelta: -50_000_000,
+        pctDelta: -25.0,
+        queriesExecuted: 2,
+      },
+      undefined,
+      {
+        includeFormulaAxisForAdditive: true,
+        deliveredOrdersBaseline: 0,
+        deliveredOrdersCurrent: 50,
+      },
+    );
+
+    expect(plan).not.toBeNull();
+    // Formula steps must NOT be added
+    const formulaSteps = plan!.steps.filter((s) => s.axis === "formula");
+    expect(formulaSteps).toHaveLength(0);
+    // All steps belong to dimension waterfall
+    const dimSteps = plan!.steps.filter((s) => s.axis === "dimension");
+    expect(dimSteps.length).toBeGreaterThan(0);
+  });
+
+  it("TC-05-03: Two periods have equal revenue (Y0 = Y1) but Orders and AOV offset, preserving exact algebraic zero sum", () => {
+    // Orders doubled (100 -> 200), AOV halved (200k -> 100k)
+    // Y0 = 20M, Y1 = 20M, Delta Y = 0
+    const res = lmdiDecompose(100, 200, 200_000, 100_000);
+
+    expect(res.deltaDeliveredRevenue).toBe(0);
+    expect(res.effectOrders).toBeGreaterThan(0); // Orders doubled: positive force
+    expect(res.effectAov).toBeLessThan(0); // AOV halved: negative force
+    // Individual forces cancel out completely
+    expect(Math.abs(res.effectOrders + res.effectAov)).toBeLessThan(1e-9);
+    expect(res.effectOrders + res.effectAov).toBe(0);
+  });
+
+  it("TC-05-04: Near-equal revenue (|Y1 - Y0| very small) uses Math.log1p with residual allocation preserving exact equality", () => {
+    // High revenue with delta = 1e-9 relative change
+    const orders0 = 1000;
+    const aov0 = 1_000_000; // Y0 = 1,000,000,000
+    const orders1 = 1000.000001;
+    const aov1 = 1_000_000; // Y1 = 1,000,000,001
+
+    const y0 = orders0 * aov0;
+    const y1 = orders1 * aov1;
+    const expectedDelta = y1 - y0;
+
+    const res = lmdiDecompose(orders0, orders1, aov0, aov1);
+    expect(Number.isFinite(res.effectOrders)).toBe(true);
+    expect(Number.isFinite(res.effectAov)).toBe(true);
+    expect(Number.isNaN(res.effectOrders)).toBe(false);
+    expect(Number.isNaN(res.effectAov)).toBe(false);
+    expect(res.effectOrders + res.effectAov).toBe(expectedDelta);
+  });
+
+  it("TC-05-05: Insignificant rate change (|Delta R| < 10^-4) is classified as insignificant_change without mislabeling", () => {
+    const segments = [
+      { id: "s1", name: "Segment 1", n0: 1000, d0: 10000, n1: 1000.5, d1: 10000 },
+    ];
+    // R0 = 0.1000, R1 = 0.10005, deltaR = 0.00005 < 1e-4
+    const res = shiftShareDecompose(segments);
+
+    expect(Math.abs(res.deltaR)).toBeLessThan(1e-4);
+    expect(res.classification).toBe("insignificant_change");
+  });
+
+  it("TC-05-06: Shift-Share with Structural Entry and Exit preserves exact 100% total Delta R with R0 reference", () => {
+    // Continuing segment A: n0=10, d0=100 (r0=0.10); n1=15, d1=100 (r1=0.15)
+    // Exit segment B: n0=20, d0=100 (r0=0.20); n1=0, d1=0
+    // Entry segment C: n0=0, d0=0; n1=10, d1=100 (r1=0.10)
+    // D0 = 200, N0 = 30 -> R0 = 0.15
+    // D1 = 200, N1 = 25 -> R1 = 0.125
+    // Delta R = -0.025
+    const segments = [
+      { id: "seg_cont", name: "Continuing A", n0: 10, d0: 100, n1: 15, d1: 100 },
+      { id: "seg_exit", name: "Exit B", n0: 20, d0: 100, n1: 0, d1: 0 },
+      { id: "seg_entry", name: "Entry C", n0: 0, d0: 0, n1: 10, d1: 100 },
+    ];
+
+    const res = shiftShareDecompose(segments);
+
+    expect(res.r0).toBe(0.15);
+    expect(res.r1).toBe(0.125);
+    expect(res.deltaR).toBeCloseTo(-0.025, 6);
+
+    const entrySeg = res.segments.find((s) => s.id === "seg_entry")!;
+    expect(entrySeg.type).toBe("entry");
+    expect(entrySeg.rateEffect).toBe(0);
+    // MixEffect_entry = w1 * (r1 - R0) = 0.5 * (0.10 - 0.15) = -0.025
+    expect(entrySeg.mixEffect).toBeCloseTo(-0.025, 6);
+
+    const exitSeg = res.segments.find((s) => s.id === "seg_exit")!;
+    expect(exitSeg.type).toBe("exit");
+    expect(exitSeg.rateEffect).toBe(0);
+    // MixEffect_exit = w0 * (R0 - r0) = 0.5 * (0.15 - 0.20) = -0.025
+    expect(exitSeg.mixEffect).toBeCloseTo(-0.025, 6);
+
+    const contSeg = res.segments.find((s) => s.id === "seg_cont")!;
+    expect(contSeg.type).toBe("continuing");
+    // RateEffect_cont = w0 * (r1 - r0) = 0.5 * (0.15 - 0.10) = +0.025
+    expect(contSeg.rateEffect).toBeCloseTo(0.025, 6);
+    // MixEffect_cont = (w1 - w0) * (r1 - R0) = 0 * (0.15 - 0.15) = 0
+    expect(contSeg.mixEffect).toBeCloseTo(0, 6);
+
+    // Conservation check: Total Rate + Total Mix === Delta R
+    expect(res.totalRateEffect + res.totalMixEffect).toBeCloseTo(res.deltaR, 6);
+    expect(res.totalRateEffect).toBeCloseTo(0.025, 6);
+    expect(res.totalMixEffect).toBeCloseTo(-0.050, 6);
+  });
+
+  it("TC-05-07: Offsetting Guard triggers when Net Delta < 10% Gross, pruning < 30% components into residual_other", () => {
+    const leaf1: PlanStep = {
+      stepId: "leaf_shopee",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Shopee",
+      dimensionPath: ["Shopee"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: 50_000_000,
+      contributionPct: 1000.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const leaf2: PlanStep = {
+      stepId: "leaf_lazada",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Lazada",
+      dimensionPath: ["Lazada"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: -46_000_000,
+      contributionPct: -920.0,
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const leaf3: PlanStep = {
+      stepId: "leaf_tiki",
+      axis: "dimension",
+      dimensionOrFactor: "channel",
+      dimensionValue: "Tiki",
+      dimensionPath: ["Tiki"],
+      parentId: null,
+      depth: 0,
+      status: "done",
+      delta: 1_000_000,
+      contributionPct: 20.0, // < 30% threshold
+      sql: "SELECT ...",
+      retryCount: 0,
+    };
+
+    const totalDelta = 5_000_000; // Net delta = +5M
+    const leaves = [leaf1, leaf2, leaf3];
+
+    // Gross = 50M + 46M + 1M = 97M. |5M| < 0.1 * 97M = 9.7M -> Offsetting active!
+    const guard = applyOffsettingGuard(leaves, totalDelta, 30.0);
+
+    expect(guard.isOffsettingActive).toBe(true);
+    expect(guard.residualOtherStep).not.toBeNull();
+    expect(guard.residualOtherStep!.delta).toBe(1_000_000);
+    expect(guard.residualOtherStep!.contributionPct).toBe(20.0);
+    expect(guard.retainedLeaves).toHaveLength(3); // leaf1, leaf2, residualOtherStep
+
+    // Total delta explained is 100% preserved
+    const sumRetained = guard.retainedLeaves.reduce((acc, s) => acc + s.delta, 0);
+    expect(sumRetained).toBe(totalDelta);
+
+    // Verify waterfall attribution passes
+    const result = verifyWaterfallAttribution(guard.retainedLeaves, 0, totalDelta, guard.retainedLeaves);
+    expect(result.mathVerified).toBe(true);
+    expect(result.deltaExplained).toBe(totalDelta);
+    expect(result.mathDiffRatio).toBe(0);
+  });
+
+  it("TC-05-08: Segment Reversal classifies as Simpson's Paradox when 100% comparable subgroups reverse, else Mix-Induced Reversal or Mix-Dominated", () => {
+    // Sub-case A: True Simpson's Paradox (100% comparable subgroups reversed)
+    // Subgroup 1: D0=100, N0=20 (20%); D1=800, N1=120 (15%) -> Delta R1 = -5% (decrease)
+    // Subgroup 2: D0=900, N0=90 (10%); D1=200, N1=10 (5%) -> Delta R2 = -5% (decrease)
+    // Total: D0=1000, N0=110 (11%); D1=1000, N1=130 (13%) -> Total Delta R = +2% (increase!)
+    const simpsonSegments = [
+      { id: "g1", name: "High-risk group", n0: 20, d0: 100, n1: 120, d1: 800 },
+      { id: "g2", name: "Low-risk group", n0: 90, d0: 900, n1: 10, d1: 200 },
+    ];
+    const simpsonRes = shiftShareDecompose(simpsonSegments);
+    expect(simpsonRes.deltaR).toBeGreaterThan(0); // Overall rate increased (+2%)
+    expect(simpsonRes.totalRateEffect).toBeLessThan(0); // Rate effect decreased
+    expect(simpsonRes.classification).toBe("simpsons_paradox");
+
+    // Sub-case B: Mix-Induced Reversal (only 1 of 2 subgroups reversed)
+    // Group 1: 20% -> 15% (decreased by -5%) with dominant baseline weight (w0 = 10/11)
+    // Group 2: 30% -> 35% (increased by +5%) with small baseline weight (w0 = 1/11)
+    // Total rate effect is negative (-0.0409), but mix shifts heavily to Group 2 (w1 = 8/10),
+    // driving total rate up from 20.91% to 31.00% (deltaR = +0.1009 > 0).
+    const reversalSegments = [
+      { id: "g1", name: "Group 1", n0: 200, d0: 1000, n1: 30, d1: 200 },
+      { id: "g2", name: "Group 2", n0: 30, d0: 100, n1: 280, d1: 800 },
+    ];
+    const revRes = shiftShareDecompose(reversalSegments);
+    expect(revRes.deltaR).toBeGreaterThan(0);
+    expect(revRes.totalRateEffect).toBeLessThan(0);
+    expect(revRes.classification).toBe("mix_induced_reversal");
+
+    // Sub-case C: Mix-Dominated (Rate Effect < 1e-4)
+    const mixDomSegments = [
+      { id: "g1", name: "Group 1", n0: 10, d0: 100, n1: 50, d1: 500 }, // 10% -> 10% (rate unchanged)
+      { id: "g2", name: "Group 2", n0: 50, d0: 100, n1: 10, d1: 20 },  // 50% -> 50% (rate unchanged)
+    ];
+    const mixDomRes = shiftShareDecompose(mixDomSegments);
+    expect(Math.abs(mixDomRes.totalRateEffect)).toBeLessThan(1e-4);
+    expect(mixDomRes.classification).toBe("mix_dominated");
+  });
+
+  it("TC-05-09: Mixed plan (Formula + Dimension) independently validates both axes and preserves formula drivers in report", () => {
+    const totalDelta = -460_000_000;
+    const plan: AnalysisPlan = {
+      question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      metricName: "net_revenue",
+      metricType: "additive",
+      direction: "decrease",
+      currentPeriod: { start: "2026-09-01", end: "2026-09-30" },
+      baselinePeriod: { start: "2026-08-01", end: "2026-08-31" },
+      baselineVal: 2_500_000_000,
+      currentVal: 2_040_000_000,
+      absDelta: totalDelta,
+      pctDelta: -18.4,
+      isValidBaseline: true,
+      totalQueriesCount: 8,
+      maxQueriesLimit: 20,
+      maxDepthLimit: 4,
+      drilldownThreshold: 30,
+      residualOtherAbs: 60_000_000,
+      unexploredBranches: [],
+      steps: [
+        // Formula Axis Steps (sum = -460M)
+        {
+          stepId: "f_orders",
+          axis: "formula",
+          dimensionOrFactor: "delivered_orders",
+          dimensionValue: null,
+          dimensionPath: ["formula", "delivered_orders"],
+          parentId: null,
+          depth: 0,
+          status: "done",
+          delta: -300_000_000,
+          contributionPct: 65.22,
+          sql: "SELECT COUNT(*)",
+          retryCount: 0,
+        },
+        {
+          stepId: "f_aov",
+          axis: "formula",
+          dimensionOrFactor: "delivered_aov",
+          dimensionValue: null,
+          dimensionPath: ["formula", "delivered_aov"],
+          parentId: null,
+          depth: 0,
+          status: "done",
+          delta: -140_000_000,
+          contributionPct: 30.43,
+          sql: "SELECT AVG(price)",
+          retryCount: 0,
+        },
+        {
+          stepId: "f_returns",
+          axis: "formula",
+          dimensionOrFactor: "return_deductions",
+          dimensionValue: null,
+          dimensionPath: ["formula", "return_deductions"],
+          parentId: null,
+          depth: 0,
+          status: "done",
+          delta: -20_000_000,
+          contributionPct: 4.35,
+          sql: "SELECT SUM(returns)",
+          retryCount: 0,
+        },
+        // Dimension Axis Steps (sum = -400M leaves + 60M residual = -460M)
+        {
+          stepId: "d_central",
+          axis: "dimension",
+          dimensionOrFactor: "region",
+          dimensionValue: "Miền Trung",
+          dimensionPath: ["Miền Trung"],
+          parentId: null,
+          depth: 0,
+          status: "done",
+          delta: -400_000_000,
+          contributionPct: 86.96,
+          sql: "SELECT SUM(price) WHERE region = 'Trung'",
+          retryCount: 0,
+        },
+      ],
+    };
+
+    const answer = synthesizeReport(plan);
+    expect(answer.mathVerified).toBe(true);
+    expect(answer.mathDiffRatio).toBeLessThanOrEqual(0.05);
+
+    // Primary causes must contain drivers from both axes
+    const formulaCauses = answer.primaryCauses.filter((c) => c.axis === "formula");
+    const dimCauses = answer.primaryCauses.filter((c) => c.axis === "dimension");
+    expect(formulaCauses.length).toBeGreaterThanOrEqual(1);
+    expect(dimCauses.length).toBeGreaterThanOrEqual(1);
+    expect(formulaCauses[0].dimensionOrFactor).toBe("delivered_orders");
+    expect(dimCauses[0].dimensionValue).toBe("Miền Trung");
+
+    // Markdown report mentions multi-axis verification
+    expect(answer.finalReportMarkdown).toContain("Xác minh đa trục");
+  });
+
+  it("TC-05-10: executeAnalysis executes LMDI decomposition in runtime, updating step deltas and contribution percentages", async () => {
+    const baselineVal = 2_000_000_000;
+    const currentVal = 1_540_000_000;
+    const absDelta = currentVal - baselineVal; // -460_000_000
+
+    const intent = parseRcaIntent("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?");
+    const plan = createPlan(
+      "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      intent,
+      {
+        isValidBaseline: true,
+        baselineVal,
+        currentVal,
+        absDelta,
+        pctDelta: -23.0,
+        queriesExecuted: 2,
+      },
+      undefined,
+      { includeFormulaAxisForAdditive: true },
+    );
+
+    // Mock step queries:
+    // orders: 10,000 -> 8,000
+    // aov: 205,000 -> 200,000
+    // returns: 50,000,000 -> 60,000,000 (delta +10M, Return Effect = -10M)
+    const stepMetricsMap: Record<string, { baselineVal: number; currentVal: number }> = {
+      step_factor_delivered_orders: { baselineVal: 10_000, currentVal: 8_000 },
+      step_factor_delivered_aov: { baselineVal: 205_000, currentVal: 200_000 },
+      step_factor_return_deductions: { baselineVal: 50_000_000, currentVal: 60_000_000 },
+      step_region_central: { baselineVal: 1_000_000_000, currentVal: 600_000_000 },
+      step_region_north: { baselineVal: 600_000_000, currentVal: 560_000_000 },
+      step_region_south: { baselineVal: 400_000_000, currentVal: 380_000_000 },
+    };
+
+    const deps: RcaRuntimeDeps = {
+      fetchStepMetrics: async (step) =>
+        stepMetricsMap[step.stepId] ?? { baselineVal: 100_000_000, currentVal: 100_000_000 },
+      maxDepthLimit: 1,
+    };
+
+    const executedPlan = await executeAnalysis(
+      plan,
+      intent,
+      deps,
+      { runId: "test_run", userId: "test_user", roleScope: "admin" },
+    );
+
+    const ordersStep = executedPlan.steps.find((s) => s.dimensionOrFactor === "delivered_orders");
+    const aovStep = executedPlan.steps.find((s) => s.dimensionOrFactor === "delivered_aov");
+    const returnsStep = executedPlan.steps.find((s) => s.dimensionOrFactor === "return_deductions");
+
+    expect(ordersStep).toBeDefined();
+    expect(aovStep).toBeDefined();
+    expect(returnsStep).toBeDefined();
+
+    // Verify that ordersStep.delta is NOT the raw count diff (-2000), but attributed VND impact
+    expect(ordersStep!.delta).toBeLessThan(-100_000_000);
+    expect(aovStep!.delta).toBeLessThan(0);
+    expect(returnsStep!.delta).toBe(-10_000_000);
+
+    const formulaSum = ordersStep!.delta + aovStep!.delta + returnsStep!.delta;
+    // LMDI exactly attributes delivered revenue + returns to total net revenue delta
+    const expectedDeliveredDelta = (8_000 * 200_000) - (10_000 * 205_000); // 1.6B - 2.05B = -450M
+    expect(formulaSum).toBeCloseTo(expectedDeliveredDelta - 10_000_000, 2);
+  });
+
+  it("TC-05-11: executeAnalysis with shiftShareSegments assigns Rate and Mix effects into dimension steps", async () => {
+    const baselineVal = 0.20; // 20% Return Rate
+    const currentVal = 0.15; // 15% Return Rate
+    const absDelta = -0.05;
+
+    const intent = parseRcaIntent("Vì sao tỷ lệ trả hàng (return_rate) tháng 09/2026 giảm so với tháng 08/2026?");
+    const plan = createPlan(
+      "Vì sao tỷ lệ trả hàng tháng 09/2026 giảm?",
+      intent,
+      {
+        isValidBaseline: true,
+        baselineVal,
+        currentVal,
+        absDelta,
+        pctDelta: -25.0,
+        queriesExecuted: 2,
+      },
+      undefined,
+      { includeFormulaAxisForAdditive: true },
+    );
+
+    const shiftShareSegments: ShiftShareSegment[] = [
+      { id: "step_region_north", name: "Miền Bắc", n0: 100, d0: 500, n1: 60, d1: 400 },
+      { id: "step_region_central", name: "Miền Trung", n0: 50, d0: 250, n1: 30, d1: 300 },
+      { id: "step_region_south", name: "Miền Nam", n0: 50, d0: 250, n1: 60, d1: 300 },
+    ];
+
+    const deps: RcaRuntimeDeps = {
+      shiftShareSegments,
+      fetchStepMetrics: async () => ({ baselineVal: 0.20, currentVal: 0.15 }),
+      candidateChannels: [],
+    };
+
+    const executedPlan = await executeAnalysis(
+      plan,
+      intent,
+      deps,
+      { runId: "test_run", userId: "test_user", roleScope: "admin" },
+    );
+
+    const northStep = executedPlan.steps.find((s) => s.stepId === "step_region_north");
+    expect(northStep).toBeDefined();
+    expect(northStep!.hypothesis).toContain("Shift-Share");
+    expect(northStep!.hypothesis).toContain("RateEffect=");
+    expect(northStep!.hypothesis).toContain("MixEffect=");
+
+    const totalSegDelta = executedPlan.steps
+      .filter((s) => s.axis === "dimension")
+      .reduce((sum, s) => sum + s.delta, 0);
+
+    expect(totalSegDelta).toBeCloseTo(absDelta, 5);
+  });
+
+  it("TC-05-12: decomposeRevenueFactors safely omits formula axis when AOV is zero in one period", () => {
+    // Case 1: aov0 = 0, aov1 > 0
+    const res1 = decomposeRevenueFactors({
+      orders0: 100,
+      orders1: 150,
+      aov0: 0,
+      aov1: 200_000,
+      returns0: 0,
+      returns1: 0,
+    });
+    expect(res1.methodUsed).toBe("zero_orders_omitted");
+    expect(res1.effectOrders).toBe(0);
+    expect(res1.effectAov).toBe(0);
+    expect(res1.notes).toContain("AOV <= 0");
+    expect(canDecomposeOrdersAov(100, 150, 0, 200_000)).toBe(false);
+
+    // Case 2: aov0 > 0, aov1 = 0
+    const res2 = decomposeRevenueFactors({
+      orders0: 100,
+      orders1: 150,
+      aov0: 200_000,
+      aov1: 0,
+      returns0: 0,
+      returns1: 0,
+    });
+    expect(res2.methodUsed).toBe("zero_orders_omitted");
+    expect(res2.effectOrders).toBe(0);
+    expect(res2.effectAov).toBe(0);
+    expect(res2.notes).toContain("AOV <= 0");
+    expect(canDecomposeOrdersAov(100, 150, 200_000, 0)).toBe(false);
+  });
+
+  it("TC-05-13: decomposeRevenueFactors and helpers safely reject formula decomposition when AOV is negative", () => {
+    // Negative AOV in period 0
+    const resNeg0 = decomposeRevenueFactors({
+      orders0: 100,
+      orders1: 150,
+      aov0: -10_000,
+      aov1: 200_000,
+      returns0: 0,
+      returns1: 0,
+    });
+    expect(resNeg0.methodUsed).toBe("zero_orders_omitted");
+    expect(resNeg0.effectOrders).toBe(0);
+    expect(resNeg0.effectAov).toBe(0);
+    expect(resNeg0.notes).toContain("AOV <= 0");
+    expect(canDecomposeOrdersAov(100, 150, -10_000, 200_000)).toBe(false);
+
+    // Negative AOV in period 1
+    const resNeg1 = decomposeRevenueFactors({
+      orders0: 100,
+      orders1: 150,
+      aov0: 200_000,
+      aov1: -50_000,
+      returns0: 0,
+      returns1: 0,
+    });
+    expect(resNeg1.methodUsed).toBe("zero_orders_omitted");
+    expect(resNeg1.effectOrders).toBe(0);
+    expect(resNeg1.effectAov).toBe(0);
+    expect(resNeg1.notes).toContain("AOV <= 0");
+    expect(canDecomposeOrdersAov(100, 150, 200_000, -50_000)).toBe(false);
+
+    // Raw shapley throws explicit error
+    expect(() => shapleyTwoFactor(100, 150, -10_000, 200_000)).toThrow(/positive Orders and positive AOV/);
+    expect(() => shapleyTwoFactor(100, 150, 200_000, -50_000)).toThrow(/positive Orders and positive AOV/);
+
+    // Raw lmdi returns safe fallback without throwing
+    const lmdiFallback = lmdiDecompose(100, 150, -10_000, 200_000);
+    expect(lmdiFallback.effectOrders).toBe(0);
+    expect(lmdiFallback.effectAov).toBe(0);
+  });
+
+  it("TC-05-14: Net delta with delivered revenue change but invalid AOV omits all formula steps and attributes 100% via dimensions", async () => {
+    const baselineVal = 2_000_000_000;
+    const currentVal = 1_500_000_000;
+    const absDelta = -500_000_000;
+
+    const intent = parseRcaIntent("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?");
+    const plan = createPlan(
+      "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+      intent,
+      {
+        isValidBaseline: true,
+        baselineVal,
+        currentVal,
+        absDelta,
+        pctDelta: -25.0,
+        queriesExecuted: 2,
+      },
+      undefined,
+      { includeFormulaAxisForAdditive: true },
+    );
+
+    // Mock step queries:
+    // orders: 10,000 -> 7,500
+    // aov: 0 -> 200,000 (AOV0 = 0 is invalid!)
+    // returns: 0 -> 0
+    const stepMetricsMap: Record<string, { baselineVal: number; currentVal: number }> = {
+      step_factor_delivered_orders: { baselineVal: 10_000, currentVal: 7_500 },
+      step_factor_delivered_aov: { baselineVal: 0, currentVal: 200_000 },
+      step_factor_return_deductions: { baselineVal: 0, currentVal: 0 },
+      step_region_central: { baselineVal: 1_200_000_000, currentVal: 800_000_000 }, // -400M
+      step_region_north: { baselineVal: 500_000_000, currentVal: 450_000_000 },    // -50M
+      step_region_south: { baselineVal: 300_000_000, currentVal: 250_000_000 },    // -50M
+    };
+
+    const deps: RcaRuntimeDeps = {
+      fetchStepMetrics: async (step) =>
+        stepMetricsMap[step.stepId] ?? { baselineVal: 0, currentVal: 0 },
+      candidateChannels: [],
+      drilldownThreshold: 5.0,
+    };
+
+    const executedPlan = await executeAnalysis(
+      plan,
+      intent,
+      deps,
+      { runId: "test_run", userId: "test_user", roleScope: "admin" },
+    );
+
+    // All formula steps must be marked skipped
+    const formulaSteps = executedPlan.steps.filter((s) => s.axis === "formula");
+    expect(formulaSteps.length).toBe(3);
+    for (const fs of formulaSteps) {
+      expect(fs.status).toBe("skipped");
+    }
+
+    // unexploredBranches must contain formula_axis with PRUNED_BELOW_THRESHOLD
+    const formulaUnexplored = executedPlan.unexploredBranches.find((b) => b.dimensionOrFactor === "formula_axis");
+    expect(formulaUnexplored).toBeDefined();
+    expect(formulaUnexplored?.reason).toBe("PRUNED_BELOW_THRESHOLD");
+
+    // Dimension steps are executed and explain 100% of delta
+    const dimLeaves = executedPlan.steps.filter((s) => s.axis === "dimension" && s.status === "done");
+    const dimSum = dimLeaves.reduce((sum, s) => sum + s.delta, 0);
+    expect(dimSum).toBeCloseTo(absDelta, 2);
+
+    // synthesizeReport succeeds with mathVerified: true and solely dimension causes
+    const answer = synthesizeReport(executedPlan);
+    expect(answer.mathVerified).toBe(true);
+    expect(answer.primaryCauses.every((c) => c.axis === "dimension")).toBe(true);
+    expect(answer.finalReportMarkdown).not.toContain("Xác minh đa trục");
+  });
+
+  it("TC-05-15: lmdiDecompose with Y0 === Y1 respects deltaDeliveredRevenueTarget when provided", () => {
+    // orders0 = 100, aov0 = 100 -> Y0 = 10,000
+    // orders1 = 200, aov1 = 50  -> Y1 = 10,000
+    // Y0 === Y1, but caller specifies target = 500 (e.g. slight external adjustment or target)
+    const resWithTarget = lmdiDecompose(100, 200, 100, 50, 500);
+    expect(resWithTarget.deltaDeliveredRevenue).toBe(500);
+    expect(resWithTarget.effectOrders + resWithTarget.effectAov).toBeCloseTo(500, 6);
+
+    // Default target undefined -> deltaDeliveredRevenue === 0
+    const resDefault = lmdiDecompose(100, 200, 100, 50);
+    expect(resDefault.deltaDeliveredRevenue).toBe(0);
+    expect(resDefault.effectOrders + resDefault.effectAov).toBeCloseTo(0, 6);
+  });
+
+  it("TC-05-16: All decomposition helpers reject non-finite (NaN, Infinity) values safely", () => {
+    // 1. canDecomposeOrdersAov rejects NaN and Infinity
+    expect(canDecomposeOrdersAov(NaN, 100, 200_000, 200_000)).toBe(false);
+    expect(canDecomposeOrdersAov(100, Infinity, 200_000, 200_000)).toBe(false);
+    expect(canDecomposeOrdersAov(100, 100, NaN, 200_000)).toBe(false);
+    expect(canDecomposeOrdersAov(100, 100, 200_000, -Infinity)).toBe(false);
+
+    // 2. lmdiDecompose returns safe fallback on NaN / Infinity without throwing
+    const lmdiNan = lmdiDecompose(NaN, 100, 200_000, 200_000);
+    expect(lmdiNan.effectOrders).toBe(0);
+    expect(lmdiNan.effectAov).toBe(0);
+    expect(lmdiNan.deltaDeliveredRevenue).toBe(0);
+
+    const lmdiInf = lmdiDecompose(100, 100, Infinity, 200_000);
+    expect(lmdiInf.effectOrders).toBe(0);
+    expect(lmdiInf.effectAov).toBe(0);
+
+    // 3. shapleyTwoFactor throws descriptive error on non-finite values
+    expect(() => shapleyTwoFactor(NaN, 100, 200_000, 200_000)).toThrow(/positive Orders and positive AOV/);
+    expect(() => shapleyTwoFactor(100, 100, Infinity, 200_000)).toThrow(/positive Orders and positive AOV/);
+
+    // 4. calculateReturnEffect returns 0 on non-finite
+    expect(calculateReturnEffect(NaN, 100)).toBe(0);
+    expect(calculateReturnEffect(100, Infinity)).toBe(0);
+
+    // 5. decomposeRevenueFactors safely omits formula axis on non-finite values
+    const resDecomp = decomposeRevenueFactors({
+      orders0: 100,
+      orders1: 150,
+      aov0: 200_000,
+      aov1: Infinity,
+      returns0: 0,
+      returns1: 0,
+    });
+    expect(resDecomp.methodUsed).toBe("zero_orders_omitted");
+    expect(resDecomp.notes).toContain("Non-finite values");
+
+    // 6. decomposeRatioFormula safely falls back on non-finite
+    const ratioNan = decomposeRatioFormula(NaN, 100, 200, 200);
+    expect(ratioNan.effectNumerator).toBe(0);
+    expect(ratioNan.effectDenominator).toBe(0);
+  });
+});

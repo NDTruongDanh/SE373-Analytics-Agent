@@ -8,21 +8,24 @@ chunks:
     aliases: ["net revenue", "net sales", "doanh thu thuần", "doanh số ròng", "doanh thu thực", "doanh thu", "revenue", "revenue_vnd"]
     sensitivity: "public"
     additive: true
-    formula: "SUM(order_items.price_vnd) over orders with status = 'delivered'"
-    sql: "SELECT SUM(oi.price_vnd) AS net_revenue_vnd FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE o.status = 'delivered'"
+    formula: "SUM(CASE WHEN orders.status = 'delivered' THEN order_items.price_vnd WHEN orders.status = 'returned' THEN -order_items.price_vnd ELSE 0 END) over orders with status IN ('delivered', 'returned')"
+    sql: "SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN oi.price_vnd WHEN o.status = 'returned' THEN -oi.price_vnd ELSE 0 END), 0) AS net_revenue_vnd FROM public.order_items oi JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned')"
     content: >-
-      Metric net_revenue (Doanh thu thuần) is total merchandise revenue in VND for
-      the filtered order set: SUM(oi.price_vnd) over order_items joined to orders
-      with o.status = 'delivered'. Canceled and returned orders are excluded.
+      Metric net_revenue (Doanh thu thuần) is total net merchandise revenue in VND
+      (delivered merchandise revenue minus returned order merchandise value):
+      SUM(CASE WHEN o.status = 'delivered' THEN oi.price_vnd WHEN o.status = 'returned'
+      THEN -oi.price_vnd ELSE 0 END) over order_items joined to orders with
+      o.status IN ('delivered', 'returned'). Canceled orders are excluded.
       Freight is excluded (see metric:gross_merchandise_value for price + freight).
       Additive (additive: true): safe to sum across time periods, channels, and
-      regions. SQL template: SELECT SUM(oi.price_vnd) AS net_revenue_vnd FROM
-      public.order_items oi JOIN public.orders o USING (order_id) WHERE
-      o.status = 'delivered'. Always add the caller's date/channel/region filters
-      on o.purchase_date and dimensions. Caveat: never compute revenue as
-      products.price_vnd * COUNT(orders).
+      regions. SQL template: SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered'
+      THEN oi.price_vnd WHEN o.status = 'returned' THEN -oi.price_vnd ELSE 0 END), 0)
+      AS net_revenue_vnd FROM public.order_items oi JOIN public.orders o USING (order_id)
+      WHERE o.status IN ('delivered', 'returned'). Always add the caller's
+      date/channel/region filters on o.purchase_date and dimensions. Caveat: never
+      compute revenue as products.price_vnd * COUNT(orders).
     caveats:
-      - "Only status = 'delivered' counts; canceled and returned orders are excluded."
+      - "Net merchandise revenue equals delivered revenue minus returned order value; canceled orders are excluded."
       - "Freight is excluded; see metric:gross_merchandise_value for price + freight."
 
   - chunkId: "metric:gross_merchandise_value"
