@@ -4,8 +4,10 @@ import { AnomalyAlertSchema, type Subscription } from "@shared/contracts";
 import { DEFAULT_ANOMALY_CATALOG } from "../src/alerts/catalog.js";
 import {
   buildDrillDownSql,
+  escapeXml,
   formatDrilldownSegment,
   runDrillDownAnalysis,
+  wrapUntrustedData,
 } from "../src/alerts/drillDown.js";
 import type { AnomalyDetectorOutput } from "../src/alerts/anomalyDetector.js";
 import type { AlertQueryExecutor } from "../src/alerts/query.js";
@@ -185,5 +187,141 @@ describe("1–2 Dim Drill-Down Analyzer (UC-10 §5, F10.3)", () => {
 
     // Must be valid according to contracts schema
     expect(AnomalyAlertSchema.safeParse(alert).success).toBe(true);
+  });
+
+  describe("LLM Drill-Down Safety & Prompt Injection Hardening (UC-10 #134)", () => {
+    it("escapes XML special characters in metadata and untrusted data", () => {
+      const hostileString = `<script>alert("hack") & 'injection'</script>`;
+      const escaped = escapeXml(hostileString);
+      expect(escaped).not.toContain("<");
+      expect(escaped).not.toContain(">");
+      expect(escaped).not.toContain("& ");
+      expect(escaped).toContain("&lt;script&gt;");
+      expect(escaped).toContain("&amp;");
+      expect(escaped).toContain("&quot;");
+      expect(escaped).toContain("&#39;");
+
+      const wrapped = wrapUntrustedData({ note: hostileString });
+      expect(wrapped).toContain("<untrusted_data>");
+      expect(wrapped).toContain("</untrusted_data>");
+      expect(wrapped).toContain("&lt;script&gt;");
+    });
+
+    it("invokes model with tools: [] and wraps query rows in untrusted_data", async () => {
+      let calledTools: unknown[] | undefined;
+      let promptMessages: Array<{ role: string; content: string }> = [];
+
+      const fakeModel = {
+        bindTools: (tools: unknown[]) => {
+          calledTools = tools;
+          return {
+            invoke: async (messages: Array<{ role: string; content: string }>) => {
+              promptMessages = messages;
+              return { content: "Tỉ lệ hoàn đơn tăng mạnh tại Đà Nẵng đối với Thực phẩm tươi sống." };
+            },
+          };
+        },
+        invoke: async (messages: Array<{ role: string; content: string }>) => {
+          promptMessages = messages;
+          return { content: "Tỉ lệ hoàn đơn tăng mạnh tại Đà Nẵng đối với Thực phẩm tươi sống." };
+        },
+      };
+
+      const queryExecutor = fakeQueryExecutor([
+        {
+          province: "Đà Nẵng",
+          name_vi: "Thực phẩm tươi sống",
+          total_orders: 50,
+          return_rate: 0.185,
+        },
+      ]);
+
+      const result = await runDrillDownAnalysis({
+        subscription: sampleSubscription,
+        dimensionKey: "2026-09-12",
+        date: "2026-09-12",
+        anomaly: sampleAnomaly,
+        queryExecutor,
+        queryPrincipal: QUERY_PRINCIPAL,
+        model: fakeModel,
+      });
+
+      expect(calledTools).toEqual([]);
+      expect(promptMessages.length).toBe(2);
+      expect(promptMessages[0]!.content).toContain("<untrusted_data>");
+      expect(promptMessages[1]!.content).toContain("<untrusted_data>");
+      expect(result.explanation).toContain("Tỉ lệ hoàn đơn tăng mạnh");
+    });
+
+    it("scrubs PII values from LLM narrative response", async () => {
+      const fakeModelWithPii = {
+        bindTools: () => ({
+          invoke: async () => ({
+            content: "Bất thường do khách hàng 0987654321 hủy đơn nhiều tại Đà Nẵng.",
+          }),
+        }),
+        invoke: async () => ({
+          content: "Bất thường do khách hàng 0987654321 hủy đơn nhiều tại Đà Nẵng.",
+        }),
+      };
+
+      const queryExecutor = fakeQueryExecutor([
+        {
+          province: "Đà Nẵng",
+          name_vi: "Thực phẩm",
+          total_orders: 50,
+          return_rate: 0.185,
+        },
+      ]);
+
+      const result = await runDrillDownAnalysis({
+        subscription: sampleSubscription,
+        dimensionKey: "2026-09-12",
+        date: "2026-09-12",
+        anomaly: sampleAnomaly,
+        queryExecutor,
+        queryPrincipal: QUERY_PRINCIPAL,
+        model: fakeModelWithPii,
+      });
+
+      // Phone number should be redacted by redactPII
+      expect(result.explanation).not.toContain("0987654321");
+      expect(result.explanation).toContain("[MASKED_PHONE]");
+    });
+
+    it("safely falls back to deterministic explanation if LLM invocation fails", async () => {
+      const failingModel = {
+        bindTools: () => ({
+          invoke: async () => {
+            throw new Error("LLM Rate Limited 429");
+          },
+        }),
+        invoke: async () => {
+          throw new Error("LLM Rate Limited 429");
+        },
+      };
+
+      const queryExecutor = fakeQueryExecutor([
+        {
+          province: "Đà Nẵng",
+          name_vi: "Thực phẩm",
+          total_orders: 50,
+          return_rate: 0.185,
+        },
+      ]);
+
+      const result = await runDrillDownAnalysis({
+        subscription: sampleSubscription,
+        dimensionKey: "2026-09-12",
+        date: "2026-09-12",
+        anomaly: sampleAnomaly,
+        queryExecutor,
+        queryPrincipal: QUERY_PRINCIPAL,
+        model: failingModel,
+      });
+
+      expect(result.explanation).toContain("Phát hiện metric:return_rate");
+      expect(result.explanation).toContain("Vùng ảnh hưởng chính");
+    });
   });
 });

@@ -5,6 +5,7 @@ import {
   type AnomalyDetectorOutput,
   type TimeSeriesPoint,
 } from "./anomalyDetector.js";
+import { type CalendarConfig } from "./calendar.js";
 import { DEFAULT_ANOMALY_CATALOG } from "./catalog.js";
 import {
   dispatchAlert,
@@ -38,6 +39,10 @@ export interface AnomalyRunnerSliceResult {
   drillDown?: DrillDownResult;
   alert?: AnomalyAlert;
   dispatchResult?: DispatchAlertResult;
+  isFdrSignificant?: boolean;
+  isHeuristicAlert?: boolean;
+  isUncalibrated?: boolean;
+  pValue?: number;
 }
 
 export interface AnomalyRunnerResult {
@@ -70,6 +75,66 @@ export interface AnomalyRunnerOptions {
   dispatcherOptions?: Partial<AlertDispatcherOptions>;
   logger?: (msg: string, meta?: Record<string, unknown>) => void;
   mockSeriesProvider?: (subscription: Subscription, targetDate: string) => TimeSeriesPoint[];
+  poolingResiduals?: number[];
+  calendarConfig?: CalendarConfig;
+  byFallback?: boolean;
+  model?: unknown;
+}
+
+/**
+ * Computes two-tailed empirical p-value against pooled decorrelated residuals:
+ * p = (1 + sum_b I(|z_b| >= |z_i|)) / (B + 1)
+ */
+export function calculateEmpiricalPValue(z: number, pool: number[]): number {
+  if (pool.length === 0) return 1.0;
+  const absZ = Math.abs(z);
+  let count = 0;
+  for (const residual of pool) {
+    if (Math.abs(residual) >= absZ) {
+      count++;
+    }
+  }
+  return (1 + count) / (pool.length + 1);
+}
+
+/**
+ * Benjamini-Hochberg (BH) or Benjamini-Yekutieli (BY) FDR control procedure:
+ * Controls False Discovery Proportion at level q (default 0.05).
+ */
+export function calculateFdrSignificance(options: {
+  pValues: number[];
+  q?: number;
+  useByFallback?: boolean;
+}): boolean[] {
+  const { pValues, q = 0.05, useByFallback = false } = options;
+  const m = pValues.length;
+  if (m === 0) return [];
+
+  const indexed = pValues.map((p, idx) => ({ p, idx }));
+  indexed.sort((a, b) => a.p - b.p);
+
+  let byFactor = 1.0;
+  if (useByFallback) {
+    let harmonicSum = 0;
+    for (let i = 1; i <= m; i++) harmonicSum += 1 / i;
+    byFactor = harmonicSum;
+  }
+
+  let maxK = -1;
+  for (let k = 1; k <= m; k++) {
+    const threshold = (k / m) * (q / byFactor);
+    if (indexed[k - 1]!.p <= threshold) {
+      maxK = k;
+    }
+  }
+
+  const rejected = new Array<boolean>(m).fill(false);
+  if (maxK > 0) {
+    for (let k = 0; k < maxK; k++) {
+      rejected[indexed[k]!.idx] = true;
+    }
+  }
+  return rejected;
 }
 
 /**
@@ -162,7 +227,7 @@ export function buildTimeSeriesQuery(options: {
     const reviewRbacSql =
       rbacClauses.length > 0
         ? `JOIN orders ON reviews.order_id = orders.order_id ` +
-          `JOIN regions ON orders.province = regions.province `
+        `JOIN regions ON orders.province = regions.province `
         : "";
     const reviewWhereSql =
       rbacClauses.length > 0 ? ` AND ${rbacClauses.join(" AND ")}` : "";
@@ -251,7 +316,17 @@ export async function runAnomalyRunner(
   let alertsSkippedDuplicate = 0;
   let alertsBlocked = 0;
 
-  // 2. Iterate each subscription with Fault Isolation (K5 checkpointing per-metric)
+  interface CandidateItem {
+    subscription: Subscription;
+    series: TimeSeriesPoint[];
+    current: TimeSeriesPoint;
+    history: TimeSeriesPoint[];
+    anomaly: AnomalyDetectorOutput;
+    hypothesisKey: string;
+  }
+  const candidateItems: CandidateItem[] = [];
+
+  // Phase 1: Series Fetch, Score & Support Gate (Fault Isolated per-metric)
   for (const subscription of subs) {
     try {
       let series: TimeSeriesPoint[];
@@ -259,8 +334,8 @@ export async function runAnomalyRunner(
       if (mockSeriesProvider) {
         series = mockSeriesProvider(subscription, targetDate);
       } else {
-        // Query historical window: 35 days (28 days baseline + 7 days WoW)
-        const startDate = subtractDays(targetDate, 35);
+        // Query historical window: 63 days (9-week same-weekday baseline + WoW)
+        const startDate = subtractDays(targetDate, 63);
         const querySql = buildTimeSeriesQuery({
           metricId: subscription.metricId,
           startDate,
@@ -304,10 +379,10 @@ export async function runAnomalyRunner(
       }
 
       // Current point is the last point in series
-      const current = series[series.length - 1];
+      const current = series[series.length - 1]!;
       const history = series.slice(0, -1);
 
-      // 3. Statistical Anomaly Detection (Pure Code, 0 LLM cost on normal days)
+      // Statistical Anomaly Detection (Pure Code, 0 LLM cost on normal days)
       const anomaly = detectAnomaly({
         history,
         current,
@@ -315,61 +390,50 @@ export async function runAnomalyRunner(
         minSupport: subscription.minSupport,
         absoluteThreshold: subscription.absoluteThreshold
           ? {
-              operator: subscription.absoluteThreshold.operator,
-              value: subscription.absoluteThreshold.value,
-            }
+            operator: subscription.absoluteThreshold.operator,
+            value: subscription.absoluteThreshold.value,
+          }
           : undefined,
+        calendarConfig: options.calendarConfig,
+        wowThreshold: subscription.wowThreshold,
       });
 
-      if (!anomaly.isAnomaly) {
+      if (anomaly.status === "skipped_insufficient_support") {
         sliceResults.push({
           subscriptionId: subscription.id,
           metricId: subscription.metricId,
           date: targetDate,
           isAnomaly: false,
           severity: "none",
-          status: anomaly.status,
+          status: "skipped_insufficient_support",
           anomaly,
         });
         continue;
       }
 
-      // 4. Anomaly Found: Invoke 1-2 Dimension Drill-Down Analyzer (LLM)
-      anomaliesDetected++;
-      const drillDown = await runDrillDownAnalysis({
-        subscription,
-        dimensionKey: current.date,
-        date: targetDate,
-        anomaly,
-        queryExecutor: options.queryExecutor,
-        queryPrincipal: options.queryPrincipal,
-        recipientRole: subscription.recipientRole,
-      });
-
-      // 5. Dispatch Alert via Resilient send_alert Dispatcher
-      const dispatchResult = await dispatchAlert(drillDown.alert, dispatcherOpts);
-
-      if (dispatchResult.sent) {
-        alertsSent++;
-      } else if (dispatchResult.skippedDuplicate) {
-        alertsSkippedDuplicate++;
-      } else if (dispatchResult.queued) {
-        alertsQueued++;
-      } else if (dispatchResult.blocked) {
-        alertsBlocked++;
+      if (anomaly.status === "insufficient_history" && !anomaly.absoluteBreached) {
+        sliceResults.push({
+          subscriptionId: subscription.id,
+          metricId: subscription.metricId,
+          date: targetDate,
+          isAnomaly: false,
+          severity: "none",
+          status: "insufficient_history",
+          anomaly,
+        });
+        continue;
       }
 
-      sliceResults.push({
-        subscriptionId: subscription.id,
-        metricId: subscription.metricId,
-        date: targetDate,
-        isAnomaly: true,
-        severity: anomaly.severity,
-        status: anomaly.status,
+      const slice = subscription.primaryDimension ?? "overall";
+      const role = subscription.recipientRole ?? "all";
+      const hypothesisKey = `${subscription.metricId}|${role}|${slice}`;
+      candidateItems.push({
+        subscription,
+        series,
+        current,
+        history,
         anomaly,
-        drillDown,
-        alert: drillDown.alert,
-        dispatchResult,
+        hypothesisKey,
       });
     } catch (err) {
       // Fault isolation: error in 1 slice/subscription does NOT crash the entire runner!
@@ -387,7 +451,209 @@ export async function runAnomalyRunner(
         status: "failed",
         error: errorMsg,
       });
-      logger?.(`Subscription ${subscription.id} failed, continuing other slices`, {
+      logger?.(`Subscription ${subscription.id} failed in Phase 1, continuing other slices`, {
+        error: errorMsg,
+      });
+    }
+  }
+
+  // Phase 2: Hypothesis Space m, Residual Pooling & FDR vs Heuristic Fallback
+  // Deduplicate candidate subscriptions into unique hypotheses: (metricId, recipientRole, slice)
+  const hypothesisGroups = new Map<string, CandidateItem[]>();
+  for (const c of candidateItems) {
+    const list = hypothesisGroups.get(c.hypothesisKey) ?? [];
+    list.push(c);
+    hypothesisGroups.set(c.hypothesisKey, list);
+  }
+
+  const uniqueHypothesisEntries = Array.from(hypothesisGroups.entries());
+  const m = Math.max(1, uniqueHypothesisEntries.length);
+  const q = 0.05;
+  const bRequired = Math.max(500, Math.ceil(m / q) * 2);
+
+  const pool = options.poolingResiduals ?? [];
+  const isCalibrated = pool.length >= bRequired;
+
+  const candidateFdrSignificant = new Map<CandidateItem, boolean>();
+  const candidateHeuristicAlert = new Map<CandidateItem, boolean>();
+  const candidatePValues = new Map<CandidateItem, number>();
+
+  if (isCalibrated) {
+    // Calibrated Mode: compute empirical p-values per unique hypothesis & Benjamini-Hochberg FDR
+    const hypothesisPValues = uniqueHypothesisEntries.map(([, group]) => {
+      const rep = group[0]!;
+      return calculateEmpiricalPValue(rep.anomaly.zScore, pool);
+    });
+
+    const rejections = calculateFdrSignificance({
+      pValues: hypothesisPValues,
+      q,
+      useByFallback: options.byFallback,
+    });
+
+    uniqueHypothesisEntries.forEach(([, group], idx) => {
+      const isRejected = rejections[idx] ?? false;
+      const p = hypothesisPValues[idx] ?? 1.0;
+      for (const c of group) {
+        candidateFdrSignificant.set(c, isRejected);
+        candidateHeuristicAlert.set(c, false);
+        candidatePValues.set(c, p);
+      }
+    });
+  } else {
+    // Heuristic Fallback Mode (insufficient pooling resolution)
+    for (const c of candidateItems) {
+      candidateFdrSignificant.set(c, false);
+      const absZ = Math.abs(c.anomaly.zScore);
+      const absWoW = c.anomaly.wowPercent !== null ? Math.abs(c.anomaly.wowPercent) : 0;
+      const wowThreshold = c.subscription.wowThreshold ?? 20;
+      const supportCount = c.anomaly.supportCount ?? 0;
+      const minSupportCount = c.anomaly.minSupport ?? 15;
+
+      // Heuristic criteria: |z| >= 3.0 AND |WoW%| >= wowThreshold AND supportCount >= minSupport
+      const isHeuristic =
+        absZ >= 3.0 &&
+        c.anomaly.wowPercent !== null &&
+        absWoW >= wowThreshold &&
+        supportCount >= minSupportCount;
+
+      candidateHeuristicAlert.set(c, isHeuristic);
+    }
+  }
+
+  // Phase 3: Routing & Severity Precedence (Critical > Holiday > Warning > Info)
+  for (const c of candidateItems) {
+    try {
+      const isFdr = candidateFdrSignificant.get(c) ?? false;
+      const isHeuristic = candidateHeuristicAlert.get(c) ?? false;
+      const absoluteBreached = Boolean(c.anomaly.absoluteBreached);
+
+      // Admitted candidates into Phase 3 (Strict gate: FDR, Heuristic, or Absolute Breach with support):
+      const isEligible = isFdr || isHeuristic || absoluteBreached;
+
+      if (!isEligible) {
+        sliceResults.push({
+          subscriptionId: c.subscription.id,
+          metricId: c.subscription.metricId,
+          date: targetDate,
+          isAnomaly: false,
+          severity: "none",
+          status: c.anomaly.status,
+          anomaly: c.anomaly,
+          isFdrSignificant: false,
+          isHeuristicAlert: false,
+          isUncalibrated: !isCalibrated,
+          pValue: candidatePValues.get(c),
+        });
+        continue;
+      }
+
+      // Severity Precedence Hierarchy:
+      // 1. Critical: (isFdr || isHeuristic || statisticalCritical) AND (|z| >= 3.5 || (|WoW| >= 50% && support >= 2 * minSupport))
+      //    NEVER downgraded, even during public holidays.
+      // 2. Holiday Downgrade: public_holiday AND not Critical -> "info"
+      // 3. Warning: (isFdr || isHeuristic || absZ >= 2.0) AND not holiday-downgraded
+      // 4. Info: absoluteBreached or holiday-downgraded
+      const absZ = Math.abs(c.anomaly.zScore);
+      const absWoW = c.anomaly.wowPercent !== null ? Math.abs(c.anomaly.wowPercent) : 0;
+      const minSupportCount = c.anomaly.minSupport ?? 15;
+      const supportCount = c.anomaly.supportCount ?? 0;
+      const isPublicHoliday = Boolean(c.anomaly.isPublicHoliday);
+
+      let finalSeverity: AlertSeverity = "info";
+
+      const wowThreshold = c.subscription.wowThreshold ?? 20;
+
+      const isCritical =
+        (isFdr || isHeuristic) &&
+        (absZ >= 3.5 || (absWoW >= 50.0 && supportCount >= 2 * minSupportCount));
+
+      const isStatisticalWarning =
+        (isFdr || isHeuristic) &&
+        absZ >= 2.0 &&
+        c.anomaly.wowPercent !== null &&
+        absWoW >= wowThreshold;
+
+      if (isCritical) {
+        finalSeverity = "critical";
+      } else if (isPublicHoliday && (isStatisticalWarning || absoluteBreached)) {
+        // Holiday downgrade: non-critical alerts on public holidays downgraded to info
+        finalSeverity = "info";
+      } else if (isStatisticalWarning) {
+        finalSeverity = "warning";
+      } else if (absoluteBreached) {
+        finalSeverity = "info";
+      }
+
+      anomaliesDetected++;
+
+      const updatedAnomaly: AnomalyDetectorOutput = {
+        ...c.anomaly,
+        isAnomaly: true,
+        severity: finalSeverity,
+      };
+
+      // 4. Anomaly Found: Invoke 1-2 Dimension Drill-Down Analyzer (LLM)
+      const drillDown = await runDrillDownAnalysis({
+        subscription: c.subscription,
+        dimensionKey: c.current.date,
+        date: targetDate,
+        anomaly: updatedAnomaly,
+        queryExecutor: options.queryExecutor,
+        queryPrincipal: options.queryPrincipal,
+        recipientRole: c.subscription.recipientRole,
+        catalog: options.catalog,
+        model: options.model,
+      });
+
+      drillDown.alert.severity = finalSeverity;
+
+      // 5. Dispatch Alert via Resilient send_alert Dispatcher
+      const dispatchResult = await dispatchAlert(drillDown.alert, dispatcherOpts);
+
+      if (dispatchResult.sent) {
+        alertsSent++;
+      } else if (dispatchResult.skippedDuplicate) {
+        alertsSkippedDuplicate++;
+      } else if (dispatchResult.queued) {
+        alertsQueued++;
+      } else if (dispatchResult.blocked) {
+        alertsBlocked++;
+      }
+
+      sliceResults.push({
+        subscriptionId: c.subscription.id,
+        metricId: c.subscription.metricId,
+        date: targetDate,
+        isAnomaly: true,
+        severity: finalSeverity,
+        status: c.anomaly.status,
+        anomaly: updatedAnomaly,
+        drillDown,
+        alert: drillDown.alert,
+        dispatchResult,
+        isFdrSignificant: isFdr,
+        isHeuristicAlert: isHeuristic,
+        isUncalibrated: !isCalibrated,
+        pValue: candidatePValues.get(c),
+      });
+    } catch (err) {
+      // Fault isolation: error in drilldown or dispatch does NOT crash runner
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      failures.push({
+        subscriptionId: c.subscription.id,
+        error: errorMsg,
+      });
+      sliceResults.push({
+        subscriptionId: c.subscription.id,
+        metricId: c.subscription.metricId,
+        date: targetDate,
+        isAnomaly: false,
+        severity: "none",
+        status: "failed",
+        error: errorMsg,
+      });
+      logger?.(`Subscription ${c.subscription.id} failed in Phase 3, continuing other slices`, {
         error: errorMsg,
       });
     }
