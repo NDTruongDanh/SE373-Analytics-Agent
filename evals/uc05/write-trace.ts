@@ -64,8 +64,10 @@ async function main(): Promise<void> {
     },
   };
 
+  const fixedAsOf = "2026-09-25T08:00:00.000Z";
   const deps: RcaRuntimeDeps = {
     skipHitlReview: true,
+    now: () => new Date(fixedAsOf),
     maxDepthLimit: 2,
     candidateChannels: ["Shopee", "Lazada", "Tiki"],
     candidateCategories: ["Đồ gia dụng", "Thời trang", "Mỹ phẩm"],
@@ -138,6 +140,28 @@ async function main(): Promise<void> {
   const runtime = createRcaRuntime(deps);
   const out = await runtime.entry(baseState, rt);
 
+  emit({
+    node: "answer",
+    type: "approval_requested",
+    durationMs: 0,
+    payload: {
+      kind: "approval",
+      asOf: out.analysisPlan?.asOf ?? fixedAsOf,
+      checkpointId: "ckpt-uc05-sample-1",
+    },
+  });
+  emit({
+    node: "answer",
+    type: "approval_decided",
+    durationMs: 0,
+    payload: {
+      kind: "approval",
+      checkpointId: "ckpt-uc05-sample-1",
+      decision: "approve",
+      reviewer: "eval",
+    },
+  });
+
   // 3. Emit RCA completion node_done span
   emit({
     node: "rca",
@@ -145,6 +169,7 @@ async function main(): Promise<void> {
     durationMs: 12,
     payload: {
       status: out.status,
+      asOf: out.analysisPlan?.asOf ?? fixedAsOf,
       mathVerified: out.rootCauseAnswer?.mathVerified ?? false,
       mathDiffRatio: out.rootCauseAnswer?.mathDiffRatio ?? 1,
       primaryCausesCount: out.rootCauseAnswer?.primaryCauses.length ?? 0,

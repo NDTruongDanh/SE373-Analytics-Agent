@@ -103,45 +103,60 @@ export async function executeToolCall(
     rowScopeApplied = info.rowScopeApplied;
   };
 
-  const finish = (result: PipelineResult): PipelineResult => {
-    if (result.ok) {
-      auditCall({
-        ts: new Date().toISOString(),
-        runId,
-        userId,
-        role,
-        clientId,
-        scopes,
-        tool: req.tool,
-        params,
-        rowCount,
-        durationMs: Date.now() - started,
-        decision: "allow",
-        explainCost,
-        piiHits,
-        maskedColumns,
-        rowScopeApplied,
-      });
-    } else {
-      auditCall({
-        ts: new Date().toISOString(),
-        runId,
-        userId,
-        role,
-        clientId,
-        scopes,
-        tool: req.tool,
-        params,
-        rowCount: 0,
-        durationMs: Date.now() - started,
-        decision: "deny",
-        errorCode: result.error.code,
-        piiHits,
-        maskedColumns,
-        rowScopeApplied,
-      });
+  const finish = async (result: PipelineResult): Promise<PipelineResult> => {
+    try {
+      if (result.ok) {
+        await auditCall({
+          ts: new Date().toISOString(),
+          runId,
+          userId,
+          role,
+          clientId,
+          scopes,
+          tool: req.tool,
+          params,
+          outputSummary: {
+            decision: "allow",
+            rowCount,
+            explainCost,
+            maskedColumns,
+          },
+          rowCount,
+          durationMs: Date.now() - started,
+          decision: "allow",
+          explainCost,
+          piiHits,
+          maskedColumns,
+          rowScopeApplied,
+        });
+      } else {
+        await auditCall({
+          ts: new Date().toISOString(),
+          runId,
+          userId,
+          role,
+          clientId,
+          scopes,
+          tool: req.tool,
+          params,
+          outputSummary: {
+            decision: "deny",
+            errorCode: result.error.code,
+          },
+          rowCount: 0,
+          durationMs: Date.now() - started,
+          decision: "deny",
+          errorCode: result.error.code,
+          piiHits,
+          maskedColumns,
+          rowScopeApplied,
+        });
+      }
+      return result;
+    } catch (error) {
+      // Fail closed: never return tool results if durable audit logging failed.
+      return { ok: false, error: sanitizeError(error) };
     }
-    return result;
   };
   const deny = (error: DbToolError): PipelineResult => ({
     ok: false,
@@ -399,23 +414,27 @@ export async function executeResourceRead(
   const started = Date.now();
   const auth = authenticateRequest(headers, deps.clients);
   if ("error" in auth) {
-    auditCall({
-      ts: new Date().toISOString(),
-      runId: "unknown",
-      userId: "",
-      role: "",
-      clientId: "",
-      scopes: [],
-      tool: `resource:${uri}`,
-      params: {},
-      rowCount: 0,
-      durationMs: Date.now() - started,
-      decision: "deny",
-      errorCode: auth.error.code,
-      piiHits: 0,
-      maskedColumns: [],
-      rowScopeApplied: [],
-    });
+    try {
+      await auditCall({
+        ts: new Date().toISOString(),
+        runId: "unknown",
+        userId: "",
+        role: "",
+        clientId: "",
+        scopes: [],
+        tool: `resource:${uri}`,
+        params: {},
+        rowCount: 0,
+        durationMs: Date.now() - started,
+        decision: "deny",
+        errorCode: auth.error.code,
+        piiHits: 0,
+        maskedColumns: [],
+        rowScopeApplied: [],
+      });
+    } catch (error) {
+      return { ok: false, error: sanitizeError(error) };
+    }
     return { ok: false, error: auth.error };
   }
   const principal = auth.auth.principal;
@@ -438,25 +457,37 @@ export async function executeResourceRead(
     rowScopeApplied: [] as RowScopeApplied[],
   };
   if (scopeError !== null) {
-    auditCall({ ...record, decision: "deny", errorCode: scopeError.code });
+    try {
+      await auditCall({ ...record, decision: "deny", errorCode: scopeError.code });
+    } catch (error) {
+      return { ok: false, error: sanitizeError(error) };
+    }
     return { ok: false, error: scopeError };
   }
   const document = documents.find((candidate) => candidate.uri === uri);
   if (document === undefined) {
     const error = dbToolError("INVALID_PARAMS", "unknown resource");
-    auditCall({ ...record, decision: "deny", errorCode: error.code });
+    try {
+      await auditCall({ ...record, decision: "deny", errorCode: error.code });
+    } catch (auditErr) {
+      return { ok: false, error: sanitizeError(auditErr) };
+    }
     return { ok: false, error };
   }
   const allowRestricted = principal.scopes.includes("data:sensitive");
   const filtered = filterResourceSections(document.text, allowRestricted);
   const redacted = redactPII(filtered);
-  auditCall({
-    ...record,
-    rowCount: 1,
-    durationMs: Date.now() - started,
-    decision: "allow",
-    piiHits: redacted.hit ? 1 : 0,
-  });
+  try {
+    await auditCall({
+      ...record,
+      rowCount: 1,
+      durationMs: Date.now() - started,
+      decision: "allow",
+      piiHits: redacted.hit ? 1 : 0,
+    });
+  } catch (error) {
+    return { ok: false, error: sanitizeError(error) };
+  }
   return {
     ok: true,
     data: { uri, mimeType: "text/markdown", text: redacted.redacted },

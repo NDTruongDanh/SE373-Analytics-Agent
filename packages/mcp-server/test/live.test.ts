@@ -2,29 +2,50 @@
 // files through the fake embedder, then proves hybrid retrieval plus the
 // data:sensitive split on the real role grants. Skips green without DB
 // URLs so unit CI stays DB-free; the 01-08 verify runs it live.
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { createFakeEmbedder } from "../src/semantic/embedder.js";
-import { hybridSearch } from "../src/semantic/retriever.js";
+import {
+  getCitationCatalog,
+  hybridSearch,
+  resetSemanticCache,
+} from "../src/semantic/retriever.js";
 import { discoverDefaultFiles, indexCorpus } from "../src/semantic/index.js";
-import { executeResourceRead } from "../src/pipeline.js";
+import {
+  GENESIS_AUDIT_HASH,
+  closePgAudit,
+  computeAuditChainHash,
+  initPgAudit,
+  setPgAuditPoolForTests,
+} from "../src/audit.js";
+import { executeResourceRead, executeToolCall } from "../src/pipeline.js";
 import type { GatewayDeps } from "../src/pipeline.js";
-import { ColumnScopePolicy } from "@shared/access-policy";
+import {
+  ColumnScopePolicy,
+  loadRowScopeLineage,
+  warmupSqlGuard,
+} from "@shared/access-policy";
 import { buildCatalog, fetchCatalogSource } from "../src/catalog.js";
 import { loadSensitiveColumns } from "../src/config.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..", "..");
-const HAS_DB = Boolean(process.env["DATABASE_URL"]) && Boolean(process.env["INDEXER_DATABASE_URL"]);
+const AGENT_RO_URL = process.env["AGENT_RO_DATABASE_URL"] ?? process.env["DATABASE_URL"] ?? "";
+const INDEXER_URL = process.env["INDEXER_DATABASE_URL"] ?? "";
+const HARNESS_URL = process.env["HARNESS_STATE_DATABASE_URL"] ?? "";
+const HAS_DB = Boolean(AGENT_RO_URL) && Boolean(INDEXER_URL);
+const HAS_AUDIT_DB = Boolean(AGENT_RO_URL) && Boolean(HARNESS_URL);
 const describeLive = HAS_DB ? describe : describe.skip;
+const describeAuditLive = HAS_AUDIT_DB ? describe : describe.skip;
 
 const FAKE = createFakeEmbedder();
 
 function agentRoQuery(text: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }> {
-  const pool = new Pool({ connectionString: process.env["DATABASE_URL"], max: 2 });
+  const pool = new Pool({ connectionString: AGENT_RO_URL, max: 2 });
   return pool
     .query(text, params as unknown[])
     .then((result) => ({ rows: result.rows as Record<string, unknown>[] }))
@@ -165,8 +186,237 @@ describeLive("semantic live", () => {
       await pool.end();
     }
   });
+
+  it("increments semantic.corpus_version in PostgreSQL on mutation and reloads retriever cache", async () => {
+    const files = discoverDefaultFiles(path.join(ROOT, "semantic"));
+    const tempDir = mkdtempSync(path.join(tmpdir(), "semantic-version-live-"));
+    try {
+      await indexCorpus({
+        dbUrl: INDEXER_URL,
+        embedder: FAKE,
+        files,
+      });
+
+      const beforeRows = await agentRoQuery(
+        "SELECT version FROM semantic.corpus_version WHERE id = 1",
+        [],
+      );
+      const beforeVersion = Number(beforeRows.rows[0]?.["version"]);
+      expect(Number.isFinite(beforeVersion)).toBe(true);
+      expect(beforeVersion).toBeGreaterThanOrEqual(1);
+
+      resetSemanticCache();
+      await hybridSearch(agentRoQuery, FAKE, "orders revenue", 5, false);
+      expect(getCitationCatalog().has("metric:live_probe_corpus_ver")).toBe(false);
+
+      const noop = await indexCorpus({
+        dbUrl: INDEXER_URL,
+        embedder: FAKE,
+        files,
+      });
+      expect(noop.corpusVersion).toBe(beforeVersion);
+
+      const tempFile = path.join(tempDir, "live_probe_metrics.yaml");
+      writeFileSync(
+        tempFile,
+        [
+          "chunks:",
+          '  - chunkId: "metric:live_probe_corpus_ver"',
+          '    docType: "metric"',
+          '    table: "orders"',
+          '    tables: ["orders"]',
+          '    metricName: "live_probe_corpus_ver"',
+          '    aliases: ["live_corpus_ver_alias"]',
+          '    sensitivity: "public"',
+          "    additive: true",
+          '    formula: "COUNT(*) over orders"',
+          '    sql: "SELECT COUNT(*) AS val FROM public.orders"',
+          '    content: "Metric live_probe_corpus_ver is a temporary live marker for corpus version invalidation proof."',
+        ].join("\n"),
+        "utf8",
+      );
+
+      const mutated = await indexCorpus({
+        dbUrl: INDEXER_URL,
+        embedder: FAKE,
+        files: [...files, { path: tempFile, docType: "metric" }],
+      });
+      expect(mutated.added).toBe(1);
+      expect(mutated.corpusVersion).toBeGreaterThan(beforeVersion);
+
+      const afterRows = await agentRoQuery(
+        "SELECT version FROM semantic.corpus_version WHERE id = 1",
+        [],
+      );
+      expect(Number(afterRows.rows[0]?.["version"])).toBe(mutated.corpusVersion);
+
+      // Must reload BM25 + citation catalog automatically without resetSemanticCache().
+      const chunks = await hybridSearch(
+        agentRoQuery,
+        FAKE,
+        "live_probe_corpus_ver live_corpus_ver_alias",
+        10,
+        false,
+      );
+      expect(getCitationCatalog().has("metric:live_probe_corpus_ver")).toBe(true);
+      expect(chunks.some((c) => c.chunkId === "metric:live_probe_corpus_ver")).toBe(true);
+    } finally {
+      await indexCorpus({
+        dbUrl: INDEXER_URL,
+        embedder: FAKE,
+        files,
+      });
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describeAuditLive("PostgreSQL fail-closed audit hash chain (live DB)", () => {
+  it("persists contiguous SHA-256 hash-chained records to app_state and blocks agent_ro access", async () => {
+    await warmupSqlGuard();
+    await initPgAudit({ connString: HARNESS_URL });
+
+    const harnessPool = new Pool({ connectionString: HARNESS_URL, max: 2 });
+    const roPool = new Pool({ connectionString: AGENT_RO_URL, max: 2 });
+    try {
+      const headBeforeRes = await harnessPool.query(
+        "SELECT seq, current_hash FROM app_state.mcp_audit_head WHERE id = 1",
+      );
+      const startSeq = Number(headBeforeRes.rows[0]?.["seq"] ?? 0);
+      const startHash = String(headBeforeRes.rows[0]?.["current_hash"] ?? GENESIS_AUDIT_HASH);
+
+      const sensitive = loadSensitiveColumns(
+        readFileSync(path.join(ROOT, "policies/sensitive_columns.yaml"), "utf8"),
+      );
+      const rowScopeLineage = loadRowScopeLineage(
+        readFileSync(path.join(ROOT, "policies/row_scope.yaml"), "utf8"),
+      );
+      const source = await fetchCatalogSource(async (text) => {
+        const result = await roPool.query(text);
+        return { rows: result.rows as Record<string, unknown>[] };
+      });
+      const deps: GatewayDeps = {
+        clients: [
+          {
+            clientId: "sales_south",
+            role: "sales_south",
+            scopes: ["schema:read", "data:read"],
+            rowScope: { column: "region_group", value: "Nam" },
+            token: "live-sales-token",
+          },
+        ],
+        catalog: buildCatalog(source, sensitive),
+        policy: new ColumnScopePolicy(
+          sensitive.columns.map((entry) => ({ ...entry })),
+          rowScopeLineage,
+        ),
+        sessionFactory: async () => {
+          const client = await roPool.connect();
+          return {
+            async beginReadOnly() {
+              await client.query("BEGIN READ ONLY");
+              await client.query("SET LOCAL statement_timeout = '10s'");
+            },
+            async readBounded(body: string, maxRows: number) {
+              const res = await client.query(
+                `SELECT * FROM (${body.replace(/;+\s*$/u, "")}) AS _q LIMIT $1`,
+                [maxRows],
+              );
+              const rows = res.rows as Record<string, unknown>[];
+              return {
+                rows,
+                truncated: false,
+                columns: res.fields.map((f) => f.name),
+              };
+            },
+            async rollback() {
+              await client.query("ROLLBACK").catch(() => undefined);
+            },
+            release() {
+              client.release();
+            },
+          };
+        },
+        search: async () => [],
+      };
+
+      const runId = `live-audit-${Date.now()}`;
+      const r1 = await executeToolCall(deps, {
+        headers: {
+          authorization: "Bearer live-sales-token",
+          "x-run-id": runId,
+          "x-user-id": "live-tester",
+        },
+        tool: "run_query",
+        args: {
+          sql: "SELECT COUNT(*) AS n FROM public.orders WHERE status = '0901234567'",
+          maxRows: 5,
+        },
+      });
+      expect(r1).toMatchObject({ ok: true });
+
+      const r2 = await executeToolCall(deps, {
+        headers: {
+          authorization: "Bearer live-sales-token",
+          "x-run-id": runId,
+          "x-user-id": "live-tester",
+        },
+        tool: "run_query",
+        args: { sql: "DROP TABLE public.orders", maxRows: 5 },
+      });
+      expect(r2.ok).toBe(false);
+
+      const headAfterRes = await harnessPool.query(
+        "SELECT seq, current_hash FROM app_state.mcp_audit_head WHERE id = 1",
+      );
+      const endSeq = Number(headAfterRes.rows[0]?.["seq"] ?? 0);
+      expect(endSeq).toBe(startSeq + 2);
+
+      const logsRes = await harnessPool.query(
+        `SELECT seq, run_id, tool, caller, input_hash, output_hash, prev_hash, current_hash, record
+         FROM app_state.mcp_audit_log
+         WHERE seq > $1 AND seq <= $2
+         ORDER BY seq ASC`,
+        [startSeq, endSeq],
+      );
+      expect(logsRes.rows).toHaveLength(2);
+      expect(String(logsRes.rows[0]?.["prev_hash"])).toBe(startHash);
+      expect(String(logsRes.rows[1]?.["prev_hash"])).toBe(
+        String(logsRes.rows[0]?.["current_hash"]),
+      );
+      expect(String(headAfterRes.rows[0]?.["current_hash"])).toBe(
+        String(logsRes.rows[1]?.["current_hash"]),
+      );
+
+      for (const row of logsRes.rows) {
+        const recordObj = row["record"] as { ts: string };
+        expect(JSON.stringify(recordObj)).not.toContain("0901234567");
+        const recomputed = computeAuditChainHash({
+          seq: Number(row["seq"]),
+          runId: String(row["run_id"]),
+          tool: String(row["tool"]),
+          caller: String(row["caller"]),
+          ts: recordObj.ts,
+          inputHash: String(row["input_hash"]),
+          outputHash: String(row["output_hash"]),
+          prevHash: String(row["prev_hash"]),
+        });
+        expect(recomputed).toBe(String(row["current_hash"]));
+      }
+
+      await expect(
+        roPool.query("SELECT seq FROM app_state.mcp_audit_log LIMIT 1"),
+      ).rejects.toMatchObject({ code: "42501" });
+    } finally {
+      setPgAuditPoolForTests(null);
+      await closePgAudit();
+      await harnessPool.end();
+      await roPool.end();
+    }
+  });
 });
 
 afterAll(async () => {
-  // Pools are per-call above; nothing shared to drain.
+  setPgAuditPoolForTests(null);
+  await closePgAudit();
 });

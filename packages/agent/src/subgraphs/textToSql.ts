@@ -584,7 +584,7 @@ function clarificationForUnmappedTable(
 type SafeTableClarificationSelection =
   | { ok: true; kind: "table"; table: string; attemptsUsed: number }
   | { ok: true; kind: "abort_rephrase"; attemptsUsed: number }
-  | { ok: false; reason: "interrupt_unavailable" | "invalid_selection" };
+  | { ok: false; reason: "interrupt_unavailable" | "invalid_selection" | "timeout" };
 
 function tryTableClarificationSelection(
   state: AgentState,
@@ -596,6 +596,13 @@ function tryTableClarificationSelection(
     for (let attempt = clarificationAttemptsOf(state); attempt < 2; attempt += 1) {
       const pending = { ...request, attempts: attempt };
       const rawValue = pauseForClarification(pending);
+      if (
+        typeof rawValue === "object" &&
+        rawValue !== null &&
+        (rawValue as { action?: unknown }).action === "timeout"
+      ) {
+        return { ok: false, reason: "timeout" };
+      }
       const verdict = classifyTableClarificationValue(pending, rawValue, allowedNames);
       if (verdict.kind === "abort_rephrase") {
         return { ok: true, kind: "abort_rephrase", attemptsUsed: attempt + 1 };
@@ -1303,6 +1310,29 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         effectiveCatalogTables,
       );
       if (!selection.ok) {
+        if (selection.reason === "timeout") {
+          rt.emit({
+            node: "describe",
+            type: "node_done",
+            durationMs: 0,
+            payload: {
+              clarificationReason: "timeout",
+              partialTables: resolved.partialTables,
+              unmappedEntities: resolved.unmappedEntities,
+              entities: resolved.entities,
+            },
+          });
+          return {
+            ...clarificationUpdate,
+            ...catalogUpdate,
+            ...semanticUpdate,
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            pendingClarification: null,
+            toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+            answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+          };
+        }
         rt.emit({
           node: "describe",
           type: "node_done",

@@ -74,6 +74,7 @@ beforeAll(async () => {
     clientsYaml: CLIENTS_YAML,
     sensitiveYaml: SENSITIVE_YAML,
     auditPath,
+    allowJsonlOnlyAuditForTests: true,
     catalogOverride: stubCatalog(),
     search: async () => [],
     documents: [],
@@ -203,5 +204,24 @@ describe("gateway tools/list", () => {
       properties?: Record<string, { maximum?: number }>;
     };
     expect(sampleSchema.properties?.["n"]?.maximum).toBe(5);
+  });
+
+  it("fails closed at startup when PG audit is omitted without explicit test flag", async () => {
+    const prev = process.env.HARNESS_STATE_DATABASE_URL;
+    delete process.env.HARNESS_STATE_DATABASE_URL;
+    try {
+      await expect(
+        createGatewayApp({
+          clientsYaml: CLIENTS_YAML,
+          sensitiveYaml: SENSITIVE_YAML,
+          auditPath,
+          catalogOverride: stubCatalog(),
+          search: async () => [],
+          documents: [],
+        }),
+      ).rejects.toThrow(/HARNESS_STATE_DATABASE_URL/);
+    } finally {
+      if (prev !== undefined) process.env.HARNESS_STATE_DATABASE_URL = prev;
+    }
   });
 });
