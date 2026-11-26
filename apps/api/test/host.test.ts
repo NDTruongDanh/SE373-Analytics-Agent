@@ -204,7 +204,7 @@ describe("buildApp /api/ask", () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const app = buildApp({
       checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
-      ucHandlers: { tracer: async () => { await gate; return { status: "ok", answerText: "done" }; } },
+      routes: { "text-to-sql": async () => { await gate; return { status: "ok", answerText: "done" }; } },
     });
     const server = app.listen(0, "127.0.0.1");
     await new Promise<void>((resolve) => server.on("listening", resolve));
@@ -212,7 +212,7 @@ describe("buildApp /api/ask", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "q", persona: "sales_south", ucId: "tracer" }), signal: AbortSignal.timeout(5000),
+        body: JSON.stringify({ question: "q", persona: "sales_south" }), signal: AbortSignal.timeout(5000),
       });
       const reader = response.body!.getReader();
       const first = await reader.read();
@@ -231,13 +231,37 @@ describe("buildApp /api/ask", () => {
 
   it("starts a fresh run on a reused thread after cannot_answer", async () => {
     let calls = 0;
+    const intentPayload = {
+      metric: null,
+      dimensions: [],
+      filters: [],
+      timeRange: null,
+      requestedMetrics: [],
+      schemaEntities: [],
+      queryMode: "standard_query" as const,
+    };
     const app = buildApp({
       checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
-      ucHandlers: { tracer: async (state, rt) => {
+      textToSql: {
+        listTables: async () => [
+          { name: "orders", schema: "public", description: "Orders" },
+        ],
+        semanticSearch: async () => [],
+        intentModel: {
+          invoke: async () => ({ content: JSON.stringify(intentPayload) }),
+          async *stream() {
+            yield { content: JSON.stringify(intentPayload) };
+          },
+          withStructuredOutput: () => ({
+            invoke: async () => intentPayload,
+          }),
+        } as never,
+      },
+      routes: { "text-to-sql": async (state, rt) => {
         calls++;
         expect(state.answerText).toBe("");
         expect(state.tablesUsed).toEqual([]);
-        expect(state.budget.llmCalls).toBe(0);
+        expect(state.budget.llmCalls).toBe(1);
         expect(state.telemetry.promptTokens).toBe(0);
         rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: "SELECT 1", tablesUsed: ["unauthorized_table"] } });
         return { status: "cannot_answer", answerText: "Stopped", tablesUsed: ["stale_table"], budget: { llmCalls: 20 }, telemetry: { promptTokens: 42 } };
@@ -249,7 +273,7 @@ describe("buildApp /api/ask", () => {
     const ask = async (threadId?: string) => {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "q", persona: "sales_south", ucId: "tracer", ...(threadId ? { threadId } : {}) }),
+        body: JSON.stringify({ question: "q", persona: "sales_south", ...(threadId ? { threadId } : {}) }),
       });
       return parseSse(await response.text());
     };
@@ -267,12 +291,41 @@ describe("buildApp /api/ask", () => {
     }
   });
 
+  it("ignores a stale ucId body field and routes a plain question to text-to-sql", async () => {
+    let textToSqlCalls = 0;
+    let rcaCalls = 0;
+    const app = buildApp({
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      routes: {
+        "text-to-sql": async () => { textToSqlCalls += 1; return { status: "ok", answerText: "sql answer" }; },
+        "root-cause-analysis": async () => { rcaCalls += 1; return { status: "ok", answerText: "rca answer" }; },
+      },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "How many orders do we have per status?", persona: "sales_south", ucId: "root-cause-analysis" }),
+      });
+      expect(response.status).toBe(200);
+      const blocks = parseSse(await response.text());
+      const completed = blocks.find((block) => block.event === "completed");
+      expect((completed?.data["data"] as { answerText?: string }).answerText).toBe("sql answer");
+      expect(textToSqlCalls).toBe(1);
+      expect(rcaCalls).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("withholds sensitive SQL even after a successful query", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const app = buildApp({
       checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
-      ucHandlers: { tracer: async (_state, rt) => {
+      routes: { "text-to-sql": async (_state, rt) => {
         rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: "SELECT secret FROM orders WHERE phone = '0901111111'", tablesUsed: ["orders"] } });
         rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
         rt.emit({ node: "run", type: "tool_call", durationMs: 1, payload: { tool: "run_query", ok: true } });
@@ -286,7 +339,7 @@ describe("buildApp /api/ask", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "q", persona: "sales_south", ucId: "tracer" }), signal: AbortSignal.timeout(5000),
+        body: JSON.stringify({ question: "q", persona: "sales_south" }), signal: AbortSignal.timeout(5000),
       });
       const reader = response.body!.getReader();
       let streamed = "";
@@ -315,40 +368,72 @@ describe("buildApp /api/ask", () => {
   });
 
   it("streams allowlisted schema-validated SSE with minted chat ids", async () => {
-    const out = await ask({ question: "How many orders do we have per status?", persona: "sales_south", ucId: "tracer" });
-    expect(out.status).toBe(200);
-    expect(out.headers.get("x-run-id")).toMatch(/^[0-9a-f-]{36}$/);
-    const blocks = parseSse(out.text);
-    expect(blocks.map((b) => b.event)).toEqual([
-      "intent_parsed",
-      "sql_generated",
-      "schema_retrieved",
-      "query_running",
-      "sql_generated",
-      "completed",
-    ]);
-    for (const block of blocks) {
-      expect([...SSE_ALLOWLIST] as string[]).toContain(block.event);
+    const proposalSql =
+      "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status";
+    const app = buildApp({
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      routes: { "text-to-sql": async (_state, rt) => {
+        rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: proposalSql, tablesUsed: ["orders"] } });
+        rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
+        rt.emit({ node: "run", type: "tool_call", durationMs: 1, payload: { tool: "run_query", ok: true } });
+        return {
+          status: "ok",
+          answerText: "3 status groups, 12 orders: cancelled=2, completed=7, pending=3",
+          toolsCalled: ["list_tables", "run_query"],
+          columns: ["status", "n"],
+          resultPreview: [
+            { status: "cancelled", n: 2 },
+            { status: "completed", n: 7 },
+            { status: "pending", n: 3 },
+          ],
+        };
+      } },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "How many orders do we have per status?", persona: "sales_south" }),
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-run-id")).toMatch(/^[0-9a-f-]{36}$/);
+      const text = await response.text();
+      const blocks = parseSse(text);
+      expect(blocks.map((b) => b.event)).toEqual([
+        "intent_parsed",
+        "sql_generated",
+        "schema_retrieved",
+        "query_running",
+        "sql_generated",
+        "completed",
+      ]);
+      for (const block of blocks) {
+        expect([...SSE_ALLOWLIST] as string[]).toContain(block.event);
+      }
+      const runIds = new Set(blocks.map((b) => b.data["runId"]));
+      const threadIds = new Set(blocks.map((b) => b.data["threadId"]));
+      expect(runIds.size).toBe(1);
+      expect(threadIds.size).toBe(1);
+      const runId = [...runIds][0] as string;
+      expect(runId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(response.headers.get("x-run-id")).toBe(runId);
+      const threadId = [...threadIds][0] as string;
+      expect(threadId.startsWith(`chat:sales_south:${runId}`)).toBe(true);
+      const completed = blocks[blocks.length - 1].data["data"] as {
+        status: string;
+        answerText: string;
+        toolsCalled: string[];
+        total: number;
+      };
+      expect(completed.status).toBe("ok");
+      expect(completed.toolsCalled).toEqual(["list_tables", "run_query"]);
+      expect(completed.total).toBe(12);
+      expect(completed.answerText).toContain("3 status groups");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-    const runIds = new Set(blocks.map((b) => b.data["runId"]));
-    const threadIds = new Set(blocks.map((b) => b.data["threadId"]));
-    expect(runIds.size).toBe(1);
-    expect(threadIds.size).toBe(1);
-    const runId = [...runIds][0] as string;
-    expect(runId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(out.headers.get("x-run-id")).toBe(runId);
-    const threadId = [...threadIds][0] as string;
-    expect(threadId.startsWith(`chat:sales_south:${runId}`)).toBe(true);
-    const completed = blocks[blocks.length - 1].data["data"] as {
-      status: string;
-      answerText: string;
-      toolsCalled: string[];
-      total: number;
-    };
-    expect(completed.status).toBe("ok");
-    expect(completed.toolsCalled).toEqual(["list_tables", "run_query"]);
-    expect(completed.total).toBe(12);
-    expect(completed.answerText).toContain("3 status groups");
   });
 
   it("honours a well-formed client threadId", async () => {
@@ -365,17 +450,40 @@ describe("buildApp /api/ask", () => {
   });
 
   it("sends the literal-free SQL proposal only after the gateway succeeds, without row values or tokens", async () => {
-    const out = await ask({ question: "How many orders do we have per status?", persona: "hr", ucId: "tracer" });
-    for (const phone of SEED_PHONES) {
-      expect(out.text).not.toContain(phone);
+    const proposalSql =
+      "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status";
+    const app = buildApp({
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      routes: { "text-to-sql": async (_state, rt) => {
+        rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: proposalSql, tablesUsed: ["orders"] } });
+        rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
+        rt.emit({ node: "run", type: "tool_call", durationMs: 1, payload: { tool: "run_query", ok: true } });
+        return { status: "ok", answerText: "3 status groups, 12 orders" };
+      } },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "How many orders do we have per status?", persona: "hr" }),
+      });
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      for (const phone of SEED_PHONES) {
+        expect(text).not.toContain(phone);
+      }
+      expect(text).not.toContain(SEED_EMAIL);
+      expect(text).not.toContain("MASKED_PHONE");
+      const blocks = parseSse(text);
+      const sqlEvent = blocks.find((block) => block.event === "sql_generated" && (block.data["data"] as Record<string, unknown>)?.["phase"] === "display");
+      expect(sqlEvent?.data["data"]).toMatchObject({ sql: proposalSql });
+      expect(blocks.findIndex((block) => block === sqlEvent)).toBeGreaterThan(blocks.findIndex((block) => block.event === "query_running"));
+      expect(text).not.toContain("stub-hr");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-    expect(out.text).not.toContain(SEED_EMAIL);
-    expect(out.text).not.toContain("MASKED_PHONE");
-    const blocks = parseSse(out.text);
-    const sqlEvent = blocks.find((block) => block.event === "sql_generated" && (block.data["data"] as Record<string, unknown>)?.["phase"] === "display");
-    expect(sqlEvent?.data["data"]).toMatchObject({ sql: "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status" });
-    expect(blocks.findIndex((block) => block === sqlEvent)).toBeGreaterThan(blocks.findIndex((block) => block.event === "query_running"));
-    expect(out.text).not.toContain("stub-hr");
   });
 
   async function reindexCall(
@@ -470,7 +578,9 @@ describe("buildApp /api/ask", () => {
                   },
                 ],
               }
-            : {};
+            : toolName === "list_tables"
+              ? { tables: [{ name: "orders", schema: "public", columns: [] }] }
+              : {};
         sse(res, body.id ?? 0, {
           content: [{ type: "text", text: JSON.stringify(payload) }],
         });
@@ -484,13 +594,33 @@ describe("buildApp /api/ask", () => {
       localMcp = mcpServer.listen(0, "127.0.0.1", () => resolve());
     });
     const mcpAddress = localMcp!.address() as AddressInfo;
+    const intentPayload = {
+      metric: null,
+      dimensions: [],
+      filters: [],
+      timeRange: null,
+      requestedMetrics: [],
+      schemaEntities: [],
+      queryMode: "standard_query" as const,
+    };
     const app = buildApp({
       checkpointer: new MemorySaver(),
       mcpUrl: `http://127.0.0.1:${mcpAddress.port}/mcp`,
       tracesDir: localTraces,
       env: stubEnv,
-      ucHandlers: {
-        "uc-semantic-probe": async (state) => {
+      textToSql: {
+        intentModel: {
+          invoke: async () => ({ content: JSON.stringify(intentPayload) }),
+          async *stream() {
+            yield { content: JSON.stringify(intentPayload) };
+          },
+          withStructuredOutput: () => ({
+            invoke: async () => intentPayload,
+          }),
+        } as never,
+      },
+      routes: {
+        "text-to-sql": async (state) => {
           observedChunks = state.semanticChunks.map((c) => c.chunkId);
           return { status: "ok", answerText: "probed" };
         },
@@ -507,7 +637,6 @@ describe("buildApp /api/ask", () => {
         body: JSON.stringify({
           question: "Doanh thu thuần tháng 8?",
           persona: "sales_south",
-          ucId: "uc-semantic-probe",
         }),
       });
       expect(res.status).toBe(200);
@@ -551,8 +680,8 @@ describe("buildApp /api/ask", () => {
       mcpUrl: "http://127.0.0.1:1/mcp",
       tracesDir,
       env: stubEnv,
-      ucHandlers: {
-        tracer: async () => {
+      routes: {
+        "text-to-sql": async () => {
           throw new ModelRetryError({
             message: "RATE_LIMITED: model provider rate limit (HTTP 429) after 4 attempt(s)",
             status: 429,
@@ -569,7 +698,7 @@ describe("buildApp /api/ask", () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "How many orders?", persona: "sales_south", ucId: "tracer" }),
+        body: JSON.stringify({ question: "How many orders?", persona: "sales_south" }),
       });
       const blocks = parseSse(await response.text());
       const failed = blocks.find((b) => b.event === "failed");
@@ -722,7 +851,6 @@ describe("buildApp /api/ask", () => {
         body: JSON.stringify({
           question: "Số đơn theo kênh bán",
           persona: "sales_south",
-          ucId: "text-to-sql",
         }),
       });
       const askBlocks = parseSse(await askRes.text());

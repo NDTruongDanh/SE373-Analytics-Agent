@@ -1,4 +1,3 @@
-// FROZEN root builder: extend via registry.ts (registerUC) and RootGraphDeps seams, never by editing topology here.
 import {
   END,
   MemorySaver,
@@ -18,24 +17,21 @@ import {
   type VizFn,
 } from "./state.js";
 import {
-  createTracerRunEmitter,
-  getUcEntry,
-  listUcIds,
-  type TracerDefaultContext,
-} from "./subgraphs/registry.js";
-import {
   createTextToSqlRuntime,
   guardTextToSqlBudget,
   type TextToSqlRuntimeDeps,
 } from "./subgraphs/textToSql.js";
-import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
-import { routeQuestionToUc } from "./router.js";
+import { createRcaRuntime } from "./subgraphs/rootCauseAnalysis.js";
+import { createAnswerSynthesizer } from "./answer/synthesize.js";
+import { RCA_ROUTE, TEXT_TO_SQL_ROUTE, type Route } from "./constants.js";
+import { routeQuestion } from "./router.js";
 import { formatBudgetTripTemplate, type BudgetTripReason } from "./budgetTemplate.js";
 
 export interface RootGraphDeps {
   checkpointer?: BaseCheckpointSaver | boolean;
   retrieve?: RetrieveFn;
-  ucHandlers?: Record<string, UcEntryHandler>;
+  /** Replaces a route's entry handler; hosts and tests inject fakes here. */
+  routes?: Partial<Record<Route, UcEntryHandler>>;
   viz?: VizFn;
   synthesize?: SynthesizeFn;
   emitSpan?: SpanEmitter;
@@ -45,48 +41,16 @@ export interface RootGraphDeps {
 const noopEmit: SpanEmitter = () => "";
 const noopUpdate = async (): Promise<AgentUpdate> => ({});
 
-async function defaultSynthesize(state: AgentState): Promise<AgentUpdate> {
-  if (state.answerText.length > 0) {
-    return {};
-  }
-  const preview = state.resultPreview;
-  if (preview.length === 0) {
-    return { status: "no_data", answerText: "No orders found for the demo question." };
-  }
-  const total = preview.reduce((sum, row) => sum + Number(row["n"] ?? 0), 0);
-  return {
-    status: "ok",
-    answerText:
-      `${preview.length} status groups, ${total} orders: ` +
-      preview.map((row) => `${String(row["status"])}=${String(row["n"])}`).join(", "),
-  };
-}
-
 export function buildRootGraph(deps: RootGraphDeps = {}) {
   const emit: SpanEmitter = deps.emitSpan ?? noopEmit;
   const retrieve: RetrieveFn = deps.retrieve ?? noopUpdate;
   const viz: VizFn = deps.viz ?? noopUpdate;
-  const synthesize: SynthesizeFn = deps.synthesize ?? defaultSynthesize;
+  const synthesize: SynthesizeFn = deps.synthesize ?? createAnswerSynthesizer();
   const textToSql = createTextToSqlRuntime(deps.textToSql);
-
-  const overlay = new Map<string, UcEntryHandler>();
-  for (const id of listUcIds()) {
-    const handler = getUcEntry(id);
-    if (handler) {
-      overlay.set(id, handler);
-    }
-  }
-  for (const [id, handler] of Object.entries(deps.ucHandlers ?? {})) {
-    overlay.set(id, handler);
-  }
-  // Always prefer the per-graph runtime over the import-time registry entry:
-  // production transport and trace dependencies are only available at run time.
-  overlay.set(TEXT_TO_SQL_UC_ID, textToSql.entry);
-  if (!overlay.has(DEFAULT_ROUTE_ID)) {
-    throw new Error(
-      `root graph requires a '${DEFAULT_ROUTE_ID}' default route (registry or deps.ucHandlers)`,
-    );
-  }
+  const entries: Record<Route, UcEntryHandler> = {
+    [TEXT_TO_SQL_ROUTE]: deps.routes?.[TEXT_TO_SQL_ROUTE] ?? textToSql.entry,
+    [RCA_ROUTE]: deps.routes?.[RCA_ROUTE] ?? createRcaRuntime().entry,
+  };
 
   const runWithRuntime = (
     fn: (state: AgentState, rt: RootRuntime) => Promise<AgentUpdate>,
@@ -98,10 +62,8 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
   };
 
   const graph = new StateGraph(AgentStateSchema)
-    // Keep the frozen root off queryExecutor: text-to-SQL delegates budget init/check
-    // (pure, no I/O); other UCs use an inline counter/deadline check.
     .addNode("budgetGuard", async (state: AgentState): Promise<AgentUpdate> => {
-      if (state.ucId === TEXT_TO_SQL_UC_ID) {
+      if (state.route === TEXT_TO_SQL_ROUTE) {
         const update = guardTextToSqlBudget(state);
         if (update.budgetExceeded) {
           const tripReason =
@@ -155,10 +117,18 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
       }
       return { budgetExceeded: false };
     })
-    // budgetGuard runs first and short-circuits trips straight to answer, so
-    // skill-contract loading inside understand never runs after a budget trip.
+    // The route is decided once, before the budget guard and understand, because
+    // both branch on it; a caller-supplied route in the input is always overwritten.
+    .addNode(
+      "router",
+      runWithRuntime(async (state, rt) => {
+        const route = routeQuestion(state.question);
+        rt.emit({ node: "router", type: "node_done", durationMs: 0, payload: { route } });
+        return { route };
+      }),
+    )
     .addNode("understand", runWithRuntime((state, rt) => {
-      if (state.ucId === TEXT_TO_SQL_UC_ID) return textToSql.understand(state, rt);
+      if (state.route === TEXT_TO_SQL_ROUTE) return textToSql.understand(state, rt);
       return Promise.resolve({
         intent: {
           metric: null,
@@ -175,49 +145,24 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     }))
     .addNode("retrieve", runWithRuntime((state, rt) => retrieve(state, rt)))
     .addNode(
-      "router",
-      runWithRuntime(async (state) => {
-        if (state.ucId && overlay.has(state.ucId)) return {};
-        const routed = routeQuestionToUc(state.question, state.ucId);
-        return overlay.has(routed) ? { ucId: routed } : {};
-      }),
+      "textToSqlEntry",
+      runWithRuntime((state, rt) => entries[TEXT_TO_SQL_ROUTE](state, rt)),
     )
-    .addNode(
-      "ucEntry",
-      runWithRuntime((state, rt) => {
-        const handler = overlay.get(state.ucId);
-        if (!handler) {
-          // Unreachable: the router edge allowlists before reaching here.
-          throw new Error(`no UC entry registered for '${state.ucId}'`);
-        }
-        return handler(state, rt);
-      }),
-    )
-    .addNode(
-      "defaultEntry",
-      runWithRuntime((state, rt) => {
-        const handler = overlay.get(DEFAULT_ROUTE_ID);
-        if (!handler) {
-          // Unreachable: the build-time guard requires the default route.
-          throw new Error(`no default UC entry registered`);
-        }
-        return handler(state, rt);
-      }),
-    )
+    .addNode("rcaEntry", runWithRuntime((state, rt) => entries[RCA_ROUTE](state, rt)))
     .addNode("statusCheck", noopUpdate)
     .addNode("vizSeam", runWithRuntime((state, rt) => viz(state, rt)))
     .addNode("answer", runWithRuntime((state, rt) => synthesize(state, rt)))
-    .addEdge(START, "budgetGuard")
+    .addEdge(START, "router")
+    .addEdge("router", "budgetGuard")
     .addConditionalEdges("budgetGuard", (state: AgentState) =>
       state.budgetExceeded || state.status === "cannot_answer" ? "answer" : "understand",
     )
     .addEdge("understand", "retrieve")
-    .addEdge("retrieve", "router")
-    .addConditionalEdges("router", (state: AgentState) =>
-      overlay.has(state.ucId) ? "ucEntry" : "defaultEntry",
+    .addConditionalEdges("retrieve", (state: AgentState) =>
+      state.route === RCA_ROUTE ? "rcaEntry" : "textToSqlEntry",
     )
-    .addEdge("ucEntry", "statusCheck")
-    .addEdge("defaultEntry", "statusCheck")
+    .addEdge("textToSqlEntry", "statusCheck")
+    .addEdge("rcaEntry", "statusCheck")
     .addConditionalEdges("statusCheck", (state: AgentState) =>
       state.status === "ok" || state.status === "no_data" ? "vizSeam" : "answer",
     )
@@ -226,55 +171,4 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .compile({ checkpointer: deps.checkpointer ?? new MemorySaver() });
 
   return graph;
-}
-
-export type TracerGraphContext = TracerDefaultContext;
-
-export interface TracerRunResult {
-  status: "ok" | "no_data";
-  answerText: string;
-  toolsCalled: string[];
-  sql: string;
-  tracePath: string;
-}
-
-export async function runTracerGraph(
-  question: string,
-  ctx: TracerGraphContext,
-): Promise<TracerRunResult> {
-  // Share one emitter per run so all node events feed the run_done roll-up.
-  const emit = createTracerRunEmitter(ctx);
-  const graph = buildRootGraph({ checkpointer: new MemorySaver(), emitSpan: emit });
-  const out = (await graph.invoke(
-    {
-      question,
-      ucId: DEFAULT_ROUTE_ID,
-      runId: ctx.runId,
-      threadId: ctx.threadId,
-    },
-    {
-      configurable: {
-        thread_id: ctx.threadId,
-        mcpUrl: ctx.mcpUrl,
-        token: ctx.token,
-        runId: ctx.runId,
-        userId: ctx.userId,
-        roleScope: ctx.roleScope,
-        ...(ctx.rowScope !== undefined ? { rowScope: ctx.rowScope } : {}),
-        threadId: ctx.threadId,
-        tracesDir: ctx.tracesDir,
-      },
-    },
-  )) as AgentState;
-
-  const status = out.status === "ok" ? "ok" : "no_data";
-  emit.emitRunDone(status);
-
-  return {
-    status,
-    answerText: out.answerText,
-    toolsCalled: out.toolsCalled,
-    sql: out.sql ?? "",
-    tracePath: `${ctx.tracesDir}/${ctx.runId}.jsonl`,
-  };
 }

@@ -60,7 +60,6 @@ import {
   type StructuredModelLike,
 } from "../telemetry/usage.js";
 
-export { RCA_UC_ID } from "../constants.js";
 
 export const RcaIntentSchema = z.object({
   metricName: z.string().min(1).default("net_revenue"),

@@ -1,5 +1,4 @@
 import { redactPII } from "@shared/access-policy";
-import { DEFAULT_ROUTE_ID } from "../constants.js";
 import type {
   AgentState,
   AgentStatus,
@@ -131,9 +130,8 @@ export function createAnswerSynthesizer(): SynthesizeFn {
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     const started = Date.now();
     const update = synthesizeAnswer(state);
-    // Skip span emission when upstream handlers or the default route already answered.
-    const shouldEmit =
-      state.ucId !== DEFAULT_ROUTE_ID && state.answerText.trim().length === 0;
+    // Skip span emission when an upstream handler already answered.
+    const shouldEmit = state.answerText.trim().length === 0;
     if (shouldEmit) {
       const nextText =
         typeof update.answerText === "string"

@@ -109,24 +109,14 @@ export interface EvalCase {
   ordered?: boolean;
   datasetVersion: string;
   tags?: string[];
-  /**
-   * Root-graph route for the live adapter. The root router does not infer a
-   * UC from the question, so the caller picks it: EX tracer cases keep the
-   * legacy "tracer" default; answer-mode safety cases use text-to-sql so the
-   * question runs through the real ValidatedQueryExecutor path.
-   */
-  ucId?: string;
 }
-
-/** UC-01 route id (packages/agent/src/constants.ts TEXT_TO_SQL_UC_ID; not on the frozen barrel). */
-export const ANSWER_ROUTE_UC_ID = "text-to-sql";
 
 export interface HarnessOutcome {
   status: string;
   columns?: string[];
   rows?: Record<string, unknown>[];
   vizSpec?: unknown;
-  /** Agent answer text (tracer synthesis). Graded in memory only — never persisted raw. */
+  /** Agent answer text (synthesis). Graded in memory only — never persisted raw. */
   answerText?: string;
   reason?: string;
   ms: number;
@@ -196,12 +186,6 @@ export function validateCase(raw: unknown): {
   if (raw["tags"] !== undefined && !Array.isArray(raw["tags"])) {
     errors.push("tags must be an array");
   }
-  if (
-    raw["ucId"] !== undefined &&
-    (typeof raw["ucId"] !== "string" || raw["ucId"].trim() === "")
-  ) {
-    errors.push("ucId must be a non-empty string");
-  }
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -216,7 +200,6 @@ export function validateCase(raw: unknown): {
       ordered: (raw["ordered"] as boolean | undefined) ?? false,
       datasetVersion: raw["datasetVersion"] as string,
       tags: (raw["tags"] as string[] | undefined) ?? [],
-      ucId: raw["ucId"] as string | undefined,
     },
   };
 }
@@ -485,7 +468,7 @@ export async function buildLiveAdapter(
       });
       const out = (await withTimeout(
         graph.invoke(
-          { question: c.question, ucId: c.ucId, runId, threadId },
+          { question: c.question, runId, threadId },
           {
             // D-04: never pass LangSmith callbacks here — eval traces stay
             // JSONL-local even if the flags were somehow re-set at runtime.
@@ -1068,7 +1051,6 @@ async function driveAnswerCase(
     question: c.question,
     role: c.role,
     datasetVersion: "safety-1",
-    ucId: ANSWER_ROUTE_UC_ID,
   });
   const observed: AnswerObserved = {
     status: outcome.status,

@@ -8,14 +8,14 @@ import {
   buildRootGraph,
   createAnswerSynthesizer,
   previewCountTotal,
-  routeQuestionToUc,
-  runTracerGraph,
+  RCA_ROUTE,
+  routeQuestion,
+  TEXT_TO_SQL_ROUTE,
   type AgentState,
   type RetrieveFn,
   type RootGraphDeps,
   type SpanEvent,
   type SynthesizeFn,
-  type UcEntryHandler,
   type VizFn,
 } from "@shared/agent";
 import { createRetrieveSemantic } from "@shared/agent/uc02";
@@ -72,7 +72,7 @@ export interface BuildAppOptions {
   env?: NodeJS.ProcessEnv;
   // Held for UC-10 write-after-send; ask and resume never call it directly.
   store?: AppStateStore;
-  ucHandlers?: Record<string, UcEntryHandler>;
+  routes?: RootGraphDeps["routes"];
   textToSql?: RootGraphDeps["textToSql"];
   retrieve?: RetrieveFn;
   viz?: VizFn;
@@ -310,7 +310,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
       graph: buildRootGraph({
         checkpointer: options.checkpointer,
         emitSpan: progress,
-        ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
+        ...(options.routes ? { routes: options.routes } : {}),
         ...(options.textToSql ? { textToSql: options.textToSql } : {}),
         retrieve: options.retrieve ?? createRetrieveSemantic(),
         viz: options.viz ?? createUc03Viz(),
@@ -414,21 +414,19 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const graph = built.graph;
       // Reuse runId as LangSmith runId for 1:1 JSONL correlation; custom tracer suppresses env auto-tracing.
       const tracer = createLangSmithTracer(env);
-      const reqUcId = typeof req.body?.["ucId"] === "string" ? req.body["ucId"] : undefined;
-      const effectiveUcId = routeQuestionToUc(question, reqUcId);
       const ls = tracer
         ? buildLangSmithRunConfig(tracer, {
             runId,
             threadId,
             userId: principal.userId,
             role: principal.role,
-            ucId: effectiveUcId,
+            route: routeQuestion(question),
             maskedColumns: [],
           })
         : undefined;
       const out = (await graph.invoke(
         {
-          question, ucId: effectiveUcId, runId, threadId,
+          question, runId, threadId,
           // A new question reuses the thread, but not the previous run's outputs or budgets.
           status: "no_data", answerText: "", sql: null, tablesUsed: [],
           semanticChunks: [], catalogTables: [], catalogStatus: "unloaded",
@@ -571,6 +569,8 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const built = buildGraph(stored, runId, res);
       emit = built.emit;
       const graph = built.graph;
+      const saved = await graph.getState({ configurable: configurableFor(stored, runId) });
+      const savedRoute = (saved.values as Partial<AgentState> | undefined)?.route;
       const tracer = createLangSmithTracer(env);
       const ls = tracer
         ? buildLangSmithRunConfig(tracer, {
@@ -578,7 +578,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
             threadId: stored.threadId,
             userId: stored.userId,
             role: stored.roleScope,
-            ucId: "",
+            route: savedRoute === RCA_ROUTE ? RCA_ROUTE : TEXT_TO_SQL_ROUTE,
             maskedColumns: [],
           })
         : undefined;
@@ -786,141 +786,6 @@ function readFirstLine(tracesDir: string, runId: string): string | null {
       }
     }
   }
-}
-
-// Legacy thin host retained for apps/api/test/tracer.test.ts compatibility (UUID thread shape, five-event stream).
-const PERSONAS: Record<string, { userId: string; roleScope: string }> = {
-  sales_south: { userId: "demo-user", roleScope: "sales_south" },
-  marketing: { userId: "demo-marketing", roleScope: "sales_south" },
-  default: { userId: "demo-user", roleScope: "sales_south" },
-};
-
-export interface TracerApiOptions {
-  mcpUrl: string;
-  token: string;
-  tracesDir?: string;
-}
-
-function sseSend(res: Response, event: string, data: unknown): void {
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-export function createTracerApi(options: TracerApiOptions): express.Express {
-  const tracesDir = options.tracesDir ?? "traces";
-  const app = express();
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader("content-security-policy", API_CSP_HEADER);
-    next();
-  });
-  app.use(express.json({ limit: "100kb" }));
-
-  app.get("/healthz", (_req: Request, res: Response) => {
-    res.status(200).json({ ok: true });
-  });
-
-  app.post("/api/ask", async (req: Request, res: Response) => {
-    const question = req.body?.["question"];
-    if (typeof question !== "string" || question.trim().length === 0) {
-      res.status(400).json({
-        code: "INVALID_PARAMS",
-        message: "question must be a non-empty string",
-        retryable: false,
-        repairable: false,
-      });
-      return;
-    }
-    const persona =
-      typeof req.body?.["persona"] === "string" ? req.body["persona"] : "default";
-    const principal = PERSONAS[persona] ?? PERSONAS["default"];
-    if (!principal) {
-      res.status(400).json({
-        code: "INVALID_PARAMS",
-        message: `unknown persona '${persona}'`,
-        retryable: false,
-        repairable: false,
-      });
-      return;
-    }
-
-    const runId = randomUUID();
-    const threadId = randomUUID();
-
-    res.writeHead(200, {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-      "content-security-policy": API_CSP_HEADER,
-    });
-
-    const base = { runId, threadId };
-    try {
-      sseSend(res, "intent_parsed", {
-        ...base,
-        node: "understand",
-        data: {
-          metric: "orders_per_status",
-          dimensions: ["status"],
-          filters: [],
-          timeRange: null,
-        },
-      });
-
-      const out = await runTracerGraph(question, {
-        mcpUrl: options.mcpUrl,
-        token: options.token,
-        runId,
-        userId: principal.userId,
-        roleScope: principal.roleScope,
-        threadId,
-        tracesDir,
-      });
-
-      sseSend(res, "schema_retrieved", {
-        ...base,
-        node: "describe",
-        data: { tables: ["customers", "orders"], tableCount: 2 },
-      });
-      sseSend(res, "sql_generated", {
-        ...base,
-        node: "run",
-        data: { tablesUsed: ["orders"], statementType: "SELECT" },
-      });
-      const total = Number(
-        /(\d+) orders/.exec(out.answerText)?.[1] ?? "0",
-      );
-      sseSend(res, "query_running", {
-        ...base,
-        node: "run",
-        data: { statusGroups: out.toolsCalled.includes("run_query") ? 3 : 0 },
-      });
-      sseSend(res, "completed", {
-        ...base,
-        node: "answer",
-        data: {
-          status: out.status,
-          answerText: out.answerText,
-          toolsCalled: out.toolsCalled,
-          total,
-        },
-      });
-    } catch (err) {
-      sseSend(res, "completed", {
-        ...base,
-        node: "answer",
-        data: {
-          status: "error",
-          answerText: err instanceof Error ? err.message : "unknown error",
-          toolsCalled: [],
-          total: 0,
-        },
-      });
-    } finally {
-      res.end();
-    }
-  });
-
-  return app;
 }
 
 if (

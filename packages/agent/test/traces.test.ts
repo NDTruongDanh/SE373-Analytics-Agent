@@ -6,7 +6,7 @@ import { TraceEventSchema, dbToolError } from "@shared/contracts";
 import { MASKED_EMAIL, MASKED_PHONE } from "@shared/access-policy";
 import { appendTraceEvent } from "../src/traces/writer.js";
 import { buildRootGraph } from "../src/graph.js";
-import { TEXT_TO_SQL_UC_ID } from "../src/constants.js";
+import { TEXT_TO_SQL_ROUTE } from "../src/constants.js";
 import { ValidatedQueryExecutor } from "../src/queryExecutor/executor.js";
 import { createSpanEmitter } from "../src/telemetry/spans.js";
 
@@ -449,7 +449,7 @@ describe("run_done totals", () => {
     const out = await graph.invoke(
       {
         question: "How many orders per status?",
-        ucId: TEXT_TO_SQL_UC_ID,
+        route: TEXT_TO_SQL_ROUTE,
         runId,
         threadId,
       },
@@ -513,12 +513,12 @@ describe("run_done totals", () => {
       new URL("../src/graph.ts", import.meta.url),
       "utf8",
     );
-    const registrySrc = readFileSync(
-      new URL("../src/subgraphs/registry.ts", import.meta.url),
+    const routerSrc = readFileSync(
+      new URL("../src/router.ts", import.meta.url),
       "utf8",
     );
     expect(graphSrc).not.toContain('role: "sales_south"');
-    expect(registrySrc).not.toContain('role: "sales_south"');
+    expect(routerSrc).not.toContain('role: "sales_south"');
   });
 });
 

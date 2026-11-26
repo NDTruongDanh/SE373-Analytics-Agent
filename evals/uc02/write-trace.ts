@@ -71,7 +71,6 @@ async function main(): Promise<void> {
 
   const baseState = {
     question: QUESTION,
-    ucId: "text-to-sql",
     intent: {
       metric: "net_revenue",
       dimensions: [],

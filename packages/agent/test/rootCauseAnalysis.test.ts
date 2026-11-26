@@ -27,12 +27,11 @@ import {
   decomposeRatioFormula,
   shiftShareDecompose,
   applyOffsettingGuard,
-  RCA_UC_ID,
 } from "../src/subgraphs/rootCauseAnalysis.js";
-import { routeQuestionToUc } from "../src/router.js";
+import { RCA_ROUTE, TEXT_TO_SQL_ROUTE } from "../src/constants.js";
+import { routeQuestion } from "../src/router.js";
 import { createChatModel } from "../src/models/factory.js";
 import { buildRootGraph } from "../src/graph.js";
-import { getUcEntry, isKnownUc } from "../src/subgraphs/registry.js";
 import { pauseForApproval, resumeDecision, makeThreadId } from "../src/hitl.js";
 import { AgentStateSchema, type AgentState } from "../src/state.js";
 import type { AnalysisPlan, PlanStep } from "@shared/contracts";
@@ -44,9 +43,13 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     roleScope: "sales_south",
   };
 
-  it("registers root-cause-analysis in the UC registry", () => {
-    expect(isKnownUc(RCA_UC_ID)).toBe(true);
-    expect(getUcEntry(RCA_UC_ID)).toBeDefined();
+  it("routes Why/Variance questions to the RCA route via routeQuestion", () => {
+    expect(routeQuestion("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?")).toBe(
+      RCA_ROUTE,
+    );
+    expect(routeQuestion("Tại sao giá trị đơn hàng trung bình (AOV) miền Nam tuần 39/2026 giảm?")).toBe(
+      RCA_ROUTE,
+    );
   });
 
   it("loads root-cause-analysis skill and emits skill_call span at entry (AC1)", async () => {
@@ -65,7 +68,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -98,7 +101,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime({ executor: mockExecutor });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -137,7 +140,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -167,7 +170,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -348,7 +351,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime(deps);
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -397,7 +400,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime({ executor: mockExecutor });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -933,7 +936,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime({ executor: mockExecutor });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -963,7 +966,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime({ executor: mockExecutor });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -992,7 +995,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime(deps);
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -1046,7 +1049,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime({});
     const mockState = {
       question: q,
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
     const mockRt = {
@@ -1123,7 +1126,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime({ executor: failingExecutor });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -1157,7 +1160,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime({ executor: badExecutor });
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -1223,7 +1226,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     });
     const mockState = {
       question: q,
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -1257,7 +1260,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const runtime = createRcaRuntime(deps);
     const mockState = {
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       toolsCalled: [],
     } as unknown as AgentState;
 
@@ -1349,7 +1352,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(resumedRun.answerText).toContain("Resumed with: APPROVE");
   });
 
-  it("integrates with root graph router via ucHandlers or registered entry", async () => {
+  it("integrates with root graph router via routes", async () => {
     const deps = {
       fetchBaseline: async (
         _m: string,
@@ -1363,15 +1366,14 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     const rootGraph = buildRootGraph({
       checkpointer: new MemorySaver(),
-      ucHandlers: {
-        [RCA_UC_ID]: rcaRuntime.entry,
+      routes: {
+        [RCA_ROUTE]: rcaRuntime.entry,
       },
     });
 
     const out = (await rootGraph.invoke(
       {
         question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
-        ucId: RCA_UC_ID,
       },
       {
         configurable: {
@@ -1422,7 +1424,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     const result = await testGraph.invoke(
       {
         question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
-        ucId: RCA_UC_ID,
+        route: RCA_ROUTE,
       },
       { configurable: { thread_id: threadId } },
     );
@@ -1468,7 +1470,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     await testGraph.invoke(
       {
         question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
-        ucId: RCA_UC_ID,
+        route: RCA_ROUTE,
       },
       { configurable: { thread_id: threadId } },
     );
@@ -1510,7 +1512,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       await graph.invoke(
         {
           question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
-          ucId: RCA_UC_ID,
+          route: RCA_ROUTE,
           budget: {
             llmCalls: 0,
             tokensUsed: 0,
@@ -1562,7 +1564,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     await testGraph.invoke(
       {
         question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
-        ucId: RCA_UC_ID,
+        route: RCA_ROUTE,
       },
       { configurable: { thread_id: threadId } },
     );
@@ -2192,7 +2194,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     await testGraph1.invoke(
       {
         question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
-        ucId: RCA_UC_ID,
+        route: RCA_ROUTE,
       },
       { configurable: { thread_id: threadId, runId: "run_persist_1" } },
     );
@@ -2265,7 +2267,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       runId: "run_dur_1",
       threadId: "chat:u1:s1",
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm 18.4% so với tháng 08/2026?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       status: "ok",
       answerText: "",
       sql: null,
@@ -2299,30 +2301,29 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(baselineQueryCalls).toBe(0); // ZERO baseline calls! Restored completely from checkpointer!
   });
 
-  it("T36-T13: routeQuestionToUc classifies Why/Variance questions and integrates with rootGraph without explicit ucId", async () => {
-    expect(routeQuestionToUc("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?")).toBe(RCA_UC_ID);
-    expect(routeQuestionToUc("Tại sao giá trị đơn hàng trung bình (AOV) miền Nam tuần 39/2026 giảm?")).toBe(RCA_UC_ID);
-    expect(routeQuestionToUc("Nguyên nhân sụt giảm doanh thu Shopee là gì?")).toBe(RCA_UC_ID);
-    expect(routeQuestionToUc("Why did revenue decrease in September?")).toBe(RCA_UC_ID);
-    expect(routeQuestionToUc("Root cause of return rate variance")).toBe(RCA_UC_ID);
+  it("T36-T13: routeQuestion classifies Why/Variance questions and integrates with rootGraph with no routing field", async () => {
+    expect(routeQuestion("Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?")).toBe(RCA_ROUTE);
+    expect(routeQuestion("Tại sao giá trị đơn hàng trung bình (AOV) miền Nam tuần 39/2026 giảm?")).toBe(RCA_ROUTE);
+    expect(routeQuestion("Nguyên nhân sụt giảm doanh thu Shopee là gì?")).toBe(RCA_ROUTE);
+    expect(routeQuestion("Why did revenue decrease in September?")).toBe(RCA_ROUTE);
+    expect(routeQuestion("Root cause of return rate variance")).toBe(RCA_ROUTE);
 
-    // Standard queries use UC-01; explicit tracer requests remain supported.
-    expect(routeQuestionToUc("Tổng doanh thu tháng hiện tại")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Top 5 sản phẩm bán chạy nhất tháng 8")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Tổng doanh thu tháng hiện tại", "tracer")).toBe("tracer");
+    // Standard queries use the text-to-sql route.
+    expect(routeQuestion("Tổng doanh thu tháng hiện tại")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Top 5 sản phẩm bán chạy nhất tháng 8")).toBe(TEXT_TO_SQL_ROUTE);
 
-    // Definitions and column-level reasons belong to UC-01/UC-02, not RCA.
-    expect(routeQuestionToUc("Giải thích định nghĩa doanh thu thuần")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Giải thích công thức tính AOV")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Khách hàng hoạt động nghĩa là gì?")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Khách hàng hoạt động được tính thế nào?")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Lý do hủy đơn hàng phổ biến nhất trong quý 3 là gì?")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Top 3 lý do khách hàng đổi trả hàng")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Explain net revenue definition")).toBe("text-to-sql");
-    expect(routeQuestionToUc("Reason for cancelled orders in Q3")).toBe("text-to-sql");
-    expect(routeQuestionToUc("What is the formula for customer lifetime value?")).toBe("text-to-sql");
+    // Definitions and column-level reasons belong to text-to-sql, not RCA.
+    expect(routeQuestion("Giải thích định nghĩa doanh thu thuần")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Giải thích công thức tính AOV")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Khách hàng hoạt động nghĩa là gì?")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Khách hàng hoạt động được tính thế nào?")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Lý do hủy đơn hàng phổ biến nhất trong quý 3 là gì?")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Top 3 lý do khách hàng đổi trả hàng")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Explain net revenue definition")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("Reason for cancelled orders in Q3")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(routeQuestion("What is the formula for customer lifetime value?")).toBe(TEXT_TO_SQL_ROUTE);
 
-    // Root graph automatically routes question to RCA handler when ucId is empty
+    // Root graph routes the question to the RCA handler with no routing field set by the caller.
     let rcaCalled = false;
     const mockRcaEntry = async () => {
       rcaCalled = true;
@@ -2331,15 +2332,14 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
 
     const rootGraph = buildRootGraph({
       checkpointer: new MemorySaver(),
-      ucHandlers: {
-        [RCA_UC_ID]: mockRcaEntry,
+      routes: {
+        [RCA_ROUTE]: mockRcaEntry,
       },
     });
 
     const out = (await rootGraph.invoke(
       {
         question: "Vì sao doanh thu tháng 9 giảm so với tháng 8?",
-        ucId: "", // Not set by caller!
       },
       {
         configurable: {
@@ -2511,7 +2511,7 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
       runId: "run_fail_closed",
       threadId: "chat:u_fail:s_1",
       question: "Vì sao doanh thu thuần tháng 09/2026 giảm?",
-      ucId: RCA_UC_ID,
+      route: RCA_ROUTE,
       status: "ok",
       answerText: "",
       sql: null,
