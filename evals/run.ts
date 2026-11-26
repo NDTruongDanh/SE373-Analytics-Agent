@@ -565,6 +565,7 @@ export interface GradedCase {
   tokens: number;
   costUsd?: number;
   note?: string;
+  rateLimited?: boolean;
 }
 
 /** Grade a batch of cases through any harness adapter. */
@@ -598,12 +599,18 @@ export async function runEval(
         ordered: c.ordered ?? false,
       },
     );
+    const isRateLimited =
+      outcome.status === "rate_limited" ||
+      outcome.status === "RATE_LIMITED" ||
+      (typeof outcome.reason === "string" && /rate[-_]?limit/i.test(outcome.reason)) ||
+      (typeof outcome.answerText === "string" && /RATE_LIMITED/i.test(outcome.answerText));
     graded.push({
       id: c.id,
       status: outcome.status,
       exPass: pass,
       ms: outcome.ms,
       tokens: outcome.tokens,
+      rateLimited: isRateLimited,
       ...(outcome.costUsd !== undefined ? { costUsd: outcome.costUsd } : {}),
       ...(pass
         ? {}
@@ -638,9 +645,17 @@ interface PureUcRun {
 /** DB-free suites with their own graders and fixture formats. */
 const PURE_UC_RUNNERS: Record<
   string,
-  { datasetVersion: string; grade: (repoRoot: string) => Promise<PureUcRun>; print: (run: never) => void }
+  {
+    datasetVersion: string;
+    grade: (repoRoot: string, opts?: { noSemantic?: boolean }) => Promise<PureUcRun>;
+    print: (run: never, opts?: { noSemantic?: boolean }) => void;
+  }
 > = {
-  uc02: { datasetVersion: "uc02-1", grade: gradeUc02, print: printUc02Report as (run: never) => void },
+  uc02: {
+    datasetVersion: "uc02-1",
+    grade: (root, opts) => gradeUc02(root, opts) as unknown as Promise<PureUcRun>,
+    print: ((run: never, opts?: { noSemantic?: boolean }) => printUc02Report(run, opts)) as (run: never) => void,
+  },
   uc03: { datasetVersion: "uc03-1", grade: gradeUc03, print: printUc03Report as (run: never) => void },
   uc05: { datasetVersion: "uc05-1", grade: gradeUc05, print: printUc05Report as (run: never) => void },
   uc10: { datasetVersion: "uc10-1", grade: gradeUc10, print: printUc10Report as (run: never) => void },
@@ -694,38 +709,58 @@ async function runPureUc(
   repoRoot: string,
   uc: string,
   verbose: boolean,
-  opts: { live?: boolean; liveGraph?: boolean } = {},
+  opts: { live?: boolean; liveGraph?: boolean; noSemantic?: boolean } = {},
 ): Promise<boolean> {
   const runner = PURE_UC_RUNNERS[uc];
   const run =
     uc === "uc03"
       ? await runUc03WithModes(repoRoot, opts)
-      : await runner.grade(repoRoot);
+      : await runner.grade(repoRoot, { noSemantic: opts.noSemantic });
   const passed = run.cases.filter((c) => c.exPass).length;
   const gatesOk = run.gatesPassed !== false;
+  const summaryObj = summarizeCases(run.cases as never);
+  const rateLimitOk = (summaryObj.rateLimitedRate ?? 0) < 0.05;
+
+  const resultPayload = {
+    uc,
+    datasetVersion: runner.datasetVersion,
+    cases: run.cases,
+    summary: summaryObj,
+    ...(run.summary !== undefined ? { ucSummary: run.summary } : {}),
+    ...(run.gatesPassed !== undefined ? { gatesPassed: run.gatesPassed } : {}),
+    ...(opts.noSemantic ? { ablation: "control_no_semantic" } : {}),
+  };
+
   writeFileSync(
     path.join(repoRoot, "results", `${uc}.json`),
-    `${JSON.stringify(
-      {
-        uc,
-        datasetVersion: runner.datasetVersion,
-        cases: run.cases,
-        summary: summarizeCases(run.cases as never),
-        ...(run.summary !== undefined ? { ucSummary: run.summary } : {}),
-        ...(run.gatesPassed !== undefined ? { gatesPassed: run.gatesPassed } : {}),
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(resultPayload, null, 2)}\n`,
     "utf8",
   );
-  if (verbose || !gatesOk) runner.print(run as never);
-  else {
-    console.log(
-      `eval ${uc}: ${passed}/${run.cases.length} EX pass (dataset ${runner.datasetVersion}, deterministic)`,
+  if (opts.noSemantic) {
+    writeFileSync(
+      path.join(repoRoot, "results", `${uc}-control.json`),
+      `${JSON.stringify(resultPayload, null, 2)}\n`,
+      "utf8",
     );
   }
-  return passed === run.cases.length && gatesOk;
+
+  if (verbose || !gatesOk || !rateLimitOk) {
+    runner.print(run as never, { noSemantic: opts.noSemantic });
+  } else {
+    console.log(
+      `eval ${uc}: ${passed}/${run.cases.length} EX pass (dataset ${runner.datasetVersion}, deterministic)` +
+        (opts.noSemantic ? " [--no-semantic control ablation]" : ""),
+    );
+  }
+
+  if (!rateLimitOk) {
+    console.error(
+      `eval ${uc} failed rate-limit health gate: ${summaryObj.rateLimitedCount}/${summaryObj.total} (${((summaryObj.rateLimitedRate ?? 0) * 100).toFixed(1)}%) >= 5%`,
+    );
+  }
+
+  const passedOk = opts.noSemantic ? true : passed === run.cases.length;
+  return passedOk && gatesOk && rateLimitOk;
 }
 
 function discoverUcDirs(repoRoot: string): string[] {
@@ -1511,7 +1546,8 @@ async function main(): Promise<void> {
 
   const liveFlag = args.includes("--live");
   const liveGraphFlag = args.includes("--live-graph");
-  const positional = args.filter((arg) => arg !== "--live" && arg !== "--live-graph");
+  const noSemanticFlag = args.includes("--no-semantic");
+  const positional = args.filter((arg) => arg !== "--live" && arg !== "--live-graph" && arg !== "--no-semantic");
 
   // Load env once at runner entrypoint and apply the eval isolation guard
   // (scrubs LangSmith tracing and drops live keys unless EVAL_USE_LIVE_MODEL=1)
@@ -1552,7 +1588,7 @@ async function main(): Promise<void> {
     const uc = /^\d+$/.test(rawUc) ? `uc${rawUc.padStart(2, "0")}` : rawUc;
     ucs = [uc];
   } else {
-    console.error("usage: pnpm eval --all | pnpm eval --uc <id> [--live] [--live-graph]");
+    console.error("usage: pnpm eval --all | pnpm eval --uc <id> [--live] [--live-graph] [--no-semantic]");
     process.exit(1);
     return;
   }
@@ -1572,6 +1608,7 @@ async function main(): Promise<void> {
         !(await runPureUc(repoRoot, uc, ucs.length === 1, {
           live: liveFlag,
           liveGraph: liveGraphFlag,
+          noSemantic: noSemanticFlag,
         }))
       ) {
         failed = true;
@@ -1618,6 +1655,13 @@ async function main(): Promise<void> {
           repoRoot,
         );
         const results = mergeGatewayResults(exResults, gatewayGraded);
+        const rateLimitOk = (results.summary.rateLimitedRate ?? 0) < 0.05;
+        if (!rateLimitOk) {
+          failed = true;
+          console.error(
+            `eval ${uc} failed rate-limit health gate: ${results.summary.rateLimitedCount}/${results.summary.total} (${((results.summary.rateLimitedRate ?? 0) * 100).toFixed(1)}%) >= 5%`,
+          );
+        }
         writeFileSync(
           path.join(repoRoot, "results", `${uc}.json`),
           `${JSON.stringify({ uc, ...results }, null, 2)}\n`,
@@ -1632,6 +1676,13 @@ async function main(): Promise<void> {
       const results = await runEval(cases, live.adapter);
       if (cases.length > 0 && results.datasetVersion !== cases[0].datasetVersion) {
         throw new Error(`datasetVersion drift inside ${uc}`);
+      }
+      const rateLimitOk = (results.summary.rateLimitedRate ?? 0) < 0.05;
+      if (!rateLimitOk) {
+        failed = true;
+        console.error(
+          `eval ${uc} failed rate-limit health gate: ${results.summary.rateLimitedCount}/${results.summary.total} (${((results.summary.rateLimitedRate ?? 0) * 100).toFixed(1)}%) >= 5%`,
+        );
       }
       writeFileSync(
         path.join(repoRoot, "results", `${uc}.json`),
