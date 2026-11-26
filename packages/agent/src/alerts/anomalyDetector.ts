@@ -344,7 +344,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   const n = baselinePoints.length;
   const baselineValues = baselinePoints.map((pt) => pt.value);
 
-  // 3. Robust Estimators & SEP calculation
   let mu: number;
   let sigmaRaw: number;
   let estimatorType: "trimmed_mean" | "median_mad";
@@ -354,7 +353,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
     mu = trimmedMean(baselineValues, trimRatio);
     sigmaRaw = trimmedStd(baselineValues, trimRatio);
   } else {
-    // 4 <= n < 6 (or fallback): Median / MAD
     estimatorType = "median_mad";
     mu = median(baselineValues);
     const mad = medianAbsoluteDeviation(baselineValues, mu);
@@ -364,12 +362,10 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   const sigmaEff = calculateEffectiveSigma(sigmaRaw, mu, metricEps);
   const sep = calculateSEP({ sigmaEff, n, estimatorType });
 
-  // 4. Z-score (uses SEP if same-weekday mode, sigmaEff otherwise)
   const zScore = isUsingSameWeekday
     ? (sep > 0 ? (current.value - mu) / sep : 0)
     : (sigmaEff > 0 ? (current.value - mu) / sigmaEff : 0);
 
-  // 5. Week-over-Week (t-7) calculation
   let wowPercent: number | null = null;
   if (weekAgoDate !== undefined) {
     const weekAgoPoint = history.find((point) => point.date === weekAgoDate);
@@ -378,10 +374,8 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
     }
   }
 
-  // 6. Direction
   const direction: AlertDirection = current.value >= mu ? "spike" : "drop";
 
-  // 7. Calendar classification for current date
   const isCurrentPublicHoliday = isPublicHoliday(current.date, calConfig);
   const isCurrentMegaSale = isMegaSale(current.date, calConfig);
 

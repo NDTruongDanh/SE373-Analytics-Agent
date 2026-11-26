@@ -22,7 +22,10 @@ import {
   buildTimeSeriesQuery,
   DEFAULT_ANOMALY_CATALOG,
   drillDownCandidateTables,
+  InMemoryAlertHistoryStore,
+  InMemoryDigestQueue,
   loadSubscriptionsConfigFile,
+  runAnomalyRunner,
   seriesCandidateTables,
   subtractDays,
 } from "@shared/agent/alerts";
@@ -314,7 +317,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
   it("executes UC-10 time-series and drill-down SQL for all subscriptions against live PostgreSQL", async () => {
     const token = ADMIN_TOKEN || SALES_TOKEN;
     const roleScope = ADMIN_TOKEN ? "admin" : "sales_south";
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
     const config = loadSubscriptionsConfigFile(path.join(repoRoot, "config/subscriptions.yaml"));
     const runId = randomUUID();
     const mcp: McpToolCaller = {
@@ -353,7 +356,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
         principal,
         catalog: DEFAULT_ANOMALY_CATALOG,
       });
-      expect(["ok", "no_data"], `${sub.id} series failed`).toContain(seriesRes.status);
+      expect(["ok", "no_data"], `${sub.id} series failed: ${JSON.stringify(seriesRes)}`).toContain(seriesRes.status);
 
       const drillSql = buildDrillDownSql({
         metricId: sub.metricId,
@@ -373,7 +376,26 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
         principal,
         catalog: DEFAULT_ANOMALY_CATALOG,
       });
-      expect(["ok", "no_data"], `${sub.id} drilldown failed`).toContain(drillRes.status);
+      expect(["ok", "no_data"], `${sub.id} drilldown failed: ${JSON.stringify(drillRes)}`).toContain(drillRes.status);
     }
+
+    const scopedSubs = ADMIN_TOKEN
+      ? config.subscriptions
+      : config.subscriptions.map((s) => ({ ...s, recipientRole: roleScope }));
+    const runnerRes = await runAnomalyRunner({
+      subscriptions: scopedSubs,
+      targetDate: date,
+      manual: true,
+      queryExecutor: executor,
+      queryPrincipal: principal,
+      catalog: DEFAULT_ANOMALY_CATALOG,
+      historyStore: new InMemoryAlertHistoryStore(),
+      digestQueue: new InMemoryDigestQueue(),
+      dispatcherOptions: {
+        transport: async () => ({ ok: true, status: 200 }),
+      },
+    });
+    expect(runnerRes.failures).toEqual([]);
+    expect(runnerRes.evaluatedSubscriptions).toBe(scopedSubs.length);
   }, 60_000);
 });

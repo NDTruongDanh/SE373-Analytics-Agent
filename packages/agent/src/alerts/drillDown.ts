@@ -38,51 +38,64 @@ export interface DrillDownInput {
   model?: ChatModelLike | unknown;
 }
 
-export function escapeXml(str: string): string {
-  return escapeUntrustedText(str)
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
 
-export function wrapUntrustedData(data: unknown): string {
-  const escaped =
-    typeof data === "string"
-      ? escapeUntrustedText(data)
-      : serializeUntrusted(data);
-  return `<untrusted_data>\n${escaped}\n</untrusted_data>`;
-}
+function extractDatesAndNumbers(
+  text: string,
+  inferDirectionFromProse: boolean,
+): { dates: string[]; numbers: number[] } {
+  const dates: string[] = [];
+  // Keep ISO dates as standalone date tokens so YYYY/MM/DD digits cannot pass as numeric evidence.
+  const stripped = text.replace(ISO_DATE_RE, (m) => {
+    dates.push(m);
+    return " ".repeat(m.length);
+  });
 
-function extractNumericTokens(text: string): number[] {
-  const matches = text.match(/\d[\d,]*(?:\.\d+)?/g);
-  if (!matches) return [];
-  const nums: number[] = [];
-  for (const token of matches) {
-    const parsed = Number(token.replace(/,/g, ""));
-    if (Number.isFinite(parsed)) {
-      nums.push(parsed);
+  const numbers: number[] = [];
+  const numRe = /(?<![\d.,])([+-]?\d[\d,]*(?:\.\d+)?)(%?)/g;
+  let match: RegExpExecArray | null;
+  while ((match = numRe.exec(stripped)) !== null) {
+    const rawToken = match[1]!;
+    const hasPercent = match[2] === "%";
+    const parsed = Number(rawToken.replace(/,/g, ""));
+    if (!Number.isFinite(parsed)) continue;
+
+    let value = parsed;
+    const hasExplicitSign = rawToken.startsWith("+") || rawToken.startsWith("-");
+    if (!hasExplicitSign && inferDirectionFromProse && hasPercent) {
+      const before = stripped.slice(Math.max(0, match.index - 24), match.index);
+      if (/(?:giảm(?:\s+mạnh)?|sụt|rơi|rớt)\s*$/i.test(before)) {
+        value = -Math.abs(parsed);
+      } else if (/(?:tăng(?:\s+mạnh)?|vọt|nhảy)\s*$/i.test(before)) {
+        value = Math.abs(parsed);
+      }
     }
+    numbers.push(value);
   }
-  return nums;
+  return { dates, numbers };
 }
 
-function collectAllowedEvidenceNumbers(sources: unknown[]): number[] {
-  const allowed: number[] = [];
+function collectAllowedEvidence(sources: unknown[]): {
+  dates: Set<string>;
+  numbers: number[];
+} {
+  const dates = new Set<string>();
+  const numbers: number[] = [];
   const pushVal = (n: number): void => {
     if (!Number.isFinite(n)) return;
-    const abs = Math.abs(n);
-    allowed.push(abs, Number(abs.toFixed(1)), Number(abs.toFixed(2)), Math.round(abs));
-    if (abs > 0 && abs <= 1) {
-      const pct = abs * 100;
-      allowed.push(pct, Number(pct.toFixed(1)), Number(pct.toFixed(2)), Math.round(pct));
+    numbers.push(n, Number(n.toFixed(1)), Number(n.toFixed(2)), Math.round(n));
+    if (Math.abs(n) > 0 && Math.abs(n) <= 1) {
+      const pct = n * 100;
+      numbers.push(pct, Number(pct.toFixed(1)), Number(pct.toFixed(2)), Math.round(pct));
     }
   };
   const visit = (node: unknown): void => {
     if (typeof node === "number") {
       pushVal(node);
     } else if (typeof node === "string") {
-      for (const n of extractNumericTokens(node)) {
-        pushVal(n);
-      }
+      const extracted = extractDatesAndNumbers(node, false);
+      for (const d of extracted.dates) dates.add(d);
+      for (const n of extracted.numbers) pushVal(n);
     } else if (Array.isArray(node)) {
       for (const item of node) visit(item);
     } else if (node !== null && typeof node === "object") {
@@ -90,18 +103,21 @@ function collectAllowedEvidenceNumbers(sources: unknown[]): number[] {
     }
   };
   for (const src of sources) visit(src);
-  return allowed;
+  return { dates, numbers };
 }
 
 export function isNarrativeNumericallyGrounded(
   narrative: string,
   evidenceSources: unknown[],
 ): boolean {
-  const claimed = extractNumericTokens(narrative);
-  if (claimed.length === 0) return true;
-  const allowed = collectAllowedEvidenceNumbers(evidenceSources);
-  return claimed.every((c) =>
-    allowed.some((a) => Math.abs(c - a) <= 1e-6),
+  const claimed = extractDatesAndNumbers(narrative, true);
+  if (claimed.dates.length === 0 && claimed.numbers.length === 0) return true;
+  const allowed = collectAllowedEvidence(evidenceSources);
+  return (
+    claimed.dates.every((d) => allowed.dates.has(d)) &&
+    claimed.numbers.every((c) =>
+      allowed.numbers.some((a) => Math.abs(c - a) <= 1e-6),
+    )
   );
 }
 
@@ -278,7 +294,8 @@ export function buildDrillDownSql(options: {
     return (
       `${withPrefix()}` +
       `SELECT ${selectCols}, COUNT(DISTINCT orders.order_id) AS total_orders, ` +
-      `AVG(CASE WHEN orders.status = 'returned' THEN 1.0 ELSE 0.0 END) AS return_rate ` +
+      `(COUNT(DISTINCT CASE WHEN orders.status = 'returned' THEN orders.order_id END) * 1.0 / ` +
+      `NULLIF(COUNT(DISTINCT orders.order_id), 0)) AS return_rate ` +
       `FROM orders${joinSql} ` +
       `WHERE ${whereSql} ` +
       `GROUP BY ${groupByCols} ` +
@@ -293,7 +310,8 @@ export function buildDrillDownSql(options: {
     return (
       `${withPrefix()}` +
       `SELECT ${selectCols}, COUNT(DISTINCT orders.order_id) AS total_orders, ` +
-      `AVG(CASE WHEN orders.status = 'canceled' THEN 1.0 ELSE 0.0 END) AS cancel_rate ` +
+      `(COUNT(DISTINCT CASE WHEN orders.status = 'canceled' THEN orders.order_id END) * 1.0 / ` +
+      `NULLIF(COUNT(DISTINCT orders.order_id), 0)) AS cancel_rate ` +
       `FROM orders${joinSql} ` +
       `WHERE ${whereSql} ` +
       `GROUP BY ${groupByCols} ` +
@@ -316,27 +334,61 @@ export function buildDrillDownSql(options: {
   }
 
   if (metricId === "metric:review_score_avg") {
-    ctes.unshift(
-      `rev AS (` +
-      `SELECT reviews.review_id, reviews.order_id, reviews.score ` +
-      `FROM reviews ` +
-      `WHERE reviews.created_at >= '${startIso}' AND reviews.created_at < '${endExclusiveIso}'` +
-      `)`,
-    );
-    const joinSql = buildDimJoins(needsOrderItems);
+    // Keep a single CTE level because ColumnScopePolicy rejects multi-level CTE references.
+    const directJoins: string[] = [];
+    if (needsCustomers) {
+      directJoins.push("JOIN customers ON orders.customer_id = customers.customer_id");
+    }
+    if (needsRegions) {
+      directJoins.push("JOIN regions ON customers.province = regions.province");
+    }
+    if (needsChannels) {
+      directJoins.push("JOIN channels ON orders.channel_id = channels.channel_id");
+    }
+    if (needsPayments) {
+      directJoins.push("JOIN payments ON orders.order_id = payments.order_id");
+    }
+    if (needsOrderItems) {
+      directJoins.push("JOIN order_items ON orders.order_id = order_items.order_id");
+    }
+    if (needsProducts) {
+      directJoins.push("JOIN products ON order_items.product_id = products.product_id");
+    }
+    if (needsCategories) {
+      directJoins.push("JOIN categories ON products.category_id = categories.category_id");
+    }
+    if (needsSellers) {
+      directJoins.push("JOIN sellers ON order_items.seller_id = sellers.seller_id");
+    }
+    const reviewJoinSql = directJoins.length > 0 ? ` ${directJoins.join(" ")}` : "";
     const reviewWhere = [
+      `reviews.created_at >= '${startIso}'`,
+      `reviews.created_at < '${endExclusiveIso}'`,
       `orders.purchase_date >= '2020-01-01T00:00:00+07:00'`,
       `orders.purchase_date < '${endExclusiveIso}'`,
       ...rbacClauses,
     ].join(" AND ");
+    const cteDimCols = activeDims
+      .map((dim, idx) => `${dim} AS dim_${idx}`)
+      .join(", ");
+    const outerSelectDims = activeDims
+      .map((dim, idx) => {
+        const colName = dim.includes(".") ? dim.split(".")[1] : dim;
+        return `rev_by_dim.dim_${idx} AS ${colName}`;
+      })
+      .join(", ");
+    const outerGroupDims = activeDims.map((_, idx) => `rev_by_dim.dim_${idx}`).join(", ");
     return (
-      `WITH ${ctes.join(", ")} ` +
-      `SELECT ${selectCols}, COUNT(DISTINCT rev.review_id) AS total_reviews, ` +
-      `AVG(rev.score) AS avg_score ` +
-      `FROM rev ` +
-      `JOIN orders ON rev.order_id = orders.order_id${joinSql} ` +
-      `WHERE ${reviewWhere} ` +
-      `GROUP BY ${groupByCols} ` +
+      `WITH rev_by_dim AS (` +
+      `SELECT DISTINCT reviews.review_id, reviews.score, ${cteDimCols} ` +
+      `FROM reviews ` +
+      `JOIN orders ON reviews.order_id = orders.order_id${reviewJoinSql} ` +
+      `WHERE ${reviewWhere}` +
+      `) ` +
+      `SELECT ${outerSelectDims}, COUNT(*) AS total_reviews, ` +
+      `AVG(rev_by_dim.score) AS avg_score ` +
+      `FROM rev_by_dim ` +
+      `GROUP BY ${outerGroupDims} ` +
       `ORDER BY avg_score ASC ` +
       `LIMIT 10`
     );
@@ -473,11 +525,11 @@ export async function runDrillDownAnalysis(
           {
             role: "user",
             content:
-              `Chỉ số: ${escapeXml(subscription.metricId)}\n` +
-              `Ngày: ${escapeXml(date)}\n` +
-              `Độ lệch: ${escapeXml(anomaly.deviationSummary)}\n` +
-              `Phân đoạn chính: ${escapeXml(drilldownSegment)}\n` +
-              `Dữ liệu truy vấn:\n${wrapUntrustedData(rows.slice(0, 5))}`,
+              `Chỉ số: ${escapeUntrustedText(subscription.metricId)}\n` +
+              `Ngày: ${escapeUntrustedText(date)}\n` +
+              `Độ lệch: ${escapeUntrustedText(anomaly.deviationSummary)}\n` +
+              `Phân đoạn chính: ${escapeUntrustedText(drilldownSegment)}\n` +
+              `Dữ liệu truy vấn:\n<untrusted_data>\n${serializeUntrusted(rows.slice(0, 5))}\n</untrusted_data>`,
           },
         ],
         { tools: [] },

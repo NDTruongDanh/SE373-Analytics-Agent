@@ -793,5 +793,39 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       expect(result.sliceResults[0]?.isAnomaly).toBe(false);
       expect(result.sliceResults[0]?.severity).toBe("none");
     });
+
+    it("never upgrades insufficient_history absolute breach to critical or warning via heuristic", async () => {
+      const shortSeries: TimeSeriesPoint[] = [
+        { date: "2026-08-22", value: 0.02, supportCount: 50 },
+        { date: "2026-08-28", value: 0.02, supportCount: 50 },
+        { date: "2026-08-29", value: 0.20, supportCount: 50 },
+      ];
+      const subAbs: Subscription = {
+        ...subReturnRate,
+        id: "sub-insufficient-abs",
+        absoluteThreshold: { operator: "above", value: 0.10 },
+      };
+
+      const res = await runAnomalyRunner({
+        subscriptions: [subAbs],
+        targetDate: "2026-08-29",
+        manual: true,
+        queryExecutor: fakeQueryExecutor([
+          { province: "Đà Nẵng", name_vi: "Thực phẩm", total_orders: 50, return_rate: 0.20 },
+        ]),
+        queryPrincipal: QUERY_PRINCIPAL,
+        historyStore: new InMemoryAlertHistoryStore(),
+        digestQueue: new InMemoryDigestQueue(),
+        mockSeriesProvider: () => shortSeries,
+      });
+
+      const slice = res.sliceResults[0]!;
+      expect(slice.status).toBe("insufficient_history");
+      expect(slice.isAnomaly).toBe(true);
+      expect(slice.severity).toBe("info");
+      expect(slice.isFdrSignificant).toBe(false);
+      expect(slice.isHeuristicAlert).toBe(false);
+      expect(slice.isUncalibrated).toBe(true);
+    });
   });
 });

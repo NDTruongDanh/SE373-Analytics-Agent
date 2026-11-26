@@ -598,6 +598,7 @@ export async function runAnomalyRunner(
   const candidatePValues = new Map<CandidateItem, number>();
 
   const evalHeuristicFallback = (c: CandidateItem): boolean => {
+    if (c.anomaly.status !== "ok") return false;
     const absZ = Math.abs(c.anomaly.zScore);
     const absWoW = c.anomaly.wowPercent !== null ? Math.abs(c.anomaly.wowPercent) : 0;
     const wowThreshold = c.subscription.wowThreshold ?? 20;
@@ -686,12 +687,15 @@ export async function runAnomalyRunner(
       const isPublicHoliday = Boolean(c.anomaly.isPublicHoliday);
       const wowThreshold = c.subscription.wowThreshold ?? 20;
 
+      const hasSufficientHistory = c.anomaly.status === "ok";
+      const isStatAdmitted = hasSufficientHistory && (isFdr || isHeuristic);
+
       const isCritical =
-        (isFdr || isHeuristic) &&
+        isStatAdmitted &&
         (absZ >= 3.5 || (absWoW >= 50.0 && supportCount >= 2 * minSupportCount));
 
       const isStatisticalWarning =
-        (isFdr || isHeuristic) &&
+        isStatAdmitted &&
         absZ >= 2.0 &&
         c.anomaly.wowPercent !== null &&
         absWoW >= wowThreshold;
