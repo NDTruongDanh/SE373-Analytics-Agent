@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sqlGuard } from "@shared/access-policy";
 import { AnomalyAlertSchema, type Subscription } from "@shared/contracts";
 import { DEFAULT_ANOMALY_CATALOG } from "../src/alerts/catalog.js";
+import { localQuerySafetyGate } from "../src/queryExecutor/safetyGate.js";
 import {
   buildDrillDownSql,
   escapeXml,
@@ -75,16 +76,74 @@ describe("1–2 Dim Drill-Down Analyzer (UC-10 §5, F10.3)", () => {
 
     expect(sql).toContain("regions.province");
     expect(sql).toContain("categories.name_vi");
-    expect(sql).toContain("regions.region = 'Nam'"); // RBAC where condition
+    expect(sql).toContain("customers.region_group = 'Nam'");
     expect(sql).toContain("LIMIT 10");
 
-    // Must be valid SQL per sqlGuard
     const guard = await sqlGuard(sql, DEFAULT_ANOMALY_CATALOG);
     expect(guard.ok).toBe(true);
     if (guard.ok) {
       expect(guard.tables).toContain("orders");
       expect(guard.tables).toContain("categories");
       expect(guard.tables).toContain("regions");
+      expect(guard.tables).toContain("customers");
+      expect(localQuerySafetyGate(sql, guard, DEFAULT_ANOMALY_CATALOG).verdict).toBe("pass");
+    }
+  });
+
+  it("builds safety-gate compliant drill-down SQL across all subscription metrics and dimensions", async () => {
+    const cases: Array<{
+      metricId: string;
+      dims: string[];
+      mustContain: string[];
+      mustNotContain?: string[];
+    }> = [
+      {
+        metricId: "metric:return_rate",
+        dims: ["regions.province", "categories.name_vi"],
+        mustContain: ["JOIN customers", "JOIN regions", "JOIN categories"],
+      },
+      {
+        metricId: "metric:net_revenue",
+        dims: ["customers.region_group", "orders.channel_id"],
+        mustContain: ["oi_agg", "order_items.price_vnd", "orders.status IN ('delivered', 'returned')"],
+        mustNotContain: ["orders.total_amount", "orders.province"],
+      },
+      {
+        metricId: "metric:cancellation_rate",
+        dims: ["orders.channel_id", "payments.payment_type"],
+        mustContain: ["pay_agg", "pay_agg.payment_type", "orders.status = 'canceled'"],
+      },
+      {
+        metricId: "metric:order_count",
+        dims: ["sellers.province", "sellers.seller_id"],
+        mustContain: ["COUNT(DISTINCT orders.order_id)", "JOIN sellers"],
+        mustNotContain: ["orders.total_amount", "price_vnd"],
+      },
+      {
+        metricId: "metric:review_score_avg",
+        dims: ["categories.name_vi", "products.product_id"],
+        mustContain: ["WITH rev AS", "AVG(rev.score)", "orders.purchase_date >="],
+      },
+    ];
+
+    for (const c of cases) {
+      const sql = buildDrillDownSql({
+        metricId: c.metricId,
+        secondaryDimensions: c.dims,
+        date: "2026-09-12",
+      });
+      for (const token of c.mustContain) {
+        expect(sql, `${c.metricId} missing ${token}`).toContain(token);
+      }
+      for (const forbidden of c.mustNotContain ?? []) {
+        expect(sql, `${c.metricId} leaked ${forbidden}`).not.toContain(forbidden);
+      }
+      const guard = await sqlGuard(sql, DEFAULT_ANOMALY_CATALOG);
+      expect(guard.ok, `${c.metricId} failed sqlGuard`).toBe(true);
+      if (guard.ok) {
+        const safety = localQuerySafetyGate(sql, guard, DEFAULT_ANOMALY_CATALOG);
+        expect(safety.verdict, `${c.metricId} failed safetyGate`).toBe("pass");
+      }
     }
   });
 
@@ -322,6 +381,63 @@ describe("1–2 Dim Drill-Down Analyzer (UC-10 §5, F10.3)", () => {
 
       expect(result.explanation).toContain("Phát hiện metric:return_rate");
       expect(result.explanation).toContain("Vùng ảnh hưởng chính");
+    });
+
+    it("rejects hallucinated numbers in LLM summary and preserves grounded ones", async () => {
+      const rows = [
+        {
+          province: "Đà Nẵng",
+          name_vi: "Thực phẩm",
+          total_orders: 50,
+          return_rate: 0.185,
+        },
+      ];
+
+      const ungroundedModel = {
+        bindTools: () => ({
+          invoke: async () => ({
+            content: "Tỉ lệ hoàn đơn tăng 99.9% với 12345 đơn tại Đà Nẵng.",
+          }),
+        }),
+        invoke: async () => ({
+          content: "Tỉ lệ hoàn đơn tăng 99.9% với 12345 đơn tại Đà Nẵng.",
+        }),
+      };
+
+      const rejected = await runDrillDownAnalysis({
+        subscription: sampleSubscription,
+        dimensionKey: "2026-09-12",
+        date: "2026-09-12",
+        anomaly: sampleAnomaly,
+        queryExecutor: fakeQueryExecutor(rows),
+        queryPrincipal: QUERY_PRINCIPAL,
+        model: ungroundedModel,
+      });
+      expect(rejected.explanation).toContain("Phát hiện metric:return_rate");
+      expect(rejected.explanation).not.toContain("12345");
+
+      const groundedModel = {
+        bindTools: () => ({
+          invoke: async () => ({
+            content: "Ngày 2026-09-12, tỉ lệ hoàn đơn tăng lên 18.5% (+340.0% WoW, 50 đơn) tại Đà Nẵng.",
+          }),
+        }),
+        invoke: async () => ({
+          content: "Ngày 2026-09-12, tỉ lệ hoàn đơn tăng lên 18.5% (+340.0% WoW, 50 đơn) tại Đà Nẵng.",
+        }),
+      };
+
+      const accepted = await runDrillDownAnalysis({
+        subscription: sampleSubscription,
+        dimensionKey: "2026-09-12",
+        date: "2026-09-12",
+        anomaly: sampleAnomaly,
+        queryExecutor: fakeQueryExecutor(rows),
+        queryPrincipal: QUERY_PRINCIPAL,
+        model: groundedModel,
+      });
+      expect(accepted.explanation).toContain("18.5%");
+      expect(accepted.explanation).toContain("50 đơn");
     });
   });
 });

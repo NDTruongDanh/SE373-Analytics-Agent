@@ -157,7 +157,7 @@ function createDeterministicMcp(params: {
       }
       if (tool === "run_query") {
         const sql = String(args["sql"] ?? "");
-        if (/GROUP\s+BY\s+(?:orders\.purchase_date|reviews\.created_at::date)/i.test(sql)) {
+        if (/\bAS\s+support_count\b/i.test(sql) && /\bAS\s+value\b/i.test(sql)) {
           const series = params.resolveSeries(sql);
           const rows = series.map((pt) => ({
             date: pt.date,
@@ -801,9 +801,9 @@ export async function gradeUc10(repoRoot: string): Promise<Uc10Results> {
             currentValue: 89_000_000,
             expectedValue: 180_000_000,
             deviation: "z=-10.11, WoW=-51.1%",
-            drilldownSegment: "regions.region = 'Nam' AND channels.channel_name = 'Shopee'",
+            drilldownSegment: "customers.region_group = 'Nam' AND channels.channel_name = 'Shopee'",
             evidenceSql:
-              "SELECT regions.province, COUNT(*) AS total_orders, SUM(orders.total_amount) AS revenue FROM orders JOIN regions ON orders.province = regions.province WHERE orders.purchase_date = '2026-09-21' AND regions.region = 'Nam' GROUP BY regions.province ORDER BY revenue DESC LIMIT 10",
+              "WITH oi_agg AS (SELECT order_items.order_id, SUM(order_items.price_vnd) AS items_price_vnd FROM order_items JOIN orders ON order_items.order_id = orders.order_id WHERE orders.purchase_date >= '2026-09-21T00:00:00+07:00' AND orders.purchase_date < '2026-09-22T00:00:00+07:00' AND orders.status IN ('delivered', 'returned') GROUP BY order_items.order_id) SELECT regions.province, COUNT(*) AS total_orders, COALESCE(SUM(CASE WHEN orders.status = 'delivered' THEN oi_agg.items_price_vnd WHEN orders.status = 'returned' THEN -oi_agg.items_price_vnd ELSE 0 END), 0) AS revenue FROM orders JOIN oi_agg ON orders.order_id = oi_agg.order_id JOIN customers ON orders.customer_id = customers.customer_id JOIN regions ON customers.province = regions.province WHERE orders.purchase_date >= '2026-09-21T00:00:00+07:00' AND orders.purchase_date < '2026-09-22T00:00:00+07:00' AND orders.status IN ('delivered', 'returned') AND customers.region_group = 'Nam' GROUP BY regions.province ORDER BY revenue DESC LIMIT 10",
             recipientId: "sales_south_lead",
             recipientRole: "operations_south",
             severity: "critical",
@@ -850,8 +850,8 @@ export async function gradeUc10(repoRoot: string): Promise<Uc10Results> {
             recipientRole: "operations_south",
           });
           const rbacOk =
-            southSeriesSql.includes("regions.region = 'Nam'") &&
-            southDrillSql.includes("regions.region = 'Nam'") &&
+            southSeriesSql.includes("customers.region_group = 'Nam'") &&
+            southDrillSql.includes("customers.region_group = 'Nam'") &&
             (await sqlGuard(southSeriesSql, DEFAULT_ANOMALY_CATALOG)).ok &&
             (await sqlGuard(southDrillSql, DEFAULT_ANOMALY_CATALOG)).ok;
 
@@ -899,7 +899,7 @@ export async function gradeUc10(repoRoot: string): Promise<Uc10Results> {
 
           exPass = retryQueuePass && rbacOk && piiBlockedOk;
           note = exPass
-            ? `Passed: 5xx retried ${failCalls}x -> queued (ALERT_QUEUED, no premature history) -> flushed on recovery; RBAC regions.region='Nam' enforced; PII_BLOCKED with 0 leaks`
+            ? `Passed: 5xx retried ${failCalls}x -> queued (ALERT_QUEUED, no premature history) -> flushed on recovery; RBAC customers.region_group='Nam' enforced; PII_BLOCKED with 0 leaks`
             : `Failed: retryQueuePass=${retryQueuePass}, rbacOk=${rbacOk}, piiBlockedOk=${piiBlockedOk}`;
         }
       } catch (err) {

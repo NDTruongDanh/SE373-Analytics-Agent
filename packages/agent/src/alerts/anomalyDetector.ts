@@ -440,7 +440,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
     };
   }
 
-  // 8. Severity Determination with Precedence Hierarchy:
   const absZ = Math.abs(zScore);
   const absWoW = wowPercent !== null ? Math.abs(wowPercent) : 0;
 

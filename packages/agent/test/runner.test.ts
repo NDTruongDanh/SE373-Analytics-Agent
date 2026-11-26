@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { sqlGuard } from "@shared/access-policy";
 import type { AnomalyAlert, Subscription } from "@shared/contracts";
+import { DEFAULT_ANOMALY_CATALOG } from "../src/alerts/catalog.js";
+import { localQuerySafetyGate } from "../src/queryExecutor/safetyGate.js";
 import {
   buildTimeSeriesQuery,
   calculateEmpiricalPValue,
   calculateFdrSignificance,
+  normalTwoTailedPValue,
   runAnomalyRunner,
   scheduleAnomalyCron,
+  studentTTwoTailedPValue,
 } from "../src/alerts/runner.js";
 import {
   InMemoryAlertHistoryStore,
@@ -57,7 +62,7 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
     id: "sub-net-revenue",
     metricId: "metric:net_revenue",
     primaryDimension: "orders.purchase_date",
-    suggestedSecondaryDimensions: ["regions.region", "channels.channel_name"],
+    suggestedSecondaryDimensions: ["regions.region_group", "channels.channel_name"],
     recipientId: "finance_lead",
     recipientRole: "finance",
     channel: "webhook",
@@ -266,8 +271,40 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       endDate: "2026-09-30",
       recipientRole: "operations_south",
     });
-    expect(sql).toContain("JOIN regions");
-    expect(sql).toContain("regions.region = 'Nam'");
+    expect(sql).toContain("JOIN customers");
+    expect(sql).toContain("customers.region_group = 'Nam'");
+    expect(sql).not.toContain("JOIN regions");
+  });
+
+  it("builds schema-aligned, safety-gate compliant time-series SQL for all 5 metrics", async () => {
+    const metrics = [
+      "metric:return_rate",
+      "metric:cancellation_rate",
+      "metric:order_count",
+      "metric:review_score_avg",
+      "metric:net_revenue",
+    ];
+    for (const metricId of metrics) {
+      for (const recipientRole of [undefined, "operations_south"]) {
+        const sql = buildTimeSeriesQuery({
+          metricId,
+          startDate: "2026-07-11",
+          endDate: "2026-09-12",
+          recipientRole,
+        });
+        expect(sql).not.toContain("orders.province");
+        expect(sql).not.toContain("orders.total_amount");
+        expect(sql).not.toContain("regions.region");
+        expect(sql).toContain("Asia/Ho_Chi_Minh");
+
+        const guard = await sqlGuard(sql, DEFAULT_ANOMALY_CATALOG);
+        expect(guard.ok, `${metricId} (${recipientRole ?? "all"}) sqlGuard`).toBe(true);
+        if (guard.ok) {
+          const safety = localQuerySafetyGate(sql, guard, DEFAULT_ANOMALY_CATALOG);
+          expect(safety.verdict, `${metricId} (${recipientRole ?? "all"}) safetyGate`).toBe("pass");
+        }
+      }
+    }
   });
 
   // =========================================================================
@@ -340,8 +377,7 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       expect(slice.pValue).toBeDefined();
     });
 
-    it("runs in Heuristic Fallback Mode when poolingResiduals B < B_required", async () => {
-      // Small or missing pool (< 500)
+    it("runs BH FDR via parametric Normal/t p-values by default without poolingResiduals", async () => {
       const spikeSeries: TimeSeriesPoint[] = Array.from({ length: 28 }, (_, i) => ({
         date: `2026-08-${String(i + 1).padStart(2, "0")}`,
         value: 0.04,
@@ -364,15 +400,100 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
         historyStore: new InMemoryAlertHistoryStore(),
         digestQueue: new InMemoryDigestQueue(),
         mockSeriesProvider: () => spikeSeries,
-        poolingResiduals: [0.1, 0.2], // Only 2 residuals < 500
       });
 
       expect(result.sliceResults).toHaveLength(1);
       const slice = result.sliceResults[0]!;
-      expect(slice.isUncalibrated).toBe(true);
-      expect(slice.isHeuristicAlert).toBe(true);
+      expect(slice.isUncalibrated).toBe(false);
+      expect(slice.isFdrSignificant).toBe(true);
+      expect(slice.isHeuristicAlert).toBe(false);
+      expect(slice.pValue).toBeDefined();
+      expect(slice.pValue!).toBeLessThan(0.01);
       expect(slice.isAnomaly).toBe(true);
       expect(slice.severity).toBe("critical");
+    });
+
+    it("computes Normal and conservative Student's t two-tailed p-values", () => {
+      expect(normalTwoTailedPValue(3.0)).toBeCloseTo(0.0027, 3);
+      // Small same-weekday sample (n = 4 => df = 3): |t|=3.0 has heavier tail > 0.05.
+      expect(studentTTwoTailedPValue(3.0, 3)).toBeGreaterThan(0.05);
+      expect(studentTTwoTailedPValue(3.0, 3)).toBeCloseTo(0.0577, 3);
+      expect(studentTTwoTailedPValue(4.5, 6)).toBeLessThan(0.005);
+    });
+
+    it("includes non-anomalous slices in BH hypothesis count m across a run", async () => {
+      // Borderline spike: sigma ~ 10, current = 123 => z ~ 2.25 => p ~ 0.024.
+      // Alone (m = 1): p <= 0.05 => warning. Alongside 9 normal slices (m = 10): p > 0.005 => filtered.
+      const borderlineSeries: TimeSeriesPoint[] = Array.from({ length: 28 }, (_, i) => ({
+        date: `2026-08-${String(i + 1).padStart(2, "0")}`,
+        value: i % 2 === 0 ? 90 : 110,
+        supportCount: 50,
+      }));
+      borderlineSeries[21] = { date: "2026-08-22", value: 95, supportCount: 50 };
+      borderlineSeries.push({ date: "2026-08-29", value: 123, supportCount: 50 });
+
+      const normalSeries: TimeSeriesPoint[] = Array.from({ length: 29 }, (_, i) => ({
+        date: `2026-08-${String(i + 1).padStart(2, "0")}`,
+        value: i % 2 === 0 ? 95 : 105,
+        supportCount: 50,
+      }));
+
+      const singleRes = await runAnomalyRunner({
+        subscriptions: [subReturnRate],
+        targetDate: "2026-08-29",
+        manual: true,
+        queryExecutor: fakeQueryExecutor([
+          { province: "Đà Nẵng", name_vi: "Thực phẩm", total_orders: 50, return_rate: 0.1 },
+        ]),
+        queryPrincipal: QUERY_PRINCIPAL,
+        historyStore: new InMemoryAlertHistoryStore(),
+        digestQueue: new InMemoryDigestQueue(),
+        mockSeriesProvider: () => borderlineSeries,
+      });
+      expect(singleRes.sliceResults[0]?.isFdrSignificant).toBe(true);
+      expect(singleRes.anomaliesDetected).toBe(1);
+
+      const extraSubs: Subscription[] = Array.from({ length: 9 }, (_, idx) => ({
+        ...subReturnRate,
+        id: `normal-sub-${idx}`,
+        recipientRole: `role_${idx}`,
+      }));
+      const batchRes = await runAnomalyRunner({
+        subscriptions: [subReturnRate, ...extraSubs],
+        targetDate: "2026-08-29",
+        manual: true,
+        queryExecutor: fakeQueryExecutor([]),
+        queryPrincipal: QUERY_PRINCIPAL,
+        historyStore: new InMemoryAlertHistoryStore(),
+        digestQueue: new InMemoryDigestQueue(),
+        mockSeriesProvider: (sub) =>
+          sub.id === subReturnRate.id ? borderlineSeries : normalSeries,
+      });
+      expect(batchRes.sliceResults[0]?.isFdrSignificant).toBe(false);
+      expect(batchRes.anomaliesDetected).toBe(0);
+    });
+
+    it("skips evaluation when time series has no row for targetDate", async () => {
+      const staleSeries: TimeSeriesPoint[] = Array.from({ length: 28 }, (_, i) => ({
+        date: `2026-08-${String(i + 1).padStart(2, "0")}`,
+        value: i === 27 ? 0.35 : 0.04,
+        supportCount: 50,
+      }));
+
+      const res = await runAnomalyRunner({
+        subscriptions: [subReturnRate],
+        targetDate: "2026-08-29",
+        manual: true,
+        queryExecutor: fakeQueryExecutor([]),
+        queryPrincipal: QUERY_PRINCIPAL,
+        historyStore: new InMemoryAlertHistoryStore(),
+        digestQueue: new InMemoryDigestQueue(),
+        mockSeriesProvider: () => staleSeries,
+      });
+
+      expect(res.anomaliesDetected).toBe(0);
+      expect(res.sliceResults[0]?.status).toBe("skipped_insufficient_support");
+      expect(res.sliceResults[0]?.isAnomaly).toBe(false);
     });
 
     it("enforces holiday downgrade on public holidays while preserving Mega Sale severity", async () => {
@@ -567,18 +688,16 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       expect(res.anomaliesDetected).toBe(0);
     });
 
-    it("disallows heuristic alert when wowPercent is null (requires both z and WoW)", async () => {
-      // Series where t-7 point value is 0 (or missing), so wowPercent is null, but |z| >= 3.0
+    it("disallows warning alert when wowPercent is null and absZ < 3.5", async () => {
       const missingWowSeries: TimeSeriesPoint[] = Array.from({ length: 28 }, (_, i) => ({
         date: `2026-08-${String(i + 1).padStart(2, "0")}`,
-        value: 100 + (i % 2 === 0 ? 8 : -8),
+        value: i % 2 === 0 ? 90 : 110,
         supportCount: 50,
       }));
-      // At index 21 (2026-08-22, t-7 for 2026-08-29): set value to 0, causing calculateWoW to return null
       missingWowSeries[21]!.value = 0;
       missingWowSeries.push({
         date: "2026-08-29",
-        value: 135, // |z| >= 3.0, supportCount = 50 >= 15
+        value: 122,
         supportCount: 50,
       });
 
@@ -593,9 +712,8 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
         mockSeriesProvider: () => missingWowSeries,
       });
 
-      // Since wowPercent is null, heuristic alert is NOT activated and candidate is not admitted
-      expect(res.sliceResults[0]!.isHeuristicAlert).toBe(false);
       expect(res.sliceResults[0]!.isAnomaly).toBe(false);
+      expect(res.sliceResults[0]!.severity).toBe("none");
       expect(res.anomaliesDetected).toBe(0);
     });
 
@@ -644,15 +762,12 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
     });
 
     it("does not emit warning when absZ >= 2.0 but absWoW < wowThreshold", async () => {
-      // Baseline around 100 with sigma ~ 10 -> value 122 gives z ~ 2.2, but WoW is only 10% < 20%
       const history: TimeSeriesPoint[] = Array.from({ length: 28 }, (_, i) => ({
         date: `2026-08-${String(i + 1).padStart(2, "0")}`,
-        value: i % 2 === 0 ? 95 : 105,
+        value: i % 2 === 0 ? 90 : 110,
         supportCount: 50,
       }));
-      // Week ago (index 21, 2026-08-22): value was 110
       history[21] = { date: "2026-08-22", value: 110, supportCount: 50 };
-      // Current: 122 -> WoW = (122 - 110) / 110 = 10.9% < wowThreshold (20%)
       history.push({
         date: "2026-08-29",
         value: 122,

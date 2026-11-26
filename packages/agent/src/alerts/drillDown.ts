@@ -10,10 +10,13 @@ import { DEFAULT_ANOMALY_CATALOG } from "./catalog.js";
 import { calculateAlertFingerprint } from "./fingerprint.js";
 import {
   AlertDateSchema,
+  bangkokDayBounds,
   executeAlertQuery,
+  parseRegionScope,
   type AlertQueryExecutor,
 } from "./query.js";
 import type { ExecutorPrincipal } from "../queryExecutor/executor.js";
+import { escapeUntrustedText, serializeUntrusted } from "../untrusted.js";
 
 export interface ChatModelLike {
   invoke: (
@@ -35,24 +38,71 @@ export interface DrillDownInput {
   model?: ChatModelLike | unknown;
 }
 
-/**
- * Escapes XML/HTML special characters (&, <, >, ", ') to prevent prompt injection breakouts.
- */
 export function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
+  return escapeUntrustedText(str)
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
-/**
- * Wraps untrusted data inside XML delimiter tags with escaping.
- */
 export function wrapUntrustedData(data: unknown): string {
-  const json = typeof data === "string" ? data : JSON.stringify(data);
-  return `<untrusted_data>\n${escapeXml(json)}\n</untrusted_data>`;
+  const escaped =
+    typeof data === "string"
+      ? escapeUntrustedText(data)
+      : serializeUntrusted(data);
+  return `<untrusted_data>\n${escaped}\n</untrusted_data>`;
+}
+
+function extractNumericTokens(text: string): number[] {
+  const matches = text.match(/\d[\d,]*(?:\.\d+)?/g);
+  if (!matches) return [];
+  const nums: number[] = [];
+  for (const token of matches) {
+    const parsed = Number(token.replace(/,/g, ""));
+    if (Number.isFinite(parsed)) {
+      nums.push(parsed);
+    }
+  }
+  return nums;
+}
+
+function collectAllowedEvidenceNumbers(sources: unknown[]): number[] {
+  const allowed: number[] = [];
+  const pushVal = (n: number): void => {
+    if (!Number.isFinite(n)) return;
+    const abs = Math.abs(n);
+    allowed.push(abs, Number(abs.toFixed(1)), Number(abs.toFixed(2)), Math.round(abs));
+    if (abs > 0 && abs <= 1) {
+      const pct = abs * 100;
+      allowed.push(pct, Number(pct.toFixed(1)), Number(pct.toFixed(2)), Math.round(pct));
+    }
+  };
+  const visit = (node: unknown): void => {
+    if (typeof node === "number") {
+      pushVal(node);
+    } else if (typeof node === "string") {
+      for (const n of extractNumericTokens(node)) {
+        pushVal(n);
+      }
+    } else if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+    } else if (node !== null && typeof node === "object") {
+      for (const value of Object.values(node)) visit(value);
+    }
+  };
+  for (const src of sources) visit(src);
+  return allowed;
+}
+
+export function isNarrativeNumericallyGrounded(
+  narrative: string,
+  evidenceSources: unknown[],
+): boolean {
+  const claimed = extractNumericTokens(narrative);
+  if (claimed.length === 0) return true;
+  const allowed = collectAllowedEvidenceNumbers(evidenceSources);
+  return claimed.every((c) =>
+    allowed.some((a) => Math.abs(c - a) <= 1e-6),
+  );
 }
 
 export interface DrillDownResult {
@@ -64,29 +114,31 @@ export interface DrillDownResult {
   explanation: string;
 }
 
-function drillDownCandidateTables(
+export function drillDownCandidateTables(
   metricId: string,
   dimensions: string[],
   recipientRole: string | undefined,
 ): string[] {
   const tables = new Set<string>(["orders"]);
-  if (
-    metricId === "metric:return_rate" ||
-    metricId === "metric:cancellation_rate"
-  ) {
-    tables.add("order_items");
-    tables.add("products");
-    tables.add("categories");
-  }
+  const dims = dimensions.slice(0, 2);
+  const hasItemDim = dims.some((d) => {
+    const t = d.split(".")[0];
+    return t === "order_items" || t === "products" || t === "categories" || t === "sellers";
+  });
+
   if (metricId === "metric:review_score_avg") {
     tables.add("reviews");
-    tables.add("order_items");
-    tables.add("products");
-    tables.add("categories");
   }
-  for (const dimension of dimensions) {
+  if (metricId !== "metric:return_rate" && metricId !== "metric:cancellation_rate" && metricId !== "metric:order_count" && metricId !== "metric:review_score_avg" && !hasItemDim) {
+    tables.add("order_items");
+  }
+
+  for (const dimension of dims) {
     const [table] = dimension.split(".");
     if (table) tables.add(table);
+    if (table === "regions") {
+      tables.add("customers");
+    }
     if (
       table === "order_items" ||
       table === "products" ||
@@ -102,18 +154,8 @@ function drillDownCandidateTables(
       tables.add("categories");
     }
   }
-  if (recipientRole) {
-    const roleLower = recipientRole.toLowerCase();
-    if (
-      roleLower.includes("south") ||
-      roleLower.includes("nam") ||
-      roleLower.includes("north") ||
-      roleLower.includes("bac") ||
-      roleLower.includes("central") ||
-      roleLower.includes("trung")
-    ) {
-      tables.add("regions");
-    }
+  if (parseRegionScope(recipientRole) !== null) {
+    tables.add("customers");
   }
   return [...tables];
 }
@@ -128,10 +170,11 @@ export function buildDrillDownSql(options: {
 }): string {
   const { metricId, secondaryDimensions, date, recipientRole } = options;
   AlertDateSchema.parse(date);
+  const catalog = options.catalog ?? DEFAULT_ANOMALY_CATALOG;
 
   for (const dimension of secondaryDimensions) {
     const [tableName, columnName, extra] = dimension.split(".");
-    const table = DEFAULT_ANOMALY_CATALOG.tables.find(
+    const table = catalog.tables.find(
       (candidate) => candidate.name.toLowerCase() === tableName?.toLowerCase(),
     );
     const column = table?.columns.find(
@@ -148,90 +191,108 @@ export function buildDrillDownSql(options: {
       throw new Error(`Unsupported drill-down dimension: ${dimension}`);
     }
   }
+
   const dims = secondaryDimensions.slice(0, 2);
   const primaryDim = dims[0] || "regions.province";
   const secondaryDim = dims[1];
 
-  const rbacClauses: string[] = [];
-  if (recipientRole) {
-    const roleLower = recipientRole.toLowerCase();
-    if (roleLower.includes("south") || roleLower.includes("nam")) {
-      rbacClauses.push("regions.region = 'Nam'");
-    } else if (roleLower.includes("north") || roleLower.includes("bac")) {
-      rbacClauses.push("regions.region = 'Bắc'");
-    } else if (roleLower.includes("central") || roleLower.includes("trung")) {
-      rbacClauses.push("regions.region = 'Trung'");
-    }
-  }
+  const { startIso, endExclusiveIso } = bangkokDayBounds(date, date);
+  const regionScope = parseRegionScope(recipientRole);
+  const rbacClauses = regionScope ? [`customers.region_group = '${regionScope}'`] : [];
 
-  const whereConditions = [`orders.purchase_date = '${date}'`, ...rbacClauses];
+  const ordersDateWhere =
+    `orders.purchase_date >= '${startIso}' AND orders.purchase_date < '${endExclusiveIso}'`;
+  const whereConditions = [ordersDateWhere, ...rbacClauses];
   const whereSql = whereConditions.join(" AND ");
 
-  const selectCols = secondaryDim
-    ? `${primaryDim}, ${secondaryDim}`
-    : primaryDim;
-  const groupByCols = secondaryDim
-    ? `${primaryDim}, ${secondaryDim}`
-    : primaryDim;
+  const activeDims = secondaryDim ? [primaryDim, secondaryDim] : [primaryDim];
+  const needsPayments = activeDims.some((d) => d.startsWith("payments."));
+  const mapDimExpr = (dim: string): string =>
+    dim.startsWith("payments.") ? `pay_agg.${dim.slice("payments.".length)}` : dim;
 
-  const queryRefText = `${metricId} ${selectCols} ${whereSql}`;
-  const joins: string[] = [];
-  if (queryRefText.includes("regions.") || rbacClauses.length > 0) {
-    joins.push("JOIN regions ON orders.province = regions.province");
-  }
-  if (queryRefText.includes("customers.")) {
-    joins.push("JOIN customers ON orders.customer_id = customers.customer_id");
-  }
-  if (queryRefText.includes("channels.")) {
-    joins.push("JOIN channels ON orders.channel_id = channels.channel_id");
-  }
-  if (
-    queryRefText.includes("order_items.") ||
-    queryRefText.includes("products.") ||
-    queryRefText.includes("categories.") ||
-    queryRefText.includes("sellers.") ||
-    metricId === "metric:return_rate" ||
-    metricId === "metric:cancellation_rate"
-  ) {
-    joins.push("JOIN order_items ON orders.order_id = order_items.order_id");
-  }
-  if (
-    queryRefText.includes("products.") ||
-    queryRefText.includes("categories.") ||
-    metricId === "metric:return_rate" ||
-    metricId === "metric:cancellation_rate"
-  ) {
-    joins.push("JOIN products ON order_items.product_id = products.product_id");
-  }
-  if (
-    queryRefText.includes("categories.") ||
-    metricId === "metric:return_rate" ||
-    metricId === "metric:cancellation_rate"
-  ) {
-    joins.push("JOIN categories ON products.category_id = categories.category_id");
-  }
-  if (queryRefText.includes("sellers.")) {
-    joins.push("JOIN sellers ON order_items.seller_id = sellers.seller_id");
+  const selectCols = activeDims.map(mapDimExpr).join(", ");
+  const groupByCols = selectCols;
+
+  const needsRegions = activeDims.some((d) => d.startsWith("regions."));
+  const needsCustomers =
+    activeDims.some((d) => d.startsWith("customers.")) || needsRegions || rbacClauses.length > 0;
+  const needsChannels = activeDims.some((d) => d.startsWith("channels."));
+  const needsSellers = activeDims.some((d) => d.startsWith("sellers."));
+  const needsCategories = activeDims.some((d) => d.startsWith("categories."));
+  const needsProducts =
+    activeDims.some((d) => d.startsWith("products.")) || needsCategories;
+  const needsOrderItems =
+    activeDims.some((d) => d.startsWith("order_items.")) ||
+    needsProducts ||
+    needsSellers;
+
+  const buildDimJoins = (includeOrderItems: boolean): string => {
+    const joins: string[] = [];
+    if (needsCustomers) {
+      joins.push("JOIN customers ON orders.customer_id = customers.customer_id");
+    }
+    if (needsRegions) {
+      joins.push("JOIN regions ON customers.province = regions.province");
+    }
+    if (needsChannels) {
+      joins.push("JOIN channels ON orders.channel_id = channels.channel_id");
+    }
+    if (needsPayments) {
+      joins.push("JOIN pay_agg ON orders.order_id = pay_agg.order_id");
+    }
+    if (includeOrderItems) {
+      joins.push("JOIN order_items ON orders.order_id = order_items.order_id");
+    }
+    if (needsProducts) {
+      joins.push("JOIN products ON order_items.product_id = products.product_id");
+    }
+    if (needsCategories) {
+      joins.push("JOIN categories ON products.category_id = categories.category_id");
+    }
+    if (needsSellers) {
+      joins.push("JOIN sellers ON order_items.seller_id = sellers.seller_id");
+    }
+    return joins.length > 0 ? ` ${joins.join(" ")}` : "";
+  };
+
+  const ctes: string[] = [];
+  if (needsPayments) {
+    const paymentCols = activeDims.filter((d) => d.startsWith("payments."));
+    const payOrderWindow =
+      metricId === "metric:review_score_avg"
+        ? `orders.purchase_date >= '2020-01-01T00:00:00+07:00' AND orders.purchase_date < '${endExclusiveIso}'`
+        : ordersDateWhere;
+    ctes.push(
+      `pay_agg AS (` +
+      `SELECT DISTINCT payments.order_id, ${paymentCols.join(", ")} ` +
+      `FROM payments JOIN orders ON payments.order_id = orders.order_id ` +
+      `WHERE ${payOrderWindow}` +
+      `)`,
+    );
   }
 
-  const joinSql = joins.length > 0 ? ` ${joins.join(" ")}` : "";
+  const withPrefix = (): string => (ctes.length > 0 ? `WITH ${ctes.join(", ")} ` : "");
 
   if (metricId === "metric:return_rate") {
+    const joinSql = buildDimJoins(needsOrderItems);
     return (
-      `SELECT ${selectCols}, COUNT(*) AS total_orders, ` +
+      `${withPrefix()}` +
+      `SELECT ${selectCols}, COUNT(DISTINCT orders.order_id) AS total_orders, ` +
       `AVG(CASE WHEN orders.status = 'returned' THEN 1.0 ELSE 0.0 END) AS return_rate ` +
       `FROM orders${joinSql} ` +
       `WHERE ${whereSql} ` +
       `GROUP BY ${groupByCols} ` +
-      `HAVING COUNT(*) >= 5 ` +
+      `HAVING COUNT(DISTINCT orders.order_id) >= 5 ` +
       `ORDER BY return_rate DESC, total_orders DESC ` +
       `LIMIT 10`
     );
   }
 
   if (metricId === "metric:cancellation_rate") {
+    const joinSql = buildDimJoins(needsOrderItems);
     return (
-      `SELECT ${selectCols}, COUNT(*) AS total_orders, ` +
+      `${withPrefix()}` +
+      `SELECT ${selectCols}, COUNT(DISTINCT orders.order_id) AS total_orders, ` +
       `AVG(CASE WHEN orders.status = 'canceled' THEN 1.0 ELSE 0.0 END) AS cancel_rate ` +
       `FROM orders${joinSql} ` +
       `WHERE ${whereSql} ` +
@@ -241,42 +302,39 @@ export function buildDrillDownSql(options: {
     );
   }
 
+  if (metricId === "metric:order_count") {
+    const joinSql = buildDimJoins(needsOrderItems);
+    return (
+      `${withPrefix()}` +
+      `SELECT ${selectCols}, COUNT(DISTINCT orders.order_id) AS total_orders ` +
+      `FROM orders${joinSql} ` +
+      `WHERE ${whereSql} ` +
+      `GROUP BY ${groupByCols} ` +
+      `ORDER BY total_orders DESC ` +
+      `LIMIT 10`
+    );
+  }
+
   if (metricId === "metric:review_score_avg") {
-    const reviewJoins = [
-      "JOIN orders ON reviews.order_id = orders.order_id",
-      "JOIN order_items ON orders.order_id = order_items.order_id",
-      "JOIN products ON order_items.product_id = products.product_id",
-      "JOIN categories ON products.category_id = categories.category_id",
-    ];
-    if (queryRefText.includes("regions.") || rbacClauses.length > 0) {
-      reviewJoins.push(
-        "JOIN regions ON orders.province = regions.province",
-      );
-    }
-    if (queryRefText.includes("customers.")) {
-      reviewJoins.push(
-        "JOIN customers ON orders.customer_id = customers.customer_id",
-      );
-    }
-    if (queryRefText.includes("channels.")) {
-      reviewJoins.push(
-        "JOIN channels ON orders.channel_id = channels.channel_id",
-      );
-    }
-    if (queryRefText.includes("sellers.")) {
-      reviewJoins.push(
-        "JOIN sellers ON order_items.seller_id = sellers.seller_id",
-      );
-    }
+    ctes.unshift(
+      `rev AS (` +
+      `SELECT reviews.review_id, reviews.order_id, reviews.score ` +
+      `FROM reviews ` +
+      `WHERE reviews.created_at >= '${startIso}' AND reviews.created_at < '${endExclusiveIso}'` +
+      `)`,
+    );
+    const joinSql = buildDimJoins(needsOrderItems);
     const reviewWhere = [
-      `reviews.created_at::date = '${date}'`,
+      `orders.purchase_date >= '2020-01-01T00:00:00+07:00'`,
+      `orders.purchase_date < '${endExclusiveIso}'`,
       ...rbacClauses,
     ].join(" AND ");
     return (
-      `SELECT ${selectCols}, COUNT(*) AS total_reviews, ` +
-      `AVG(reviews.score) AS avg_score ` +
-      `FROM reviews ` +
-      `${reviewJoins.join(" ")} ` +
+      `WITH ${ctes.join(", ")} ` +
+      `SELECT ${selectCols}, COUNT(DISTINCT rev.review_id) AS total_reviews, ` +
+      `AVG(rev.score) AS avg_score ` +
+      `FROM rev ` +
+      `JOIN orders ON rev.order_id = orders.order_id${joinSql} ` +
       `WHERE ${reviewWhere} ` +
       `GROUP BY ${groupByCols} ` +
       `ORDER BY avg_score ASC ` +
@@ -284,11 +342,38 @@ export function buildDrillDownSql(options: {
     );
   }
 
+  const revenueWhere = `${whereSql} AND orders.status IN ('delivered', 'returned')`;
+  if (!needsOrderItems) {
+    ctes.push(
+      `oi_agg AS (` +
+      `SELECT order_items.order_id, SUM(order_items.price_vnd) AS items_price_vnd ` +
+      `FROM order_items JOIN orders ON order_items.order_id = orders.order_id ` +
+      `WHERE ${ordersDateWhere} AND orders.status IN ('delivered', 'returned') ` +
+      `GROUP BY order_items.order_id` +
+      `)`,
+    );
+    const joinSql = buildDimJoins(false);
+    return (
+      `WITH ${ctes.join(", ")} ` +
+      `SELECT ${selectCols}, COUNT(*) AS total_orders, ` +
+      `COALESCE(SUM(CASE WHEN orders.status = 'delivered' THEN oi_agg.items_price_vnd ` +
+      `WHEN orders.status = 'returned' THEN -oi_agg.items_price_vnd ELSE 0 END), 0) AS revenue ` +
+      `FROM orders JOIN oi_agg ON orders.order_id = oi_agg.order_id${joinSql} ` +
+      `WHERE ${revenueWhere} ` +
+      `GROUP BY ${groupByCols} ` +
+      `ORDER BY revenue DESC ` +
+      `LIMIT 10`
+    );
+  }
+
+  const joinSql = buildDimJoins(true);
   return (
-    `SELECT ${selectCols}, COUNT(*) AS total_orders, ` +
-    `SUM(orders.total_amount) AS revenue ` +
+    `${withPrefix()}` +
+    `SELECT ${selectCols}, COUNT(DISTINCT orders.order_id) AS total_orders, ` +
+    `COALESCE(SUM(CASE WHEN orders.status = 'delivered' THEN order_items.price_vnd ` +
+    `WHEN orders.status = 'returned' THEN -order_items.price_vnd ELSE 0 END), 0) AS revenue ` +
     `FROM orders${joinSql} ` +
-    `WHERE ${whereSql} ` +
+    `WHERE ${revenueWhere} ` +
     `GROUP BY ${groupByCols} ` +
     `ORDER BY revenue DESC ` +
     `LIMIT 10`
@@ -408,9 +493,19 @@ export async function runDrillDownAnalysis(
               : "";
 
       if (rawContent.trim().length > 0) {
-        // Scrub PII before saving message
         const redacted = redactPII(rawContent.trim());
-        explanation = redacted.redacted;
+        const grounded = isNarrativeNumericallyGrounded(redacted.redacted, [
+          rows.slice(0, 5),
+          date,
+          anomaly.deviationSummary,
+          anomaly.currentValue,
+          anomaly.expectedValue,
+          anomaly.wowPercent,
+          anomaly.zScore,
+        ]);
+        if (grounded) {
+          explanation = redacted.redacted;
+        }
       }
     } catch {
       // Fallback to deterministic explanation on error
