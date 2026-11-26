@@ -6,14 +6,15 @@ import {
 import { UNTRUSTED_DATA_CLOSE, UNTRUSTED_DATA_OPEN } from "../../constants.js";
 import { serializeUntrusted } from "../../untrusted.js";
 import {
+  budgetTripReasonFromError,
   checkBudget,
   estimateTokens,
   recordLlmCall,
 } from "../../queryExecutor/budgets.js";
-import { classifyModelError } from "../../telemetry/retry.js";
 import {
   invokeJsonWithUsage,
   invokeWithUsage,
+  unaccountedUsage,
   type InvokeUsageResult,
   type ModelRetryContextOptions,
   type PlainJsonModelLike,
@@ -115,15 +116,6 @@ export interface DraftOutcome {
   repairs: number;
 }
 
-function isSchemaOrParseError(error: unknown): boolean {
-  const reason = classifyModelError(error).reason;
-  return (
-    reason === "syntax_error" ||
-    reason === "zod_error" ||
-    reason === "output_parse_error"
-  );
-}
-
 async function invokeDraftModel(
   model: VizModelLike,
   prompt: string,
@@ -141,7 +133,7 @@ async function invokeDraftModel(
       );
 }
 
-/** Schema parse failures consume chart repair attempts; transport/rate-limit/budget errors rethrow immediately. */
+/** Only well-formed drafts with invalid charts consume chart repair attempts. */
 export async function runVizDraft(
   model: VizModelLike,
   input: PromptInput,
@@ -159,45 +151,24 @@ export async function runVizDraft(
         throw new Error(`Run budget exceeded (${check.reason})`);
       }
     }
-    let draft: VizDraft;
-    try {
-      const callOpts = {
-        ...ctx,
-        name: "viz_draft",
-        node: ctx?.node ?? "viz",
-        outerAttempt: repairs + 1,
-      };
-      const attempt = await invokeDraftModel(model, prompt, callOpts);
-      usage = attempt;
-      draft = attempt.parsed;
-      if (ctx?.budget) {
-        const realTokens = attempt.inputTokens + attempt.outputTokens;
-        recordLlmCall(
-          ctx.budget,
-          realTokens > 0
-            ? realTokens
-            : estimateTokens(prompt, JSON.stringify(draft)),
-        );
-      }
-    } catch (error) {
-      if (!isSchemaOrParseError(error)) {
-        throw error;
-      }
-      if (repairs >= RENDER_REPAIR_LIMIT) {
-        throw new Error(
-          `viz draft failed validation: draft ${repairs + 1} is not a valid InsightReport (${messageOf(error)}).`,
-        );
-      }
-      repairs += 1;
-      prompt = `${base}\n\n${buildRepairPrompt(
-        {
-          code: "chart_shape",
-          field: "chartSpec",
-          message: `draft is not a valid InsightReport: ${messageOf(error)}.`,
-        },
-        repairs,
-      )}`;
-      continue;
+    const callOpts = {
+      ...ctx,
+      name: "viz_draft",
+      node: ctx?.node ?? "viz",
+      outerAttempt: repairs + 1,
+    };
+    const attempt = await invokeDraftModel(model, prompt, callOpts);
+    usage = attempt;
+    const draft = attempt.parsed;
+    if (ctx?.budget) {
+      const successUsage = unaccountedUsage(attempt);
+      const realTokens = successUsage.inputTokens + successUsage.outputTokens;
+      recordLlmCall(
+        ctx.budget,
+        realTokens > 0
+          ? realTokens
+          : estimateTokens(prompt, JSON.stringify(draft)),
+      );
     }
     const shaped = validateChart(input.chartType, draft.chartSpec, buffer);
     if (shaped.ok && draft.chartType === input.chartType) {
@@ -224,7 +195,7 @@ export interface ClaimRegenerationOutcome {
   usage: InvokeUsageResult<VizDraft>;
 }
 
-/** Returns null on budget trip or invalid output so callers strip the original draft instead of losing the report. */
+/** Invalid output can be stripped without losing the original verified claims. */
 export async function runClaimRegeneration(
   model: VizModelLike,
   input: PromptInput,
@@ -233,8 +204,9 @@ export async function runClaimRegeneration(
   ctx?: ModelRetryContextOptions,
 ): Promise<ClaimRegenerationOutcome | null> {
   if (diffs.length === 0) return null;
-  if (ctx?.budget && checkBudget(ctx.budget).tripped) {
-    return null;
+  if (ctx?.budget) {
+    const check = checkBudget(ctx.budget);
+    if (check.tripped) throw new Error(`Run budget exceeded (${check.reason})`);
   }
   const prompt = `${buildInsightPrompt(input)}\n\n${buildClaimRepairPrompt(diffs)}`;
   try {
@@ -245,7 +217,8 @@ export async function runClaimRegeneration(
       outerAttempt: 1,
     });
     if (ctx?.budget) {
-      const realTokens = attempt.inputTokens + attempt.outputTokens;
+      const successUsage = unaccountedUsage(attempt);
+      const realTokens = successUsage.inputTokens + successUsage.outputTokens;
       recordLlmCall(
         ctx.budget,
         realTokens > 0
@@ -258,16 +231,8 @@ export async function runClaimRegeneration(
       return null;
     }
     return { draft: attempt.parsed, usage: attempt };
-  } catch {
+  } catch (error) {
+    if (budgetTripReasonFromError(error)) throw error;
     return null;
   }
-}
-
-function messageOf(error: unknown): string {
-  if (typeof error === "object" && error !== null && "issues" in error) {
-    const issues = (error as { issues: Array<{ path: unknown; message: string }> }).issues;
-    const first = issues[0];
-    if (first) return `${String(first.path)}: ${first.message}`.slice(0, 300);
-  }
-  return (error instanceof Error ? error.message : String(error)).slice(0, 300);
 }

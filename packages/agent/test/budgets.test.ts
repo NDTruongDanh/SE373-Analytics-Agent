@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkBudget,
   createBudgetState,
+  formatBudgetTripTemplate,
   recordLlmCall,
 } from "../src/queryExecutor/budgets.js";
 import { BUDGET_LIMITS } from "../src/constants.js";
@@ -76,5 +77,43 @@ describe("budget breaker", () => {
       deadlineMs: 5500,
     });
     expect(checkBudget(state, 600)).toEqual({ tripped: false });
+  });
+
+  it("formats a deterministic budget caveat with verified findings and remaining work", () => {
+    const message = formatBudgetTripTemplate({
+      reason: "tokens",
+      budget: {
+        llmCalls: 4,
+        tokensUsed: 110,
+        maxLlmCalls: 20,
+        maxTokens: 100,
+      },
+      completed: ["Described table orders", "Validated baseline value"],
+      verifiedSql: "SELECT COUNT(*) AS total FROM public.orders",
+      rowCount: 1,
+      verifiedFigures: { baselineVal: 42 },
+      remaining: ["Execute current-period query", "Build the analysis plan"],
+    });
+
+    expect(message).toContain("budget_exceeded (maxTokens)");
+    expect(message).toContain("llmCalls=4/20; tokensUsed=110/100");
+    expect(message).toContain("Described table orders");
+    expect(message).toContain("Verified SQL: SELECT COUNT(*) AS total FROM public.orders");
+    expect(message).toContain("Verified row count: 1");
+    expect(message).toContain("Verified baselineVal: 42");
+    expect(message).toContain("Execute current-period query");
+    expect(message).toContain("Build the analysis plan");
+    expect(message).toContain("No additional model calls or database queries");
+  });
+
+  it("redacts PII from verified text before returning a budget template", () => {
+    const message = formatBudgetTripTemplate({
+      reason: "deadline",
+      budget: { llmCalls: 1, tokensUsed: 2, maxLlmCalls: 20, maxTokens: 60000 },
+      completed: ["Contact 0912 345 678"],
+    });
+
+    expect(message).not.toContain("0912 345 678");
+    expect(message).toContain("[MASKED_PHONE]");
   });
 });

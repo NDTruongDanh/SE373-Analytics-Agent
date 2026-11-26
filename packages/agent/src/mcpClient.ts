@@ -18,6 +18,8 @@ export interface TracerRunConfig {
   runId: string;
   userId: string;
   roleScope: string;
+  /** Server-resolved row predicate used only to partition the local model cache. */
+  rowScope?: { column: string; value: string } | null;
   /** Graph callbacks for local tracing only; never forwarded to the MCP gateway. */
   callbacks?: Callbacks;
 }

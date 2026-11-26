@@ -9,6 +9,7 @@ import { createBudgetState } from "../src/queryExecutor/budgets.js";
 import {
   ModelRetryError,
   classifyModelError,
+  classifyModelReaskFailure,
   parseRetryAfterHeaderMs,
   parseRetryAfterMessageMs,
   planRetryDelay,
@@ -209,6 +210,51 @@ describe("classifyModelError", () => {
       status: 429,
       reason: "insufficient_quota",
     });
+  });
+});
+
+describe("classifyModelReaskFailure", () => {
+  it("allows one format re-ask for syntax, schema, and output parser failures", () => {
+    expect(classifyModelReaskFailure(new SyntaxError("invalid JSON"))).toEqual({
+      code: "syntax_error",
+      formatFailure: true,
+    });
+    const invalid = z.object({ value: z.string() }).safeParse({});
+    if (invalid.success) throw new Error("expected a Zod failure");
+    expect(classifyModelReaskFailure(invalid.error)).toEqual({
+      code: "zod_error",
+      formatFailure: true,
+    });
+    const parserError = Object.assign(new Error("Could not parse result"), {
+      name: "OutputParserException",
+    });
+    expect(classifyModelReaskFailure(parserError)).toEqual({
+      code: "output_parse_error",
+      formatFailure: true,
+    });
+  });
+
+  it("allows provider 5xx except 503 and excludes auth, rate limits, aborts, timeouts, and budget failures", () => {
+    for (const status of [500, 502, 504, 599]) {
+      expect(classifyModelReaskFailure(Object.assign(new Error("provider error"), { status }))).toEqual({
+        code: "provider_5xx",
+        formatFailure: false,
+        status,
+      });
+    }
+    for (const status of [400, 401, 402, 403, 404, 408, 429, 503]) {
+      expect(classifyModelReaskFailure(Object.assign(new Error("provider error"), { status }))).toBeNull();
+    }
+    for (const name of ["AbortError", "TimeoutError", "ContextOverflowError"]) {
+      expect(classifyModelReaskFailure(Object.assign(new Error("stopped"), { name }))).toBeNull();
+    }
+    expect(classifyModelReaskFailure(new ModelRetryError({
+      message: "budget stopped",
+      attempts: 1,
+      reason: "budget_llm-calls",
+      budgetTripped: true,
+      tripReason: "llm-calls",
+    }))).toBeNull();
   });
 });
 

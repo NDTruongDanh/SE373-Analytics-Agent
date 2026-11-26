@@ -24,6 +24,14 @@ import {
   SqlProposalSchema,
   type SqlProposal,
 } from "../queryExecutor/executor.js";
+import {
+  createProviderFetch,
+  type SemanticCacheContext,
+  type SecondaryProviderConfig,
+} from "./providerResilience.js";
+
+export { createSemanticCacheContext } from "./providerResilience.js";
+export type { SemanticCacheContext } from "./providerResilience.js";
 
 export { SqlProposalSchema };
 export type { SqlProposal };
@@ -65,6 +73,7 @@ export interface FakeModelSpec {
 export interface CreateChatModelOptions {
   fake?: FakeModelSpec;
   model?: string;
+  semanticCacheContext?: SemanticCacheContext;
 }
 
 export type AnyChatModel = ChatOpenAI | FakeListChatModel;
@@ -138,14 +147,49 @@ export function resetOpencodeSessionCache(): void {
   cachedSessionId = null;
 }
 
-function buildRealModel(profile: ModelProfile, override?: string, tracer = false): ChatOpenAI {
+function secondaryProviderFor(
+  profile: ModelProfile,
+  primaryModel: string,
+  env: NodeJS.ProcessEnv = process.env,
+): SecondaryProviderConfig | undefined {
+  const baseURL = (env.AGENT_MODEL_SECONDARY_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  const apiKey = (env.AGENT_MODEL_SECONDARY_API_KEY ?? "").trim();
+  const isConfigured = baseURL.length > 0 || apiKey.length > 0;
+  if (!isConfigured) return undefined;
+  if (!baseURL || !apiKey) {
+    throw new Error(
+      "Secondary model provider requires both AGENT_MODEL_SECONDARY_BASE_URL and AGENT_MODEL_SECONDARY_API_KEY.",
+    );
+  }
+  const profileModel = env[`AGENT_MODEL_SECONDARY_ID_${profile.toUpperCase()}`]?.trim();
+  const sharedModel = env.AGENT_MODEL_SECONDARY_ID?.trim();
+  const model = profileModel || sharedModel || primaryModel;
+  return { baseURL, apiKey, model };
+}
+
+function buildRealModel(
+  profile: ModelProfile,
+  override?: string,
+  tracer = false,
+  semanticCacheContext?: SemanticCacheContext,
+): ChatOpenAI {
   const baseURL = (process.env.AGENT_MODEL_BASE_URL ?? "").replace(/\/+$/, "");
   const apiKey = process.env.AGENT_MODEL_API_KEY ?? "";
+  const primaryModel = resolveModelId(profile, override);
+  const secondary = secondaryProviderFor(profile, primaryModel);
+  const providerFetch = secondary || semanticCacheContext
+    ? createProviderFetch({
+        primaryBaseURL: baseURL,
+        ...(secondary ? { secondary } : {}),
+        ...(semanticCacheContext ? { cacheContext: semanticCacheContext } : {}),
+        opencodeSessionId: getOpencodeSessionId,
+      })
+    : undefined;
   const defaultHeaders = isOpencodeGoUrl(baseURL)
     ? { [OPENCODE_SESSION_HEADER]: getOpencodeSessionId() }
     : undefined;
   return new ChatOpenAI({
-    model: resolveModelId(profile, override),
+    model: primaryModel,
     temperature: 0,
     // Disable SDK/AsyncCaller retries across all profiles so the harness
     // enforces a single retry/backoff/Retry-After/deadline/budget layer.
@@ -156,6 +200,7 @@ function buildRealModel(profile: ModelProfile, override?: string, tracer = false
       baseURL,
       apiKey,
       ...(defaultHeaders ? { defaultHeaders } : {}),
+      ...(providerFetch ? { fetch: providerFetch } : {}),
     },
   });
 }
@@ -200,9 +245,11 @@ export class ProfileTracerModel implements TracerChatModel {
   }
 }
 
-function legacyTracerModel(): TracerChatModel {
+function legacyTracerModel(semanticCacheContext?: SemanticCacheContext): TracerChatModel {
   if (process.env.AGENT_MODEL_API_KEY) {
-    return new ProfileTracerModel(buildRealModel("sql", undefined, true));
+    return new ProfileTracerModel(
+      buildRealModel("sql", undefined, true, semanticCacheContext),
+    );
   }
   return new ProfileTracerModel(
     new FakeListChatModel({
@@ -212,21 +259,25 @@ function legacyTracerModel(): TracerChatModel {
 }
 
 export function createChatModel(): TracerChatModel;
+export function createChatModel(opts: { semanticCacheContext?: SemanticCacheContext }): TracerChatModel;
 export function createChatModel(
   profile: ModelProfile,
   opts?: CreateChatModelOptions,
 ): AnyChatModel;
 export function createChatModel(
-  profile?: ModelProfile,
+  profile?: ModelProfile | { semanticCacheContext?: SemanticCacheContext },
   opts: CreateChatModelOptions = {},
 ): TracerChatModel | AnyChatModel {
   if (profile === undefined) {
     return legacyTracerModel();
   }
+  if (typeof profile === "object") {
+    return legacyTracerModel(profile.semanticCacheContext);
+  }
   if (opts.fake) {
     return new FakeListChatModel({ responses: [...opts.fake.responses] });
   }
-  return buildRealModel(profile, opts.model);
+  return buildRealModel(profile, opts.model, false, opts.semanticCacheContext);
 }
 
 export function withStructured<S extends z.ZodType>(

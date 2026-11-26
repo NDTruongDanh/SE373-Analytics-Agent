@@ -34,12 +34,31 @@ import {
   type McpToolCaller,
 } from "../queryExecutor/index.js";
 import { deparse, parse } from "@shared/access-policy";
-import { createBudgetState } from "../queryExecutor/budgets.js";
-import { createChatModel } from "../models/factory.js";
+import {
+  budgetTripReasonFromError,
+  checkBudget,
+  createBudgetState,
+  estimateTokens,
+  formatBudgetTripTemplate,
+  recordLlmCall,
+  type BudgetState,
+  type BudgetTripReason,
+} from "../queryExecutor/budgets.js";
+import { BUDGET_LIMITS } from "../constants.js";
+import {
+  createChatModel,
+  createSemanticCacheContext,
+} from "../models/factory.js";
 import { callMcpTool, type TracerRunConfig } from "../mcpClient.js";
 import { pauseForApproval } from "../hitl.js";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { loadSkill } from "../skills/loader.js";
+import {
+  estimateCostUsd,
+  invokeWithUsage,
+  unaccountedUsage,
+  type StructuredModelLike,
+} from "../telemetry/usage.js";
 
 export { RCA_UC_ID } from "../constants.js";
 
@@ -117,6 +136,7 @@ export const DEFAULT_CANDIDATE_PRODUCTS = [
 ];
 
 export interface RcaRuntimeDeps {
+  budget?: BudgetState;
   skillsDir?: string;
   loadSkill?: typeof loadSkill;
   skillContract?: string;
@@ -150,6 +170,43 @@ export interface RcaRuntimeDeps {
     inheritedFilters: Record<string, string>,
   ) => Promise<{ baselineVal: number; currentVal: number; sql?: string }>;
   onStepExecuted?: (step: PlanStep, plan: AnalysisPlan) => void | Promise<void>;
+}
+
+export class RcaBudgetExceededError extends Error {
+  readonly tripReason: BudgetTripReason;
+  readonly completed: string[];
+  readonly remaining: string[];
+  readonly verifiedSql?: string;
+  readonly verifiedFigures?: Record<string, number>;
+
+  constructor(
+    tripReason: BudgetTripReason,
+    opts: {
+      completed?: string[];
+      remaining?: string[];
+      verifiedSql?: string | null;
+      verifiedFigures?: Record<string, number>;
+    } = {},
+  ) {
+    super(`Run budget exceeded (${tripReason})`);
+    this.name = "RcaBudgetExceededError";
+    this.tripReason = tripReason;
+    this.completed = opts.completed ?? [];
+    this.remaining = opts.remaining ?? [];
+    this.verifiedSql = opts.verifiedSql ?? undefined;
+    this.verifiedFigures = opts.verifiedFigures;
+  }
+}
+
+function throwIfRcaBudgetExceeded(
+  budget: BudgetState | undefined,
+  details: ConstructorParameters<typeof RcaBudgetExceededError>[1] = {},
+): void {
+  if (!budget) return;
+  const check = checkBudget(budget);
+  if (check.tripped) {
+    throw new RcaBudgetExceededError(check.reason, details);
+  }
 }
 
 export function createDateGuardedMcpCaller(
@@ -1076,7 +1133,14 @@ export async function validateBaseline(
   const actualToolsCalled: string[] = [];
 
   if (deps.fetchBaseline) {
+    throwIfRcaBudgetExceeded(deps.budget, {
+      remaining: ["Validate the baseline and current-period values"],
+    });
     baselineVal = await deps.fetchBaseline(intent.metricName, intent.metricType, intent.baselinePeriod, principal);
+    throwIfRcaBudgetExceeded(deps.budget, {
+      completed: ["Fetched the baseline-period value"],
+      remaining: ["Validate the current-period value"],
+    });
     currentVal = await deps.fetchBaseline(intent.metricName, intent.metricType, intent.currentPeriod, principal);
     queriesExecuted = 2;
   } else if (deps.executor) {
@@ -1089,12 +1153,16 @@ export async function validateBaseline(
     deps.setTargetTable?.(targetFactTable);
     deps.setAllowedDateColumns?.([expectedDateCol]);
     deps.setActivePeriod?.(intent.baselinePeriod);
+    throwIfRcaBudgetExceeded(deps.budget, {
+      remaining: ["Execute and validate the baseline-period query"],
+    });
     let baseRes: ExecutorResult;
     try {
       baseRes = await deps.executor.run({
         question: `Compute baseline for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.baselinePeriod.start} to ${intent.baselinePeriod.end}.${contractSnippet}\n\nReference SQL: ${baseSql}`,
         candidateTables: intent.candidateTables,
         principal,
+        ...(deps.budget ? { budget: deps.budget } : {}),
       });
     } finally {
       deps.setActivePeriod?.(null);
@@ -1104,6 +1172,14 @@ export async function validateBaseline(
     const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
     queriesExecuted += baseAttempts;
     actualToolsCalled.push("run_query");
+
+    if (baseRes.status === "error" && "budgetExceeded" in baseRes && baseRes.budgetExceeded) {
+      throw new RcaBudgetExceededError(baseRes.tripReason, {
+        completed: baseRes.partials.tablesDescribed.map((table) => `Described table ${table}`),
+        remaining: ["Validate the baseline and current-period values"],
+        verifiedSql: baseRes.partials.verifiedSql,
+      });
+    }
 
     if (baseRes.status !== "ok") {
       if (baseRes.status === "no_data") {
@@ -1122,12 +1198,7 @@ export async function validateBaseline(
           resolvedDirection: intent.direction,
         };
       }
-      const errMsg =
-        baseRes.status === "error" || baseRes.status === "restricted"
-          ? (baseRes.error?.message ?? `Truy vấn kỳ cơ sở thất bại (${baseRes.status})`)
-          : baseRes.status === "needs_clarification"
-            ? `Cần làm rõ câu hỏi: ${baseRes.reason}`
-            : `Không thể tính toán kỳ cơ sở (${baseRes.status})`;
+      const errMsg = "error" in baseRes ? baseRes.error.message : "Baseline query needs clarification";
       throw new Error(`Lỗi tính toán baseline: ${errMsg}`);
     }
 
@@ -1145,6 +1216,12 @@ export async function validateBaseline(
       throw new Error(`Giá trị kỳ cơ sở không phải là số hợp lệ: ${String(baseRes.rows[0]["val"])}`);
     }
 
+    throwIfRcaBudgetExceeded(deps.budget, {
+      completed: ["Validated the baseline-period value"],
+      remaining: ["Execute and validate the current-period query"],
+      verifiedSql: baseRes.sql,
+      verifiedFigures: { baselineVal },
+    });
     deps.setTargetTable?.(targetFactTable);
     deps.setAllowedDateColumns?.([expectedDateCol]);
     deps.setActivePeriod?.(intent.currentPeriod);
@@ -1154,6 +1231,7 @@ export async function validateBaseline(
         question: `Compute current value for ${intent.metricName} strictly filtering by ${expectedDateCol} from ${intent.currentPeriod.start} to ${intent.currentPeriod.end}.${contractSnippet}\n\nReference SQL: ${currSql}`,
         candidateTables: intent.candidateTables,
         principal,
+        ...(deps.budget ? { budget: deps.budget } : {}),
       });
     } finally {
       deps.setActivePeriod?.(null);
@@ -1163,6 +1241,15 @@ export async function validateBaseline(
     const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
     queriesExecuted += currAttempts;
     actualToolsCalled.push("run_query");
+
+    if (currRes.status === "error" && "budgetExceeded" in currRes && currRes.budgetExceeded) {
+      throw new RcaBudgetExceededError(currRes.tripReason, {
+        completed: ["Validated the baseline-period value"],
+        remaining: ["Validate the current-period value and build the analysis plan"],
+        verifiedSql: currRes.partials.verifiedSql ?? baseRes.sql,
+        verifiedFigures: { baselineVal },
+      });
+    }
 
     if (currRes.status !== "ok") {
       if (currRes.status === "no_data") {
@@ -1181,12 +1268,7 @@ export async function validateBaseline(
           resolvedDirection: intent.direction,
         };
       }
-      const errMsg =
-        currRes.status === "error" || currRes.status === "restricted"
-          ? (currRes.error?.message ?? `Truy vấn kỳ phân tích thất bại (${currRes.status})`)
-          : currRes.status === "needs_clarification"
-            ? `Cần làm rõ câu hỏi: ${currRes.reason}`
-            : `Không thể tính toán kỳ phân tích (${currRes.status})`;
+      const errMsg = "error" in currRes ? currRes.error.message : "Current query needs clarification";
       throw new Error(`Lỗi tính toán current value: ${errMsg}`);
     }
 
@@ -1646,6 +1728,18 @@ export async function executeAnalysis(
   };
 
   while (plan.steps.some((s) => s.status === "todo")) {
+    throwIfRcaBudgetExceeded(deps.budget, {
+      completed: plan.steps
+        .filter((candidate) => candidate.status === "done")
+        .map((candidate) => `Completed ${candidate.dimensionOrFactor}${candidate.dimensionValue ? `: ${candidate.dimensionValue}` : ""}`),
+      remaining: plan.steps
+        .filter((candidate) => candidate.status === "todo")
+        .map((candidate) => `Analyze ${candidate.dimensionOrFactor}${candidate.dimensionValue ? `: ${candidate.dimensionValue}` : ""}`),
+      verifiedFigures: {
+        baselineVal: plan.baselineVal,
+        currentVal: plan.currentVal,
+      },
+    });
     if (plan.totalQueriesCount >= maxQueries) {
       markAllRemainingSkipped("MAX_QUERIES_REACHED");
       break;
@@ -1696,6 +1790,16 @@ export async function executeAnalysis(
 
       try {
         if (deps.fetchStepMetrics) {
+          throwIfRcaBudgetExceeded(deps.budget, {
+            completed: plan.steps
+              .filter((candidate) => candidate.status === "done")
+              .map((candidate) => `Completed ${candidate.dimensionOrFactor}`),
+            remaining: [`Analyze ${step.dimensionOrFactor}`],
+            verifiedFigures: {
+              baselineVal: plan.baselineVal,
+              currentVal: plan.currentVal,
+            },
+          });
           plan.totalQueriesCount += 2;
           const res = await deps.fetchStepMetrics(
             step,
@@ -1736,12 +1840,28 @@ export async function executeAnalysis(
             question: `Calculate baseline for step ${step.stepId} from ${plan.baselinePeriod.start} to ${plan.baselinePeriod.end}.${contractSnippet}\n\nReference SQL: ${baseSql}`,
             candidateTables: intent.candidateTables,
             principal,
-            budget: createBudgetState({ maxLlmCalls: remainingForBaseline }),
+            ...(deps.budget ? { budget: deps.budget } : {}),
             maxAttempts: remainingForBaseline,
           });
 
           const baseAttempts = typeof baseRes.attempts === "number" ? baseRes.attempts : 1;
           plan.totalQueriesCount += baseAttempts;
+
+          if (baseRes.status === "error" && "budgetExceeded" in baseRes && baseRes.budgetExceeded) {
+            throw new RcaBudgetExceededError(baseRes.tripReason, {
+              completed: plan.steps
+                .filter((candidate) => candidate.status === "done")
+                .map((candidate) => `Completed ${candidate.dimensionOrFactor}`),
+              remaining: plan.steps
+                .filter((candidate) => candidate.status === "todo" || candidate === step)
+                .map((candidate) => `Analyze ${candidate.dimensionOrFactor}`),
+              verifiedSql: baseRes.partials.verifiedSql,
+              verifiedFigures: {
+                baselineVal: plan.baselineVal,
+                currentVal: plan.currentVal,
+              },
+            });
+          }
 
           if (baseRes.status !== "ok") {
             const err =
@@ -1772,12 +1892,28 @@ export async function executeAnalysis(
             question: `Calculate current for step ${step.stepId} from ${plan.currentPeriod.start} to ${plan.currentPeriod.end}.${contractSnippet}\n\nReference SQL: ${currSql}`,
             candidateTables: intent.candidateTables,
             principal,
-            budget: createBudgetState({ maxLlmCalls: remainingForCurrent }),
+            ...(deps.budget ? { budget: deps.budget } : {}),
             maxAttempts: remainingForCurrent,
           });
 
           const currAttempts = typeof currRes.attempts === "number" ? currRes.attempts : 1;
           plan.totalQueriesCount += currAttempts;
+
+          if (currRes.status === "error" && "budgetExceeded" in currRes && currRes.budgetExceeded) {
+            throw new RcaBudgetExceededError(currRes.tripReason, {
+              completed: plan.steps
+                .filter((candidate) => candidate.status === "done")
+                .map((candidate) => `Completed ${candidate.dimensionOrFactor}`),
+              remaining: plan.steps
+                .filter((candidate) => candidate.status === "todo" || candidate === step)
+                .map((candidate) => `Analyze ${candidate.dimensionOrFactor}`),
+              verifiedSql: currRes.partials.verifiedSql ?? baseRes.sql,
+              verifiedFigures: {
+                baselineVal: plan.baselineVal,
+                currentVal: plan.currentVal,
+              },
+            });
+          }
 
           deps.setActivePeriod?.(null);
           deps.setAllowedDateColumns?.(null);
@@ -1809,6 +1945,10 @@ export async function executeAnalysis(
           throw new Error("No executor or fetchStepMetrics configured for executeAnalysis");
         }
       } catch (err: unknown) {
+        if (err instanceof RcaBudgetExceededError) {
+          if (step.status === "doing") step.status = "todo";
+          throw err;
+        }
         attempt++;
         step.retryCount = Math.min(2, attempt);
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -2870,6 +3010,7 @@ export function synthesizeReport(plan: AnalysisPlan): RootCauseAnswer {
 function readRunContext(rt?: RootRuntime): {
   identity: ExecutorPrincipal;
   transport: TracerRunConfig | null;
+  rowScope: unknown;
 } {
   const raw = rt as unknown as Record<string, unknown> | undefined;
   const cfg = ((rt?.config?.configurable ?? raw?.configurable ?? {}) as Record<string, unknown>);
@@ -2877,16 +3018,25 @@ function readRunContext(rt?: RootRuntime): {
   const runId = pick("runId") || "run_rca_default";
   const userId = pick("userId") || "user_default";
   const roleScope = pick("roleScope") || "sales_south";
+  const rowScope = Object.hasOwn(cfg, "rowScope") ? cfg["rowScope"] : undefined;
   const identity: ExecutorPrincipal = { runId, userId, roleScope };
 
   const mcpUrl = pick("mcpUrl");
   const token = pick("token");
   const transport: TracerRunConfig | null =
     mcpUrl.length > 0 && token.length > 0
-      ? { mcpUrl, token, runId, userId, roleScope, callbacks: rt?.config?.callbacks }
+      ? {
+          mcpUrl,
+          token,
+          runId,
+          userId,
+          roleScope,
+          ...(rowScope !== undefined ? { rowScope: rowScope as TracerRunConfig["rowScope"] } : {}),
+          callbacks: rt?.config?.callbacks,
+        }
       : null;
 
-  return { identity, transport };
+  return { identity, transport, rowScope };
 }
 
 export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
@@ -2896,7 +3046,80 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     state: AgentState,
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
-    const { identity, transport } = readRunContext(rt);
+    const stateBudget = state.budget ?? createBudgetState();
+    const startingBudget = {
+      llmCalls: stateBudget.llmCalls ?? 0,
+      tokensUsed: stateBudget.tokensUsed ?? 0,
+    };
+    const runBudget: BudgetState = {
+      llmCalls: stateBudget.llmCalls ?? 0,
+      tokensUsed: stateBudget.tokensUsed ?? 0,
+      maxLlmCalls: stateBudget.maxLlmCalls ?? BUDGET_LIMITS.maxLlmCalls,
+      maxTokens: stateBudget.maxTokens ?? BUDGET_LIMITS.maxTokens,
+      deadlineMs:
+        stateBudget.deadlineMs > 0
+          ? stateBudget.deadlineMs
+          : Date.now() + BUDGET_LIMITS.runDeadlineMs,
+    };
+    const withBudget = (update: AgentUpdate): AgentUpdate => ({
+      ...update,
+      budget: {
+        llmCalls: runBudget.llmCalls - startingBudget.llmCalls,
+        tokensUsed: runBudget.tokensUsed - startingBudget.tokensUsed,
+        deadlineMs: runBudget.deadlineMs,
+      },
+    });
+    const budgetTripUpdate = (
+      error: RcaBudgetExceededError,
+      currentPlan?: AnalysisPlan | null,
+    ): AgentUpdate => {
+      const planForResponse = currentPlan ?? state.analysisPlan;
+      const completed = error.completed.length > 0
+        ? error.completed
+        : planForResponse?.steps
+            .filter((step) => step.status === "done")
+            .map((step) => `Completed ${step.dimensionOrFactor}${step.dimensionValue ? `: ${step.dimensionValue}` : ""}`) ?? [];
+      const remaining = error.remaining.length > 0
+        ? error.remaining
+        : planForResponse?.steps
+            .filter((step) => step.status === "todo")
+            .map((step) => `Analyze ${step.dimensionOrFactor}${step.dimensionValue ? `: ${step.dimensionValue}` : ""}`) ?? ["Complete the RCA analysis"];
+      const answerText = formatBudgetTripTemplate({
+        reason: error.tripReason,
+        budget: runBudget,
+        completed,
+        verifiedSql: error.verifiedSql,
+        verifiedFigures: error.verifiedFigures,
+        remaining,
+      });
+      rt?.emit?.({
+        node: "root_cause_analysis",
+        type: "node_done",
+        durationMs: 0,
+        payload: {
+          budgetExceeded: true,
+          tripReason: error.tripReason,
+          caveat: "budget_exceeded",
+          completedSteps: completed,
+          remainingSteps: remaining,
+        },
+      });
+      return withBudget({
+        status: "error",
+        budgetExceeded: true,
+        answerText,
+        ...(planForResponse ? { analysisPlan: planForResponse } : {}),
+        ...(error.verifiedSql ? { sql: error.verifiedSql } : {}),
+        tablesUsed: state.tablesUsed,
+      });
+    };
+
+    const initialCheck = checkBudget(runBudget);
+    if (initialCheck.tripped) {
+      return budgetTripUpdate(new RcaBudgetExceededError(initialCheck.reason));
+    }
+
+    const { identity, transport, rowScope } = readRunContext(rt);
     const principal = identity;
 
     const skillLoader = deps.loadSkill ?? loadSkill;
@@ -2908,15 +3131,66 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     const modelToUse =
       deps.intentModel ??
       (process.env.AGENT_MODEL_API_KEY
-        ? (createChatModel("intent") as unknown as IntentModelLike)
+        ? (createChatModel("intent", {
+            semanticCacheContext: createSemanticCacheContext({
+              analysisState: {
+                question: state.question,
+                intent: state.intent,
+                analysisPlan: state.analysisPlan,
+              },
+              semanticChunks: state.semanticChunks,
+              role: identity.roleScope,
+              rowScope,
+            }),
+          }) as unknown as IntentModelLike)
         : undefined);
     let intent: RcaIntent;
     if (modelToUse) {
+      const intentPrompt = rcaIntentPrompt(state.question, skill.contract);
       try {
-        intent = await modelToUse
-          .withStructuredOutput(RcaIntentSchema, { name: "rca_intent" })
-          .invoke(rcaIntentPrompt(state.question, skill.contract));
+        const out = await invokeWithUsage(
+          modelToUse as unknown as StructuredModelLike<z.ZodType>,
+          RcaIntentSchema,
+          intentPrompt,
+          {
+            name: "rca_intent",
+            node: "intent",
+            budget: runBudget,
+            deadlineMs: runBudget.deadlineMs,
+            emit: rt.emit,
+          },
+        );
+        intent = out.parsed;
+        const successfulUsage = unaccountedUsage(out);
+        const realTokens = successfulUsage.inputTokens + successfulUsage.outputTokens;
+        recordLlmCall(
+          runBudget,
+          realTokens > 0
+            ? realTokens
+            : estimateTokens(intentPrompt, JSON.stringify(intent)),
+        );
+        const cost = estimateCostUsd(
+          out.model,
+          successfulUsage.inputTokens,
+          successfulUsage.outputTokens,
+        );
+        rt.emit({
+          node: "intent",
+          type: "llm_call",
+          durationMs: 0,
+          payload: {
+            model: out.model ?? "unknown",
+            inputTokens: successfulUsage.inputTokens,
+            outputTokens: successfulUsage.outputTokens,
+            estimatedCostUsd: cost.estimatedCostUsd,
+            pricingKnown: cost.pricingKnown,
+          },
+        });
       } catch (err) {
+        const tripReason = budgetTripReasonFromError(err);
+        if (tripReason) {
+          return budgetTripUpdate(new RcaBudgetExceededError(tripReason));
+        }
         rt?.emit?.({
           node: "intent",
           type: "intent_model_error",
@@ -2947,6 +3221,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
 
     let effectiveDeps: RcaRuntimeDeps = {
       ...deps,
+      budget: runBudget,
       skillContract: skill.contract,
       setActivePeriod: deps.setActivePeriod ?? setActivePeriod,
       setAllowedDateColumns: deps.setAllowedDateColumns ?? setAllowedDateColumns,
@@ -2963,7 +3238,18 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           () => activeTargetTable,
         );
         const executor = new ValidatedQueryExecutor({
-          model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
+          model: deps.sqlModel ?? (createChatModel("sql", {
+            semanticCacheContext: createSemanticCacheContext({
+              analysisState: {
+                question: state.question,
+                intent,
+                analysisPlan: state.analysisPlan,
+              },
+              semanticChunks: state.semanticChunks,
+              role: identity.roleScope,
+              rowScope,
+            }),
+          }) as unknown as ChatModelLike),
           mcp: guardedMcp,
           emitSpan: (event) =>
             rt.emit({
@@ -3088,32 +3374,35 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
 
     // Fail closed if resuming a thread without a recoverable analysis plan.
     if (isResume && !plan) {
-      return {
+      return withBudget({
         status: "error",
         answerText: "Lỗi phục hồi state: Không thể khôi phục kế hoạch phân tích từ checkpoint của thread.",
-      };
+      });
     }
 
     if (!plan) {
       try {
         baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
       } catch (err) {
-        return {
+        if (err instanceof RcaBudgetExceededError) {
+          return budgetTripUpdate(err, plan);
+        }
+        return withBudget({
           status: "error",
           answerText: err instanceof Error ? err.message : String(err),
-        };
+        });
       }
 
       if (!baseline.isValidBaseline) {
         const status = baseline.isSignificant === false ? "no_data" : "false_premise";
-        return {
+        return withBudget({
           status,
           answerText: baseline.message,
           sql: baseline.lastSql,
           tablesUsed: baseline.tablesUsed,
           resultPreview: [],
           toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
-        };
+        });
       }
 
       effectiveIntent.direction = baseline.resolvedDirection;
@@ -3124,10 +3413,10 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         deps.candidateRegions ?? DEFAULT_CANDIDATE_REGIONS,
       );
       if (!plan) {
-        return {
+        return withBudget({
           status: "error",
           answerText: "Không thể khởi tạo kế hoạch phân tích nguyên nhân gốc rễ.",
-        };
+        });
       }
     }
 
@@ -3201,7 +3490,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           decisionAction === "DENIED"
         ) {
           shouldExecute = false;
-          return {
+          return withBudget({
             status: "ok",
             analysisPlan: plan,
             answerText:
@@ -3209,12 +3498,12 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
             sql: baseline.lastSql,
             tablesUsed: baseline.tablesUsed,
             toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
-          };
+          });
         } else {
-          return {
+          return withBudget({
             status: "error",
             answerText: `Quyết định duyệt kế hoạch không hợp lệ: '${decisionAction || JSON.stringify(feedback)}'. Chỉ chấp nhận 'approve', 'modify', hoặc 'reject'.`,
-          };
+          });
         }
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes("outside the context of a graph")) {
@@ -3226,18 +3515,20 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     }
 
     if (!shouldExecute) {
-      return {
+      return withBudget({
         status: "ok",
         analysisPlan: plan,
         answerText: `${baseline.message} Đã lập kế hoạch phân rã 2 trục MECE với ${plan.steps.length} nhánh công việc sơ khởi.`,
         sql: baseline.lastSql,
         tablesUsed: baseline.tablesUsed,
         toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
-      };
+      });
     }
 
     const targetFactTable = getMetricTargetTable(plan.metricName);
-    const executedPlan = await executeAnalysis(
+    let executedPlan: AnalysisPlan;
+    try {
+      executedPlan = await executeAnalysis(
       plan,
       effectiveIntent,
       {
@@ -3279,11 +3570,17 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       },
       principal,
       targetFactTable,
-    );
+      );
+    } catch (err) {
+      if (err instanceof RcaBudgetExceededError) {
+        return budgetTripUpdate(err, plan);
+      }
+      throw err;
+    }
 
     const rcaAnswer = synthesizeReport(executedPlan);
 
-    return {
+    return withBudget({
       status: "ok",
       analysisPlan: executedPlan,
       rootCauseAnswer: rcaAnswer,
@@ -3291,7 +3588,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       sql: rcaAnswer.primaryCauses[0]?.sql ?? baseline.lastSql,
       tablesUsed: baseline.tablesUsed,
       toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
-    };
+    });
   };
 
   return { entry };

@@ -15,7 +15,7 @@ import {
   type ExecutorSpan,
   type McpToolCaller,
 } from "../src/queryExecutor/executor.js";
-import { createBudgetState } from "../src/queryExecutor/budgets.js";
+import { createBudgetState, recordLlmCall } from "../src/queryExecutor/budgets.js";
 import { ModelRetryError } from "../src/telemetry/retry.js";
 import { loadModelPricing } from "../src/telemetry/pricing.js";
 import {
@@ -24,6 +24,8 @@ import {
   invokeJsonWithUsage,
   invokeWithUsage,
   modelFromMessage,
+  type PlainJsonModelLike,
+  unaccountedUsage,
   usageFromMessage,
 } from "../src/telemetry/usage.js";
 
@@ -190,6 +192,78 @@ describe("invokeWithUsage", () => {
     ).rejects.toThrow();
   });
 
+  it("re-asks once after a Zod failure on the same structured profile and totals usage", async () => {
+    const prompts: string[] = [];
+    const profileOptions: unknown[] = [];
+    let calls = 0;
+    const budget = createBudgetState({ maxLlmCalls: 10 });
+    const model: ChatModelLike = {
+      withStructuredOutput: (_schema, options) => {
+        profileOptions.push(options);
+        return {
+          invoke: async (prompt) => {
+            prompts.push(prompt);
+            calls += 1;
+            const raw = calls === 1
+              ? rawMessage({ input_tokens: 7, output_tokens: 3 }, KNOWN_MODEL)
+              : rawMessage({ input_tokens: 11, output_tokens: 5 }, KNOWN_MODEL);
+            return {
+              raw,
+              parsed: calls === 1 ? { invalid: true } : PARSED,
+            };
+          },
+        };
+      },
+    };
+
+    const out = await invokeWithUsage(model, SqlProposalSchema, "proposal prompt", {
+      name: "sql_proposal",
+      node: "propose",
+      budget,
+    });
+
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.attempts).toBe(2);
+    expect(calls).toBe(2);
+    expect(profileOptions).toEqual([{ name: "sql_proposal", includeRaw: true }, { name: "sql_proposal", includeRaw: true }]);
+    expect(prompts[0]).toBe("proposal prompt");
+    expect(prompts[1]).toContain("Return exactly one valid JSON object");
+    expect(out).toMatchObject({
+      inputTokens: 18,
+      outputTokens: 8,
+      preAccountedUsage: { inputTokens: 7, outputTokens: 3 },
+    });
+    expect(budget.llmCalls).toBe(1);
+    expect(budget.tokensUsed).toBe(10);
+    const successfulUsage = unaccountedUsage(out);
+    recordLlmCall(budget, successfulUsage.inputTokens + successfulUsage.outputTokens);
+    expect(budget.llmCalls).toBe(2);
+    expect(budget.tokensUsed).toBe(26);
+  });
+
+  it("does not re-ask after a format failure exhausts the LLM-call budget", async () => {
+    let calls = 0;
+    const budget = createBudgetState({ maxLlmCalls: 1 });
+    const model: ChatModelLike = {
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          calls += 1;
+          return {
+            raw: rawMessage({ input_tokens: 5, output_tokens: 1 }, KNOWN_MODEL),
+            parsed: { invalid: true },
+          };
+        },
+      }),
+    };
+
+    await expect(invokeWithUsage(model, SqlProposalSchema, "q", { budget })).rejects.toThrow(
+      "Run budget exceeded (llm-calls)",
+    );
+    expect(calls).toBe(1);
+    expect(budget.llmCalls).toBe(1);
+    expect(budget.tokensUsed).toBe(6);
+  });
+
   it("retries 429 twice then succeeds on structured invoke without retrying schema/auth errors", async () => {
     let calls = 0;
     const budget = createBudgetState({ runDeadlineMs: 30_000 });
@@ -326,6 +400,66 @@ describe("invokeJsonWithUsage", () => {
     expect(String((error as Error).message)).not.toContain(CANARY_PHONE);
   });
 
+  it("re-asks once after malformed streamed JSON and includes failed-call usage", async () => {
+    const prompts: string[] = [];
+    const outputs = ["{bad json", JSON.stringify(PARSED)];
+    const usages = [
+      { input_tokens: 7, output_tokens: 3 },
+      { input_tokens: 11, output_tokens: 5 },
+    ];
+    let calls = 0;
+    const budget = createBudgetState({ maxLlmCalls: 10 });
+    const model: PlainJsonModelLike = {
+      invoke: async () => { throw new Error("stream is expected"); },
+      stream: async function* (prompt: string) {
+        prompts.push(prompt);
+        const index = calls++;
+        yield {
+          content: outputs[index],
+          usage_metadata: usages[index],
+          response_metadata: { model: KNOWN_MODEL },
+        };
+      },
+    };
+
+    const out = await invokeJsonWithUsage(model, SqlProposalSchema, "json prompt", { budget });
+
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.attempts).toBe(2);
+    expect(prompts[0]).toBe("json prompt");
+    expect(prompts[1]).toContain("Return exactly one valid JSON object");
+    expect(out).toMatchObject({
+      inputTokens: 18,
+      outputTokens: 8,
+      preAccountedUsage: { inputTokens: 7, outputTokens: 3 },
+    });
+    expect(budget.llmCalls).toBe(1);
+    expect(budget.tokensUsed).toBe(10);
+  });
+
+  it("re-asks a provider 5xx with the unchanged prompt", async () => {
+    const prompts: string[] = [];
+    let calls = 0;
+    const budget = createBudgetState({ maxLlmCalls: 10 });
+    const model: ChatModelLike = {
+      withStructuredOutput: () => ({
+        invoke: async (prompt) => {
+          prompts.push(prompt);
+          calls += 1;
+          if (calls === 1) throw Object.assign(new Error("gateway failure"), { status: 502 });
+          return PARSED;
+        },
+      }),
+    };
+
+    const out = await invokeWithUsage(model, SqlProposalSchema, "same prompt", { budget });
+
+    expect(out.parsed).toEqual(PARSED);
+    expect(out.attempts).toBe(2);
+    expect(prompts).toEqual(["same prompt", "same prompt"]);
+    expect(budget.llmCalls).toBe(1);
+  });
+
   it("fails closed on schema violations and degrades fakes to zero usage", async () => {
     await expect(
       invokeJsonWithUsage(
@@ -416,7 +550,7 @@ describe("invokeJsonWithUsage", () => {
     expect(out.attempts).toBe(3);
     expect(calls).toBe(3);
 
-    // Invalid JSON is never retried.
+    // Invalid JSON receives one format re-ask before the final parse error.
     let badJsonCalls = 0;
     await expect(
       invokeJsonWithUsage(
@@ -434,7 +568,7 @@ describe("invokeJsonWithUsage", () => {
         { retry: { maxRetries: 3, baseMs: 1, maxWaitMs: 50 }, sleep: async () => {} },
       ),
     ).rejects.toThrow(/not valid JSON/);
-    expect(badJsonCalls).toBe(1);
+    expect(badJsonCalls).toBe(2);
 
     // Persistent 429 throws ModelRetryError (RATE_LIMITED).
     await expect(

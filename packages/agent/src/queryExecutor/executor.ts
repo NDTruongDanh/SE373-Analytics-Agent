@@ -14,9 +14,11 @@ import { sqlGuard } from "@shared/access-policy";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { z } from "zod";
 import {
+  budgetTripReasonFromError,
   checkBudget,
   createBudgetState,
   estimateTokens,
+  formatBudgetTripTemplate,
   recordLlmCall,
   type BudgetState,
   type BudgetTripReason,
@@ -27,6 +29,7 @@ import {
   extractFencedSqlProposal,
   invokeJsonWithUsage,
   invokeWithUsage,
+  unaccountedUsage,
   type LlmUsage,
 } from "../telemetry/usage.js";
 import {
@@ -131,7 +134,9 @@ export interface TimeRangeOptionsInput {
 export interface PartialFindings {
   tablesDescribed: string[];
   lastSql: string | null;
+  verifiedSql: string | null;
   rowsFetched: number;
+  rowCount: number | null;
 }
 
 export type ExecutorResult =
@@ -173,9 +178,11 @@ export type ExecutorResult =
       error: DbToolError;
       sql: string | null;
       attempts: number;
+      budgetExceeded?: false;
     }
   | {
-      status: "cannot_answer";
+      status: "error";
+      error: DbToolError;
       reason: string;
       budgetExceeded: true;
       tripReason: BudgetTripReason;
@@ -203,6 +210,21 @@ function statusForError(code: ErrorCode): "restricted" | "error" {
     default:
       return "error";
   }
+}
+
+type ExecutorFailure =
+  | Extract<ExecutorResult, { status: "restricted" }>
+  | Extract<ExecutorResult, { status: "error"; budgetExceeded?: false }>;
+
+function executorFailure(
+  error: DbToolError,
+  sql: string | null,
+  attempts: number,
+): ExecutorFailure {
+  if (statusForError(error.code) === "restricted") {
+    return { status: "restricted", error, sql, attempts };
+  }
+  return { status: "error", error, sql, attempts, budgetExceeded: false };
 }
 
 /** Unknown failures fail closed as non-repairable INTERNAL_ERROR; preserves cursorPosition for repair feedback. */
@@ -660,21 +682,49 @@ export class ValidatedQueryExecutor {
     const partials: PartialFindings = {
       tablesDescribed: [],
       lastSql: null,
+      verifiedSql: null,
       rowsFetched: 0,
+      rowCount: null,
     };
 
     const budgetTrip = (
       reason: BudgetTripReason,
       attempts: number,
-    ): Extract<ExecutorResult, { status: "cannot_answer" }> => ({
-      status: "cannot_answer",
-      reason: `run budget exceeded (${reason}); degrading to synthesis with partial findings`,
-      budgetExceeded: true,
-      tripReason: reason,
-      partials: { ...partials, tablesDescribed: [...partials.tablesDescribed] },
-      sql: partials.lastSql,
-      attempts,
-    });
+    ): Extract<ExecutorResult, { status: "error" }> => {
+      const message = formatBudgetTripTemplate({
+        reason,
+        budget,
+        completed: [
+          ...partials.tablesDescribed.map((table) => `Described table ${table}`),
+          ...(partials.rowCount !== null ? ["Executed and verified the SQL query"] : []),
+        ],
+        verifiedSql: partials.verifiedSql,
+        rowCount: partials.rowCount ?? undefined,
+        remaining: ["Complete the remaining query execution and result verification"],
+      });
+      this.span({
+        node: "executor",
+        type: "node_done",
+        attempt: attempts,
+        payload: {
+          budgetExceeded: true,
+          tripReason: reason,
+          caveat: "budget_exceeded",
+          completedSteps: [...partials.tablesDescribed],
+          remainingSteps: ["query execution and result verification"],
+        },
+      });
+      return {
+        status: "error",
+        error: dbToolError("INTERNAL_ERROR", message),
+        reason: message,
+        budgetExceeded: true,
+        tripReason: reason,
+        partials: { ...partials, tablesDescribed: [...partials.tablesDescribed] },
+        sql: partials.verifiedSql,
+        attempts,
+      };
+    };
 
     // Describe failures abort immediately because the resulting catalog is the repair loop's ground truth.
     const described: DescribedTable[] = [];
@@ -687,7 +737,7 @@ export class ValidatedQueryExecutor {
         raw = await this.mcp.call("describe_table", { ...identity, table });
       } catch (thrown) {
         const error = asDbToolError("describe_table", thrown);
-        return { status: statusForError(error.code), error, sql: null, attempts: 1 };
+        return executorFailure(error, null, 1);
       }
       const parsed = DescribeTableOutputSchema.safeParse(raw);
       if (!parsed.success) {
@@ -801,9 +851,11 @@ export class ValidatedQueryExecutor {
                   { ...callOpts, fallbackParse: extractFencedSqlProposal },
                 );
           proposal = out.parsed;
-          usage = { inputTokens: out.inputTokens, outputTokens: out.outputTokens };
+          usage = unaccountedUsage(out);
           usageModel = out.model;
         } catch (thrown) {
+          const tripReason = budgetTripReasonFromError(thrown);
+          if (tripReason) return budgetTrip(tripReason, attempt);
           if (isRateLimitFailure(thrown)) {
             return {
               status: "error",
@@ -876,12 +928,7 @@ export class ValidatedQueryExecutor {
           });
           continue;
         }
-        return {
-          status: statusForError(guard.error.code),
-          error: guard.error,
-          sql,
-          attempts: attempt,
-        };
+        return executorFailure(guard.error, sql, attempt);
       }
       if (diagnosticBaseline !== null) {
         const tablesMatch =
@@ -1022,12 +1069,7 @@ export class ValidatedQueryExecutor {
           repairFeedback = routed.feedback;
           continue;
         }
-        return {
-          status: statusForError(error.code),
-          error,
-          sql: finalSql,
-          attempts: attempt,
-        };
+        return executorFailure(error, finalSql, attempt);
       }
 
       // Emit ok/code only (never message/PII) per attempt so run_done can derive attempt/failure counts.
@@ -1072,6 +1114,8 @@ export class ValidatedQueryExecutor {
         maskedColumns = parsedRun.data.maskedColumns;
         rowScopeApplied = parsedRun.data.rowScopeApplied;
         partials.rowsFetched = rows.length;
+        partials.rowCount = parsedRun.data.rowCount;
+        partials.verifiedSql = finalSql;
         this.span({
           node: "run",
           type: "tool_call",
@@ -1108,12 +1152,7 @@ export class ValidatedQueryExecutor {
           repairFeedback = routed.feedback;
           continue;
         }
-        return {
-          status: statusForError(error.code),
-          error,
-          sql: finalSql,
-          attempts: attempt,
-        };
+        return executorFailure(error, finalSql, attempt);
       }
 
       if (rows.length === 0) {
@@ -1179,12 +1218,7 @@ export class ValidatedQueryExecutor {
     const terminal =
       lastError ??
       dbToolError("INTERNAL_ERROR", "repair loop exhausted without an error");
-    return {
-      status: statusForError(terminal.code),
-      error: terminal,
-      sql: partials.lastSql,
-      attempts: attemptNo,
-    };
+    return executorFailure(terminal, partials.lastSql, attemptNo);
   }
 
   private routeMcpError(

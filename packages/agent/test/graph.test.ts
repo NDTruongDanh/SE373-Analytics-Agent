@@ -671,8 +671,9 @@ describe("root graph seam", () => {
       invokeOptions("t-exhausted"),
     );
 
-    expect(out.status).toBe("cannot_answer");
-    expect(out.answerText).toContain("Run budget exceeded");
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.answerText).toContain("budget_exceeded");
     expect(modelCalled).toBe(false);
     expect(executorCalled).toBe(false);
   });
@@ -698,8 +699,9 @@ describe("root graph seam", () => {
       invokeOptions("t-generic-exhausted"),
     );
 
-    expect(out.status).toBe("cannot_answer");
-    expect(out.answerText).toContain("Run budget exceeded");
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.answerText).toContain("budget_exceeded");
     expect(retrieveCalled).toBe(false);
     expect(handlerCalled).toBe(false);
   });

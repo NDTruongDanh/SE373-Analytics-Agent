@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MemorySaver, StateGraph, START, END, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
   buildBaselineQuery,
@@ -1483,6 +1483,61 @@ describe("UC-05 Root Cause Analysis Subgraph (Issue #35)", () => {
     expect(resumed.analysisPlan?.steps.some((s) => s.status === "done")).toBe(true);
     expect(executedSteps).toContain("step_region_central");
     expect(resumed.answerText).toContain("Đã hoàn thành phân tích bóc tách");
+  });
+
+  it("stops RCA after a completed step when the shared run deadline trips", async () => {
+    let currentNow = 1_700_000_000_000;
+    const deadlineMs = currentNow + 1000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => currentNow);
+    const executedSteps: string[] = [];
+    try {
+      const runtime = createRcaRuntime({
+        fetchBaseline: async (_metric, _type, period) =>
+          period.start.includes("08") ? 2_500_000_000 : 2_040_000_000,
+        fetchStepMetrics: async (step) => {
+          executedSteps.push(step.stepId);
+          currentNow = deadlineMs + 1;
+          return { baselineVal: 500_000_000, currentVal: 100_000_000 };
+        },
+      });
+      const graph = new StateGraph(AgentStateSchema)
+        .addNode("rca", runtime.entry)
+        .addEdge(START, "rca")
+        .addEdge("rca", END)
+        .compile({ checkpointer: new MemorySaver() });
+      const threadId = makeThreadId("u_budget_trip", "s_rca_midrun");
+
+      await graph.invoke(
+        {
+          question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?",
+          ucId: RCA_UC_ID,
+          budget: {
+            llmCalls: 0,
+            tokensUsed: 0,
+            maxLlmCalls: 20,
+            maxTokens: 60_000,
+            deadlineMs,
+          },
+        },
+        { configurable: { thread_id: threadId } },
+      );
+      const resumed = (await graph.invoke(
+        resumeDecision({ action: "APPROVE" }),
+        { configurable: { thread_id: threadId } },
+      )) as AgentState;
+
+      expect(resumed.status).toBe("error");
+      expect(resumed.budgetExceeded).toBe(true);
+      expect(resumed.answerText).toContain("budget_exceeded (runDeadlineMs)");
+      expect(resumed.answerText).toContain("Completed:");
+      expect(resumed.answerText).toContain("Remaining:");
+      expect(resumed.analysisPlan?.steps.filter((step) => step.status === "done")).toHaveLength(1);
+      expect(resumed.analysisPlan?.steps.filter((step) => step.status === "todo").length).toBeGreaterThan(0);
+      expect(executedSteps).toHaveLength(1);
+      expect(resumed.budget).toMatchObject({ llmCalls: 0, tokensUsed: 0, deadlineMs });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("T36-T3: Resume with MODIFY replaces steps with custom steps and executes them", async () => {

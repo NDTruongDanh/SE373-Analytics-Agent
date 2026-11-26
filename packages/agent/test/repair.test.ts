@@ -600,10 +600,11 @@ describe("bounded repair loop", () => {
       budget: createBudgetState({ maxLlmCalls: 2 }),
     });
 
-    expect(result.status).toBe("cannot_answer");
-    if (result.status !== "cannot_answer") return;
+    expect(result.status).toBe("error");
+    if (result.status !== "error" || !("budgetExceeded" in result) || !result.budgetExceeded) return;
     expect(result.budgetExceeded).toBe(true);
     expect(result.tripReason).toBe("llm-calls");
+    expect(result.reason).toContain("budget_exceeded");
     expect(result.partials.tablesDescribed).toEqual(["orders"]);
     expect(result.partials.lastSql).toContain("SELECT status, COUNT");
     // Attempt 1 spent one LLM call on the proposal and failed repairable at

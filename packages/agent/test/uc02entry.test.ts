@@ -780,8 +780,9 @@ describe("UC-02 text-to-SQL entry", () => {
       fakeRuntime(),
     );
     expect(searchCalls).toBe(0);
-    expect(expiredFirst.status).toBe("cannot_answer");
-    expect(expiredFirst.answerText).toMatch(/deadline/i);
+    expect(expiredFirst.status).toBe("error");
+    expect(expiredFirst.budgetExceeded).toBe(true);
+    expect(expiredFirst.answerText).toMatch(/budget_exceeded.*deadline/i);
 
     let stepCalls = 0;
     let fakeNow = 1_700_000_000_000;
@@ -832,8 +833,9 @@ describe("UC-02 text-to-SQL entry", () => {
         fakeRuntime(),
       );
       expect(stepCalls).toBe(1);
-      expect(expiredSecond.status).toBe("cannot_answer");
-      expect(expiredSecond.answerText).toMatch(/deadline/i);
+      expect(expiredSecond.status).toBe("error");
+      expect(expiredSecond.budgetExceeded).toBe(true);
+      expect(expiredSecond.answerText).toMatch(/budget_exceeded.*deadline/i);
       expect(expiredSecond.toolsCalled).toContain("search_semantic_layer");
     } finally {
       nowSpy.mockRestore();

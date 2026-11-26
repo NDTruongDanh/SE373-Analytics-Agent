@@ -30,6 +30,7 @@ import {
 } from "./subgraphs/textToSql.js";
 import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "./constants.js";
 import { routeQuestionToUc } from "./router.js";
+import { formatBudgetTripTemplate, type BudgetTripReason } from "./budgetTemplate.js";
 
 export interface RootGraphDeps {
   checkpointer?: BaseCheckpointSaver | boolean;
@@ -100,8 +101,25 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     // Keep the frozen root off queryExecutor: text-to-SQL delegates budget init/check
     // (pure, no I/O); other UCs use an inline counter/deadline check.
     .addNode("budgetGuard", async (state: AgentState): Promise<AgentUpdate> => {
-      if (state.ucId === TEXT_TO_SQL_UC_ID) return guardTextToSqlBudget(state);
-      const reason =
+      if (state.ucId === TEXT_TO_SQL_UC_ID) {
+        const update = guardTextToSqlBudget(state);
+        if (update.budgetExceeded) {
+          const tripReason =
+            state.budget.llmCalls >= state.budget.maxLlmCalls
+              ? "llm-calls"
+              : state.budget.tokensUsed >= state.budget.maxTokens
+                ? "tokens"
+                : "deadline";
+          emit({
+            node: "budget_guard",
+            type: "node_done",
+            durationMs: 0,
+            payload: { budgetExceeded: true, tripReason, caveat: "budget_exceeded" },
+          });
+        }
+        return update;
+      }
+      const reason: BudgetTripReason | null =
         state.budget.llmCalls >= state.budget.maxLlmCalls
           ? "llm-calls"
           : state.budget.tokensUsed >= state.budget.maxTokens
@@ -111,12 +129,31 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
               ? "deadline"
               : null;
       if (reason) {
+        const answerText = formatBudgetTripTemplate({
+          reason,
+          budget: state.budget,
+          completed: [
+            ...state.tablesUsed.map((table) => `Queried table ${table}`),
+            ...(state.rowCount !== null ? [`Verified query returned ${state.rowCount} rows`] : []),
+          ],
+          verifiedSql:
+            state.status === "ok" || state.status === "no_data" ? state.sql : null,
+          rowCount: state.rowCount ?? undefined,
+          remaining: ["Finish the remaining analysis and verify its results"],
+        });
+        emit({
+          node: "budget_guard",
+          type: "node_done",
+          durationMs: 0,
+          payload: { budgetExceeded: true, tripReason: reason, caveat: "budget_exceeded" },
+        });
         return {
-          status: "cannot_answer",
-          answerText: `Run budget exceeded (${reason}); no model or query was called.`,
+          status: "error",
+          budgetExceeded: true,
+          answerText,
         };
       }
-      return {};
+      return { budgetExceeded: false };
     })
     // budgetGuard runs first and short-circuits trips straight to answer, so
     // skill-contract loading inside understand never runs after a budget trip.
@@ -172,7 +209,7 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .addNode("answer", runWithRuntime((state, rt) => synthesize(state, rt)))
     .addEdge(START, "budgetGuard")
     .addConditionalEdges("budgetGuard", (state: AgentState) =>
-      state.status === "cannot_answer" ? "answer" : "understand",
+      state.budgetExceeded || state.status === "cannot_answer" ? "answer" : "understand",
     )
     .addEdge("understand", "retrieve")
     .addEdge("retrieve", "router")
@@ -223,6 +260,7 @@ export async function runTracerGraph(
         runId: ctx.runId,
         userId: ctx.userId,
         roleScope: ctx.roleScope,
+        ...(ctx.rowScope !== undefined ? { rowScope: ctx.rowScope } : {}),
         threadId: ctx.threadId,
         tracesDir: ctx.tracesDir,
       },

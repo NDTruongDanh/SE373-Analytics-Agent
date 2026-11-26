@@ -511,6 +511,46 @@ export function isRateLimitFailure(error: unknown): boolean {
   return classifyModelError(error).code === "RATE_LIMITED";
 }
 
+export type ModelReaskReason =
+  | { code: "syntax_error" | "zod_error" | "output_parse_error"; formatFailure: true }
+  | { code: "provider_5xx"; formatFailure: false; status: number };
+
+export function classifyModelReaskFailure(error: unknown): ModelReaskReason | null {
+  if (error instanceof ModelRetryError) return null;
+  const chain = collectErrorChain(error);
+  const status = readHttpStatus(chain);
+  if (
+    status === 400 ||
+    status === 401 ||
+    status === 402 ||
+    status === 403 ||
+    status === 404 ||
+    status === 408 ||
+    status === 503
+  ) {
+    return null;
+  }
+
+  const cls = classifyModelError(error);
+  if (cls.code === "RATE_LIMITED") return null;
+  if (cls.reason === "aborted" || cls.reason === "timeout" || cls.reason === "context_overflow") {
+    return null;
+  }
+
+  const shape = isNonRetryableShape(error, chain);
+  if (shape === "syntax_error" || shape === "zod_error" || shape === "output_parse_error") {
+    return { code: shape, formatFailure: true };
+  }
+  if (status !== undefined && status >= 500 && status <= 599) {
+    return { code: "provider_5xx", formatFailure: false, status };
+  }
+  return null;
+}
+
+export function isReaskableModelFailure(error: unknown): boolean {
+  return classifyModelReaskFailure(error) !== null;
+}
+
 export function toModelDbToolError(
   error: unknown,
   prefix = "Model call failed",

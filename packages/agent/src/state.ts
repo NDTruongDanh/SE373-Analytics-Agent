@@ -139,12 +139,14 @@ export const AgentStateSchema = new StateSchema({
     .max(RESULT_PREVIEW_MAX)
     .default([]),
   resultTruncated: z.boolean().default(false),
+  rowCount: z.number().int().nonnegative().nullable().default(null),
   columns: z.array(z.string()).default([]),
   sql: z.string().nullable().default(null),
   tablesUsed: z.array(z.string()).default([]),
   toolsCalled: z.array(z.string()).default([]),
   status: SQLAnswerStatusSchema.default("no_data"),
   answerText: z.string().default(""),
+  budgetExceeded: z.boolean().default(false),
   budget: new ReducedValue(BudgetStateSchema, {
     inputSchema: BudgetUpdateSchema,
     reducer: (current: BudgetState, next: BudgetUpdate): BudgetState => ({

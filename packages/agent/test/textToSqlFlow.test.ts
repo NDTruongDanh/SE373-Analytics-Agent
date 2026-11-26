@@ -737,8 +737,9 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       runConfig("t-budget", "r-budget"),
     );
 
-    expect(out.status).toBe("cannot_answer");
-    expect(out.answerText).toMatch(/Run budget exceeded/);
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.answerText).toMatch(/budget_exceeded/);
     expect(listCalls).toBe(0);
   });
 
@@ -960,7 +961,9 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
         runConfig("t-followup-deadline", "r-followup-deadline"),
       );
       expect(queries).toEqual(["Số đơn theo kênh bán và khu vực", "kênh bán"]);
-      expect(out.status).toBe("cannot_answer");
+      expect(out.status).toBe("error");
+      expect(out.budgetExceeded).toBe(true);
+      expect(out.answerText).toMatch(/budget_exceeded/);
       expect(out.answerText).toMatch(/deadline/i);
       expect(out.toolsCalled).toContain("search_semantic_layer");
     } finally {

@@ -187,7 +187,7 @@ describe("UC-03 VIZ seam", () => {
     expect(seen.spans.map((span) => span.type)).toContain("claim_stripped");
   });
 
-  it("repairs a chartType mismatch within the 2-repair bound", async () => {
+  it("re-asks once for a chart schema mismatch before using a render repair", async () => {
     const { rt } = harness();
     const bad = {
       ...barDraft(),
@@ -212,17 +212,17 @@ describe("UC-03 VIZ seam", () => {
     );
     const spec = out.vizSpec as Uc03VizSpec;
     expect(spec.report.chartType).toBe("bar");
-    expect(spec.repairs).toBe(1);
+    expect(spec.repairs).toBe(0);
     expect(out.budget?.llmCalls).toBe(2);
     expect(seen2.prompts).toHaveLength(2);
-    expect(seen2.prompts[1]).toMatch(/Repair attempt 1/);
+    expect(seen2.prompts[1]).toMatch(/Return exactly one valid JSON object/);
     void rt;
   });
 
-  it("falls back to the result table after exhausted repairs", async () => {
+  it("keeps malformed output re-asks separate from chart repairs", async () => {
     const { seen, rt } = harness();
-    // Two categorical splits force chartType "table"; every draft is an
-    // unrepairable shape violation, so all 3 attempts fail headlessly.
+    // Two categorical splits force chartType "table"; the drafts fail schema
+    // parsing, so one format re-ask is allowed without a chart repair.
     const tableBuffer = {
       columns: ["region", "product", "revenue"],
       rows: [
@@ -248,8 +248,50 @@ describe("UC-03 VIZ seam", () => {
     );
     const spec = out.vizSpec as Uc03VizSpec;
     expect(spec.report.chartType).toBe("table");
-    expect(spec.repairs).toBe(2);
-    expect(out.budget?.llmCalls).toBe(3);
+    expect(spec.repairs).toBe(0);
+    expect(out.budget?.llmCalls).toBe(2);
+    expect(seen.prompts).toHaveLength(2);
+  });
+
+  it("returns a terminal budget template before VIZ when the call limit is exhausted", async () => {
+    const { seen, rt } = harness();
+    const model = scriptedModel([barDraft()], seen);
+    const out = await createUc03Viz({ model })(
+      stateOf({
+        status: "ok",
+        columns: BAR_BUFFER.columns,
+        resultPreview: BAR_BUFFER.rows,
+        sql: "SELECT region, revenue FROM sales",
+        rowCount: 3,
+        tablesUsed: ["sales"],
+        budget: { llmCalls: 1, tokensUsed: 10, maxLlmCalls: 1, maxTokens: 60000, deadlineMs: 0 },
+      }),
+      rt,
+    );
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.answerText).toContain("budget_exceeded (maxLlmCalls)");
+    expect(out.answerText).toContain("Verified SQL: SELECT region, revenue FROM sales");
+    expect(out.answerText).toContain("Verified row count: 3");
+    expect(seen.prompts).toHaveLength(0);
+  });
+
+  it("stops before claim regeneration when the VIZ draft spends the final call", async () => {
+    const { seen, rt } = harness();
+    const model = scriptedModel([barDraft("South led with 9,999M VND.")], seen);
+    const out = await createUc03Viz({ model })(
+      stateOf({
+        status: "ok",
+        columns: BAR_BUFFER.columns,
+        resultPreview: BAR_BUFFER.rows,
+        budget: { llmCalls: 0, tokensUsed: 0, maxLlmCalls: 1, maxTokens: 60000, deadlineMs: 0 },
+      }),
+      rt,
+    );
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.budget?.llmCalls).toBe(1);
+    expect(seen.prompts).toHaveLength(1);
   });
 
   it("retries 429s in viz without burning chart repairs and degrades cleanly when exhausted", async () => {

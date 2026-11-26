@@ -63,5 +63,5 @@ export async function executeAlertQuery(
     );
   }
 
-  throw new Error(`Validated alert query cannot run: ${result.reason}`);
+  throw new Error("Validated alert query failed");
 }

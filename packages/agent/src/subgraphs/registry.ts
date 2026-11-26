@@ -1,4 +1,7 @@
-import { createChatModel } from "../models/factory.js";
+import {
+  createChatModel,
+  createSemanticCacheContext,
+} from "../models/factory.js";
 import { estimateCostUsd } from "../telemetry/usage.js";
 import {
   callMcpTool,
@@ -130,12 +133,22 @@ function readTracerContext(rt: RootRuntime): TracerDefaultContext {
     runId: pick("runId"),
     userId: pick("userId"),
     roleScope: pick("roleScope"),
+    ...(Object.hasOwn(cfg, "rowScope")
+      ? { rowScope: cfg["rowScope"] as TracerRunConfig["rowScope"] }
+      : {}),
     threadId: pick("threadId"),
     tracesDir: pick("tracesDir"),
   };
-  const missing = (Object.keys(ctx) as (keyof TracerDefaultContext)[]).filter(
-    (key) => ctx[key].length === 0,
-  );
+  const requiredKeys = [
+    "mcpUrl",
+    "token",
+    "runId",
+    "userId",
+    "roleScope",
+    "threadId",
+    "tracesDir",
+  ] as const;
+  const missing = requiredKeys.filter((key) => ctx[key].length === 0);
   if (missing.length > 0) {
     // Fail closed: run identity must come completely from the host context, never partial or from prompts.
     throw new Error(
@@ -173,7 +186,18 @@ export function createTracerDefaultEntry(): UcEntryHandler {
     };
 
     const started = Date.now();
-    const model = createChatModel();
+    const model = createChatModel({
+      semanticCacheContext: createSemanticCacheContext({
+        analysisState: {
+          question: state.question,
+          intent: state.intent,
+          tablesUsed: state.tablesUsed,
+        },
+        semanticChunks: state.semanticChunks,
+        role: ctx.roleScope,
+        rowScope: ctx.rowScope,
+      }),
+    });
     const out = await model.proposeSqlWithUsage(state.question, {
       callbacks: rt.config.callbacks,
       node: "understand",
