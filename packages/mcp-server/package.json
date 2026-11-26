@@ -13,7 +13,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "tsc -b && vitest run",
-    "semantic:index": "tsx src/semantic/index.ts"
+    "semantic:index": "tsx src/semantic/index.ts",
+    "semantic:verify": "tsx --env-file-if-exists=../../.env src/semantic/verify.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "catalog:",
