@@ -188,14 +188,14 @@ chunks:
 });
 
 describe("verifyMetricsSql", () => {
-  it("runs EXPLAIN on all metrics and substitutes parameter placeholders", async () => {
+  it("runs EXPLAIN on all metrics and substitutes parameter placeholders while preserving ::numeric casts", async () => {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-test-"));
     try {
       const metricsYaml = `
 chunks:
   - chunkId: "metric:new_customers"
     metricName: "new_customers"
-    sql: "SELECT COUNT(*) FROM orders WHERE purchase_date >= :period_start AND purchase_date < :period_end"
+    sql: "SELECT COUNT(*)::numeric FROM orders WHERE purchase_date >= :period_start AND purchase_date < :period_end"
 `;
       writeFileSync(path.join(tmpDir, "metrics.yaml"), metricsYaml, "utf8");
 
@@ -211,6 +211,7 @@ chunks:
       expect(res.failures).toEqual([]);
       expect(res.checkedMetrics).toBe(1);
       expect(executedQueries[0]).toMatch(/^EXPLAIN /);
+      expect(executedQueries[0]).toContain("COUNT(*)::numeric");
       expect(executedQueries[0]).not.toContain(":period_start");
       expect(executedQueries[0]).toContain("'2026-01-01'");
     } finally {

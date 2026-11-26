@@ -254,8 +254,9 @@ export async function verifyMetricsSql(
     if (!chunk.sql) continue;
     checkedMetrics += 1;
 
-    // Substitute named parameter placeholders like :period_start or :period_end with safe test literals
-    const explainSql = chunk.sql.replace(/:[a-zA-Z0-9_]+/g, "'2026-01-01'");
+    // Substitute named parameter placeholders like :period_start or :period_end with safe test literals.
+    // Use negative lookbehind (?<!:) so PostgreSQL cast syntax like ::numeric is preserved.
+    const explainSql = chunk.sql.replace(/(?<!:):[a-zA-Z0-9_]+/g, "'2026-01-01'");
 
     try {
       await client.query(`EXPLAIN ${explainSql}`);
