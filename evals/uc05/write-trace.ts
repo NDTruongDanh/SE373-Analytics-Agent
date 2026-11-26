@@ -101,7 +101,6 @@ async function main(): Promise<void> {
 
   const baseState = {
     question: QUESTION,
-    ucId: "root-cause-analysis",
     status: "ok",
     answerText: "",
     sql: null,

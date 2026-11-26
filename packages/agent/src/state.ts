@@ -9,16 +9,17 @@ import {
   SQLAnswerStatusSchema,
 } from "@shared/contracts";
 import { z } from "zod";
-import { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
+import {
+  BUDGET_DEFAULTS,
+  RESULT_PREVIEW_MAX,
+  ROUTES,
+  TEXT_TO_SQL_ROUTE,
+} from "./constants.js";
 
 export { BUDGET_DEFAULTS, RESULT_PREVIEW_MAX } from "./constants.js";
 
-// AGENT-01 shared root state (01-10). Plain JSON only: no Pool, class
-// instance, function, or pg import may ever enter this schema — checkpoint
-// payloads serialize verbatim into PostgresSaver rows owned by 01-13/01-14.
-// The full <=1000-row buffer lives in transient RAM outside state per
-// architecture section 4.3; only resultPreview (<=50 rows) is checkpointed.
-// BUDGET_DEFAULTS.runDeadlineMs is the creation window; BudgetState.deadlineMs is the absolute epoch initialized by the guard.
+// Plain JSON only (no Pool, class instances, or functions): checkpoints serialize verbatim to PostgresSaver.
+// Keep full query buffers outside state; only the <=50-row resultPreview is checkpointed.
 
 export const IntentSchema = z.object({
   metric: z.string().nullable().default(null),
@@ -38,7 +39,6 @@ export const IntentSchema = z.object({
   queryMode: z.enum(["standard_query", "definition_lookup"]).default("standard_query"),
 });
 
-/** The one unresolved intent component a user may answer in a HITL turn. */
 export const ClarificationFieldSchema = z.enum([
   "metric",
   "timeRange",
@@ -48,7 +48,6 @@ export const ClarificationFieldSchema = z.enum([
 ]);
 export type ClarificationField = z.infer<typeof ClarificationFieldSchema>;
 
-/** Checkpoint-safe Clarify-Then-Query request (UC-01, maximum two turns). */
 export const PendingClarificationSchema = z.object({
   field: ClarificationFieldSchema,
   question: z.string().min(1),
@@ -83,15 +82,13 @@ const BudgetStateSchema = z
     tokensUsed: z.number().int().nonnegative().default(0),
     maxLlmCalls: z.number().int().positive().default(BUDGET_DEFAULTS.maxLlmCalls),
     maxTokens: z.number().int().positive().default(BUDGET_DEFAULTS.maxTokens),
-    /** Absolute deadline, initialized by the root budget guard. */
     deadlineMs: z
       .number()
       .int()
       .nonnegative()
       .default(0),
   })
-  // Object-level default seeds the reducer channel so limits are present on
-  // a fresh run and partial writes merge against full defaults (D-13).
+  // Seed reducer defaults at the object level so partial writes merge against full limits on fresh runs.
   .default(() => ({
     llmCalls: 0,
     tokensUsed: 0,
@@ -115,7 +112,6 @@ const TelemetryStateSchema = z
     completionTokens: z.number().int().nonnegative().default(0),
     latencyMs: z.number().nonnegative().default(0),
   })
-  // Seeds the reducer channel with zero counters (same pattern as budget).
   .default(() => ({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }));
 type TelemetryState = z.infer<typeof TelemetryStateSchema>;
 const TelemetryUpdateSchema = z.object({
@@ -127,8 +123,7 @@ type TelemetryUpdate = z.infer<typeof TelemetryUpdateSchema>;
 
 export const AgentStateSchema = new StateSchema({
   question: z.string().default(""),
-  /** UC id the router dispatches on; "" or unknown ids fall to the default route. */
-  ucId: z.string().default(""),
+  route: z.enum(ROUTES).default(TEXT_TO_SQL_ROUTE),
   intent: IntentSchema.default(() => ({
     metric: null,
     dimensions: [],
@@ -139,31 +134,22 @@ export const AgentStateSchema = new StateSchema({
     queryMode: "standard_query" as const,
   })),
   semanticChunks: z.array(SemanticChunkSchema).default([]),
-  /** Allowed tables returned by list_tables for the current run (#89). */
   catalogTables: z.array(CatalogTableSchema).default([]),
-  /** Tracks whether list_tables ran and succeeded for this run (#89). */
   catalogStatus: z.enum(["unloaded", "ready", "empty", "error"]).default("unloaded"),
-  /** Question string for which semanticChunks were pre-retrieved, avoiding duplicate MCP search (#89). */
   semanticQuery: z.string().nullable().default(null),
-  /** Outcome of semantic retrieval for distinguishing infra/scope failure from out-of-schema (#89). */
   semanticRetrieveStatus: z.enum(["unloaded", "ok", "error"]).default("unloaded"),
-  /** Normalized MCP error code if semantic retrieval failed (#89). */
   semanticErrorCode: z.string().nullable().default(null),
-  /** Checkpointed preview: zod max rejects anything over 50 rows. */
   resultPreview: z
     .array(z.record(z.string(), z.unknown()))
     .max(RESULT_PREVIEW_MAX)
     .default([]),
-  /** Real truncation flag propagated from RunQueryOutput.truncated (H-05). */
   resultTruncated: z.boolean().default(false),
   columns: z.array(z.string()).default([]),
   sql: z.string().nullable().default(null),
   tablesUsed: z.array(z.string()).default([]),
   toolsCalled: z.array(z.string()).default([]),
-  /** 1.0.0 answer statuses (D-02): ok/no_data continue to VIZ, the rest synthesize. */
   status: SQLAnswerStatusSchema.default("no_data"),
   answerText: z.string().default(""),
-  /** Additive counters merge across nodes; limits survive reduction. */
   budget: new ReducedValue(BudgetStateSchema, {
     inputSchema: BudgetUpdateSchema,
     reducer: (current: BudgetState, next: BudgetUpdate): BudgetState => ({
@@ -184,15 +170,10 @@ export const AgentStateSchema = new StateSchema({
   }),
   runId: z.string().default(""),
   threadId: z.string().default(""),
-  /** VIZ seam output (JSON only); set by the injected VIZ implementation. */
   vizSpec: z.unknown().nullable().default(null),
-  /** One structured UC-01 clarification request, or no pending question. */
   pendingClarification: PendingClarificationSchema.nullable().default(null),
-  /** Completed valid clarification turns; limits a run to two selections. */
   clarificationAttempts: z.number().int().min(0).max(2).default(0),
-  /** UC-05 AnalysisPlan checkpointed state (architecture §4.3 Tier 2). */
   analysisPlan: AnalysisPlanSchema.nullable().default(null),
-  /** UC-05 Final verified root cause answer payload. */
   rootCauseAnswer: RootCauseAnswerSchema.nullable().default(null),
 });
 
@@ -200,11 +181,6 @@ export type AgentState = typeof AgentStateSchema.State;
 export type AgentUpdate = typeof AgentStateSchema.Update;
 export type AgentStatus = AgentState["status"];
 
-// Shared root contracts (consumed by graph.ts, registry.ts, and sibling
-// plans 01-11/01-12/01-13 through RootGraphDeps — none of them edit state.ts
-// to satisfy these shapes).
-
-/** Span fields every emitter stamps; the writer fills run identity. */
 export interface SpanEvent {
   node: string;
   type: string;
@@ -216,7 +192,6 @@ export interface SpanEvent {
 
 export type SpanEmitter = (event: SpanEvent) => string;
 
-/** Runtime handed to every injected implementation: span sink + run config. */
 export interface RootRuntime {
   emit: SpanEmitter;
   config: LangGraphRunnableConfig;

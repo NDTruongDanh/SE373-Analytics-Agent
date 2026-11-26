@@ -1,7 +1,3 @@
-// Tier-1 transient RAM store for the <= 1,000-row validation buffer
-// (architecture §4.3 Tier 1). Kept strictly outside AgentState so
-// PostgresSaver checkpoints never bloat beyond the 50-row resultPreview.
-
 export interface TransientQueryBuffer {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -13,10 +9,6 @@ const MAX_ACTIVE_RUN_BUFFERS = 256;
 
 const buffers = new Map<string, TransientQueryBuffer>();
 
-/**
- * Store the transient <= 1,000-row query buffer for `runId`.
- * Ignores empty runIds and evicts the oldest entry when bounded capacity is reached.
- */
 export function setTransientQueryBuffer(
   runId: string,
   buffer: TransientQueryBuffer,
@@ -36,9 +28,6 @@ export function setTransientQueryBuffer(
   });
 }
 
-/**
- * Consume and remove the transient query buffer for `runId` (single-step lifecycle).
- */
 export function takeTransientQueryBuffer(
   runId: string,
 ): TransientQueryBuffer | undefined {

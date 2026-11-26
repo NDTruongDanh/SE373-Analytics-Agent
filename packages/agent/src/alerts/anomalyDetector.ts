@@ -16,22 +16,22 @@ export interface AbsoluteThreshold {
 }
 
 export interface TimeSeriesPoint {
-  date: string; // YYYY-MM-DD
-  value: number; // numeric metric value
-  supportCount?: number; // total count/volume for the slice on that day (e.g. order count)
+  date: string;
+  value: number;
+  supportCount?: number;
 }
 
 export interface AnomalyDetectorInput {
-  history: TimeSeriesPoint[]; // historical window (t-63 .. t-1)
-  current: TimeSeriesPoint; // current point to evaluate (t)
+  history: TimeSeriesPoint[];
+  current: TimeSeriesPoint;
   metricId?: string;
-  minSupport?: MinSupport; // default 15 orders; 5 for reviews
+  minSupport?: MinSupport;
   absoluteThreshold?: AbsoluteThreshold;
-  eps?: number; // default 1e-6 (or floor for small numbers/currency)
-  trimRatio?: number; // default 0.05 (5% - 95% trimming)
-  sameWeekday?: boolean; // if true, enforces same-weekday baseline (4 <= n <= 8)
+  eps?: number;
+  trimRatio?: number;
+  sameWeekday?: boolean;
   calendarConfig?: CalendarConfig;
-  wowThreshold?: number; // default 20%
+  wowThreshold?: number;
 }
 
 export interface AnomalyDetectorOutput {
@@ -39,7 +39,7 @@ export interface AnomalyDetectorOutput {
   severity: AlertSeverity | "none";
   direction: AlertDirection | "none";
   currentValue: number;
-  expectedValue: number; // mu_trim or median
+  expectedValue: number;
   zScore: number;
   wowPercent: number | null;
   deviationSummary: string;
@@ -115,9 +115,6 @@ export function getMinSupportCount(
   return 15;
 }
 
-/**
- * Robust Trimmed Mean (cắt trimRatio đầu và cuối để loại trừ ngoại lai / quá khứ ô nhiễm)
- */
 export function trimmedMean(values: number[], trimRatio = 0.05): number {
   if (values.length === 0) return 0;
   if (values.length < 4) {
@@ -132,9 +129,6 @@ export function trimmedMean(values: number[], trimRatio = 0.05): number {
   return trimmed.reduce((sum, v) => sum + v, 0) / trimmed.length;
 }
 
-/**
- * Robust Trimmed Standard Deviation
- */
 export function trimmedStd(values: number[], trimRatio = 0.05): number {
   if (values.length <= 1) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -149,9 +143,6 @@ export function trimmedStd(values: number[], trimRatio = 0.05): number {
   return Math.sqrt(variance);
 }
 
-/**
- * Median of numbers array
- */
 export function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -161,9 +152,6 @@ export function median(values: number[]): number {
     : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/**
- * Median Absolute Deviation (MAD)
- */
 export function medianAbsoluteDeviation(values: number[], med?: number): number {
   if (values.length === 0) return 0;
   const m = med ?? median(values);
@@ -172,9 +160,7 @@ export function medianAbsoluteDeviation(values: number[], med?: number): number 
 }
 
 /**
- * Calculate effective sigma (sigma_eff) with noise floor and signal proportion
- * sigma_eff = max(sigma_raw, sigma_floor)
- * sigma_floor = max(eps, 0.05 * |mu|)
+ * sigma_eff = max(sigma_raw, max(eps, 0.05 * |mu|)) to prevent noise spikes on flat metrics.
  */
 export function calculateEffectiveSigma(
   sigmaRaw: number,
@@ -210,10 +196,6 @@ export function calculateSEP(options: {
   return sigmaEff * Math.sqrt(1 + cEstimator / nEff);
 }
 
-/**
- * Week-over-Week percentage change:
- * WoW% = (x_t - x_{t-7}) / max(|x_{t-7}|, EPS) * 100%
- */
 export function calculateWoW(
   currentValue: number,
   weekAgoValue: number,
@@ -242,9 +224,6 @@ export function getUTCDayOfWeek(date: string): number {
   return d.getUTCDay();
 }
 
-/**
- * Check if current value breaches absolute threshold
- */
 export function isAbsoluteThresholdBreached(
   currentValue: number,
   threshold?: AbsoluteThreshold,
@@ -259,18 +238,6 @@ export function isAbsoluteThresholdBreached(
   return false;
 }
 
-/**
- * Pure-Code Contamination-Resistant Statistical Anomaly Detector (Hardened UC-10)
- *
- * Implements UC-10 §4 statistical specification:
- * - Same-weekday historical baseline (9 weeks / 63 days window, 4 <= n <= 8 points)
- * - Exclusion of public holidays and mega sales from historical baseline
- * - Standard Error of Prediction (SEP) with trimmed mean (n >= 6) or median/MAD (4 <= n < 6)
- * - Metric-specific sigma floor (VND currency 1.0, ratios 0.001, reviews 0.01)
- * - Metric-aware Support Gate (15 orders, 5 reviews) covering statistical and absolute checks
- * - Holiday downgrade to "info" for public holidays (except Critical)
- * - Strict Mega Sale protection: NO DOWNGRADE
- */
 export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutput {
   const {
     history,
@@ -294,8 +261,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   const minMetricTrimmedMean =
     typeof minSupport === "object" ? minSupport.minMetricTrimmedMean : undefined;
 
-  // 1. Min Support Gate check (Chống False Positives ở tỉnh/kênh có quá ít đơn)
-  // Tính mu_raw sớm để kiểm tra sàn giá trị metric nếu có cấu hình
   const rawValues = history.map((h) => h.value);
   const rawMu = trimmedMean(rawValues, trimRatio);
   const hasMetricFloor =
@@ -324,14 +289,11 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
     };
   }
 
-  // Check absolute threshold breach early
   const absoluteBreached = isAbsoluteThresholdBreached(
     current.value,
     absoluteThreshold,
   );
 
-  // 2. Select historical baseline points:
-  // Same-weekday filtering if sameWeekday === true or if history spans >= 35 days
   const currentWeekday = getUTCDayOfWeek(current.date);
   const weekAgoDate = dateDaysBefore(current.date, 7);
 
@@ -526,10 +488,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   };
 }
 
-/**
- * Convenient helper to run detection on a chronological series of points.
- * The last point is treated as current, all preceding points as history.
- */
 export function detectAnomalyFromSeries(
   series: TimeSeriesPoint[],
   options?: Omit<AnomalyDetectorInput, "history" | "current">,

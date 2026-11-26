@@ -19,9 +19,6 @@ export interface DataTableProps<TData, TValue> {
   emptyMessage?: string;
 }
 
-/**
- * Headless sortable & filterable table powered by @tanstack/react-table.
- */
 export function DataTable<TData, TValue>({
   columns,
   data,

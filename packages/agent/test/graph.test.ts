@@ -8,18 +8,15 @@ import {
   type AgentState,
   type AgentUpdate,
 } from "../src/state.js";
-import {
-  isKnownUc,
-  registerUC,
-} from "../src/subgraphs/registry.js";
-import { DEFAULT_ROUTE_ID, TEXT_TO_SQL_UC_ID } from "../src/constants.js";
+import { RCA_ROUTE, TEXT_TO_SQL_ROUTE } from "../src/constants.js";
+import { routeQuestion } from "../src/router.js";
 import { resumeDecision } from "../src/hitl.js";
 import type { ExecutorRunInput } from "../src/queryExecutor/executor.js";
 
 // AGENT-01 seam tests (01-10): FakeListChatModel doubles plus stubbed
-// retrieve and UC handlers injected through RootGraphDeps — no API key and
-// no live DB or MCP server needed. The live default route stays covered by
-// tracer.test.ts and pnpm demo:tracer.
+// retrieve and route entry handlers injected through RootGraphDeps — no API
+// key and no live DB or MCP server needed. The router decides the route
+// from the question (issue #98); a caller-supplied route is overwritten.
 
 const ProposalSchema = z.object({
   sql: z.string().min(1),
@@ -37,16 +34,37 @@ function pendingFromInterrupt(output: unknown) {
     | undefined;
 }
 
+/** Minimal offline text-to-SQL deps so the real understand node succeeds. */
+function stubTextToSql() {
+  return {
+    listTables: async () => [{ name: "orders", schema: "public" }],
+    intentModel: {
+      withStructuredOutput: () => ({
+        invoke: async () => ({
+          metric: null,
+          dimensions: [],
+          filters: [],
+          timeRange: null,
+          requestedMetrics: [],
+          schemaEntities: [],
+          queryMode: "standard_query" as const,
+        }),
+      }),
+    },
+  };
+}
+
 describe("root graph seam", () => {
   it("runs the node chain end to end through injected doubles", async () => {
     const order: string[] = [];
+    const rcaCalled: string[] = [];
     const graph = buildRootGraph({
       retrieve: async () => {
         order.push("retrieve");
         return { semanticChunks: [{ chunkId: "chunk-1" }] };
       },
-      ucHandlers: {
-        "uc-alpha": async (state: AgentState): Promise<AgentUpdate> => {
+      routes: {
+        "text-to-sql": async (state: AgentState): Promise<AgentUpdate> => {
           // FakeListChatModel double: exercises the structured-output path
           // with no API key, standing in for a real UC proposal step.
           const fake = new FakeListChatModel({
@@ -62,10 +80,30 @@ describe("root graph seam", () => {
             sql: proposal.sql,
             tablesUsed: proposal.tablesUsed,
             resultPreview: [{ n: 1 }],
-            toolsCalled: [...state.toolsCalled, "uc-alpha"],
+            toolsCalled: [...state.toolsCalled, "tts-alpha"],
             status: "ok",
             answerText: "alpha says ok",
           };
+        },
+        "root-cause-analysis": async () => {
+          rcaCalled.push("rca");
+          return { status: "ok", answerText: "should not run" };
+        },
+      },
+      textToSql: {
+        listTables: async () => [{ name: "orders", schema: "public" }],
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => ({
+              metric: "order_count",
+              dimensions: ["status"],
+              filters: [],
+              timeRange: null,
+              requestedMetrics: ["order_count"],
+              schemaEntities: ["orders"],
+              queryMode: "standard_query" as const,
+            }),
+          }),
         },
       },
       viz: async () => {
@@ -80,60 +118,24 @@ describe("root graph seam", () => {
     });
 
     const out = await graph.invoke(
-      { question: "how many?", ucId: "uc-alpha", runId: "r1", threadId: "t1" },
+      { question: "How many orders per status?", runId: "r1", threadId: "t1" },
       invokeOptions("t1"),
     );
 
-    // Wired order: understand (intent stub) -> retrieve -> router ->
-    // ucEntry -> statusCheck -> vizSeam -> answer.
+    // Wired order: router -> budgetGuard -> understand -> retrieve ->
+    // textToSqlEntry -> statusCheck -> vizSeam -> answer.
     expect(order).toEqual(["retrieve", "uc:orders", "vizSeam", "synthesize"]);
+    expect(rcaCalled).toEqual([]);
+    expect(out.route).toBe("text-to-sql");
     expect(out.status).toBe("ok");
     expect(out.answerText).toBe("alpha says ok");
-    expect(out.intent).toEqual({
-      metric: null,
-      dimensions: [],
-      filters: [],
-      timeRange: null,
-      requestedMetrics: [],
-      schemaEntities: [],
+    expect(out.intent).toMatchObject({
+      requestedMetrics: ["order_count"],
+      schemaEntities: ["orders"],
       queryMode: "standard_query",
     });
     expect(out.semanticChunks).toEqual([{ chunkId: "chunk-1" }]);
-    expect(out.toolsCalled).toEqual(["uc-alpha"]);
-  });
-
-  it("routes a registry-registered UC without touching the root builder", async () => {
-    const id = "uc-test-beta";
-    registerUC(id, async () => ({ status: "ok", answerText: "beta ok" }));
-    expect(isKnownUc(id)).toBe(true);
-
-    const out = await buildRootGraph().invoke(
-      { question: "q", ucId: id },
-      invokeOptions("t-beta"),
-    );
-    expect(out.status).toBe("ok");
-    expect(out.answerText).toBe("beta ok");
-  });
-
-  it("falls through to the default tracer route for unknown UC ids", async () => {
-    expect(isKnownUc("nope-unknown")).toBe(false);
-    let called = false;
-    const graph = buildRootGraph({
-      ucHandlers: {
-        [DEFAULT_ROUTE_ID]: async () => {
-          called = true;
-          return { status: "no_data", answerText: "default fallback" };
-        },
-      },
-    });
-
-    const out = await graph.invoke(
-      { question: "q", ucId: "nope-unknown" },
-      invokeOptions("t-fallback"),
-    );
-    expect(called).toBe(true);
-    expect(out.status).toBe("no_data");
-    expect(out.answerText).toBe("default fallback");
+    expect(out.toolsCalled).toEqual(["list_tables", "tts-alpha"]);
   });
 
   const routingCases: { status: AgentState["status"]; viz: boolean }[] = [
@@ -148,8 +150,9 @@ describe("root graph seam", () => {
     it(`routes status ${status} ${viz ? "through" : "past"} the VIZ seam`, async () => {
       let vizCalled = false;
       const graph = buildRootGraph({
-        ucHandlers: {
-          "uc-status": async () => ({
+        textToSql: stubTextToSql(),
+        routes: {
+          "text-to-sql": async () => ({
             status,
             answerText: `partial ${status}`,
           }),
@@ -161,7 +164,7 @@ describe("root graph seam", () => {
       });
 
       const out = await graph.invoke(
-        { question: "q", ucId: "uc-status" },
+        { question: "q" },
         invokeOptions(`t-status-${status}`),
       );
       expect(vizCalled).toBe(viz);
@@ -172,17 +175,18 @@ describe("root graph seam", () => {
 
   it("seeds D-13 budget defaults on a fresh run", async () => {
     const graph = buildRootGraph({
-      ucHandlers: {
-        [DEFAULT_ROUTE_ID]: async () => ({
+      routes: {
+        "root-cause-analysis": async () => ({
           status: "no_data",
           answerText: "x",
         }),
       },
     });
     const out = await graph.invoke(
-      { question: "q", ucId: "zzz-unknown" },
+      { question: "Vì sao doanh thu giảm so với tháng trước?" },
       invokeOptions("t-seed"),
     );
+    expect(out.route).toBe("root-cause-analysis");
     expect(out.budget).toMatchObject({
       llmCalls: 0,
       tokensUsed: 0,
@@ -201,15 +205,16 @@ describe("root graph seam", () => {
 
   it("rejects a handler update that exceeds the preview cap", async () => {
     const graph = buildRootGraph({
-      ucHandlers: {
-        "uc-big": async () => ({
+      textToSql: stubTextToSql(),
+      routes: {
+        "text-to-sql": async () => ({
           status: "ok",
           resultPreview: Array.from({ length: 61 }, (_, i) => ({ n: i })),
         }),
       },
     });
     await expect(
-      graph.invoke({ question: "q", ucId: "uc-big" }, invokeOptions("t-big")),
+      graph.invoke({ question: "q" }, invokeOptions("t-big")),
     ).rejects.toThrow();
   });
 
@@ -219,8 +224,8 @@ describe("root graph seam", () => {
         budget: { llmCalls: 2, tokensUsed: 100 },
         telemetry: { promptTokens: 10, completionTokens: 20, latencyMs: 5 },
       }),
-      ucHandlers: {
-        "uc-budget": async () => ({
+      routes: {
+        "root-cause-analysis": async () => ({
           status: "ok",
           answerText: "b",
           budget: { llmCalls: 3, tokensUsed: 50 },
@@ -230,9 +235,10 @@ describe("root graph seam", () => {
     });
 
     const out = await graph.invoke(
-      { question: "q", ucId: "uc-budget" },
+      { question: "Vì sao doanh thu giảm so với tháng trước?" },
       invokeOptions("t-budget"),
     );
+    expect(out.route).toBe("root-cause-analysis");
     expect(out.budget.llmCalls).toBe(5);
     expect(out.budget.tokensUsed).toBe(150);
     expect(out.budget.maxLlmCalls).toBe(20);
@@ -254,7 +260,8 @@ describe("root graph seam", () => {
       (match) => match[1],
     );
     expect(specifiers).toContain("./state.js");
-    expect(specifiers).toContain("./subgraphs/registry.js");
+    expect(specifiers).toContain("./router.js");
+    expect(specifiers).not.toContain("./subgraphs/registry.js");
     const banned = [
       "queryExecutor",
       "models/",
@@ -275,7 +282,10 @@ describe("root graph seam", () => {
         ).toBe(false);
       }
     }
-    expect(source).toContain("FROZEN root builder");
+    // The route is decided once, before the budget guard: the router node
+    // reads the question and overwrites any caller-supplied route.
+    expect(source).toContain("routeQuestion");
+    expect(source).toContain("\"router\"");
   });
 
   it("runs text-to-SQL intent extraction, skill tracing, and the injected executor", async () => {
@@ -329,7 +339,7 @@ describe("root graph seam", () => {
     });
 
     const out = await graph.invoke(
-      { question: "How many orders per status?", ucId: TEXT_TO_SQL_UC_ID },
+      { question: "How many orders per status?" },
       {
         configurable: {
           thread_id: "thread-text-to-sql",
@@ -340,6 +350,7 @@ describe("root graph seam", () => {
       },
     );
 
+    expect(out.route).toBe("text-to-sql");
     expect(out.intent).toMatchObject({
       requestedMetrics: ["order_count"],
       schemaEntities: ["orders"],
@@ -426,7 +437,7 @@ describe("root graph seam", () => {
     };
 
     const paused = await graph.invoke(
-      { question: "Show orders", ucId: TEXT_TO_SQL_UC_ID },
+      { question: "Show orders" },
       config,
     );
     expect((paused as { __interrupt__?: unknown[] }).__interrupt__).toHaveLength(1);
@@ -499,7 +510,7 @@ describe("root graph seam", () => {
       },
     });
     const paused = await graph.invoke(
-      { question: "Doanh thu", ucId: TEXT_TO_SQL_UC_ID },
+      { question: "Doanh thu" },
       {
         configurable: {
           thread_id: "thread-metric",
@@ -560,7 +571,6 @@ describe("root graph seam", () => {
     const out = await graph.invoke(
       {
         question: "Doanh thu",
-        ucId: TEXT_TO_SQL_UC_ID,
         clarificationAttempts: 2,
       },
       invokeOptions("thread-metric-exhausted"),
@@ -616,7 +626,7 @@ describe("root graph seam", () => {
         roleScope: "sales_south",
       },
     };
-    await graph.invoke({ question: "Doanh thu", ucId: TEXT_TO_SQL_UC_ID }, config);
+    await graph.invoke({ question: "Doanh thu" }, config);
     const retry = await graph.invoke(resumeDecision("other"), config);
     expect((retry as { __interrupt__?: unknown[] }).__interrupt__).toHaveLength(1);
     expect(pendingFromInterrupt(retry)?.attempts).toBe(1);
@@ -667,17 +677,18 @@ describe("root graph seam", () => {
     });
 
     const out = await graph.invoke(
-      { question: "q", ucId: TEXT_TO_SQL_UC_ID, budget: { llmCalls: 20 } },
+      { question: "q", budget: { llmCalls: 20 } },
       invokeOptions("t-exhausted"),
     );
 
+    expect(out.route).toBe("text-to-sql");
     expect(out.status).toBe("cannot_answer");
     expect(out.answerText).toContain("Run budget exceeded");
     expect(modelCalled).toBe(false);
     expect(executorCalled).toBe(false);
   });
 
-  it("stops an exhausted generic budget before retrieve or the UC handler", async () => {
+  it("stops an exhausted RCA budget before retrieve or the route entry", async () => {
     let retrieveCalled = false;
     let handlerCalled = false;
     const graph = buildRootGraph({
@@ -685,8 +696,8 @@ describe("root graph seam", () => {
         retrieveCalled = true;
         return {};
       },
-      ucHandlers: {
-        "uc-generic": async () => {
+      routes: {
+        "root-cause-analysis": async () => {
           handlerCalled = true;
           return { status: "ok", answerText: "should not run" };
         },
@@ -694,10 +705,11 @@ describe("root graph seam", () => {
     });
 
     const out = await graph.invoke(
-      { question: "q", ucId: "uc-generic", budget: { llmCalls: 20 } },
+      { question: "Vì sao doanh thu giảm so với tháng trước?", budget: { llmCalls: 20 } },
       invokeOptions("t-generic-exhausted"),
     );
 
+    expect(out.route).toBe("root-cause-analysis");
     expect(out.status).toBe("cannot_answer");
     expect(out.answerText).toContain("Run budget exceeded");
     expect(retrieveCalled).toBe(false);
@@ -707,9 +719,13 @@ describe("root graph seam", () => {
   it("exposes only the root surface from the barrel", async () => {
     const index = (await import("../src/index.js")) as Record<string, unknown>;
     expect(typeof index["buildRootGraph"]).toBe("function");
-    expect(typeof index["registerUC"]).toBe("function");
+    expect(typeof index["routeQuestion"]).toBe("function");
+    expect(typeof index["createAnswerSynthesizer"]).toBe("function");
+    expect(typeof index["previewCountKey"]).toBe("function");
     expect(typeof index["AgentStateSchema"]).toBe("object");
-    expect(index["DEFAULT_ROUTE_ID"]).toBe("tracer");
+    expect(index["TEXT_TO_SQL_ROUTE"]).toBe("text-to-sql");
+    expect(index["RCA_ROUTE"]).toBe("root-cause-analysis");
+    expect(index["ROUTES"]).toEqual(["text-to-sql", "root-cause-analysis"]);
     for (const banned of [
       "createChatModel",
       "callMcpTool",
@@ -779,7 +795,7 @@ describe("root graph seam", () => {
         },
       });
       const okOut = await okGraph.invoke(
-        { question: "How many orders?", ucId: TEXT_TO_SQL_UC_ID },
+        { question: "How many orders?" },
         {
           configurable: {
             thread_id: "thread-429-ok",
@@ -814,7 +830,7 @@ describe("root graph seam", () => {
         },
       });
       const failOut = await failGraph.invoke(
-        { question: "How many orders?", ucId: TEXT_TO_SQL_UC_ID },
+        { question: "How many orders?" },
         {
           configurable: {
             thread_id: "thread-429-fail",
@@ -837,5 +853,99 @@ describe("root graph seam", () => {
       if (saved.maxWait === undefined) delete process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS;
       else process.env.AGENT_MODEL_RETRY_MAX_WAIT_MS = saved.maxWait;
     }
+  });
+});
+
+describe("router decides the route from the question (issue #98)", () => {
+  function routedDoubles() {
+    const calls: string[] = [];
+    const spans: { node: string; type: string; payload?: unknown }[] = [];
+    const graph = buildRootGraph({
+      emitSpan: (event) => {
+        spans.push({ node: event.node, type: event.type, payload: event.payload });
+        return `s-${spans.length}`;
+      },
+      textToSql: stubTextToSql(),
+      routes: {
+        "text-to-sql": async () => {
+          calls.push("text-to-sql");
+          return { status: "ok" as const, answerText: "tts says ok" };
+        },
+        "root-cause-analysis": async () => {
+          calls.push("root-cause-analysis");
+          return { status: "ok" as const, answerText: "rca says ok" };
+        },
+      },
+      synthesize: async (state: AgentState) =>
+        state.answerText.length > 0 ? {} : { answerText: "derived" },
+    });
+    return { graph, calls, spans };
+  }
+
+  it("runs the text-to-sql entry for a plain data question with no routing field", async () => {
+    const { graph, calls } = routedDoubles();
+    const out = await graph.invoke(
+      { question: "How many orders per status?" },
+      invokeOptions("t-route-plain"),
+    );
+    expect(routeQuestion("How many orders per status?")).toBe(TEXT_TO_SQL_ROUTE);
+    expect(calls).toEqual(["text-to-sql"]);
+    expect(out.route).toBe("text-to-sql");
+    expect(out.answerText).toBe("tts says ok");
+  });
+
+  it("routes the active-customers definition question to text-to-sql", async () => {
+    const question = "Khách hàng hoạt động được tính thế nào?";
+    const { graph, calls } = routedDoubles();
+    const out = await graph.invoke({ question }, invokeOptions("t-route-definition"));
+    // The definition fast-path lives inside the text-to-sql entry.
+    expect(routeQuestion(question)).toBe(TEXT_TO_SQL_ROUTE);
+    expect(calls).toEqual(["text-to-sql"]);
+    expect(out.route).toBe(TEXT_TO_SQL_ROUTE);
+  });
+
+  it("routes a why-revenue-dropped question to the RCA entry", async () => {
+    const question = "Vì sao doanh thu T10 giảm so với T9?";
+    const { graph, calls } = routedDoubles();
+    const out = await graph.invoke({ question }, invokeOptions("t-route-rca"));
+    expect(routeQuestion(question)).toBe(RCA_ROUTE);
+    expect(calls).toEqual(["root-cause-analysis"]);
+    expect(out.route).toBe(RCA_ROUTE);
+    expect(out.answerText).toBe("rca says ok");
+  });
+
+  it("ignores a caller-supplied route for a plain data question", async () => {
+    const { graph, calls } = routedDoubles();
+    const out = await graph.invoke(
+      { question: "How many orders per status?", route: "root-cause-analysis" },
+      invokeOptions("t-route-override"),
+    );
+    expect(calls).toEqual(["text-to-sql"]);
+    expect(out.route).toBe("text-to-sql");
+  });
+
+  it("ignores a legacy ucId in the graph input for a plain data question", async () => {
+    const { graph, calls } = routedDoubles();
+    const out = await graph.invoke(
+      {
+        question: "How many orders per status?",
+        ucId: "root-cause-analysis",
+      } as unknown as { question: string },
+      invokeOptions("t-route-legacy"),
+    );
+    expect(calls).toEqual(["text-to-sql"]);
+    expect(out.route).toBe("text-to-sql");
+  });
+
+  it("emits a router span with the decided route", async () => {
+    const { graph, spans } = routedDoubles();
+    await graph.invoke(
+      { question: "How many orders per status?" },
+      invokeOptions("t-route-span"),
+    );
+    const routerSpan = spans.find(
+      (span) => span.node === "router" && span.type === "node_done",
+    );
+    expect(routerSpan?.payload).toEqual({ route: "text-to-sql" });
   });
 });

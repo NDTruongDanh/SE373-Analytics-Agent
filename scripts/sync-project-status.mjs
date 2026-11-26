@@ -1,32 +1,3 @@
-// One-way Project Status sync (node stdlib only, no new deps).
-//
-// Source of truth: user project NDTruongDanh/projects/3 ("SE373 Member Tasks").
-// Mirror: org project se373agenticengineering/projects/32 ("Nhóm 32 — Analytics Agent"),
-// which is the project linked to the teacher repo se373agenticengineering/nhom-32.
-//
-// GitHub cannot formally link a user-owned project to an org-owned repo
-// ("Only projects owned by the same owner as the repository can be linked"),
-// so this script copies *item membership + Status* instead:
-//   1. every Issue/PR in the source project is added to the target project (same issue, no duplicates),
-//   2. the target Status is set to match the source Status.
-//
-// Status is per (project, item), so keeping two boards aligned always needs
-// a sync like this. Issue open/closed state is global and needs no sync.
-//
-// Usage:
-//   node scripts/sync-project-status.mjs            # dry-run (default, read-only)
-//   node scripts/sync-project-status.mjs --apply   # perform adds + status updates
-//
-// Auth (first non-empty wins):
-//   TEACHER_SYNC_TOKEN, PROJECT_SYNC_TOKEN, GH_TOKEN, GITHUB_TOKEN
-// The token needs `project` scope (classic PAT) or Projects read+write
-// (fine-grained) plus repo read for the source issues. GITHUB_TOKEN from
-// Actions cannot be relied on for cross-owner Projects writes, so the
-// workflow uses the existing TEACHER_SYNC_TOKEN secret (classic PAT with
-// repo + workflow + project scopes, shared with sync-to-teacher.yml).
-//
-// Exit 0 on success (including dry-run with pending changes), 1 on API/config errors.
-
 const API = "https://api.github.com/graphql";
 
 const SOURCE = {

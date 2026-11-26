@@ -1,12 +1,3 @@
-// Chat-model factory (AGENT-05, 01-12): three OpenAI-compatible profiles on
-// ChatOpenAI configuration routing, plus an explicit fake for tests and CI.
-// Profile intent proposes plans, profile sql proposes structured SQL, profile
-// synthesis writes the final answer. The synthesis path never binds tools
-// (architecture invariant section 1.2.3) and every row entering a prompt is
-// wrapped in <untrusted_data> delimiters. The 01-01 fetch-based stub is gone:
-// keyed runs construct ChatOpenAI; keyless runs fall back to the canned fake
-// only through the legacy zero-arg surface below.
-
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ChatOpenAI } from "@langchain/openai";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
@@ -34,8 +25,6 @@ import {
   type SqlProposal,
 } from "../queryExecutor/executor.js";
 
-// The SQL proposal shape stays owned by the 01-11 executor (single source);
-// this module re-exports it for the legacy tracer surface, never duplicates it.
 export { SqlProposalSchema };
 export type { SqlProposal };
 
@@ -61,29 +50,23 @@ export type TracerModelCallOptions = ModelRetryContextOptions & {
 
 export interface TracerChatModel {
   proposeSql(question: string, opts?: TracerModelCallOptions): Promise<SqlProposal>;
-  /** Same call as proposeSql, keeping provider token counts for llm_call (G1). */
   proposeSqlWithUsage(
     question: string,
     opts?: TracerModelCallOptions,
   ): Promise<InvokeUsageResult<SqlProposal>>;
 }
 
-/** The three model profiles (agent research Pattern 4). */
 export type ModelProfile = "intent" | "sql" | "synthesis";
 
-/** Explicit fake spec: canned JSON responses, no API key needed. */
 export interface FakeModelSpec {
   responses: string[];
 }
 
 export interface CreateChatModelOptions {
-  /** Presence selects FakeListChatModel; absence selects ChatOpenAI. */
   fake?: FakeModelSpec;
-  /** Model id override; otherwise resolved from the environment. */
   model?: string;
 }
 
-/** Either production ChatOpenAI or the explicit test fake. */
 export type AnyChatModel = ChatOpenAI | FakeListChatModel;
 
 function resolveModelId(profile: ModelProfile, override?: string): string {
@@ -95,23 +78,8 @@ function resolveModelId(profile: ModelProfile, override?: string): string {
   );
 }
 
-/**
- * OpenCode Go session header (mandatory on every Go request).
- *
- * Mirrors `scripts/openwiki-fetch-patch.mjs`: Go 400s with `MissingSessionID`
- * ("Request is missing x-opencode-session and cannot be routed efficiently")
- * when the header is absent. The header is routing + prompt-cache hint, not
- * auth: same conversation => same value, different conversations =>
- * different values. Never PII; opaque `ses_` + 32 hex chars.
- *
- * The web UI (`apps/web` -> `apps/api` -> agent) hits this path when
- * `AGENT_MODEL_BASE_URL` points at Go. Without the header every web question
- * 400s, even though the CLI OpenWiki path already injects it via the
- * `--import` fetch patch (the API server never loads that preload).
- *
- * Only sent for Go URLs (`opencode.ai` / `inference/go` / `zen/go`); local
- * providers such as 9Router never see it.
- */
+// OpenCode Go returns 400 MissingSessionID without this header (CLI preload patch does not run in apps/api);
+// opaque routing/cache hint only, never PII, and sent only to Go endpoints.
 export const OPENCODE_SESSION_HEADER = "x-opencode-session";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{32}$/;
 
@@ -158,9 +126,7 @@ export function resolveOpencodeSessionId(
   );
 }
 
-// Stable for the process lifetime (one API-server process = one cached value,
-// exactly like the CLI fetch patch caches one value per run). Per-request
-// randomness would pass the 400 check but destroy Go prompt-cache reuse.
+// Cache one session id per process; per-request random ids break Go prompt-cache reuse.
 let cachedSessionId: string | null = null;
 
 export function getOpencodeSessionId(): string {
@@ -168,7 +134,6 @@ export function getOpencodeSessionId(): string {
   return cachedSessionId;
 }
 
-/** Test seam: drop the cached value so env-override tests stay isolated. */
 export function resetOpencodeSessionCache(): void {
   cachedSessionId = null;
 }
@@ -185,9 +150,7 @@ function buildRealModel(profile: ModelProfile, override?: string, tracer = false
     // Disable SDK/AsyncCaller retries across all profiles so the harness
     // enforces a single retry/backoff/Retry-After/deadline/budget layer.
     maxRetries: 0,
-    // Total cap only: reasoning models stream for 40s+ before the first
-    // answer token, so per-chunk progress (reasoning or content) resets the
-    // 30s idle budget inside invokeJsonWithUsage; only silence fails here.
+    // Total cap only: reasoning models can stream 40s+ before first token; idle chunk timeouts live in invokeJsonWithUsage.
     ...(tracer ? { timeout: 300000 } : {}),
     configuration: {
       baseURL,
@@ -208,9 +171,7 @@ export class ProfileTracerModel implements TracerChatModel {
     question: string,
     opts?: TracerModelCallOptions,
   ): Promise<InvokeUsageResult<SqlProposal>> {
-    // Routed through the plain-JSON usage helper: no response_format on the
-    // wire (the provider's strict json_schema path is far slower than the
-    // 30s model timeout), with fail-closed schema validation.
+    // Avoid response_format json_schema on the wire (too slow for the 30s timeout); validate parsed JSON fail-closed.
     const prompt = [
       "You are a read-only PostgreSQL analytics assistant.",
       "Propose one SELECT or WITH query and the tables it uses.",
@@ -235,7 +196,6 @@ export class ProfileTracerModel implements TracerChatModel {
       }
       throw error;
     }
-    // Fail-closed: every proposal path goes through schema validation.
     return { ...out, parsed: SqlProposalSchema.parse(out.parsed) };
   }
 }
@@ -269,14 +229,6 @@ export function createChatModel(
   return buildRealModel(profile, opts.model);
 }
 
-/**
- * Structured-output helper taking a caller-supplied zod schema (the SQL
- * proposal schema itself is owned by the 01-11 executor, never duplicated
- * here). Routes through the shared usage helper so includeRaw-capable
- * models keep working and fakes degrade to zero-usage instead of throwing.
- * Returns a narrow invoke surface so callers never touch the raw runnable
- * type.
- */
 export function withStructured<S extends z.ZodType>(
   model: AnyChatModel,
   schema: S,
@@ -290,16 +242,10 @@ export function withStructured<S extends z.ZodType>(
   };
 }
 
-/** Enclose result rows so row text can never become an instruction. */
 export function wrapUntrusted(rows: Record<string, unknown>[]): string {
   return `${UNTRUSTED_DATA_OPEN}${serializeUntrusted(rows)}${UNTRUSTED_DATA_CLOSE}`;
 }
 
-/**
- * Build the synthesis prompt: the question plus delimited rows, with an
- * explicit no-fabrication rule. Pure (no model call) so tests assert the
- * delimiter contract without a key.
- */
 export function buildSynthesisPrompt(
   rows: Record<string, unknown>[],
   question: string,
@@ -312,11 +258,6 @@ export function buildSynthesisPrompt(
   ].join("\n");
 }
 
-/**
- * Synthesis result: answer text plus the provider usage read directly off
- * the plain invoke result (no structured wrapper here, so the AIMessage
- * already carries usage_metadata). Fakes yield zero counts and no model.
- */
 export interface SynthesisResult extends LlmUsage {
   text: string;
   model?: string;
@@ -324,15 +265,8 @@ export interface SynthesisResult extends LlmUsage {
 }
 
 /**
- * Synthesis entry point: builds the delimited prompt and invokes the
- * profile-3 model directly. Never calls the tool-binding method on this path
- * (architecture invariant: zero tools bound over untrusted data). The
- * callbacks option is accepted for call-site compatibility but deliberately
- * NEVER forwarded: rows serialize into the prompt string, so a traced model
- * invoke would ship row values to LangSmith as one opaque prompt — past the
- * piiSafeProcessor's row-array drop, which only drops values under ROW_ARRAY
- * KEYS and cannot see inside a serialized prompt. Synthesis stays untraced
- * by construction; the redactPII backstop is not relied upon here.
+ * Zero-tools synthesis over delimited rows. `opts.callbacks` is accepted for compatibility
+ * but never forwarded: serialized rows in the prompt bypass row-key LangSmith PII scrubbing.
  */
 export async function synthesize(
   rows: Record<string, unknown>[],
@@ -342,7 +276,6 @@ export async function synthesize(
   const model = opts?.model ?? createChatModel("synthesis");
   const started = Date.now();
   const prompt = buildSynthesisPrompt(rows, question);
-  // NOTE: opts.callbacks is intentionally not forwarded (see above).
   const retryResult = await retryModelCall(
     async (ctx) => {
       const needAbort = ctx.remainingMs !== undefined || ctx.signal !== undefined;

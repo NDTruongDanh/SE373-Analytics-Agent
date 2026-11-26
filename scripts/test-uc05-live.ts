@@ -12,12 +12,11 @@ if (missing.length > 0) {
   throw new Error(`UC-05 live test requires .env values: ${missing.join(", ")}`);
 }
 
-const [{ startGatewayServer }, { createChatModel }, rca, { RCA_UC_ID }] =
+const [{ startGatewayServer }, { createChatModel }, rca] =
   await Promise.all([
     import("../packages/mcp-server/src/server.js"),
     import("../packages/agent/src/models/factory.js"),
     import("../packages/agent/src/subgraphs/rootCauseAnalysis.js"),
-    import("../packages/agent/src/constants.js"),
   ]);
 const { buildBaselineQuery, createRcaRuntime, parseRcaIntent } = rca;
 
@@ -45,7 +44,6 @@ try {
   const output = await runtime.entry(
     {
       question,
-      ucId: RCA_UC_ID,
       toolsCalled: [],
     } as never,
     {

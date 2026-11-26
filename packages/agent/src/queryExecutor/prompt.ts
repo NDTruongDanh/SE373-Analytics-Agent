@@ -1,9 +1,3 @@
-// SQL proposal prompt (#89 / #104): the plain-JSON path has no response_format
-// on the wire, so the prompt carries the output contract, the selectively
-// described schema (columns, types, nullability, sensitivity flags, primary
-// keys, and foreign keys), bounded semantic references, and delimited user
-// text. Pure and deterministic: no I/O, no row values, no gold SQL.
-
 import { serializeUntrusted } from "../untrusted.js";
 
 export interface DescribedColumn {
@@ -11,6 +5,7 @@ export interface DescribedColumn {
   type: string;
   nullable: boolean;
   sensitive: boolean;
+  large?: boolean;
   description?: string;
 }
 
@@ -31,9 +26,7 @@ export interface SqlPromptInput {
   question: string;
   timeRange?: string | null;
   described: DescribedTable[];
-  /** Trusted semantic-layer snippets (metric definitions, join rules, enum anchors). */
   references?: string[];
-  /** Repair feedback from the previous failed attempt, when repairing. */
   repair?: { attempt: number; feedback: string } | null;
 }
 

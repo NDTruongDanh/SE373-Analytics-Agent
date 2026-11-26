@@ -43,6 +43,7 @@ export const GATEWAY_EXPECT_KEYS = [
   "truncated",
   "maskedColumns",
   "maskedColumnsExact",
+  "rowScopeTablesInclude",
   "rawValuesVisible",
   "valuesMasked",
   "noSecretsInMessage",
@@ -101,6 +102,8 @@ export interface GatewayExpect {
   truncated?: boolean;
   maskedColumns?: string[];
   maskedColumnsExact?: string[];
+  /** Tables that must appear in run_query output's rowScopeApplied[].table. */
+  rowScopeTablesInclude?: string[];
   rawValuesVisible?: string[];
   valuesMasked?: string[];
   noSecretsInMessage?: boolean;
@@ -235,6 +238,7 @@ export function validateGatewayRecord(raw: unknown): {
     for (const key of [
       "maskedColumns",
       "maskedColumnsExact",
+      "rowScopeTablesInclude",
       "rawValuesVisible",
       "valuesMasked",
       "pgDenyCodes",
@@ -312,6 +316,7 @@ export interface GatewayObserved {
   isError?: boolean;
   truncated?: boolean;
   maskedColumns?: string[];
+  rowScopeApplied?: Array<{ table: string; column: string }>;
   rows?: Record<string, unknown>[];
   data?: unknown;
   rowCountBefore?: number;
@@ -479,6 +484,17 @@ export function gradeGatewayCase(
       );
     }
   }
+  if (expect.rowScopeTablesInclude !== undefined) {
+    const seen = new Set(
+      (observed.rowScopeApplied ?? []).map((entry) => entry.table),
+    );
+    const missing = expect.rowScopeTablesInclude.filter(
+      (table) => !seen.has(table),
+    );
+    if (missing.length > 0) {
+      failures.push(`rowScopeApplied misses tables [${missing.join(", ")}]`);
+    }
+  }
   if (expect.rawValuesVisible !== undefined) {
     if (!Array.isArray(observed.rows) || observed.rows.length === 0) {
       failures.push("rawValuesVisible needs at least one result row");
@@ -622,6 +638,9 @@ export function observedFromPayload(
         : undefined,
     maskedColumns: Array.isArray(record["maskedColumns"])
       ? (record["maskedColumns"] as string[])
+      : undefined,
+    rowScopeApplied: Array.isArray(record["rowScopeApplied"])
+      ? (record["rowScopeApplied"] as Array<{ table: string; column: string }>)
       : undefined,
     message: "",
   };

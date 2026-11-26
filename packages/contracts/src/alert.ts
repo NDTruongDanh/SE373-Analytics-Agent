@@ -1,9 +1,5 @@
 import { z } from "zod";
 
-// ==========================================
-// 1. Enums & Subscriptions Config Schema
-// ==========================================
-
 export const AlertSeveritySchema = z.enum(["info", "warning", "critical"]);
 export type AlertSeverity = z.infer<typeof AlertSeveritySchema>;
 
@@ -32,7 +28,6 @@ export const MinSupportSchema = z.union([
 ]);
 export type MinSupport = z.infer<typeof MinSupportSchema>;
 
-// Preprocesses input objects to map snake_case keys to canonical camelCase.
 function preprocessSubscription(val: unknown): unknown {
   if (!val || typeof val !== "object" || Array.isArray(val)) {
     return val;
@@ -96,11 +91,6 @@ export const SubscriptionsConfigSchema = z.object({
 });
 export type SubscriptionsConfig = z.infer<typeof SubscriptionsConfigSchema>;
 
-// ==========================================
-// 2. Core Anomaly & Governed Alert Schemas
-// ==========================================
-
-// Six mandatory fields required by PRD UC-10 Criterion #2 and UC10 section 5.
 export const CoreAnomalyFieldsSchema = z.object({
   metric: z.string().min(1),
   currentValue: z.number(),
@@ -111,7 +101,6 @@ export const CoreAnomalyFieldsSchema = z.object({
 });
 export type CoreAnomalyFields = z.infer<typeof CoreAnomalyFieldsSchema>;
 
-// Strict AnomalyAlert schema with mandatory routing and deduplication fields.
 // Deduplication fingerprint: SHA256(recipient_id|metric|dimension_key|date|direction).
 export const AnomalyAlertSchema = CoreAnomalyFieldsSchema.extend({
   subscriptionId: z.string().min(1).optional(),
@@ -124,10 +113,6 @@ export const AnomalyAlertSchema = CoreAnomalyFieldsSchema.extend({
   message: z.string().min(1).optional(),
 });
 export type AnomalyAlert = z.infer<typeof AnomalyAlertSchema>;
-
-// ==========================================
-// 3. SendAlert (Tool I/O surface for delivery)
-// ==========================================
 
 export const SendAlertInputSchema = CoreAnomalyFieldsSchema.extend({
   recipientId: z.string().min(1),

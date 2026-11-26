@@ -24,11 +24,6 @@ export interface SendAlertToolOptions {
   logger?: (msg: string, meta?: Record<string, unknown>) => void;
 }
 
-/**
- * Exposes local deterministic send_alert tool per SendAlert* contracts (UC-10 / architecture §4.2).
- * Validates input with SendAlertInputSchema, dispatches via resilient dispatchAlert,
- * and returns validated SendAlertOutput matching SendAlertOutputSchema.
- */
 export async function sendAlert(
   input: SendAlertInput,
   options: SendAlertToolOptions,

@@ -1,24 +1,115 @@
 import tseslint from "typescript-eslint";
 
+const DIRECTIVE_RE =
+  /^(?:eslint-(?:disable|enable)(?:-(?:next-)?line)?|global\b|exported\b|@ts-(?:expect-error|ignore|nocheck|check)\b|@vitest-environment\b|(?:v8|c8|istanbul)\s+ignore\b|prettier-ignore\b|@license\b|@preserve\b|\/\s*<reference\b)/i;
+const DIVIDER_LINE_RE = /^\s*[-=*~─═━#]{3,}|[-=*~─═━#]{4,}/;
+const TRACKING_ID_RE =
+  /\b0\d-\d{2}\b|\bwave\s+\d+\b|\bD-\d{2}\b|\b(?:REPO|API|AGENT|MCP|DATA|WEB|EVAL|POLICY|GUARD|TRACE|ALERT|RCA|VIZ|HITL|PORT)-\d{2}\b|#\d{2,4}\b/i;
+const COMMENTED_CODE_RE =
+  /^\s*(?:import\s+.+\s+from\s+["']|export\s+(?:default|const|let|var|function|class|type|interface)\b|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=]+)?=|function\s+[A-Za-z_$][\w$]*\s*\(|console\.(?:log|debug|info|warn|error)\s*\()/;
+
+const noUnnecessaryCommentsRule = {
+  meta: {
+    type: "suggestion",
+    docs: {
+      description:
+        "Disallow empty comments, divider banners, stale tracking IDs, and commented-out code",
+    },
+    schema: [],
+  },
+  create(context) {
+    return {
+      Program() {
+        const comments = context.sourceCode.getAllComments();
+        const lineCommentsByLine = new Map();
+        for (const comment of comments) {
+          if (comment.type === "Line" && comment.loc) {
+            lineCommentsByLine.set(comment.loc.start.line, comment.value.trim());
+          }
+        }
+
+        for (const comment of comments) {
+          const rawLines = comment.value.split("\n");
+          const normalizedLines = rawLines.map((line) =>
+            comment.type === "Block" ? line.replace(/^\s*\* ?/, "").trim() : line.trim(),
+          );
+          const joined = normalizedLines.join("\n").trim();
+
+          if (DIRECTIVE_RE.test(joined)) {
+            continue;
+          }
+
+          if (joined.length === 0) {
+            if (comment.type === "Line" && comment.loc) {
+              const line = comment.loc.start.line;
+              const prev = lineCommentsByLine.get(line - 1);
+              const next = lineCommentsByLine.get(line + 1);
+              if (prev && prev.length > 0 && next && next.length > 0) {
+                continue;
+              }
+            }
+            context.report({
+              loc: comment.loc,
+              message: "Unnecessary empty comment.",
+            });
+            continue;
+          }
+
+          if (normalizedLines.some((line) => DIVIDER_LINE_RE.test(line))) {
+            context.report({
+              loc: comment.loc,
+              message: "Unnecessary divider or banner comment.",
+            });
+            continue;
+          }
+
+          if (TRACKING_ID_RE.test(joined)) {
+            context.report({
+              loc: comment.loc,
+              message:
+                "Unnecessary stale plan, wave, decision, requirement, or issue reference in comment.",
+            });
+            continue;
+          }
+
+          if (comment.type === "Line" && COMMENTED_CODE_RE.test(comment.value)) {
+            context.report({
+              loc: comment.loc,
+              message: "Unnecessary commented-out code.",
+            });
+          }
+        }
+      },
+    };
+  },
+};
+
 export default tseslint.config(
   {
     ignores: ["node_modules/", "**/dist/", "coverage/"],
   },
   ...tseslint.configs.recommended,
   {
-    // Architecture §5.2 (REPO-01, final pass 01-15): the DB driver and the
-    // MCP server package are reachable only from their owners. The agent
-    // reaches the database only through the MCP client; the host reaches
-    // state only through the PostgresSaver and AppStateStore ports; policy
-    // code is pure (no driver, no network, no server imports).
-    //
-    // apps/api is deliberately absent from the pg ban (01-13 carve-out:
-    // the AppStateStore DAO legitimately owns pg) but present in the
-    // mcp-server ban. The UI (apps/web) carries both bans plus the
-    // contracts-only rule in the block below.
-    // apps/api is covered by both bans below EXCEPT the AppStateStore DAO
-    // and its test (01-13 carve-out: the DAO legitimately owns pg).
-    // ignores here excepts those two files from this block only.
+    files: [
+      "packages/*/src/**/*.{ts,tsx,js,mjs}",
+      "apps/*/src/**/*.{ts,tsx,js,mjs}",
+      "scripts/**/*.{ts,tsx,js,mjs}",
+      "eslint.config.mjs",
+    ],
+    plugins: {
+      local: {
+        rules: {
+          "no-unnecessary-comments": noUnnecessaryCommentsRule,
+        },
+      },
+    },
+    rules: {
+      "local/no-unnecessary-comments": "error",
+    },
+  },
+  {
+    // apps/api/src/store/** and its test legitimately own pg via AppStateStore;
+    // ignores here exempts only those files from the pg/mcp-server restriction.
     files: [
       "packages/agent/**/*.ts",
       "packages/access-policy/**/*.ts",
@@ -58,13 +149,8 @@ export default tseslint.config(
     },
   },
   {
-    // Architecture §5.2 (REPO-01, final pass 01-15): apps/web combines the
-    // driver ban, the MCP server ban, and the contracts-only workspace rule
-    // in ONE entry — flat-config blocks setting the same rule replace (not
-    // merge), so splitting them would silently shadow all but the last.
-    // When a new workspace package appears, add it to the paths list: the
-    // rule is deny-by-default in intent, enumerated so a new package can
-    // never slip through silently.
+    // Flat-config blocks setting the same rule replace rather than merge, so
+    // apps/web combines the driver, MCP server, and contracts-only bans here.
     files: ["apps/web/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [

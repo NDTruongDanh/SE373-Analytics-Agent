@@ -134,7 +134,6 @@ function fakeRuntime(spans: EmittedSpan[]): RootRuntime {
 function fakeState(fixture: InsightFixture): AgentState {
   return {
     question: fixture.question,
-    ucId: "uc03-eval",
     intent: {
       metric: null,
       dimensions: [],

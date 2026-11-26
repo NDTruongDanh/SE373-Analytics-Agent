@@ -1,8 +1,3 @@
-// Determinism manifest (Phase 2, plan 02-01): per-table row counts plus a
-// SHA-256 over the canonical ORDER BY pk CSV. Follows the SensitiveColumns
-// strict-zod idiom: version literal, strictObject, inferred type, pure
-// parse function plus a thin fs wrapper. The loader refuses to finish when a
-// pre-existing manifest disagrees with the fresh load.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -34,9 +29,6 @@ export function manifestPathFor(scale: "full" | "small"): string {
   return scale === "small" ? SMALL_MANIFEST_PATH : DEFAULT_MANIFEST_PATH;
 }
 
-// Canonical form: one `col1,col2,…` line per row, rows in ORDER BY pk order,
-// `\n`-joined with no trailing newline. Values in this phase never contain
-// commas or newlines; the loader builds these lines from DB reads.
 export function hashCanonicalCsv(canonicalCsv: string): string {
   return createHash("sha256").update(canonicalCsv, "utf8").digest("hex");
 }
@@ -58,8 +50,6 @@ export function writeManifest(
   writeFileSync(path, JSON.stringify(validated, null, 2) + "\n", "utf8");
 }
 
-// Returns one human-readable mismatch per table; empty means identical.
-// The loader throws (refuses to finish) on a non-empty result.
 export function compareManifests(
   actual: SeedManifest,
   expected: SeedManifest,

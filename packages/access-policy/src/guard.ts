@@ -6,20 +6,13 @@ import type { DbToolError, SchemaCatalog } from "@shared/contracts";
 import { dbToolError } from "@shared/contracts";
 import { FORBIDDEN_FUNCTION_SET, SYSTEM_SCHEMA_SET } from "./denylist.js";
 
-/**
- * Parsed AST handed downstream so the 01-06 policy stage and the 01-08/01-11
- * callers reuse the tree with no double parse (D-01). Derived from the
- * `pgsql-parser` return type so the guard never names a transitive package.
- */
+// Derived from pgsql-parser's return type so downstream stages reuse the AST without naming a transitive package.
 export type GuardAst = Awaited<ReturnType<typeof parse>>;
 
 export type GuardSuccess = {
   ok: true;
-  /** Lowercased table names referenced by the query (CTEs excluded). */
   tables: string[];
-  /** Lowercased named columns referenced by the query (`*` excluded). */
   columns: string[];
-  /** Parsed AST for downstream stages (policy, executor pre-check). */
   ast: GuardAst;
 };
 
@@ -30,31 +23,23 @@ export type GuardFailure = {
 
 export type GuardResult = GuardSuccess | GuardFailure;
 
-// WASM init once: async parse self-initializes libpg_query on first call.
-// Never use parseSync on a request path — it throws cold
-// ("WASM module not initialized"). Call once at server boot / test setup.
+// Async parse initializes libpg_query WASM once; call at boot/test setup and never use parseSync on request paths.
 export async function warmupSqlGuard(): Promise<void> {
   await parse("SELECT 1");
 }
 
-// Statement tags that are never allowed anywhere in the walked tree.
-// Root is already restricted to SelectStmt; DML tags matter because they can
-// nest inside CTEs (WITH x AS (DELETE ...) SELECT ...). Utility tags cannot
-// nest syntactically but are denied defense-in-depth (fail closed).
+// Root is already SelectStmt, but DML can nest in CTEs (WITH x AS (DELETE ...)) and utility tags are denied fail-closed.
 const DENIED_STATEMENT_TAGS: ReadonlySet<string> = new Set([
-  // DML / writes
   "InsertStmt",
   "UpdateStmt",
   "DeleteStmt",
   "MergeStmt",
   "CopyStmt",
   "TruncateStmt",
-  // Transactions / session state
   "TransactionStmt",
   "VariableSetStmt",
   "VariableShowStmt",
   "DiscardStmt",
-  // DDL and privilege changes
   "CreateStmt",
   "DropStmt",
   "AlterStmt",
@@ -62,7 +47,6 @@ const DENIED_STATEMENT_TAGS: ReadonlySet<string> = new Set([
   "RenameStmt",
   "GrantStmt",
   "CommentStmt",
-  // Execution / introspection escapes
   "ExplainStmt",
   "PrepareStmt",
   "ExecuteStmt",
@@ -82,16 +66,9 @@ type CollectedRangeVar = { schema?: string; name: string };
 type CollectedColumnRef = {
   qualifier?: string;
   name: string;
-  /**
-   * True when the ref sits under ORDER BY/GROUP BY and matches a select-list
-   * alias of the enclosing SelectStmt (v1 bug C2 fix) — exempt from the
-   * catalog check, since PG resolves it against the select list, not a table.
-   */
+  // Unqualified ORDER BY/GROUP BY ref matching a select-list alias resolves against the select list, not a table.
   aliasExempt: boolean;
-  /**
-   * True when the ref sits directly under ORDER BY/GROUP BY without a
-   * select-list alias hit — eligible for the FROM-subquery-output fallback.
-   */
+  // Unqualified ORDER BY/GROUP BY ref eligible for the FROM-subquery-output fallback.
   sortGroupPosition: boolean;
 };
 
@@ -105,7 +82,6 @@ function svalText(field: unknown): string | undefined {
   return typeof stringNode?.sval === "string" ? stringNode.sval : undefined;
 }
 
-/** Lowercased ResTarget alias names of one SelectStmt targetList. */
 function resTargetAliasNames(
   selectNode: Record<string, unknown>,
 ): Set<string> {
@@ -128,11 +104,6 @@ function resTargetAliasNames(
   return names;
 }
 
-/**
- * Nearest enclosing SelectStmt ancestor of a ColumnRef plus the clause key
- * the ref hangs under (`sortClause`, `groupClause`, `targetList`, ...),
- * derived from the walk NodePath parent/keyPath chain.
- */
 function enclosingSelect(path: NodePath): {
   select: Record<string, unknown>;
   clauseKey: string | undefined;
@@ -154,10 +125,7 @@ function enclosingSelect(path: NodePath): {
   return undefined;
 }
 
-/**
- * Unwrap a SelectStmt that may arrive bare (`larg`) or wrapped as
- * `{SelectStmt: {...}}`. Returns undefined for anything else.
- */
+// Unwrap a SelectStmt that may arrive bare (e.g. larg) or wrapped as { SelectStmt: ... }.
 function asSelectStmt(node: unknown): Record<string, unknown> | undefined {
   if (typeof node !== "object" || node === null) return undefined;
   const record = node as Record<string, unknown>;
@@ -167,7 +135,6 @@ function asSelectStmt(node: unknown): Record<string, unknown> | undefined {
   return asSelectStmt(record["SelectStmt"]);
 }
 
-/** True when the node is a ColumnRef whose fields are all plain identifiers. */
 function columnRefLastField(node: unknown): string | undefined {
   if (typeof node !== "object" || node === null) return undefined;
   const columnRef = (node as { ColumnRef?: unknown }).ColumnRef;
@@ -181,12 +148,7 @@ function columnRefLastField(node: unknown): string | undefined {
   return names[names.length - 1];
 }
 
-/**
- * Output column names (lowercased) of a FROM-subquery SelectStmt, or null
- * when the outputs cannot be enumerated (star, unaliased expression, set
- * operation inside the subquery). Fail-safe: opaque means the caller's refs
- * fall through to the normal fail-closed catalog check.
- */
+// Returns null for non-enumerable subqueries (star, unaliased expr, setop) so refs fall through to fail-closed catalog checks.
 function subqueryOutputColumns(subquery: unknown): string[] | null {
   const select = asSelectStmt(subquery);
   if (select === undefined) return null;
@@ -259,15 +221,11 @@ export async function sqlGuard(
     };
   }
 
-  // Single pass: abort on structural violations, collect the names that the
-  // post-walk catalog check validates (CTE names must be known before FROM
-  // refs are judged, and walk order across clauses is not contractual).
+  // Collect refs for post-walk validation because CTE names must be known before judging FROM refs across walk order.
   const cteNames = new Set<string>();
   const rangeVars: CollectedRangeVar[] = [];
   const columnRefs: CollectedColumnRef[] = [];
   const subqueries: SubquerySource[] = [];
-  // Alias (FROM x AS o / o): qualified refs use the alias, so map it to
-  // the real table for the post-walk column check.
   const aliasToTable = new Map<string, string>();
 
   const deniedVisitors: Record<string, (path: unknown, ctx: unknown) => void> =
@@ -331,8 +289,6 @@ export async function sqlGuard(
           typeof node.schemaname === "string" ? node.schemaname : undefined,
         name,
       });
-      // FROM alias (AS o / o): qualified refs use the alias, so map it to
-      // the real table for the post-walk column check.
       const aliasname =
         typeof node.alias === "object" && node.alias !== null
           ? (node.alias as { aliasname?: unknown }).aliasname
@@ -368,15 +324,8 @@ export async function sqlGuard(
       const last = names[names.length - 1] as string;
       const qualifier =
         names.length >= 2 ? (names[names.length - 2] as string) : undefined;
-      // v1 bug C2 fix: a ColumnRef under ORDER BY/GROUP BY is PG name
-      // resolution against the select list, not a table column. Exempt it
-      // when it is unqualified and matches a ResTarget alias of the
-      // enclosing SelectStmt — or, for a UNION top level (empty targetList
-      // plus setop), when it matches the larg branch aliases. Positional
-      // refs (ORDER BY 1) are A_Const nodes, never ColumnRefs, so they need
-      // no handling here. HAVING keeps the strict rule (PG rejects select
-      // aliases there) and everything else falls through to the normal
-      // column check.
+      // PG resolves unqualified ORDER BY/GROUP BY ColumnRefs against select-list aliases (or larg for setops);
+      // HAVING still forbids select aliases, and positional refs (ORDER BY 1) are A_Const nodes.
       let aliasExempt = false;
       let sortGroupPosition = false;
       if (names.length === 1 && qualifier === undefined) {
@@ -420,9 +369,7 @@ export async function sqlGuard(
     };
   }
 
-  // Catalog lookup against the array-of-tables shape: exact-first,
-  // lowercase-fallback (quoted mixed-case identifiers match exactly; PG folds
-  // unquoted identifiers to lowercase).
+  // Exact-first then lowercase lookup: PG folds unquoted identifiers to lowercase while preserving quoted mixed-case.
   const tableIndex = new Map<string, SchemaCatalog["tables"][number]>();
   for (const table of catalog.tables) {
     tableIndex.set(table.name.toLowerCase(), table);
@@ -433,8 +380,7 @@ export async function sqlGuard(
   ): SchemaCatalog["tables"][number] | undefined =>
     tableIndex.get(name) ?? tableIndex.get(name.toLowerCase());
 
-  // FROM-subquery outputs (alias -> output columns, fail-closed: opaque
-  // subqueries are simply absent, so refs against them stay UNKNOWN_TABLE).
+  // Opaque subqueries are omitted here so references to them fail closed as UNKNOWN_TABLE.
   const subqueryOutputs = new Map<string, string[]>();
   for (const { alias, subquery } of subqueries) {
     const outputs = subqueryOutputColumns(subquery);
@@ -494,16 +440,9 @@ export async function sqlGuard(
     }
     if (ref.qualifier !== undefined) {
       const q = ref.qualifier.toLowerCase();
-      // Subquery/CTE outputs cannot be resolved against the catalog yet
-      // (full resolveColumns lands in 01-06); refs qualified by a CTE name
-      // pass here. Refs qualified by a FROM-subquery alias pass only when
-      // the name provably comes from that subquery's select list.
-      // Unknown qualifiers fail closed.
+      // Guard leaves CTE outputs opaque for downstream policy resolution; FROM-subquery refs require an enumerated column.
       if (cteNames.has(q)) continue;
-      // A CTE can be given a FROM alias (`FROM first_orders fo`), and its
-      // column refs are then qualified by that alias rather than ctename.
-      // CTE outputs remain opaque at this guard stage, just as refs qualified
-      // by the ctename itself do; resolveColumns performs deeper resolution.
+      // CTEs with FROM aliases are likewise deferred to downstream policy resolution.
       const cteSource = aliasToTable.get(q);
       if (cteSource !== undefined && cteNames.has(cteSource.toLowerCase())) continue;
       const outputs = subqueryOutputs.get(q);
@@ -527,17 +466,14 @@ export async function sqlGuard(
       ref.sortGroupPosition &&
       derivedOutputs.has(ref.name.toLowerCase())
     ) {
-      // ORDER BY/GROUP BY against a FROM-subquery output: PG resolves these
-      // after select-list aliases, and the name provably comes from the
-      // parsed tree's own FROM items — not a guess.
+      // Allow ORDER BY/GROUP BY over a provably enumerated FROM-subquery output column.
     } else if (seenTables.size > 0 && !anyTableHas(ref.name)) {
       return {
         ok: false,
         error: dbToolError("UNKNOWN_TABLE", `Unknown column: ${ref.name}`),
       };
     } else if (seenTables.size === 0) {
-      // No FROM tables (e.g. SELECT 1 has no ColumnRef at all): any named
-      // column reference cannot resolve — fail closed.
+      // Fail closed on any named column reference when the query has no FROM tables.
       return {
         ok: false,
         error: dbToolError("UNKNOWN_TABLE", `Unknown column: ${ref.name}`),

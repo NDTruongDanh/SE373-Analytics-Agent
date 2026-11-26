@@ -141,6 +141,13 @@ export function gradeExecution(
   if (expected.status === "cannot_answer") {
     return gradeCannotAnswer(actual, mismatches);
   }
+  if (expected.status === "needs_clarification") {
+    // All-time scans of a large table must ask for a time range (#129).
+    if (actual.status !== "needs_clarification") {
+      mismatches.push(`status differs: actual ${actual.status}, gold needs_clarification`);
+    }
+    return { pass: mismatches.length === 0, mismatches };
+  }
   compareRowLists(
     actual.rows ?? [],
     expected.rows ?? [],

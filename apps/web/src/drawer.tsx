@@ -17,7 +17,7 @@ function valueText(value: unknown): string {
   return JSON.stringify(value) ?? String(value);
 }
 
-/** A deliberately simple, text-only line comparison; no HTML from SQL is interpreted. */
+// Text-only line diff so SQL text is never interpreted as HTML.
 function changes(before: string, after: string): string {
   const oldLines = before.split("\n");
   const newLines = after.split("\n");

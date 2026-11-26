@@ -1,7 +1,3 @@
-// Query-executor public surface (G-01): explicit named re-exports so the
-// eval safety driver can drive the REAL ValidatedQueryExecutor plus the
-// LocalQuerySafetyGate without importing agent internals by relative path.
-// No new runtime surface for the graph — additive exports only.
 export {
   ValidatedQueryExecutor,
   simplifyForTimeout,
@@ -26,6 +22,17 @@ export {
   type SafetyGateResult,
 } from "./safetyGate.js";
 export { DETAIL_QUERY_LIMIT } from "../constants.js";
+export {
+  ceilingsFor,
+  costBreach,
+  defaultQueryCostPolicy,
+  loadQueryCostPolicy,
+  loadQueryCostPolicyFile,
+  QueryCostPolicySchema,
+  type CostBreach,
+  type CostCeilings,
+  type QueryCostPolicy,
+} from "./costPolicy.js";
 export {
   buildSqlProposalPrompt,
   MAX_COLUMN_DESC_CHARS,

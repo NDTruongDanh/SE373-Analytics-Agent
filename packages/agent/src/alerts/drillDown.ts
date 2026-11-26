@@ -118,10 +118,6 @@ function drillDownCandidateTables(
   return [...tables];
 }
 
-/**
- * Builds candidate breakdown SQL query based on metric, target date,
- * selected secondary dimensions, and recipient RBAC filter.
- */
 export function buildDrillDownSql(options: {
   metricId: string;
   secondaryDimensions: string[];
@@ -133,7 +129,6 @@ export function buildDrillDownSql(options: {
   const { metricId, secondaryDimensions, date, recipientRole } = options;
   AlertDateSchema.parse(date);
 
-  // Selected 1 or 2 dimensions
   for (const dimension of secondaryDimensions) {
     const [tableName, columnName, extra] = dimension.split(".");
     const table = DEFAULT_ANOMALY_CATALOG.tables.find(
@@ -157,7 +152,6 @@ export function buildDrillDownSql(options: {
   const primaryDim = dims[0] || "regions.province";
   const secondaryDim = dims[1];
 
-  // RBAC WHERE filter injection (UC-10 §6: Policy applied at query generation)
   const rbacClauses: string[] = [];
   if (recipientRole) {
     const roleLower = recipientRole.toLowerCase();
@@ -180,7 +174,6 @@ export function buildDrillDownSql(options: {
     ? `${primaryDim}, ${secondaryDim}`
     : primaryDim;
 
-  // Determine needed JOINs based on referenced tables
   const queryRefText = `${metricId} ${selectCols} ${whereSql}`;
   const joins: string[] = [];
   if (queryRefText.includes("regions.") || rbacClauses.length > 0) {
@@ -291,7 +284,6 @@ export function buildDrillDownSql(options: {
     );
   }
 
-  // Default metric: revenue / order count
   return (
     `SELECT ${selectCols}, COUNT(*) AS total_orders, ` +
     `SUM(orders.total_amount) AS revenue ` +
@@ -303,9 +295,6 @@ export function buildDrillDownSql(options: {
   );
 }
 
-/**
- * Formats a key-value row into a drilldown segment string (e.g. `regions.province = 'Đà Nẵng'`).
- */
 export function formatDrilldownSegment(
   row: Record<string, unknown>,
   dimensions: string[],
@@ -322,15 +311,6 @@ export function formatDrilldownSegment(
   return parts.length > 0 ? parts.join(" AND ") : "all_segments";
 }
 
-/**
- * 1–2 Dimension Drill-Down Analyzer (UC-10 §5, F10.3)
- *
- * - Inputs anomalous slice + candidate dimensions from subscriptions.yaml
- * - Formulates SQL breakdown query with RBAC injected
- * - Executes query through ValidatedQueryExecutor
- * - Identifies highest-impact segment
- * - Composes strict 6-field AnomalyAlert (PRD UC-10 acceptance criterion #2)
- */
 export async function runDrillDownAnalysis(
   input: DrillDownInput,
 ): Promise<DrillDownResult> {
@@ -345,14 +325,12 @@ export async function runDrillDownAnalysis(
   AlertDateSchema.parse(date);
   const recipientRole = input.recipientRole ?? subscription.recipientRole;
 
-  // 1. Select 1-2 secondary dimensions
   const candidateDims = subscription.suggestedSecondaryDimensions ?? [];
   const selectedDimensions =
     candidateDims.length > 0
       ? candidateDims.slice(0, 2)
       : ["regions.province"];
 
-  // 2. Build candidate breakdown SQL
   const catalog = input.catalog ?? DEFAULT_ANOMALY_CATALOG;
   const initialSql = buildDrillDownSql({
     metricId: subscription.metricId,
@@ -363,8 +341,7 @@ export async function runDrillDownAnalysis(
     catalog,
   });
 
-  // The SQL is only a deterministic starting proposal; VQE still runs its
-  // selective describe, local policy gate, MCP explain/run, and repair loop.
+  // Starting proposal only; ValidatedQueryExecutor still enforces describe, policy, explain/run, and repair.
   const queryResult = await executeAlertQuery({
     queryExecutor,
     principal: queryPrincipal,
@@ -383,7 +360,6 @@ export async function runDrillDownAnalysis(
   const rows = queryResult.rows;
   const topSegmentRow = rows.length > 0 ? rows[0] : undefined;
 
-  // 5. Extract drilldown segment string
   let drilldownSegment: string;
   if (topSegmentRow) {
     drilldownSegment = formatDrilldownSegment(topSegmentRow, selectedDimensions);
@@ -391,7 +367,6 @@ export async function runDrillDownAnalysis(
     drilldownSegment = dimensionKey.length > 0 ? dimensionKey : "overall";
   }
 
-  // 6. Build explanation & message
   const dirText = anomaly.direction === "spike" ? "tăng đột biến" : "giảm đột biến";
   let explanation =
     `Phát hiện ${subscription.metricId} ${dirText} vào ngày ${date} ` +
@@ -438,11 +413,10 @@ export async function runDrillDownAnalysis(
         explanation = redacted.redacted;
       }
     } catch {
-      // Scrubbed fallback to deterministic explanation on error
+      // Fallback to deterministic explanation on error
     }
   }
 
-  // 7. Compose strict 6-field AnomalyAlert (PRD UC-10 Criterion #2)
   const fingerprint = calculateAlertFingerprint({
     recipientId: subscription.recipientId,
     metric: subscription.metricId,
@@ -452,7 +426,6 @@ export async function runDrillDownAnalysis(
   });
 
   const alertCandidate: AnomalyAlert = {
-    // 6 Mandatory fields:
     metric: subscription.metricId,
     currentValue: anomaly.currentValue,
     expectedValue: anomaly.expectedValue,
@@ -460,7 +433,6 @@ export async function runDrillDownAnalysis(
     drilldownSegment,
     evidenceSql,
 
-    // Metadata & routing fields:
     subscriptionId: subscription.id,
     recipientId: subscription.recipientId,
     recipientRole: subscription.recipientRole,
@@ -471,7 +443,6 @@ export async function runDrillDownAnalysis(
     message: explanation,
   };
 
-  // Strict validation against AnomalyAlertSchema
   const alert = AnomalyAlertSchema.parse(alertCandidate);
 
   return {

@@ -1,10 +1,3 @@
-// Semantic indexer (MCP-02): chunks the versioned 6-type YAML corpus,
-// embeds through the configured embedder, and upserts into
-// semantic_chunks with SHA-256 content_hash dedup so re-runs are
-// incremental (new chunks inserted, changed chunks re-embedded, unchanged
-// chunks skipped, stale chunks deleted). Operator-run via tsx against this
-// module directly (`pnpm semantic:index`). Writes as the indexer role over
-// INDEXER_DATABASE_URL.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -35,8 +28,6 @@ export interface ParsedChunk {
   content: string;
 }
 
-// Validate a parsed chunk against the shared contract. Throws on mismatch
-// so every chunk leaving chunkYaml/chunkMarkdown is guaranteed compliant.
 export function validateChunkMetadata(
   chunk: ParsedChunk,
   updatedAt = "1970-01-01T00:00:00.000Z",
@@ -67,10 +58,6 @@ function parseMetaLine(line: string): [key: string, value: string] | null {
   return [match[1] as string, (match[2] as string).trim()];
 }
 
-// Pure chunker (exported for unit tests): every `## ` section is one chunk.
-// A header ending in [restricted_pii] marks the chunk restricted; leading
-// `Table:`/`Tables:`/`Metric:`/`Aliases:` lines populate the metadata
-// columns and stay in the content for lexical search.
 export function chunkMarkdown(
   source: string,
   text: string,
@@ -176,7 +163,6 @@ function structuredFieldToString(value: unknown): string {
   return String(value).trim();
 }
 
-// YAML chunker: parses YAML array/object entries into ParsedChunk[].
 export function chunkYaml(
   source: string,
   text: string,

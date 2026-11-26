@@ -14,12 +14,16 @@ After the Phase 1 freeze, contract changes follow the **additive-only** rule:
   members, changing error codes — require a `CONTRACTS_VERSION` major bump
   **plus approval from every affected UC owner**.
 
-`CONTRACTS_VERSION` (`src/index.ts`, currently `1.1.0`) is the single version
+`CONTRACTS_VERSION` (`src/index.ts`, currently `1.2.0`) is the single version
 constant consumers can assert against. Enforcement is by CODEOWNERS review on
 `packages/contracts/` (see `.github/CODEOWNERS`).
 
 ## Version history
 
+- **1.2.0** (additive, one code-owner review): `describe_table` columns gain
+  optional `large`, the large-table flag the gateway catalog already set from
+  `LARGE_TABLES`. Zod was stripping it, so live runs never saw a large table
+  (#129). Pre-1.2.0 payloads without the field still parse (absent = not large).
 - **1.1.0** (additive, one code-owner review): `RunQueryOutputSchema` gains
   optional `rowScopeApplied` (`RowScopeAppliedSchema`: strict `{ table, column }`,
   column names only) carrying the server-minted row-scope record the MCP

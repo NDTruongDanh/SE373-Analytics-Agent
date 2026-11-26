@@ -1,28 +1,8 @@
-// Deterministic OpenUI Lang serializer (UC-03, docs/UC-plan/UC03.md §2.1).
-//
-// The harness — never the model — converts the validated chart spec into
-// OpenUI Lang lines for `apps/web`'s `<Renderer library={openuiChatLibrary}/>`,
-// so the model can never invent component names or malformed Lang. Shapes
-// mirror the upstream genui-lib chat library 1:1
-// (`@openuidev/react-ui`, MIT):
-//
-//   root = Card([title, chart, notes])          (library root is "Card")
-//   title = TextContent("…", "large-heavy")
-//   chart = BarChart(labels, [s1], "grouped")  (positional = schema key order)
-//   labels = ["Oct", …] / s1 = Series("…", […])
-//   tbl = Table([c1, c2]) / c1 = Col("…", data, "number")
-//   chart = PieChart(labels, values)
-//   chart = ScatterChart([d1], "Price", "Qty") / d1 = ScatterSeries("…", [p1])
-//
-// Pure function — parse-safe by construction (identifiers are generated,
-// every string literal is JSON-encoded).
-
 import type { OpenuiChartSpec } from "@shared/contracts";
 
 export interface SerializeInput {
   title: string;
   spec: OpenuiChartSpec;
-  /** Zero or more closing notes; joined into one TextContent. */
   notes?: string[];
 }
 
@@ -129,10 +109,6 @@ function linesFor(
   }
 }
 
-/**
- * Serialize a validated spec to OpenUI Lang. `None` specs (single scalar
- * or `no_data`) emit title + notes only — there is no chart to draw.
- */
 export function serializeOpenuiLang(input: SerializeInput): string {
   const define: string[] = [];
   const title = input.title.slice(0, 200);

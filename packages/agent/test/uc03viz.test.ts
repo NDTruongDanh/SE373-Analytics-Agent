@@ -15,7 +15,7 @@ function stateOf(partial: Record<string, unknown>): AgentState {
   // is unit-tested by direct call, so defaults are inlined here.
   return {
     question: "Revenue by region?",
-    ucId: "uc03-test",
+    route: "text-to-sql",
     intent: {
       metric: null,
       dimensions: [],

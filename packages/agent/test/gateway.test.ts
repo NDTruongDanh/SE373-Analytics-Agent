@@ -166,6 +166,28 @@ describe("validateGatewayRecord", () => {
         .ok,
     ).toBe(false);
   });
+
+  it("accepts rowScopeTablesInclude and rejects bad shapes", () => {
+    expect(
+      validateGatewayRecord(
+        goodCase({ expect: { rowScopeTablesInclude: ["orders"] } }),
+      ).ok,
+    ).toBe(true);
+    expect(
+      validateGatewayRecord(goodCase({ expect: { rowScopeTablesInclude: [] } }))
+        .ok,
+    ).toBe(true);
+    expect(
+      validateGatewayRecord(
+        goodCase({ expect: { rowScopeTablesInclude: "orders" } }),
+      ).ok,
+    ).toBe(false);
+    expect(
+      validateGatewayRecord(
+        goodCase({ expect: { rowScopeTablesInclude: [""] } }),
+      ).ok,
+    ).toBe(false);
+  });
 });
 
 describe("gradeGatewayCase", () => {
@@ -270,6 +292,41 @@ describe("gradeGatewayCase", () => {
       observed,
     );
     expect(exact.pass).toBe(false);
+  });
+
+  it("grades rowScopeTablesInclude against rowScopeApplied tables", () => {
+    const scoped: GatewayObserved = {
+      ok: true,
+      httpStatus: 200,
+      rowScopeApplied: [
+        { table: "orders", column: "region_group" },
+        { table: "order_items", column: "region_group" },
+      ],
+      message: "",
+    };
+    const c = goodCase({
+      tool: "run_query",
+      expect: { ok: true, rowScopeTablesInclude: ["order_items", "orders"] },
+    }) as unknown as GatewayCase;
+    expect(gradeGatewayCase(c, scoped).pass).toBe(true);
+    const missing = gradeGatewayCase(
+      goodCase({
+        tool: "run_query",
+        expect: { rowScopeTablesInclude: ["orders", "payments"] },
+      }) as unknown as GatewayCase,
+      scoped,
+    );
+    expect(missing.pass).toBe(false);
+    expect(missing.reason).toMatch(/payments/);
+    const empty = gradeGatewayCase(
+      goodCase({
+        tool: "run_query",
+        expect: { rowScopeTablesInclude: ["orders"] },
+      }) as unknown as GatewayCase,
+      { ok: true, httpStatus: 200, message: "" },
+    );
+    expect(empty.pass).toBe(false);
+    expect(empty.reason).toMatch(/rowScopeApplied misses tables/);
   });
 
   it("grades rawValuesVisible for the HR leg", () => {
@@ -699,5 +756,19 @@ describe("observedFromPayload", () => {
     expect(() => observedFromPayload({ message: "x" }, true, 200)).toThrow(
       /without a DbToolError code/,
     );
+  });
+
+  it("carries rowScopeApplied from the run_query payload", () => {
+    const applied = [{ table: "orders", column: "region_group" }];
+    const observed = observedFromPayload(
+      { columns: ["n"], rows: [{ n: 1 }], rowScopeApplied: applied },
+      false,
+      200,
+    );
+    expect(observed.rowScopeApplied).toEqual(applied);
+    expect(
+      observedFromPayload({ columns: [], rows: [] }, false, 200)
+        .rowScopeApplied,
+    ).toBeUndefined();
   });
 });

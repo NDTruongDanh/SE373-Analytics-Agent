@@ -1,21 +1,3 @@
-// Full API host (API-01/API-02/API-03, 01-14, wave 6).
-//
-// buildApp wires the 01-10 root graph, the 01-12 span emitter, and the
-// 01-13 persistence ports together behind sanitized SSE: POST /api/ask
-// mints D-13 run context, maps the UI persona to an MCP principal through
-// the server-side yaml map, invokes buildRootGraph with configurable
-// holding thread_id, runId, and principal, streams allowlisted
-// schema-validated SSE, and lets the 01-09 TraceWriter plus the 01-12 span
-// emitter write the full redacted trace. POST /api/runs/:runId/resume
-// issues Command({resume}) on the SAME thread_id, restart-proof via trace
-// rehydration. PostgresSaver plus AppStateStore arrive only through
-// apps/api/src/ports.ts (01-13, unmodified); boot fails fast when
-// HARNESS_STATE_DATABASE_URL is absent and never falls back to MemorySaver.
-//
-// The createTracerApi slice below stays as the compatibility host for the
-// pre-01-14 suites (its UUID thread shape and five-event stream are pinned
-// by apps/api/test/tracer.test.ts, which this plan does not modify).
-
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { randomUUID } from "node:crypto";
@@ -26,14 +8,14 @@ import {
   buildRootGraph,
   createAnswerSynthesizer,
   previewCountTotal,
-  routeQuestionToUc,
-  runTracerGraph,
+  RCA_ROUTE,
+  routeQuestion,
+  TEXT_TO_SQL_ROUTE,
   type AgentState,
   type RetrieveFn,
   type RootGraphDeps,
   type SpanEvent,
   type SynthesizeFn,
-  type UcEntryHandler,
   type VizFn,
 } from "@shared/agent";
 import { createRetrieveSemantic } from "@shared/agent/uc02";
@@ -82,44 +64,19 @@ export interface ReindexResult {
   deleted: number;
 }
 
-/** Options for the full host. The checkpointer is already set up. */
 export interface BuildAppOptions {
-  /** Durable saver (PostgresSaver in prod via ports; MemorySaver in tests). */
   checkpointer: BaseCheckpointSaver;
-  /** MCP gateway URL for per-call run identity. */
   mcpUrl: string;
-  /** Trace directory shared with resume rehydration. */
   tracesDir?: string;
-  /** Client registry; defaults to the server-side yaml file. */
   registry?: ClientRegistry;
-  /** Env map for token resolution; defaults to process.env. */
   env?: NodeJS.ProcessEnv;
-  /** Injected AppStateStore (UC-10 write-after-send path; ask/resume hold it, never call it). */
+  // Held for UC-10 write-after-send; ask and resume never call it directly.
   store?: AppStateStore;
-  /** Test seam: merged OVER the registry table (mirrors RootGraphDeps). */
-  ucHandlers?: Record<string, UcEntryHandler>;
-  /** Optional text-to-SQL runtime deps seam (mirrors RootGraphDeps.textToSql). */
+  routes?: RootGraphDeps["routes"];
   textToSql?: RootGraphDeps["textToSql"];
-  /**
-   * UC-02 semantic retrieve seam (#88, #104): calls search_semantic_layer over
-   * the run's MCP transport + two-tier unknown-term gate.
-   * Defaults to createRetrieveSemantic(). Override with a scripted seam in tests.
-   */
   retrieve?: RetrieveFn;
-  /**
-   * UC-03 VIZ seam (insight_report verification for every ok/no_data
-   * answer). Defaults to createUc03Viz(): deterministic chart validation
-   * with zero LLM calls when no model key is configured, Profile-3
-   * tool-free synthesis otherwise. Override with a scripted seam in tests.
-   */
   viz?: VizFn;
-  /**
-   * Answer seam (#104). Defaults to createAnswerSynthesizer(), which turns
-   * UC-03 verified insights or the masked preview into answerText; the
-   * root builder's own default is the tracer demo formatter.
-   */
   synthesize?: SynthesizeFn;
-  /** Optional semantic re-index handler (defaults to calling the MCP gateway /reindex endpoint). */
   reindex?: (ctx: { token: string; mcpUrl: string }) => Promise<ReindexResult>;
 }
 
@@ -141,7 +98,6 @@ export async function defaultReindex(ctx: {
       const text = await res.text();
       if (text) message = text;
     } catch {
-      // Keep the default status message.
     }
     throw new Error(message);
   }
@@ -154,7 +110,6 @@ export async function defaultReindex(ctx: {
   };
 }
 
-/** Per-run identity retained for resume on the same thread_id. */
 export interface StoredRun {
   threadId: string;
   userId: string;
@@ -168,7 +123,6 @@ function interruptedOf(output: unknown): unknown[] | undefined {
   return (output as { __interrupt__?: unknown[] }).__interrupt__;
 }
 
-/** Read clarification metadata from either checkpoint state or LangGraph's interrupt payload. */
 function pendingClarificationOf(output: unknown): AgentState["pendingClarification"] {
   const direct = (output as Partial<AgentState>).pendingClarification;
   if (direct) return direct;
@@ -186,8 +140,7 @@ function pendingClarificationOf(output: unknown): AgentState["pendingClarificati
   return null;
 }
 
-
-/** Verdict tokens safe to record verbatim: protocol decisions, never content. */
+// Allowlisted protocol verdict tokens safe to record verbatim; never user content.
 const APPROVAL_VERDICTS = new Set([
   "approve",
   "approved",
@@ -202,11 +155,6 @@ const APPROVAL_VERDICTS = new Set([
   "cancel",
 ]);
 
-/**
- * Open-ended approval kind (Phase 3 G2): clarification options imply a
- * clarification gate; anything else stays a generic approval so future
- * gates (cost_approval, …) can mint their own kinds without a shape change.
- */
 function approvalKindFor(
   out: AgentState,
   pendingClarification: AgentState["pendingClarification"] = out.pendingClarification,
@@ -214,13 +162,8 @@ function approvalKindFor(
   return pendingClarification ? "clarification" : "approval";
 }
 
-/**
- * Metadata-only resume verdict (T-03-08): allowlisted protocol tokens are
- * recorded verbatim; anything else (free-form clarification answers, pasted
- * secrets) becomes "provided" plus length. The raw resume value never enters
- * a span — and no hash of it either, since an unsalted sha256 of a short
- * value is brute-forceable.
- */
+// Record allowlisted protocol tokens verbatim and redact everything else to "provided" + length;
+// avoid hashing short inputs because unsalted SHA-256 is brute-forceable.
 function approvalDecision(value: unknown): {
   decision: string;
   valueLength: number;
@@ -233,12 +176,7 @@ function approvalDecision(value: unknown): {
   };
 }
 
-/**
- * Latest approval_requested for this run, read from its own trace file (no
- * new state store). The header-only rehydrateRun read cannot see non-first
- * request events, so this scans the same run file for the latest request
- * timestamp and kind; absent or unreadable files yield null (waitedMs 0).
- */
+// Scan the run trace for the latest approval_requested since header-only rehydration skips later events.
 function readLastApprovalRequest(
   tracesDir: string,
   runId: string,
@@ -308,11 +246,7 @@ const SSE_HEADERS = {
   "content-security-policy": API_CSP_HEADER,
 };
 
-/**
- * Bound for the background LangSmith tail drain (Phase 3 review): the SSE
- * response always ends first, then the flush runs detached so a stalled
- * batch can never hold a run — or shutdown — open.
- */
+// Bound detached LangSmith tail flush so a stalled batch cannot hold a response or shutdown open.
 const LANGSMITH_FLUSH_TIMEOUT_MS = 2500;
 
 export function buildApp(options: BuildAppOptions): express.Express {
@@ -321,9 +255,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
   const registry = options.registry ?? loadRegistryFromFile();
   assertTokensPresent(registry, env);
 
-  // Per-run identity scoped by runId, write-once (T-01-14-05: no shared
-  // mutable registry without per-request scoping — entries are keyed by
-  // runId and never overwritten, so concurrent asks cannot cross identity).
+  // Keyed by runId and write-once so concurrent asks cannot cross-contaminate run identity.
   const runs = new Map<string, StoredRun>();
 
   const app = express();
@@ -351,8 +283,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const spanId = emit(event);
       const payload = isRecord(event.payload) ? event.payload : {};
       const envelope = { runId, threadId: run.threadId };
-      // Progress contains only allowlisted metadata, never model text, SQL,
-      // filter literals, result cells, or credentials.
+      // Emit only allowlisted progress metadata; never expose model text, SQL literals, cells, or credentials.
       if (event.node === "understand" && event.type === "node_done" && typeof payload["sql"] === "string" && !sent.has("sql_generated")) {
         const sql = payload["sql"];
         proposedSql = sql;
@@ -378,7 +309,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
       graph: buildRootGraph({
         checkpointer: options.checkpointer,
         emitSpan: progress,
-        ...(options.ucHandlers ? { ucHandlers: options.ucHandlers } : {}),
+        ...(options.routes ? { routes: options.routes } : {}),
         ...(options.textToSql ? { textToSql: options.textToSql } : {}),
         retrieve: options.retrieve ?? createRetrieveSemantic(),
         viz: options.viz ?? createUc03Viz(),
@@ -392,7 +323,6 @@ export function buildApp(options: BuildAppOptions): express.Express {
     return configurableForRun(run, runId);
   }
 
-  /** Completion is separate from real-time progress; no fake stage events. */
   function streamCompletion(
     res: Response,
     runId: string,
@@ -480,25 +410,21 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const built = buildGraph(run, runId, res);
       emit = built.emit;
       const graph = built.graph;
-      // Optional LangSmith export (Phase 3, D-04): the tracer exists only
-      // when all three vars are set; its handler name suppresses the bare
-      // env auto-tracer. runId equals the JSONL runId for 1:1 correlation.
+      // Reuse runId as LangSmith runId for 1:1 JSONL correlation; custom tracer suppresses env auto-tracing.
       const tracer = createLangSmithTracer(env);
-      const reqUcId = typeof req.body?.["ucId"] === "string" ? req.body["ucId"] : undefined;
-      const effectiveUcId = routeQuestionToUc(question, reqUcId);
       const ls = tracer
         ? buildLangSmithRunConfig(tracer, {
             runId,
             threadId,
             userId: principal.userId,
             role: principal.role,
-            ucId: effectiveUcId,
+            route: routeQuestion(question),
             maskedColumns: [],
           })
         : undefined;
       const out = (await graph.invoke(
         {
-          question, ucId: effectiveUcId, runId, threadId,
+          question, runId, threadId,
           // A new question reuses the thread, but not the previous run's outputs or budgets.
           status: "no_data", answerText: "", sql: null, tablesUsed: [],
           semanticChunks: [], catalogTables: [], catalogStatus: "unloaded",
@@ -565,8 +491,6 @@ export function buildApp(options: BuildAppOptions): express.Express {
         data: toFailedSseData(error, "unknown ask failure"),
       });
     } finally {
-      // End the response first, then drain the LangSmith tail detached
-      // (no-op when tracing is off): a stalled batch never holds the run.
       res.end();
       void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
@@ -643,8 +567,8 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const built = buildGraph(stored, runId, res);
       emit = built.emit;
       const graph = built.graph;
-      // Same LangSmith shape as ask (same runId + threadId metadata), so
-      // one logical run stays correlatable by threadId across the resume.
+      const saved = await graph.getState({ configurable: configurableFor(stored, runId) });
+      const savedRoute = (saved.values as Partial<AgentState> | undefined)?.route;
       const tracer = createLangSmithTracer(env);
       const ls = tracer
         ? buildLangSmithRunConfig(tracer, {
@@ -652,13 +576,10 @@ export function buildApp(options: BuildAppOptions): express.Express {
             threadId: stored.threadId,
             userId: stored.userId,
             role: stored.roleScope,
-            ucId: "",
+            route: savedRoute === RCA_ROUTE ? RCA_ROUTE : TEXT_TO_SQL_ROUTE,
             maskedColumns: [],
           })
         : undefined;
-      // Approval decision (Phase 3 G2): metadata only — the raw resume
-      // value never enters the span (T-03-08). waitedMs reuses the run's
-      // own trace file (no new state store).
       const lastApproval = readLastApprovalRequest(stored.tracesDir, runId);
       const verdict = approvalDecision(req.body["value"]);
       emit({
@@ -728,8 +649,6 @@ export function buildApp(options: BuildAppOptions): express.Express {
         data: toFailedSseData(error, "unknown resume failure"),
       });
     } finally {
-      // End the response first, then drain the LangSmith tail detached
-      // (no-op when tracing is off): a stalled batch never holds the run.
       res.end();
       void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
@@ -738,12 +657,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
   return app;
 }
 
-/**
- * Restart-proof rehydration (T-01-14-04): parse ONLY the header line of
- * traces/<runId>.jsonl for runId plus threadId with strict shape checks.
- * Malformed or mismatched lines are ignored and fall through to 404 — a
- * trace line can never inject identity.
- */
+// Parse only the trace header line with strict validation so malformed lines fail closed to 404 and cannot inject identity.
 export function rehydrateRun(
   runId: string,
   registry: ClientRegistry,
@@ -801,7 +715,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** RunnableConfig.configurable for one run: thread plus identity. */
 export function configurableForRun(
   run: StoredRun,
   runId: string,
@@ -818,15 +731,8 @@ export function configurableForRun(
   };
 }
 
-/**
- * Invoke options for POST /api/runs/:runId/resume. The ask already created a
- * LangSmith root run under the API runId, so the resume must NOT reuse it as
- * its root: every resume mints a fresh UUID for the RunnableConfig runId
- * (the new LangSmith root), while configurable.runId and metadata
- * runId/threadId keep the JSONL runId so the one logical run stays
- * correlatable. Checkpointing keys on configurable.thread_id, never on the
- * RunnableConfig runId, so the fresh root cannot fork the thread.
- */
+// Mint a fresh RunnableConfig runId per resume for LangSmith, while keeping configurable.runId as the JSONL runId.
+// Checkpointing keys on thread_id, so the fresh root runId will not fork the thread.
 export function buildResumeInvokeOptions(args: {
   langsmith: LangSmithRunConfig | undefined;
   run: StoredRun;
@@ -846,11 +752,6 @@ export function buildResumeInvokeOptions(args: {
     configurable: configurableForRun(args.run, args.runId),
   };
 }
-
-// ---------------------------------------------------------------------------
-// Compatibility slice: the pre-01-14 thin host pinned by
-// apps/api/test/tracer.test.ts (UUID thread shape, five-event stream).
-// ---------------------------------------------------------------------------
 
 function readFirstLine(tracesDir: string, runId: string): string | null {
   if (runId.includes("/") || runId.includes("\\") || runId.includes("..")) return null;
@@ -879,149 +780,9 @@ function readFirstLine(tracesDir: string, runId: string): string | null {
       try {
         closeSync(fd);
       } catch {
-        // Ignore close faults on an already-failing read path.
       }
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// Compatibility slice: the pre-01-14 thin host pinned by
-// apps/api/test/tracer.test.ts (UUID thread shape, five-event stream).
-// ---------------------------------------------------------------------------
-
-const PERSONAS: Record<string, { userId: string; roleScope: string }> = {
-  sales_south: { userId: "demo-user", roleScope: "sales_south" },
-  marketing: { userId: "demo-marketing", roleScope: "sales_south" },
-  default: { userId: "demo-user", roleScope: "sales_south" },
-};
-
-export interface TracerApiOptions {
-  mcpUrl: string;
-  token: string;
-  tracesDir?: string;
-}
-
-function sseSend(res: Response, event: string, data: unknown): void {
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-export function createTracerApi(options: TracerApiOptions): express.Express {
-  const tracesDir = options.tracesDir ?? "traces";
-  const app = express();
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader("content-security-policy", API_CSP_HEADER);
-    next();
-  });
-  app.use(express.json({ limit: "100kb" }));
-
-  app.get("/healthz", (_req: Request, res: Response) => {
-    res.status(200).json({ ok: true });
-  });
-
-  app.post("/api/ask", async (req: Request, res: Response) => {
-    const question = req.body?.["question"];
-    if (typeof question !== "string" || question.trim().length === 0) {
-      res.status(400).json({
-        code: "INVALID_PARAMS",
-        message: "question must be a non-empty string",
-        retryable: false,
-        repairable: false,
-      });
-      return;
-    }
-    const persona =
-      typeof req.body?.["persona"] === "string" ? req.body["persona"] : "default";
-    const principal = PERSONAS[persona] ?? PERSONAS["default"];
-    if (!principal) {
-      res.status(400).json({
-        code: "INVALID_PARAMS",
-        message: `unknown persona '${persona}'`,
-        retryable: false,
-        repairable: false,
-      });
-      return;
-    }
-
-    const runId = randomUUID();
-    const threadId = randomUUID();
-
-    res.writeHead(200, {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-      "content-security-policy": API_CSP_HEADER,
-    });
-
-    const base = { runId, threadId };
-    try {
-      sseSend(res, "intent_parsed", {
-        ...base,
-        node: "understand",
-        data: {
-          metric: "orders_per_status",
-          dimensions: ["status"],
-          filters: [],
-          timeRange: null,
-        },
-      });
-
-      const out = await runTracerGraph(question, {
-        mcpUrl: options.mcpUrl,
-        token: options.token,
-        runId,
-        userId: principal.userId,
-        roleScope: principal.roleScope,
-        threadId,
-        tracesDir,
-      });
-
-      sseSend(res, "schema_retrieved", {
-        ...base,
-        node: "describe",
-        data: { tables: ["customers", "orders"], tableCount: 2 },
-      });
-      sseSend(res, "sql_generated", {
-        ...base,
-        node: "run",
-        data: { tablesUsed: ["orders"], statementType: "SELECT" },
-      });
-      const total = Number(
-        /(\d+) orders/.exec(out.answerText)?.[1] ?? "0",
-      );
-      sseSend(res, "query_running", {
-        ...base,
-        node: "run",
-        data: { statusGroups: out.toolsCalled.includes("run_query") ? 3 : 0 },
-      });
-      sseSend(res, "completed", {
-        ...base,
-        node: "answer",
-        data: {
-          status: out.status,
-          answerText: out.answerText,
-          toolsCalled: out.toolsCalled,
-          total,
-        },
-      });
-    } catch (err) {
-      sseSend(res, "completed", {
-        ...base,
-        node: "answer",
-        data: {
-          status: "error",
-          answerText: err instanceof Error ? err.message : "unknown error",
-          toolsCalled: [],
-          total: 0,
-        },
-      });
-    } finally {
-      res.end();
-    }
-  });
-
-  return app;
 }
 
 if (
@@ -1034,9 +795,6 @@ if (
   const tracesDir = process.env.TRACES_DIR ?? "traces";
   const mcpUrl =
     process.env.MCP_URL ?? `http://127.0.0.1:${mcpPort}/mcp`;
-  // Full host boot: persistence ports arrive only through the 01-13 ports
-  // module, which throws fail-fast when HARNESS_STATE_DATABASE_URL is
-  // absent — the host never falls back to MemorySaver.
   const ports: HostPorts = await createHostPorts();
   const registry = loadRegistryFromFile();
   assertTokensPresent(registry);
@@ -1051,8 +809,6 @@ if (
     console.log(`[api] listening on 127.0.0.1:${apiPort}`);
   });
   await new Promise<void>((resolve) => server.on("listening", resolve));
-  // Drain the LangSmith tail on shutdown (no-op when tracing is off),
-  // bounded so a stalled batch cannot hold the process open.
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {
       void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS }).finally(() =>

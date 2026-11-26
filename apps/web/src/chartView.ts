@@ -1,20 +1,8 @@
-// UC-03 web chart view-model (pure, node-safe).
-//
-// Decides whether an `InsightReport` plus its serializer-produced OpenUI
-// Lang should reach the upstream `<Renderer/>`, and what plain-text
-// fallback the chat shows otherwise. No React, no upstream imports here —
-// `charts.tsx` binds the real `Renderer` + `openuiChatLibrary` in the
-// browser, where component CSS can load. Node-safe by construction so unit
-// tests assert this logic without jsdom.
-
 import { InsightReportSchema, type InsightReport } from "@shared/contracts";
 
 export interface ChartView {
-  /** False for `none` (scalar / no_data) or untrusted/invalid Lang: render text fallback. */
   renderable: boolean;
-  /** Raw OpenUI Lang lines from the harness serializer. */
   lang: string;
-  /** Plain-text fallback: title plus up to two insight claims and caveats. */
   fallbackText: string;
 }
 
@@ -52,12 +40,7 @@ function hasOnlyAllowedCalls(line: string): boolean {
   return true;
 }
 
-/**
- * Verify that OpenUI Lang matches the deterministic harness serializer's
- * `root = Card(...)` envelope and uses only allowlisted chart/layout
- * constructors. Raw model-authored Lang or tool calls (`Query`, `Mutation`,
- * `Stack`, etc.) are rejected fail-closed.
- */
+// Enforce the harness serializer's root = Card(...) envelope and allowlisted constructors fail-closed.
 export function isTrustedOpenuiLang(lang: string): boolean {
   if (typeof lang !== "string") return false;
   const lines = lang
@@ -73,11 +56,6 @@ export function isTrustedOpenuiLang(lang: string): boolean {
   );
 }
 
-/**
- * Build the chart view-model. `none` reports, invalid reports, and Lang that
- * does not match the serializer's `root = Card(` envelope are never
- * renderable — the harness serializer is the only Lang producer the UI trusts.
- */
 export function buildChartView(
   title: string,
   report: InsightReport,

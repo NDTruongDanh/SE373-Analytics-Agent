@@ -5,6 +5,8 @@
 version: 1
 columns:
   - table: customers
+    column: name
+  - table: customers
     column: phone
   - table: customers
     column: email

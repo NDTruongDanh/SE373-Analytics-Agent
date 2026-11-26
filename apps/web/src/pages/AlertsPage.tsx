@@ -1,7 +1,6 @@
 import { BellRing } from "lucide-react";
 import { AlertsView } from "@/components/AlertsView";
 
-/** UC-10 anomaly detection & scheduled alerts workspace page. */
 export function AlertsPage() {
   return (
     <div className="content space-y-6">

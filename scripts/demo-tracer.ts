@@ -1,19 +1,3 @@
-// pnpm demo:tracer — one-command proof for the 27/10 course checkpoint.
-// Orchestrates, in order: compose up -d, agent_ro connectivity poll, boot
-// the full MCP gateway, probe the loaded volume (empty volume seeds small),
-// data:verify, spawn the thin API as a child, POST /api/ask over SSE,
-// assert tools called list_tables -> run_query, assert answer status ok
-// with live per-status order counts, assert the trace file exists with span
-// fields and no raw PII, print the six-line block, stop the children, exit
-// 0 on success or 1 with the failing assertion on stdout.
-//
-// The MCP legs run through the real fixed 7-stage pipeline (auth → scope →
-// zod → sqlGuard → AccessPolicy → executor → PII scan + audit) with bearer
-// tokens from policies/mcp_clients.yaml — no TRACER shortcuts remain.
-// Counts are scale-aware (asserted positive live, never hard-coded);
-// data:verify pins the loaded volume to the seed manifest without the demo
-// itself naming any seed file.
-
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { connect } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
@@ -38,8 +22,7 @@ const EXPECTED_TOOLS = [
   "search_semantic_layer",
 ];
 
-// Children spawned by this run; fail() stops them so a failed demo never
-// leaves an orphaned gateway/API holding the team ports for the next run.
+// Track spawned children so fail() terminates them and avoids leaving orphaned servers on team ports.
 const children: ChildProcess[] = [];
 
 function fail(message: string): never {
@@ -210,18 +193,13 @@ async function main(): Promise<void> {
 
   await waitFor("db", () => tcpReady("127.0.0.1", 5433, 1000), 90_000);
 
-  // A stale gateway/API on the team ports would answer the health checks
-  // below with old code; refuse instead of silently talking to it.
+  // Refuse to talk to a stale gateway or API holding the team ports with old code.
   for (const [name, port] of [["mcp", MCP_PORT], ["api", API_PORT]] as const) {
     if (await tcpReady("127.0.0.1", port, 1000)) {
       fail(`port ${port} (${name}) is already in use — stop the process holding it, then re-run (do not change the port)`);
     }
   }
 
-  // Scale-aware readiness without touching seed files: probe the loaded
-  // volume through the pipeline (empty volume seeds small, loaded volume
-  // just verifies). data:verify is the manifest-backed health check — it
-  // exits non-zero unless counts, FKs and seed signals match the manifest.
   const mcp = startChild("mcp", "packages/mcp-server/src/server.ts", {
     MCP_PORT: String(MCP_PORT),
     AGENT_RO_DATABASE_URL: AGENT_RO_URL,
@@ -239,8 +217,6 @@ async function main(): Promise<void> {
   }
   runRootScript("data:verify", ["data:verify"]);
 
-  // Tool surface proof: the 6 gateway tools through the real pipeline, as
-  // the scoped sales principal.
   const listed = (await mcpRpc(
     {
       jsonrpc: "2.0",
@@ -256,12 +232,6 @@ async function main(): Promise<void> {
     fail(`unexpected tool list: ${JSON.stringify(toolNames)}`);
   }
 
-  // Live totals through the real pipeline with the admin token (no
-  // row-scope, so totals match the verified load): each direct call carries
-  // its own X-Run-Id so the audit trail proves per-call propagation. The
-  // sales-scoped agent flow below exercises the row-scope path instead.
-  // Scale gate: totals must be positive (never hard-coded) and data:verify
-  // above already pinned them to the manifest.
   const customers = (await mcpCall(
     "run_query",
     { sql: "SELECT count(*) AS n FROM public.customers" },
@@ -331,7 +301,6 @@ async function main(): Promise<void> {
     fail(`answer text mismatch: ${answerText.slice(0, 120)}`);
   }
 
-  // Trace proof: the committed trace file, span-linked and PII-clean.
   const tracePath = `traces/${runId}.jsonl`;
   if (!existsSync(tracePath)) {
     fail(`trace file missing: ${tracePath}`);
@@ -350,7 +319,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Audit proof: per-call X-Run-Id propagation plus redaction, traced by run.
   if (!existsSync("logs/mcp_audit.jsonl")) {
     fail("audit file missing: logs/mcp_audit.jsonl");
   }

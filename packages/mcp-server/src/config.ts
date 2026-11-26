@@ -1,9 +1,3 @@
-// Gateway config loader (MCP-04): strict zod schemas for
-// policies/mcp_clients.yaml plus the sensitive-columns file, parsed with the
-// `yaml` package. Any violation — malformed YAML, wrong version, empty
-// clients, unknown scopes, extra keys, missing token env — throws, so bad
-// config means no boot (fail-closed). Tokens are resolved from process.env
-// at boot and never logged.
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import {
@@ -28,8 +22,7 @@ const McpClientSchema = z.strictObject({
   tokenEnv: z.string().min(1).regex(/^[A-Z][A-Z0-9_]*$/),
   scopes: z.array(ScopeSchema).min(1),
   rowScope: RowScopeSchema.optional(),
-  // Eval-only clients (issue #39) load only when EVAL_CLIENTS_ENV is "1";
-  // otherwise they are dropped at boot, so their token cannot authenticate.
+  // Eval-only clients load only when EVAL_CLIENTS_ENV === "1"; otherwise dropped at boot (fail-closed).
   evalOnly: z.boolean().optional(),
 });
 
@@ -76,18 +69,14 @@ function parseYamlText(yamlText: string, file: string): unknown {
   }
 }
 
-// Pure loader: YAML text in, validated client map out. Throws fail-closed.
 export function loadMcpClients(yamlText: string): McpClients {
   return McpClientsSchema.parse(parseYamlText(yamlText, "mcp_clients"));
 }
 
-/** Env flag that opts eval-only clients in (set by the eval runner only). */
 export const EVAL_CLIENTS_ENV = "MCP_ENABLE_EVAL_CLIENTS";
 
-// Token resolution: every loaded tokenEnv must name a non-empty env entry.
-// Eval-only clients are skipped unless EVAL_CLIENTS_ENV is "1" — skipped
-// means not registered at all (fail-closed: their token gets 401), never
-// "registered without a token". Throws naming the variable, never its value.
+// Skipped eval-only clients are not registered at all (401 on use); missing
+// tokenEnv values throw naming the variable name only, never any secret.
 export function resolveClientTokens(
   clients: McpClients,
   env: NodeJS.ProcessEnv = process.env,
@@ -113,9 +102,6 @@ export function resolveClientTokens(
   });
 }
 
-// Sensitive-columns file through the shared access-policy loader (single
-// validation authority — no second schema here). Re-exported so gateway
-// callers have one config surface.
 export function loadSensitiveColumns(yamlText: string): SensitiveColumns {
   return loadAccessPolicySensitiveColumns(yamlText);
 }
