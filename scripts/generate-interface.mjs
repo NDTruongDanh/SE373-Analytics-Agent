@@ -45,6 +45,12 @@ const TOOLS = [
     input: schemas.SampleRowsInputSchema,
     output: schemas.SampleRowsOutputSchema,
   },
+  {
+    name: "search_semantic_layer",
+    scope: "data:read",
+    input: schemas.SearchSemanticLayerInputSchema,
+    output: schemas.SearchSemanticLayerOutputSchema,
+  },
 ];
 
 const ERRORS = [
@@ -130,6 +136,7 @@ lines.push(
     rowCount: 2,
     truncated: false,
     maskedColumns: [],
+    rowScopeApplied: [],
     durationMs: 18,
   }),
 );

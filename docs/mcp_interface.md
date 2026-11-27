@@ -404,6 +404,116 @@ Required scope: `data:read`.
 }
 ```
 
+## search_semantic_layer
+
+Required scope: `data:read`.
+
+### Input
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "topK": {
+      "default": 5,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    }
+  },
+  "required": [
+    "query",
+    "topK"
+  ],
+  "additionalProperties": false
+}
+```
+
+### Output
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "chunks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "chunkId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "docType": {
+            "type": "string",
+            "enum": [
+              "table",
+              "column",
+              "metric",
+              "join_rule",
+              "example",
+              "event"
+            ]
+          },
+          "table": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metricName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "score": {
+            "type": "number"
+          },
+          "aliasMatched": {
+            "type": "boolean"
+          },
+          "denseScore": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "chunkId",
+          "docType",
+          "table",
+          "tables",
+          "metricName",
+          "content",
+          "score"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "chunks"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## Error codes
 
 Row order follows the frozen `ErrorCodes` array in `@shared/contracts`.
@@ -462,6 +572,7 @@ Response (`RunQueryOutput`):
   "rowCount": 2,
   "truncated": false,
   "maskedColumns": [],
+  "rowScopeApplied": [],
   "durationMs": 18
 }
 ```

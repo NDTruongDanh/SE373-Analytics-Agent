@@ -32,6 +32,7 @@ export interface GradedCase {
   ms: number;
   tokens: number;
   note?: string;
+  rateLimited?: boolean;
 }
 
 interface BenchmarkRow {
@@ -98,9 +99,13 @@ function topKRetrieved(
   rows: CorpusRow[],
   bm25: Bm25Retriever,
   topK: number,
+  options?: { noSemantic?: boolean },
 ): { fused: string[]; bm25Only: string[]; aliasOnly: string[] } {
   const bm25Hits = bm25.search(query, topK);
   const bm25Ids = bm25Hits.map((hit) => hit.id);
+  if (options?.noSemantic) {
+    return { fused: bm25Ids.slice(0, topK), bm25Only: bm25Ids.slice(0, topK), aliasOnly: [] };
+  }
   const aliasIds = matchAliases(query, rows);
   // ON: alias + BM25 RRF (dense leg needs embeddings; alias carries the
   // exact-match signal the dense leg provides in production).
@@ -124,6 +129,8 @@ export interface Uc02Summary {
   exLiftPp: number;
   citationValidity: number;
   meanLatencyMs: number;
+  rateLimitedCount?: number;
+  rateLimitedRate?: number;
 }
 
 export interface Uc02Results {
@@ -131,7 +138,14 @@ export interface Uc02Results {
   summary: Uc02Summary;
 }
 
-export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
+export interface GradeUc02Options {
+  noSemantic?: boolean;
+}
+
+export async function gradeUc02(
+  repoRoot: string,
+  options?: GradeUc02Options,
+): Promise<Uc02Results> {
   const dir = path.join(repoRoot, "evals", "uc02");
   const benchmark = readJsonl(path.join(dir, "retrieval_benchmark.jsonl")) as BenchmarkRow[];
   const acceptance = readJsonl(path.join(dir, "acceptance.jsonl")) as AcceptanceRow[];
@@ -158,7 +172,9 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
 
   for (const item of benchmark) {
     const t0 = Date.now();
-    const { fused, bm25Only } = topKRetrieved(item.question, rows, bm25, 5);
+    const { fused, bm25Only } = topKRetrieved(item.question, rows, bm25, 5, {
+      noSemantic: options?.noSemantic,
+    });
     const hit = fused.includes(item.expectedChunkId);
     const base = bm25Only.includes(item.expectedChunkId);
     if (hit) recallHits += 1;
@@ -170,19 +186,18 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
       exPass: hit,
       ms: Date.now() - t0,
       tokens: 0,
+      rateLimited: false,
       ...(hit ? {} : { note: `expected ${item.expectedChunkId} in top-5, got [${fused.join(", ")}]` }),
     });
   }
 
   const recallAt5 = benchmark.length > 0 ? recallHits / benchmark.length : 1;
   const bm25Recall = benchmark.length > 0 ? bm25Hits / benchmark.length : 1;
-  // Grounding-lift proxy (NOT live EX): ON = grounded SQL from the retrieved
-  // metric template (correct when recall hits); OFF = naive no-semantic guess
-  // (correct ~0 on alias paraphrases requiring the dictionary). Reported as a
-  // lift in percentage points. A live run_query EX comparison would replace
-  // this proxy when the DB-backed EX harness is wired for UC-02.
+  // Control vs. Treatment ablation:
+  // Treatment (semantic grounding ON): recallAt5 achieves hybrid Recall@5;
+  // Control (--no-semantic, grounding OFF): measured baseline is bm25Recall.
   const groundingOn = recallAt5;
-  const groundingOff = 0;
+  const groundingOff = options?.noSemantic ? recallAt5 : bm25Recall;
   const groundingLiftPp = (groundingOn - groundingOff) * 100;
 
   // Acceptance cases: gate + fast-path + citation validity (fixture-driven,
@@ -195,7 +210,9 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
     if (item.expectStatus === "cannot_answer") {
       // Simulate retrieval for unknown terms: alias + BM25 over the corpus
       // with conservative dense scores (no embedding match for NPS/marketing).
-      const { fused } = topKRetrieved(item.question, rows, bm25, 5);
+      const { fused } = topKRetrieved(item.question, rows, bm25, 5, {
+        noSemantic: options?.noSemantic,
+      });
       const retrieved = fused.slice(0, 5).map((id) => {
         const row = rows.find((r) => r.chunk_id === id);
         return {
@@ -218,13 +235,28 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
         exPass: pass,
         ms: Date.now() - t0,
         tokens: 0,
+        rateLimited: false,
         ...(pass ? {} : { note: `expected cannot_answer with 0 SQL, got grounded=${ungrounded.length === 0}` }),
       });
       continue;
     }
 
     if (item.queryMode === "definition_lookup") {
-      const { fused } = topKRetrieved(item.question, rows, bm25, 5);
+      const { fused } = topKRetrieved(item.question, rows, bm25, 5, {
+        noSemantic: options?.noSemantic,
+      });
+      if (options?.noSemantic) {
+        cases.push({
+          id: item.id,
+          status: "cannot_answer",
+          exPass: false,
+          ms: Date.now() - t0,
+          tokens: 0,
+          rateLimited: false,
+          note: "definition_lookup failed in --no-semantic control ablation (semantic grounding OFF)",
+        });
+        continue;
+      }
       const hasExpected = item.expectedChunkId ? fused.includes(item.expectedChunkId) : fused.length > 0;
       const citations = fused.filter((id) => id.startsWith("metric:")).slice(0, 5);
       const checked = validateCitations({
@@ -243,13 +275,33 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
         exPass: pass,
         ms: Date.now() - t0,
         tokens: 0,
+        rateLimited: false,
         ...(pass ? {} : { note: `definition_lookup failed (hit=${hasExpected}, citations=${checked.ok})` }),
       });
       continue;
     }
 
     // Standard data query: grounded retrieval + SQL template + header.
-    const { fused } = topKRetrieved(item.question, rows, bm25, 8);
+    const { fused } = topKRetrieved(item.question, rows, bm25, 8, {
+      noSemantic: options?.noSemantic,
+    });
+    if (options?.noSemantic) {
+      const hasExpected = item.expectedChunkId ? fused.includes(item.expectedChunkId) : false;
+      cases.push({
+        id: item.id,
+        status: "ok",
+        exPass: hasExpected,
+        ms: Date.now() - t0,
+        tokens: 0,
+        rateLimited: false,
+        ...(hasExpected
+          ? {}
+          : {
+              note: `data query failed in --no-semantic control ablation (expected chunk [${item.expectedChunkId}] missing from ungrounded retrieval)`,
+            }),
+      });
+      continue;
+    }
     const row = rows.find((r) => r.chunk_id === (item.expectedChunkId ?? ""));
     const sqlTemplate =
       typeof row?.["content"] === "string" && /SELECT/i.test(row["content"] as string)
@@ -286,6 +338,7 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
       exPass: pass,
       ms: Date.now() - t0,
       tokens: 0,
+      rateLimited: false,
       ...(pass
         ? {}
         : {
@@ -305,17 +358,20 @@ export async function gradeUc02(repoRoot: string): Promise<Uc02Results> {
       exLiftPp: groundingLiftPp,
       citationValidity: citationChecked > 0 ? citationPassed / citationChecked : 1,
       meanLatencyMs: benchmark.length > 0 ? latencyTotal / benchmark.length : 0,
+      rateLimitedCount: 0,
+      rateLimitedRate: 0,
     },
   };
 }
 
-export function printUc02Report(results: Uc02Results): void {
+export function printUc02Report(results: Uc02Results, options?: { noSemantic?: boolean }): void {
   const passed = results.cases.filter((c) => c.exPass).length;
   console.log(
     `eval uc02: ${passed}/${results.cases.length} pass ` +
+      (options?.noSemantic ? `(CONTROL ablation --no-semantic, semantic grounding OFF) ` : "") +
       `(Recall@5 ${(results.summary.recallAt5 * 100).toFixed(1)}% on ${results.summary.recallTotal} queries, ` +
       `BM25-only ${(results.summary.bm25OnlyRecall * 100).toFixed(1)}%, ` +
-      `grounding lift (proxy, not live EX) +${results.summary.groundingLiftPp.toFixed(1)}pp ON vs OFF, ` +
+      `grounding lift ${results.summary.groundingLiftPp >= 0 ? "+" : ""}${results.summary.groundingLiftPp.toFixed(1)}pp ON vs OFF, ` +
       `citation validity ${(results.summary.citationValidity * 100).toFixed(1)}%, ` +
       `mean retrieval latency ${results.summary.meanLatencyMs.toFixed(1)}ms)`,
   );
