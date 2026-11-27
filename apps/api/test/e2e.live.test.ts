@@ -9,13 +9,15 @@
 // scale-agnostic (positive live counts, never hard-coded) so the proof holds
 // on small and full volumes alike.
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { interrupt } from "@langchain/langgraph";
+import { buildRootGraph, createRcaRuntime } from "@shared/agent";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildDrillDownSql,
@@ -35,7 +37,14 @@ import {
   type McpToolCaller,
 } from "@shared/agent/queryExecutor";
 import { buildApp } from "../src/index.js";
-import { createHostPorts } from "../src/ports.js";
+import {
+  createHostPorts,
+  createLockPool,
+  createThreadLockAcquirer,
+  expirePendingCheckpoints,
+  pruneCompletedCheckpoints,
+  type HostPorts,
+} from "../src/ports.js";
 import { containsWirePii, SSE_ALLOWLIST } from "../src/sse.js";
 
 const HARNESS_URL = process.env["HARNESS_STATE_DATABASE_URL"] ?? "";
@@ -97,6 +106,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
   let gateway: ChildProcess | null = null;
   let apiBase = "";
   let apiServer: { close: (cb?: () => void) => void } | null = null;
+  let ports: HostPorts | null = null;
   let tracesDir = "";
   let gatewayStderr = "";
   const gatewayUrl = `http://127.0.0.1:${GATEWAY_PORT}/mcp`;
@@ -157,7 +167,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       await rpc({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: args } }),
     )) as { result?: { content?: { text?: string }[]; isError?: boolean } };
     if (out.result?.isError === true) {
-      throw new Error(`MCP tool ${tool} failed`);
+      throw new Error(`MCP tool ${tool} failed: ${JSON.stringify(out.result)}`);
     }
     return JSON.parse((out.result?.content ?? []).map((b) => b.text ?? "").join(""));
   }
@@ -173,6 +183,7 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
         ...process.env,
         MCP_PORT: String(GATEWAY_PORT),
         AGENT_RO_DATABASE_URL: AGENT_RO_URL,
+        HARNESS_STATE_DATABASE_URL: HARNESS_URL,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -181,10 +192,11 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     });
     await waitFor(`http://127.0.0.1:${GATEWAY_PORT}/healthz`, 60_000);
 
-    const ports = await createHostPorts();
+    ports = await createHostPorts();
     const app = buildApp({
       checkpointer: ports.checkpointer,
       store: ports.store,
+      acquireThreadLock: ports.acquireThreadLock,
       mcpUrl: gatewayUrl,
       tracesDir,
       textToSql: {
@@ -204,6 +216,9 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       if (apiServer) apiServer.close(() => resolve());
       else resolve();
     });
+    if (ports) {
+      await ports.lockPool.end().catch(() => undefined);
+    }
     if (gateway) {
       gateway.kill();
       gateway = null;
@@ -312,6 +327,410 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
       expect(sseText).not.toContain(literal);
     }
     expect(sseText).not.toContain(SALES_TOKEN);
+
+    // Live PostgreSQL audit hash-chain proof: verify gateway persisted every tool call cleanly.
+    const auditRes = await ports!.lockPool.query(
+      `SELECT seq, run_id, tool, caller, input_hash, output_hash, prev_hash, current_hash, record
+       FROM app_state.mcp_audit_log
+       WHERE run_id = $1
+       ORDER BY seq ASC`,
+      [runId],
+    );
+    expect(auditRes.rows.length).toBeGreaterThanOrEqual(4);
+    for (let i = 0; i < auditRes.rows.length; i += 1) {
+      const row = auditRes.rows[i];
+      const seq = Number(row["seq"]);
+      if (i > 0) {
+        expect(seq).toBeGreaterThan(Number(auditRes.rows[i - 1]["seq"]));
+        if (seq === Number(auditRes.rows[i - 1]["seq"]) + 1) {
+          expect(String(row["prev_hash"])).toBe(String(auditRes.rows[i - 1]["current_hash"]));
+        }
+      }
+      const recordObj = row["record"] as { ts: string };
+      const expectedHash = createHash("sha256")
+        .update(
+          [
+            String(seq),
+            String(row["run_id"]),
+            String(row["tool"]),
+            String(row["caller"]),
+            recordObj.ts,
+            String(row["input_hash"]),
+            String(row["output_hash"]),
+            String(row["prev_hash"]),
+          ].join("|"),
+          "utf8",
+        )
+        .digest("hex");
+      expect(String(row["current_hash"])).toBe(expectedHash);
+      expect(containsWirePii(JSON.stringify(recordObj))).toBe(false);
+    }
+  }, 120_000);
+
+  it("enforces two-connection PostgreSQL 64-bit advisory locks and 409 Conflict on live /api/ask", async () => {
+    const threadId = `chat:sales_south:live-lock-${Date.now()}`;
+    const poolA = createLockPool(HARNESS_URL);
+    const poolB = createLockPool(HARNESS_URL);
+    const acqA = createThreadLockAcquirer(poolA);
+    const acqB = createThreadLockAcquirer(poolB);
+    let handleA: Awaited<ReturnType<typeof acqA>> | null = null;
+    let handleB: Awaited<ReturnType<typeof acqB>> | null = null;
+    try {
+      handleA = await acqA(threadId);
+      expect(handleA.acquired).toBe(true);
+
+      const handleBWhileHeld = await acqB(threadId);
+      expect(handleBWhileHeld.acquired).toBe(false);
+
+      // Concurrent /api/ask on the same locked threadId must fail fast with 409 Conflict.
+      const conflictRes = await fetch(`${apiBase}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: DEMO_QUESTION,
+          persona: "sales_south",
+          threadId,
+        }),
+      });
+      expect(conflictRes.status).toBe(409);
+
+      await handleA.release();
+      handleA = null;
+      handleB = await acqB(threadId);
+      expect(handleB.acquired).toBe(true);
+      await handleB.release();
+      handleB = null;
+    } finally {
+      if (handleA) await handleA.release().catch(() => undefined);
+      if (handleB) await handleB.release().catch(() => undefined);
+      await Promise.allSettled([poolA.end(), poolB.end()]);
+    }
+  });
+
+  it("executes expirePendingCheckpoints and pruneCompletedCheckpoints against live PostgreSQL tables", async () => {
+    const threadId = `live-lifecycle-${Date.now()}`;
+    const lifecycleGraph = buildRootGraph({
+      checkpointer: ports!.checkpointer,
+      emitSpan: () => "",
+      textToSql: {
+        intentModel: fakeModel(JSON.stringify(DEMO_INTENT), DEMO_INTENT) as never,
+        sqlModel: fakeModel(DEMO_SQL, JSON.parse(DEMO_SQL)) as never,
+      },
+      routes: {
+        "text-to-sql": async () => {
+          const decision = interrupt({ action: "review_plan" }) as { action?: string };
+          if (decision?.action === "timeout") {
+            return {
+              status: "error",
+              errorCode: "HITL_APPROVAL_TIMEOUT",
+              answerText: "timed out",
+            };
+          }
+          return { status: "ok", answerText: "done" };
+        },
+      },
+      retrieve: async () => ({ semanticChunks: [], semanticRetrieveStatus: "ok" as const }),
+      viz: async () => ({}),
+      synthesize: async () => ({ answerText: "done" }),
+    });
+
+    await lifecycleGraph.invoke(
+      { question: "live checkpoint expiry test" },
+      { configurable: { thread_id: threadId } },
+    );
+
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    await ports!.lockPool.query(
+      `UPDATE langgraph.checkpoints
+       SET checkpoint = jsonb_set(checkpoint, '{ts}', to_jsonb($2::text))
+       WHERE thread_id = $1`,
+      [threadId, tenDaysAgo],
+    );
+
+    const expireRes = await expirePendingCheckpoints({
+      pool: ports!.lockPool,
+      graph: lifecycleGraph,
+      acquireThreadLock: ports!.acquireThreadLock,
+      maxAgeDays: 7,
+    });
+    expect(expireRes.expired).toContain(threadId);
+
+    const stateAfterExpire = await lifecycleGraph.getState({
+      configurable: { thread_id: threadId },
+    });
+    expect(stateAfterExpire.values["errorCode"]).toBe("HITL_APPROVAL_TIMEOUT");
+    expect(stateAfterExpire.values["status"]).toBe("error");
+
+    const fortyDaysAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
+    await ports!.lockPool.query(
+      `UPDATE langgraph.checkpoints
+       SET checkpoint = jsonb_set(checkpoint, '{ts}', to_jsonb($2::text))
+       WHERE thread_id = $1`,
+      [threadId, fortyDaysAgo],
+    );
+
+    const pruneRes = await pruneCompletedCheckpoints({
+      pool: ports!.lockPool,
+      graph: lifecycleGraph,
+      acquireThreadLock: ports!.acquireThreadLock,
+      retentionDays: 30,
+    });
+    expect(pruneRes.pruned).toContain(threadId);
+
+    const remaining = await ports!.lockPool.query(
+      "SELECT COUNT(*)::int AS n FROM langgraph.checkpoints WHERE thread_id = $1",
+      [threadId],
+    );
+    expect(remaining.rows[0]?.["n"]).toBe(0);
+  });
+
+  it("enforces real PostgreSQL asOf cutoff filtering, stale checkpointId 409, and >1h STALE_PLAN_RECHECK", async () => {
+    const dateProbe = (await mcpCall(
+      "run_query",
+      {
+        sql: "SELECT DISTINCT o.purchase_date::text AS d FROM public.orders o WHERE o.status IN ('delivered','returned') ORDER BY d ASC",
+        maxRows: 1000,
+      },
+      "e2e-asof-dates",
+      SALES_TOKEN,
+    )) as { rows?: Array<{ d: string }> };
+    const dates = (dateProbe.rows ?? [])
+      .map((r) => String(r.d).slice(0, 10))
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+    expect(dates.length).toBeGreaterThanOrEqual(4);
+
+    const queryNetRev = async (start: string, end: string): Promise<number> => {
+      const out = (await mcpCall(
+        "run_query",
+        {
+          sql: `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned') AND o.purchase_date >= '${start}' AND o.purchase_date <= '${end}'`,
+          maxRows: 5,
+        },
+        "e2e-asof-probe",
+        SALES_TOKEN,
+      )) as { rows?: Array<{ val: number }> };
+      return Number(out.rows?.[0]?.val ?? 0);
+    };
+
+    const splitIdx = Math.floor(dates.length / 2);
+    const baselinePeriod = { start: dates[0], end: dates[splitIdx - 1] };
+    const currentPeriod = { start: dates[splitIdx], end: dates[dates.length - 1] };
+    const midIdx = splitIdx + Math.max(0, Math.floor((dates.length - splitIdx) / 2) - 1);
+    const midDate = dates[midIdx];
+
+    const baseTotal = await queryNetRev(baselinePeriod.start, baselinePeriod.end);
+    const midTotal = await queryNetRev(currentPeriod.start, midDate);
+    const fullTotal = await queryNetRev(currentPeriod.start, currentPeriod.end);
+    expect(Math.abs(fullTotal - midTotal) / Math.max(1, Math.abs(midTotal))).toBeGreaterThan(0.01);
+    expect(Math.abs(midTotal - baseTotal) / Math.max(1, Math.abs(baseTotal))).toBeGreaterThanOrEqual(0.01);
+
+    let currentNow = new Date(`${midDate}T12:00:00+07:00`);
+    const intentObj = {
+      metricName: "net_revenue",
+      metricType: "additive" as const,
+      direction: midTotal < baseTotal ? ("decrease" as const) : ("increase" as const),
+      isExplicitDirection: false,
+      currentPeriod,
+      baselinePeriod,
+      candidateTables: ["orders", "order_items", "customers", "channels", "categories", "products"],
+    };
+    const rcaIntentModel = {
+      withStructuredOutput: () => ({
+        invoke: async () => intentObj,
+      }),
+    };
+    const rcaSqlModel = {
+      withStructuredOutput: () => ({
+        invoke: async (prompt: string) => {
+          const qMatch = /\n<question>([\s\S]*?)<\/question>/.exec(prompt);
+          if (!qMatch) {
+            throw new Error(`Missing <question> block in prompt: ${prompt.slice(0, 120)}`);
+          }
+          const decoded = JSON.parse(
+            qMatch[1]
+              .replaceAll("&lt;", "<")
+              .replaceAll("&gt;", ">")
+              .replaceAll("&amp;", "&"),
+          ) as string;
+          const match = /Reference SQL:\s*([^\n]+)/.exec(decoded);
+          if (!match) {
+            throw new Error(`Missing Reference SQL in question: ${decoded.slice(0, 120)}`);
+          }
+          const sql = match[1].trim();
+          const tablesUsed: string[] = [];
+          for (const t of ["order_items", "orders", "customers", "channels", "products", "categories"]) {
+            if (sql.includes(`public.${t}`)) tablesUsed.push(t);
+          }
+          return { sql, tablesUsed };
+        },
+      }),
+    };
+
+    const rcaRuntime = createRcaRuntime({
+      intentModel: rcaIntentModel as never,
+      sqlModel: rcaSqlModel as never,
+      now: () => currentNow,
+      freshnessTtlMs: 60 * 60 * 1000,
+      maxQueriesLimit: 8,
+      maxDepthLimit: 1,
+    });
+
+    const localTraces = mkdtempSync(path.join(tmpdir(), "e2e-live-rca-"));
+    const localApp = buildApp({
+      checkpointer: ports!.checkpointer,
+      store: ports!.store,
+      acquireThreadLock: ports!.acquireThreadLock,
+      mcpUrl: gatewayUrl,
+      tracesDir: localTraces,
+      routes: { "root-cause-analysis": rcaRuntime.entry },
+    });
+    const localServer = localApp.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => localServer.on("listening", resolve));
+    const localPort = (localServer.address() as { port: number }).port;
+    const localBase = `http://127.0.0.1:${localPort}`;
+
+    try {
+      const askRes = await fetch(`${localBase}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: `Vì sao doanh thu thuần từ ${currentPeriod.start} đến ${currentPeriod.end} biến động so với ${baselinePeriod.start} đến ${baselinePeriod.end}?`,
+          persona: "sales_south",
+        }),
+      });
+      expect(askRes.status).toBe(200);
+      const askBlocks = parseSse(await askRes.text());
+      const interrupt1 = askBlocks.find((b) => b.event === "interrupt_waiting");
+      expect(interrupt1, `ask SSE blocks: ${JSON.stringify(askBlocks)}`).toBeDefined();
+      const runId = String(interrupt1!.data["runId"]);
+      const checkpointId1 = String(interrupt1!.data["checkpointId"] ?? "");
+      expect(checkpointId1.length).toBeGreaterThan(0);
+
+      const intData1 = interrupt1!.data["data"] as {
+        asOf?: string;
+        plan?: { currentVal?: number; asOf?: string };
+      };
+      expect(intData1.asOf).toBe(currentNow.toISOString());
+      // Real PostgreSQL SQL gated by asOf must match midTotal and be distinct from unclamped fullTotal.
+      expect(Math.abs(Number(intData1.plan?.currentVal) - midTotal)).toBeLessThan(1e-3);
+      expect(Math.abs(Number(intData1.plan?.currentVal) - fullTotal)).toBeGreaterThan(1);
+
+      // Verify real SQL audit rows were persisted in app_state.mcp_audit_log for this runId.
+      const preResumeAudit = await ports!.lockPool.query(
+        "SELECT tool, current_hash FROM app_state.mcp_audit_log WHERE run_id = $1 ORDER BY seq ASC",
+        [runId],
+      );
+      expect(preResumeAudit.rows.some((r) => r["tool"] === "run_query")).toBe(true);
+
+      // Missing checkpointId -> 400
+      const missingRes = await fetch(`${localBase}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: { action: "approve" } }),
+      });
+      expect(missingRes.status).toBe(400);
+
+      // Stale / mismatched checkpointId -> 409 Conflict
+      const staleRes = await fetch(`${localBase}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: { action: "approve" },
+          checkpointId: "stale-checkpoint-id",
+        }),
+      });
+      expect(staleRes.status).toBe(409);
+
+      // Advance clock >1h beyond currentPeriod.end: re-querying real PostgreSQL picks up fullTotal (>1% drift!) -> STALE_PLAN_RECHECK
+      currentNow = new Date(
+        Math.max(
+          currentNow.getTime() + 2 * 60 * 60 * 1000,
+          new Date(`${currentPeriod.end}T23:59:00+07:00`).getTime(),
+        ),
+      );
+      const recheckRes = await fetch(`${localBase}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: { action: "approve" },
+          checkpointId: checkpointId1,
+        }),
+      });
+      expect(recheckRes.status).toBe(200);
+      const recheckBlocks = parseSse(await recheckRes.text());
+      const interrupt2 = recheckBlocks.find((b) => b.event === "interrupt_waiting");
+      expect(interrupt2).toBeDefined();
+      const intData2 = interrupt2!.data["data"] as {
+        reason?: string;
+        asOf?: string;
+        currentPlan?: { currentVal?: number };
+      };
+      expect(intData2.reason).toBe("STALE_PLAN_RECHECK");
+      expect(intData2.asOf).toBe(currentNow.toISOString());
+      expect(Math.abs(Number(intData2.currentPlan?.currentVal) - fullTotal)).toBeLessThan(1e-3);
+      const checkpointId2 = String(interrupt2!.data["checkpointId"] ?? "");
+      expect(checkpointId2.length).toBeGreaterThan(0);
+      expect(checkpointId2).not.toBe(checkpointId1);
+
+      // Old checkpointId1 is now stale -> 409 Conflict
+      const oldAfterRecheckRes = await fetch(`${localBase}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: { action: "approve" },
+          checkpointId: checkpointId1,
+        }),
+      });
+      expect(oldAfterRecheckRes.status).toBe(409);
+
+      // Resume with fresh checkpointId2 executes real step SQL against PostgreSQL -> completes ok
+      const finalRes = await fetch(`${localBase}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: { action: "approve" },
+          checkpointId: checkpointId2,
+        }),
+      });
+      expect(finalRes.status).toBe(200);
+      const finalBlocks = parseSse(await finalRes.text());
+      const completed = finalBlocks.find((b) => b.event === "completed");
+      expect((completed?.data["data"] as { status?: string })?.status).toBe("ok");
+
+      // Trace file must record asOf, checkpointId, STALE_PLAN_RECHECK, and approval_decided spans.
+      const traceLines = readFileSync(`${localTraces}/${runId}.jsonl`, "utf8")
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l) as { type?: string; payload?: Record<string, unknown> });
+      expect(
+        traceLines.some(
+          (e) => e.type === "approval_requested" && typeof e.payload?.["asOf"] === "string" && e.payload?.["checkpointId"] === checkpointId1,
+        ),
+      ).toBe(true);
+      expect(
+        traceLines.some(
+          (e) => e.type === "approval_requested" && e.payload?.["reason"] === "STALE_PLAN_RECHECK" && e.payload?.["checkpointId"] === checkpointId2,
+        ),
+      ).toBe(true);
+      expect(
+        traceLines.some(
+          (e) => e.type === "approval_decided" && e.payload?.["checkpointId"] === checkpointId2,
+        ),
+      ).toBe(true);
+
+      // Re-resuming completed thread -> 409 Conflict
+      const dupRes = await fetch(`${localBase}/api/runs/${runId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: { action: "approve" },
+          checkpointId: checkpointId2,
+        }),
+      });
+      expect(dupRes.status).toBe(409);
+    } finally {
+      await new Promise<void>((resolve) => localServer.close(() => resolve()));
+    }
   }, 120_000);
 
   it("executes UC-10 time-series and drill-down SQL for all subscriptions against live PostgreSQL", async () => {

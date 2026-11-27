@@ -24,7 +24,8 @@ constant consumers can assert against. Enforcement is by CODEOWNERS review on
   `SubscriptionSchema` in `src/alert.ts` gain optional `wowThreshold` /
   `wow_threshold` (positive percentage, default `20`) so alert subscriptions can
   configure custom WoW thresholds (#134). Pre-1.3.0 configs without the field
-  still parse with the default.
+  still parse with the default. Also includes additive optional `AnalysisPlan.asOf`
+  (`src/rca.ts`) and `SseInterruptWaitingEvent.checkpointId` (`src/answers.ts`).
 - **1.2.0** (additive, one code-owner review): `describe_table` columns gain
   optional `large`, the large-table flag the gateway catalog already set from
   `LARGE_TABLES`. Zod was stripping it, so live runs never saw a large table

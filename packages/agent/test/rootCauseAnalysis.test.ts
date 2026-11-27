@@ -3932,4 +3932,165 @@ describe("Issue #133 Acceptance Tests (TC-05-01 through TC-05-08)", () => {
     expect(ratioNan.effectNumerator).toBe(0);
     expect(ratioNan.effectDenominator).toBe(0);
   });
+
+  it("TC-135-RCA-01: embeds Asia/Ho_Chi_Minh asOf business-date cutoff in baseline and step queries", () => {
+    const period = { start: "2026-09-01", end: "2026-09-30" };
+    const asOf = "2026-09-25T16:30:00Z";
+    const baseSql = buildBaselineQuery("net_revenue", "additive", period, asOf);
+    expect(baseSql).toContain(
+      "o.purchase_date <= (TIMESTAMPTZ '2026-09-25T16:30:00Z' AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+    );
+
+    const stepSql = buildStepQuery(
+      "net_revenue",
+      "additive",
+      period,
+      { region: "Miền Nam" },
+      "dimension",
+      "region",
+      asOf,
+    );
+    expect(stepSql).toContain(
+      "o.purchase_date <= (TIMESTAMPTZ '2026-09-25T16:30:00Z' AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+    );
+
+    expect(() =>
+      buildBaselineQuery("net_revenue", "additive", period, "not-an-iso-date"),
+    ).toThrow(/Invalid asOf ISO datetime/);
+  });
+
+  it("TC-135-RCA-02: re-interrupts on >1h stale resume when baseline drift > 1% and isolates HITL_APPROVAL_TIMEOUT", async () => {
+    const { StateGraph, MemorySaver, START, END, Command } = await import("@langchain/langgraph");
+    const { AgentStateSchema } = await import("../src/state.js");
+
+    let currentNow = new Date("2026-09-25T08:00:00Z");
+    let baselineCalls = 0;
+    const runtime = createRcaRuntime({
+      now: () => currentNow,
+      freshnessTtlMs: 60 * 60 * 1000,
+      fetchBaseline: async (_m, _t, period) => {
+        baselineCalls++;
+        // Initial call: baseline=1000, current=800 (-20%). Recheck (>1h later): current drifts to 700 (>1% drift!)
+        if (period.start === "2026-08-01") return 1000;
+        return baselineCalls <= 2 ? 800 : 700;
+      },
+      fetchStepMetrics: async (step) => {
+        if (step.dimensionValue === "Miền Nam") return { baselineVal: 1000, currentVal: 700 };
+        return { baselineVal: 0, currentVal: 0 };
+      },
+    });
+
+    const checkpointer = new MemorySaver();
+    const graph = new StateGraph(AgentStateSchema)
+      .addNode("entry", runtime.entry)
+      .addEdge(START, "entry")
+      .addEdge("entry", END)
+      .compile({ checkpointer });
+
+    // 1. Stale >1h + drift >1% -> triggers STALE_PLAN_RECHECK second interrupt
+    const thread1 = { configurable: { thread_id: "rca-freshness-t1" } };
+    const ask1 = await graph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      thread1,
+    );
+    expect((ask1 as { __interrupt__?: unknown[] }).__interrupt__).toHaveLength(1);
+
+    // Advance clock by 2 hours (> 1h)
+    currentNow = new Date("2026-09-25T10:00:00Z");
+    const resume1 = await graph.invoke(new Command({ resume: { action: "approve" } }), thread1);
+    const secondInterrupt = (resume1 as { __interrupt__?: Array<{ value?: Record<string, unknown> }> }).__interrupt__;
+    expect(secondInterrupt).toHaveLength(1);
+    expect(secondInterrupt?.[0]?.value?.["reason"]).toBe("STALE_PLAN_RECHECK");
+    expect((secondInterrupt?.[0]?.value?.["currentPlan"] as { currentVal?: number })?.currentVal).toBe(700);
+
+    // Second approve within freshness window completes execution
+    const resume2 = await graph.invoke(new Command({ resume: { action: "approve" } }), thread1);
+    expect(resume2.status).toBe("ok");
+    expect(resume2.rootCauseAnswer?.mathVerified).toBe(true);
+
+    // 2. Timeout resume records status="error" & errorCode="HITL_APPROVAL_TIMEOUT" (distinct from user reject)
+    const threadTimeout = { configurable: { thread_id: "rca-timeout-t2" } };
+    await graph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      threadTimeout,
+    );
+    const timedOut = await graph.invoke(
+      new Command({ resume: { action: "timeout", reason: "HITL_APPROVAL_TIMEOUT" } }),
+      threadTimeout,
+    );
+    expect(timedOut.status).toBe("error");
+    expect(timedOut.errorCode).toBe("HITL_APPROVAL_TIMEOUT");
+
+    const threadReject = { configurable: { thread_id: "rca-reject-t3" } };
+    await graph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      threadReject,
+    );
+    const rejected = await graph.invoke(
+      new Command({ resume: { action: "reject" } }),
+      threadReject,
+    );
+    expect(rejected.status).toBe("ok");
+    expect(rejected.errorCode).toBeNull();
+  });
+
+  it("preserves server-minted asOf on modify and expires RCA checkpoint without execution backend", async () => {
+    const { StateGraph, MemorySaver, START, END, Command } = await import("@langchain/langgraph");
+    const { AgentStateSchema } = await import("../src/state.js");
+
+    const serverAsOf = "2026-09-25T08:00:00.000Z";
+    const checkpointer = new MemorySaver();
+
+    const fullRuntime = createRcaRuntime({
+      now: () => new Date(serverAsOf),
+      freshnessTtlMs: 60 * 60 * 1000,
+      fetchBaseline: async (_m, _t, period) => (period.start === "2026-08-01" ? 1000 : 800),
+      fetchStepMetrics: async (step) =>
+        step.dimensionValue === "Miền Nam"
+          ? { baselineVal: 1000, currentVal: 800 }
+          : { baselineVal: 0, currentVal: 0 },
+    });
+    const fullGraph = new StateGraph(AgentStateSchema)
+      .addNode("entry", fullRuntime.entry)
+      .addEdge(START, "entry")
+      .addEdge("entry", END)
+      .compile({ checkpointer });
+
+    // 1. Modify resume attempting to drop or forge asOf keeps serverAsOf
+    const threadMod = { configurable: { thread_id: "rca-modify-asof" } };
+    const askMod = await fullGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      threadMod,
+    );
+    const modPlan = (
+      askMod as { __interrupt__?: Array<{ value?: { plan?: Record<string, unknown> } }> }
+    ).__interrupt__?.[0]?.value?.plan;
+    expect(modPlan?.["asOf"]).toBe(serverAsOf);
+    const forgedPlan = { ...modPlan, asOf: "2099-01-01T00:00:00.000Z" };
+    const resumedMod = await fullGraph.invoke(
+      new Command({ resume: { action: "modify", updated_plan: forgedPlan } }),
+      threadMod,
+    );
+    expect(resumedMod.status).toBe("ok");
+    expect(resumedMod.analysisPlan?.asOf).toBe(serverAsOf);
+
+    // 2. Timeout resume through a backend-less lifecycle graph still resolves HITL_APPROVAL_TIMEOUT
+    const threadLifecycle = { configurable: { thread_id: "rca-lifecycle-timeout" } };
+    await fullGraph.invoke(
+      { question: "Vì sao doanh thu thuần tháng 09/2026 giảm so với tháng 08/2026?" },
+      threadLifecycle,
+    );
+    const bareRuntime = createRcaRuntime();
+    const lifecycleGraph = new StateGraph(AgentStateSchema)
+      .addNode("entry", bareRuntime.entry)
+      .addEdge(START, "entry")
+      .addEdge("entry", END)
+      .compile({ checkpointer });
+    const expired = await lifecycleGraph.invoke(
+      new Command({ resume: { action: "timeout", reason: "HITL_APPROVAL_TIMEOUT" } }),
+      threadLifecycle,
+    );
+    expect(expired.status).toBe("error");
+    expect(expired.errorCode).toBe("HITL_APPROVAL_TIMEOUT");
+  });
 });

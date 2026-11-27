@@ -38,7 +38,12 @@ import {
   getAgentRoPool,
   type SessionFactory,
 } from "./executor.js";
-import { initAudit } from "./audit.js";
+import {
+  initAudit,
+  initPgAudit,
+  setPgAuditPoolForTests,
+  type AuditPoolLike,
+} from "./audit.js";
 import { sanitizeError } from "./errors.js";
 import { TOOL_SPECS } from "./tools.js";
 import { warmupSqlGuard } from "@shared/access-policy";
@@ -58,6 +63,9 @@ export interface GatewayAppOptions {
   rowScopeYaml?: string;
   rowScopePath?: string;
   auditPath?: string;
+  auditPool?: AuditPoolLike;
+  harnessStateDatabaseUrl?: string;
+  allowJsonlOnlyAuditForTests?: boolean;
   sessionFactory?: SessionFactory;
   catalogOverride?: BuiltCatalog;
   search?: SearchFn;
@@ -145,6 +153,20 @@ export async function createGatewayApp(
   );
 
   initAudit(options.auditPath ?? path.resolve("logs/mcp_audit.jsonl"));
+  const auditPgConn =
+    options.harnessStateDatabaseUrl ??
+    process.env["HARNESS_STATE_DATABASE_URL"];
+  if (options.auditPool) {
+    await initPgAudit({ pool: options.auditPool });
+  } else if (auditPgConn && auditPgConn.length > 0) {
+    await initPgAudit({ connString: auditPgConn });
+  } else if (options.allowJsonlOnlyAuditForTests === true) {
+    setPgAuditPoolForTests(null);
+  } else {
+    throw new Error(
+      "createGatewayApp: HARNESS_STATE_DATABASE_URL or auditPool is required for durable fail-closed PostgreSQL audit (pass allowJsonlOnlyAuditForTests: true only in DB-free tests).",
+    );
+  }
 
   let catalog = options.catalogOverride;
   const pool = options.catalogOverride === undefined ? getAgentRoPool() : null;

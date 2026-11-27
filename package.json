@@ -23,6 +23,7 @@
     "external-client": "tsx scripts/externalClient.ts",
     "data:load": "tsx --env-file-if-exists=.env packages/data/src/load.ts",
     "data:verify": "tsx --env-file-if-exists=.env packages/data/src/verify.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate-state.ts",
     "eval": "tsc -b && tsx evals/run.ts",
     "skills:check": "tsx scripts/skills-check.ts",
     "alert:run": "tsx scripts/alert-run.ts",

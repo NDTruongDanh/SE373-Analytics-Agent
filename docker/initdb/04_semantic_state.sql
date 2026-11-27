@@ -52,6 +52,15 @@ CREATE INDEX semantic_chunks_embedding_hnsw_idx
 CREATE INDEX semantic_chunks_fts_gin_idx
   ON semantic.semantic_chunks USING gin (fts);
 
+CREATE TABLE semantic.corpus_version (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  version BIGINT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO semantic.corpus_version (id, version) VALUES (1, 1)
+ON CONFLICT (id) DO NOTHING;
+
 RESET ROLE;
 
 -- Chunk-only SELECT for agent_ro: this explicit per-table GRANT (not a
@@ -59,10 +68,12 @@ RESET ROLE;
 -- agent_ro in semantic) is the only read path agent_ro has into semantic —
 -- future semantic tables stay invisible to it.
 GRANT SELECT ON TABLE semantic.semantic_chunks TO agent_ro;
+GRANT SELECT ON TABLE semantic.corpus_version TO agent_ro;
 
 -- Belt and braces for the indexer write path (already covered by the
 -- 02_schemas.sql default privileges for owner-created semantic tables).
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE semantic.semantic_chunks TO indexer;
+GRANT SELECT, INSERT, UPDATE ON TABLE semantic.corpus_version TO indexer;
 
 -- ------------------------------------------------------------------- state
 SET ROLE harness_state;
@@ -79,6 +90,30 @@ CREATE TABLE app_state.alert_history (
   alert_date DATE,
   direction TEXT,
   sent_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE app_state.mcp_audit_head (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  seq BIGINT NOT NULL DEFAULT 0,
+  current_hash TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO app_state.mcp_audit_head (id, seq, current_hash)
+VALUES (1, 0, repeat('0', 64))
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE app_state.mcp_audit_log (
+  seq BIGINT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  caller TEXT NOT NULL,
+  ts TIMESTAMPTZ NOT NULL,
+  input_hash TEXT NOT NULL,
+  output_hash TEXT NOT NULL,
+  prev_hash TEXT NOT NULL,
+  current_hash TEXT NOT NULL,
+  record JSONB NOT NULL
 );
 
 RESET ROLE;

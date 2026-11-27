@@ -37,6 +37,7 @@ import {
   chunkYaml,
   contentHash,
   discoverDefaultFiles,
+  ensureCorpusVersionTable,
   indexCorpus,
   validateChunkMetadata,
   type CorpusFile,
@@ -613,11 +614,42 @@ const UC02_TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const UC02_ROOT = path.resolve(UC02_TEST_DIR, "..", "..", "..");
 const UC02_SEMANTIC_DIR = path.join(UC02_ROOT, "semantic");
 
-function createMemoryQuery() {
+function createMemoryQuery(options?: { tableExists?: boolean }) {
   const store = new Map<string, string>();
   const seen: { text: string; params?: unknown[] }[] = [];
+  let tableExists = options?.tableExists ?? true;
+  let corpusVersion = 1;
+  let versionRowExists = tableExists;
   const query: IndexQueryFn = async (text: string, params?: unknown[]) => {
     seen.push({ text, params });
+    if (text.includes("pg_advisory_xact_lock")) {
+      return { rows: [] };
+    }
+    if (text.includes("to_regclass('semantic.corpus_version')")) {
+      return { rows: [{ rel: tableExists ? "semantic.corpus_version" : null }] };
+    }
+    if (text.includes("CREATE TABLE IF NOT EXISTS semantic.corpus_version")) {
+      tableExists = true;
+      return { rows: [] };
+    }
+    if (text.startsWith("GRANT SELECT ON TABLE semantic.corpus_version")) {
+      return { rows: [] };
+    }
+    if (text.includes("ON CONFLICT (id) DO NOTHING")) {
+      if (!versionRowExists) {
+        corpusVersion = 1;
+        versionRowExists = true;
+      }
+      return { rows: [] };
+    }
+    if (text.includes("ON CONFLICT (id) DO UPDATE")) {
+      corpusVersion = versionRowExists ? corpusVersion + 1 : 2;
+      versionRowExists = true;
+      return { rows: [{ version: corpusVersion }] };
+    }
+    if (text.startsWith("SELECT version FROM semantic.corpus_version")) {
+      return { rows: versionRowExists ? [{ version: corpusVersion }] : [] };
+    }
     if (text.startsWith("SELECT chunk_id")) {
       return {
         rows: [...store.entries()].map(([chunk_id, content_hash]) => ({
@@ -641,7 +673,13 @@ function createMemoryQuery() {
     }
     throw new Error(`unexpected SQL in memory query: ${text.slice(0, 80)}`);
   };
-  return { store, seen, query };
+  return {
+    store,
+    seen,
+    query,
+    getCorpusVersion: () => corpusVersion,
+    isTableCreated: () => tableExists,
+  };
 }
 
 function createEmbedSpy() {
@@ -891,5 +929,126 @@ describe("6-type YAML semantic corpus & delete-aware SHA-256 indexer (UC-02 #28)
     expect(deletes).toHaveLength(1);
     expect(deletes[0]?.text).toContain("chunk_id = ANY($1)");
     expect((deletes[0]?.params?.[0] as string[]).length).toBe(eventsCount);
+  });
+
+  it("ensureCorpusVersionTable skips CREATE/GRANT when owner table already exists and bootstraps when missing", async () => {
+    const existing = createMemoryQuery({ tableExists: true });
+    await ensureCorpusVersionTable(existing.query);
+    expect(
+      existing.seen.some((entry) => entry.text.includes("pg_advisory_xact_lock")),
+    ).toBe(true);
+    expect(
+      existing.seen.some((entry) =>
+        entry.text.includes("CREATE TABLE IF NOT EXISTS semantic.corpus_version"),
+      ),
+    ).toBe(false);
+    expect(
+      existing.seen.some((entry) =>
+        entry.text.includes("GRANT SELECT ON TABLE semantic.corpus_version TO agent_ro"),
+      ),
+    ).toBe(false);
+
+    const missing = createMemoryQuery({ tableExists: false });
+    await ensureCorpusVersionTable(missing.query);
+    expect(missing.isTableCreated()).toBe(true);
+    expect(
+      missing.seen.some((entry) =>
+        entry.text.includes("CREATE TABLE IF NOT EXISTS semantic.corpus_version"),
+      ),
+    ).toBe(true);
+    expect(
+      missing.seen.some((entry) =>
+        entry.text.includes("GRANT SELECT ON TABLE semantic.corpus_version TO agent_ro"),
+      ),
+    ).toBe(true);
+  });
+
+  it("bumps corpusVersion monotonically on index mutations and skips bump on no-op reindex", async () => {
+    const { query } = createMemoryQuery({ tableExists: true });
+    const { embedder } = createEmbedSpy();
+    const subset = files.filter((file) => path.basename(file.path) === "tables.yaml");
+
+    const first = await indexCorpus({ query, embedder, files: subset });
+    expect(first.added).toBeGreaterThan(0);
+    expect(first.corpusVersion).toBe(2);
+
+    const noop = await indexCorpus({ query, embedder, files: subset });
+    expect(noop.added).toBe(0);
+    expect(noop.updated).toBe(0);
+    expect(noop.deleted).toBe(0);
+    expect(noop.corpusVersion).toBe(2);
+
+    const expanded = files.filter(
+      (file) =>
+        path.basename(file.path) === "tables.yaml" ||
+        path.basename(file.path) === "events.yaml",
+    );
+    const second = await indexCorpus({ query, embedder, files: expanded });
+    expect(second.added).toBeGreaterThan(0);
+    expect(second.corpusVersion).toBe(3);
+  });
+});
+
+describe("retriever corpus_version cache invalidation", () => {
+  beforeEach(() => {
+    resetSemanticCache();
+  });
+
+  it("reloads BM25 and citation catalog strictly when semantic.corpus_version advances", async () => {
+    const embedder = createFakeEmbedder();
+    let corpusVersion = 1;
+    let catalogQueries = 0;
+    const catalog: Record<string, unknown>[] = [
+      makeCatalogRow({
+        chunk_id: "metric:orders_count",
+        metric_name: "orders_count",
+        table_name: "orders",
+        content: "Total count of orders placed",
+      }),
+    ];
+
+    const query: RetrieverQuery = async (sql: string) => {
+      if (sql.includes("FROM semantic.corpus_version")) {
+        return { rows: [{ version: corpusVersion }] };
+      }
+      if (
+        sql.includes("FROM semantic.semantic_chunks") &&
+        sql.includes("updated_at") &&
+        !sql.includes("embedding") &&
+        !sql.includes("MAX")
+      ) {
+        catalogQueries += 1;
+        return { rows: [...catalog] };
+      }
+      if (sql.includes("embedding")) {
+        return {
+          rows: catalog.map((row, idx) => ({ ...row, dense_score: 0.9 - idx * 0.05 })),
+        };
+      }
+      return { rows: [] };
+    };
+
+    await hybridSearch(query, embedder, "orders", 3, false);
+    expect(catalogQueries).toBe(1);
+    expect(getCitationCatalog().has("metric:orders_count")).toBe(true);
+
+    catalog.push(
+      makeCatalogRow({
+        chunk_id: "metric:flash_gmv",
+        metric_name: "flash_gmv",
+        table_name: "orders",
+        content: "Flash campaign gross merchandise value",
+      }),
+    );
+
+    await hybridSearch(query, embedder, "flash campaign", 3, false);
+    expect(catalogQueries).toBe(1);
+    expect(getCitationCatalog().has("metric:flash_gmv")).toBe(false);
+
+    corpusVersion = 2;
+    const afterBump = await hybridSearch(query, embedder, "flash campaign", 3, false);
+    expect(catalogQueries).toBe(2);
+    expect(getCitationCatalog().has("metric:flash_gmv")).toBe(true);
+    expect(afterBump.some((chunk) => chunk.chunkId === "metric:flash_gmv")).toBe(true);
   });
 });

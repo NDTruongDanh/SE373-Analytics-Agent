@@ -153,14 +153,17 @@ describe("chat state", () => {
     let state = chatReducer(initialChat, { type: "start" });
     state = chatReducer(state, {
       type: "event",
-      event: event("interrupt_waiting", {
-        action: "review_analysis_plan",
-        currentPlan: plan,
-        asOf: "2026-10-01T07:00:00Z",
+      event: {
+        ...event("interrupt_waiting", {
+          action: "review_analysis_plan",
+          currentPlan: plan,
+          asOf: "2026-10-01T07:00:00Z",
+        }),
         checkpointId: "ckpt-123",
-      }),
+      },
     });
     expect(state.phase).toBe("waiting");
+    expect(state.checkpointId).toBe("ckpt-123");
     expect(state.planReview?.checkpointId).toBe("ckpt-123");
 
     state = chatReducer(state, { type: "resume" });

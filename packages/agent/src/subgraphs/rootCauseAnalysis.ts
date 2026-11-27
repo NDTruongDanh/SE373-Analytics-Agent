@@ -149,6 +149,9 @@ export interface RcaRuntimeDeps {
     inheritedFilters: Record<string, string>,
   ) => Promise<{ baselineVal: number; currentVal: number; sql?: string }>;
   onStepExecuted?: (step: PlanStep, plan: AnalysisPlan) => void | Promise<void>;
+  now?: () => Date;
+  freshnessTtlMs?: number;
+  asOf?: string;
 }
 
 export function createDateGuardedMcpCaller(
@@ -1050,15 +1053,35 @@ export function formatVnd(val: number): string {
   return `${val.toLocaleString("vi-VN")} VNĐ`;
 }
 
-export function buildBaselineQuery(metricName: string, metricType: MetricType, period: TimePeriod): string {
+export function buildAsOfCutoffClause(
+  asOf?: string,
+  tableAlias = "o",
+  dateColumn = "purchase_date",
+): string | null {
+  if (!asOf) return null;
+  const parsed = z.iso.datetime({ offset: true }).safeParse(asOf);
+  if (!parsed.success) {
+    throw new Error(`Invalid asOf ISO datetime: ${asOf}`);
+  }
+  return `${tableAlias}.${dateColumn} <= (TIMESTAMPTZ '${parsed.data}' AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`;
+}
+
+export function buildBaselineQuery(
+  metricName: string,
+  metricType: MetricType,
+  period: TimePeriod,
+  asOf?: string,
+): string {
+  const cutoff = buildAsOfCutoffClause(asOf);
+  const cutoffSql = cutoff ? ` AND ${cutoff}` : "";
   if (metricType === "ratio" && metricName === "aov") {
     // AOV requires status = 'delivered' for both numerator and denominator.
-    return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status = 'delivered' AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
+    return `SELECT (COALESCE(SUM(i.price_vnd), 0)::float / NULLIF(COUNT(DISTINCT o.order_id), 0))::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status = 'delivered' AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'${cutoffSql}`;
   }
   if (metricType === "ratio" && metricName === "return_rate") {
-    return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o WHERE o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
+    return `SELECT (COUNT(CASE WHEN o.status = 'returned' THEN 1 END)::float / NULLIF(COUNT(*), 0))::float AS val FROM public.orders o WHERE o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'${cutoffSql}`;
   }
-  return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned') AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'`;
+  return `SELECT COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN i.price_vnd WHEN o.status = 'returned' THEN -i.price_vnd ELSE 0 END), 0)::float AS val FROM public.order_items i JOIN public.orders o USING (order_id) WHERE o.status IN ('delivered', 'returned') AND o.purchase_date >= '${period.start}' AND o.purchase_date <= '${period.end}'${cutoffSql}`;
 }
 
 export async function validateBaseline(
@@ -1066,6 +1089,7 @@ export async function validateBaseline(
   intent: RcaIntent,
   deps: RcaRuntimeDeps,
   principal: ExecutorPrincipal,
+  asOf?: string,
 ): Promise<BaselineCheckResult> {
   let baselineVal = 0;
   let currentVal = 0;
@@ -1079,8 +1103,9 @@ export async function validateBaseline(
     currentVal = await deps.fetchBaseline(intent.metricName, intent.metricType, intent.currentPeriod, principal);
     queriesExecuted = 2;
   } else if (deps.executor) {
-    const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod);
-    const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod);
+    const effectiveAsOf = asOf ?? deps.asOf;
+    const baseSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.baselinePeriod, effectiveAsOf);
+    const currSql = buildBaselineQuery(intent.metricName, intent.metricType, intent.currentPeriod, effectiveAsOf);
 
     const targetFactTable = getMetricTargetTable(intent.metricName);
     const expectedDateCol = getMetricDateColumn(intent.metricName);
@@ -1320,6 +1345,7 @@ export function createPlan(
     includeFormulaAxisForAdditive?: boolean;
     deliveredOrdersBaseline?: number;
     deliveredOrdersCurrent?: number;
+    asOf?: string;
   },
 ): AnalysisPlan | null {
   if (!baseline.isValidBaseline) {
@@ -1479,6 +1505,7 @@ export function createPlan(
     drilldownThreshold: 30.0,
     unexploredBranches: [],
     residualOtherAbs: 0,
+    ...(options?.asOf ? { asOf: options.asOf } : {}),
   };
 
   return AnalysisPlanSchema.parse(planPayload);
@@ -1542,6 +1569,7 @@ export function buildStepQuery(
   filters: Record<string, string> = {},
   axis?: PlanStepAxis,
   factor?: string,
+  asOf?: string,
 ): string {
   const joins: string[] = [];
   const whereClauses: string[] = [];
@@ -1581,6 +1609,10 @@ export function buildStepQuery(
 
   whereClauses.push(`o.purchase_date >= '${period.start}'`);
   whereClauses.push(`o.purchase_date <= '${period.end}'`);
+  const asOfCutoff = buildAsOfCutoffClause(asOf);
+  if (asOfCutoff) {
+    whereClauses.push(asOfCutoff);
+  }
 
   const joinsStr = joins.length > 0 ? " " + joins.join(" ") : "";
   const whereStr = whereClauses.join(" AND ");
@@ -1715,6 +1747,7 @@ export async function executeAnalysis(
             combinedFilters,
             step.axis,
             step.dimensionOrFactor,
+            plan.asOf,
           );
           const currSql = buildStepQuery(
             plan.metricName,
@@ -1723,6 +1756,7 @@ export async function executeAnalysis(
             combinedFilters,
             step.axis,
             step.dimensionOrFactor,
+            plan.asOf,
           );
 
           deps.setTargetTable?.(targetTable);
@@ -2904,11 +2938,34 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       emit: rt?.emit,
     });
 
+    const rawRtEarly = rt as unknown as Record<string, unknown> | undefined;
+    const earlyConf = ((rt?.config?.configurable ?? rawRtEarly?.configurable ?? {}) as Record<string, unknown>);
+    const earlyScratch = earlyConf["__pregel_scratchpad"] as
+      | { nullResume?: unknown; resume?: unknown[] }
+      | undefined;
+    const isTimeoutResume = Boolean(
+      earlyScratch &&
+        ((typeof earlyScratch.nullResume === "object" &&
+          earlyScratch.nullResume !== null &&
+          ((earlyScratch.nullResume as { action?: unknown }).action === "timeout" ||
+            (earlyScratch.nullResume as { reason?: unknown }).reason === "HITL_APPROVAL_TIMEOUT")) ||
+          (Array.isArray(earlyScratch.resume) &&
+            earlyScratch.resume.some(
+              (v) =>
+                typeof v === "object" &&
+                v !== null &&
+                ((v as { action?: unknown }).action === "timeout" ||
+                  (v as { reason?: unknown }).reason === "HITL_APPROVAL_TIMEOUT"),
+            ))),
+    );
+
     const modelToUse =
-      deps.intentModel ??
-      (process.env.AGENT_MODEL_API_KEY
-        ? (createChatModel("intent") as unknown as IntentModelLike)
-        : undefined);
+      isTimeoutResume
+        ? undefined
+        : deps.intentModel ??
+          (process.env.AGENT_MODEL_API_KEY
+            ? (createChatModel("intent") as unknown as IntentModelLike)
+            : undefined);
     let intent: RcaIntent;
     if (modelToUse) {
       try {
@@ -2993,6 +3050,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
 
     let baseline!: BaselineCheckResult;
     let plan: AnalysisPlan | null = null;
+    let recheckedPlan: AnalysisPlan | null = null;
 
     const effectiveIntent: RcaIntent = {
       ...intent,
@@ -3035,12 +3093,16 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         let maxScore = -1;
         for (const write of interruptWrites ?? []) {
           const raw = (write as unknown[])[2] as
-            | { value?: { plan?: unknown; currentPlan?: unknown } }
+            | { value?: { reason?: unknown; plan?: unknown; currentPlan?: unknown } }
             | undefined;
           const candidateP = raw?.value?.currentPlan ?? raw?.value?.plan;
           if (candidateP && typeof candidateP === "object") {
             const parsed = AnalysisPlanSchema.safeParse(candidateP);
             if (parsed.success) {
+              if (raw?.value?.reason === "STALE_PLAN_RECHECK") {
+                recheckedPlan = parsed.data;
+                continue;
+              }
               const completedCount = parsed.data.steps.filter((s) => s.status !== "todo").length;
               const score = completedCount * 1000 + parsed.data.totalQueriesCount;
               if (score > maxScore) {
@@ -3094,8 +3156,15 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
     }
 
     if (!plan) {
+      const initialAsOf = deps.asOf ?? (deps.now?.() ?? new Date()).toISOString();
       try {
-        baseline = await validateBaseline(state.question, intent, effectiveDeps, principal);
+        baseline = await validateBaseline(
+          state.question,
+          intent,
+          effectiveDeps,
+          principal,
+          initialAsOf,
+        );
       } catch (err) {
         return {
           status: "error",
@@ -3121,6 +3190,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
         effectiveIntent,
         baseline,
         deps.candidateRegions ?? DEFAULT_CANDIDATE_REGIONS,
+        { asOf: initialAsOf },
       );
       if (!plan) {
         return {
@@ -3128,6 +3198,17 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           answerText: "Không thể khởi tạo kế hoạch phân tích nguyên nhân gốc rễ.",
         };
       }
+      rt?.emit?.({
+        node: "rca",
+        type: "node_done",
+        durationMs: 0,
+        payload: {
+          phase: "plan_created",
+          asOf: plan.asOf,
+          metricName: plan.metricName,
+          stepsCount: plan.steps.length,
+        },
+      });
     }
 
     const hasExecutionBackend = Boolean(
@@ -3138,83 +3219,216 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
 
     let shouldExecute = hasExecutionBackend && Boolean(deps.skipHitlReview);
 
-    if (hasExecutionBackend && !deps.skipHitlReview) {
-      try {
-        const feedback = pauseForApproval({
-          action: "review_analysis_plan",
-          plan,
-          currentPlan: plan,
-        });
+    const resolveHitlFeedback = (
+      feedback: unknown,
+      activePlan: AnalysisPlan,
+    ):
+      | { outcome: "execute"; nextPlan: AnalysisPlan }
+      | { outcome: "return"; update: AgentUpdate } => {
+      let decisionAction = "";
+      let feedbackObj: Record<string, unknown> | null = null;
 
-        let decisionAction = "";
-        let feedbackObj: Record<string, unknown> | null = null;
-
-        if (typeof feedback === "string") {
-          decisionAction = feedback.trim().toUpperCase();
-        } else if (feedback && typeof feedback === "object") {
-          feedbackObj = feedback as Record<string, unknown>;
-          if (typeof feedbackObj["action"] === "string") {
-            decisionAction = feedbackObj["action"].trim().toUpperCase();
-          } else if (
-            feedbackObj["steps"] ||
-            feedbackObj["updated_plan"] ||
-            feedbackObj["currentPlan"] ||
-            feedbackObj["plan"]
-          ) {
-            decisionAction = "MODIFY";
-          }
-        } else if (feedback === true) {
-          decisionAction = "APPROVE";
+      if (typeof feedback === "string") {
+        decisionAction = feedback.trim().toUpperCase();
+      } else if (feedback && typeof feedback === "object") {
+        feedbackObj = feedback as Record<string, unknown>;
+        if (typeof feedbackObj["action"] === "string") {
+          decisionAction = feedbackObj["action"].trim().toUpperCase();
+        } else if (
+          feedbackObj["steps"] ||
+          feedbackObj["updated_plan"] ||
+          feedbackObj["currentPlan"] ||
+          feedbackObj["plan"]
+        ) {
+          decisionAction = "MODIFY";
         }
+      } else if (feedback === true) {
+        decisionAction = "APPROVE";
+      }
 
-        if (decisionAction === "APPROVE" || decisionAction === "APPROVED") {
-          shouldExecute = true;
-        } else if (
-          decisionAction === "MODIFY" ||
-          Boolean(
-            feedbackObj &&
-              (feedbackObj["updated_plan"] ||
-                feedbackObj["currentPlan"] ||
-                feedbackObj["steps"] ||
-                feedbackObj["plan"]),
-          )
-        ) {
-          shouldExecute = true;
-          if (feedbackObj) {
-            if (Array.isArray(feedbackObj["steps"])) {
-              plan.steps = z.array(PlanStepSchema).parse(feedbackObj["steps"]);
-            } else if (feedbackObj["updated_plan"]) {
-              plan = AnalysisPlanSchema.parse(feedbackObj["updated_plan"]);
-            } else if (feedbackObj["currentPlan"] && typeof feedbackObj["currentPlan"] === "object") {
-              plan = AnalysisPlanSchema.parse(feedbackObj["currentPlan"]);
-            } else if (feedbackObj["plan"] && typeof feedbackObj["plan"] === "object") {
-              plan = AnalysisPlanSchema.parse(feedbackObj["plan"]);
-            }
+      if (
+        decisionAction === "TIMEOUT" ||
+        feedbackObj?.["reason"] === "HITL_APPROVAL_TIMEOUT"
+      ) {
+        return {
+          outcome: "return",
+          update: {
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            analysisPlan: activePlan,
+            answerText:
+              "Kế hoạch phân tích đã hết hạn duyệt sau 7 ngày (HITL_APPROVAL_TIMEOUT). Luồng xử lý đã bị dừng.",
+            sql: baseline.lastSql,
+            tablesUsed: baseline.tablesUsed,
+            toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
+          },
+        };
+      }
+
+      if (decisionAction === "APPROVE" || decisionAction === "APPROVED") {
+        return { outcome: "execute", nextPlan: activePlan };
+      }
+
+      if (
+        decisionAction === "MODIFY" ||
+        Boolean(
+          feedbackObj &&
+            (feedbackObj["updated_plan"] ||
+              feedbackObj["currentPlan"] ||
+              feedbackObj["steps"] ||
+              feedbackObj["plan"]),
+        )
+      ) {
+        let modified = activePlan;
+        if (feedbackObj) {
+          if (Array.isArray(feedbackObj["steps"])) {
+            modified = {
+              ...activePlan,
+              steps: z.array(PlanStepSchema).parse(feedbackObj["steps"]),
+            };
+          } else if (feedbackObj["updated_plan"]) {
+            modified = AnalysisPlanSchema.parse(feedbackObj["updated_plan"]);
+          } else if (feedbackObj["currentPlan"] && typeof feedbackObj["currentPlan"] === "object") {
+            modified = AnalysisPlanSchema.parse(feedbackObj["currentPlan"]);
+          } else if (feedbackObj["plan"] && typeof feedbackObj["plan"] === "object") {
+            modified = AnalysisPlanSchema.parse(feedbackObj["plan"]);
           }
-        } else if (
-          decisionAction === "REJECT" ||
-          decisionAction === "REJECTED" ||
-          decisionAction === "CANCEL" ||
-          decisionAction === "CANCELLED" ||
-          decisionAction === "DENY" ||
-          decisionAction === "DENIED"
-        ) {
-          shouldExecute = false;
-          return {
+          if (activePlan.asOf) {
+            modified = { ...modified, asOf: activePlan.asOf };
+          }
+        }
+        return { outcome: "execute", nextPlan: modified };
+      }
+
+      if (
+        decisionAction === "REJECT" ||
+        decisionAction === "REJECTED" ||
+        decisionAction === "CANCEL" ||
+        decisionAction === "CANCELLED" ||
+        decisionAction === "DENY" ||
+        decisionAction === "DENIED"
+      ) {
+        return {
+          outcome: "return",
+          update: {
             status: "ok",
-            analysisPlan: plan,
+            errorCode: null,
+            analysisPlan: activePlan,
             answerText:
               "Kế hoạch phân tích đã bị từ chối bởi người dùng. Đã dừng thực thi phân tích nguyên nhân.",
             sql: baseline.lastSql,
             tablesUsed: baseline.tablesUsed,
             toolsCalled: [...state.toolsCalled, ...baseline.actualToolsCalled],
-          };
-        } else {
-          return {
-            status: "error",
-            answerText: `Quyết định duyệt kế hoạch không hợp lệ: '${decisionAction || JSON.stringify(feedback)}'. Chỉ chấp nhận 'approve', 'modify', hoặc 'reject'.`,
-          };
+          },
+        };
+      }
+
+      return {
+        outcome: "return",
+        update: {
+          status: "error",
+          answerText: `Quyết định duyệt kế hoạch không hợp lệ: '${decisionAction || JSON.stringify(feedback)}'. Chỉ chấp nhận 'approve', 'modify', hoặc 'reject'.`,
+        },
+      };
+    };
+
+    if ((hasExecutionBackend || isResume) && !deps.skipHitlReview) {
+      try {
+        const feedback = pauseForApproval({
+          action: "review_analysis_plan",
+          plan,
+          currentPlan: plan,
+          ...(plan.asOf ? { asOf: plan.asOf } : {}),
+        });
+        const firstOutcome = resolveHitlFeedback(feedback, plan);
+        if (firstOutcome.outcome === "return") {
+          return firstOutcome.update;
         }
+        plan = firstOutcome.nextPlan;
+
+        const nowDate = deps.now?.() ?? new Date();
+        const nowIso = nowDate.toISOString();
+        const freshnessTtlMs = deps.freshnessTtlMs ?? 60 * 60 * 1000;
+        const asOfMs = plan.asOf ? Date.parse(plan.asOf) : NaN;
+        const isStaleByTime =
+          Number.isFinite(asOfMs) && nowDate.getTime() - asOfMs > freshnessTtlMs;
+
+        if (isResume && (recheckedPlan || isStaleByTime)) {
+          let staleCandidatePlan = recheckedPlan;
+          if (!staleCandidatePlan) {
+            const recheck = await validateBaseline(
+              state.question,
+              effectiveIntent,
+              effectiveDeps,
+              principal,
+              nowIso,
+            );
+            const baseDrift =
+              plan.baselineVal !== 0
+                ? Math.abs(recheck.baselineVal - plan.baselineVal) /
+                  Math.abs(plan.baselineVal)
+                : Math.abs(recheck.baselineVal - plan.baselineVal);
+            const currDrift =
+              plan.currentVal !== 0
+                ? Math.abs(recheck.currentVal - plan.currentVal) /
+                  Math.abs(plan.currentVal)
+                : Math.abs(recheck.currentVal - plan.currentVal);
+            const deltaRecheck = Math.max(baseDrift, currDrift);
+
+            if (deltaRecheck > 0.01) {
+              if (!recheck.isValidBaseline) {
+                const status =
+                  recheck.isSignificant === false ? "no_data" : "false_premise";
+                return {
+                  status,
+                  answerText: recheck.message,
+                  analysisPlan: { ...plan, asOf: nowIso, isValidBaseline: false },
+                  sql: recheck.lastSql,
+                  tablesUsed: recheck.tablesUsed,
+                  resultPreview: [],
+                  toolsCalled: [...state.toolsCalled, ...recheck.actualToolsCalled],
+                };
+              }
+              staleCandidatePlan = AnalysisPlanSchema.parse({
+                ...plan,
+                baselineVal: recheck.baselineVal,
+                currentVal: recheck.currentVal,
+                absDelta: recheck.absDelta,
+                pctDelta: recheck.pctDelta,
+                isValidBaseline: recheck.isValidBaseline,
+                asOf: nowIso,
+              });
+            }
+          }
+
+          if (staleCandidatePlan) {
+            rt?.emit?.({
+              node: "rca",
+              type: "node_done",
+              durationMs: 0,
+              payload: {
+                phase: "stale_plan_recheck",
+                previousAsOf: plan.asOf,
+                recheckAsOf: staleCandidatePlan.asOf,
+                reason: "STALE_PLAN_RECHECK",
+              },
+            });
+            const feedback2 = pauseForApproval({
+              action: "review_analysis_plan",
+              plan: staleCandidatePlan,
+              currentPlan: staleCandidatePlan,
+              ...(staleCandidatePlan.asOf ? { asOf: staleCandidatePlan.asOf } : {}),
+              reason: "STALE_PLAN_RECHECK",
+            });
+            const secondOutcome = resolveHitlFeedback(feedback2, staleCandidatePlan);
+            if (secondOutcome.outcome === "return") {
+              return secondOutcome.update;
+            }
+            plan = secondOutcome.nextPlan;
+          }
+        }
+
+        shouldExecute = hasExecutionBackend;
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes("outside the context of a graph")) {
           // Allow direct unit tests without a LangGraph execution context to return the unexecuted plan.
