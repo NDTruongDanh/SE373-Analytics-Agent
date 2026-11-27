@@ -169,7 +169,9 @@ describe("root graph seam", () => {
       );
       expect(vizCalled).toBe(viz);
       expect(out.status).toBe(status);
-      expect(out.answerText).toBe(`partial ${status}`);
+      expect(out.answerText).toBe(status === "no_data"
+        ? "No data matched the requested conditions."
+        : `partial ${status}`);
     });
   }
 

@@ -167,6 +167,7 @@ describe("UC-03 VIZ seam", () => {
     expect(seen.prompts).toHaveLength(1);
     expect(seen.prompts[0]).toContain(UNTRUSTED_DATA_OPEN);
     expect(seen.prompts[0]).toContain(UNTRUSTED_DATA_CLOSE);
+    expect(seen.prompts[0]).toContain("Write insights and caveats in the same language as the question");
     expect(out.budget?.llmCalls).toBe(1);
   });
 

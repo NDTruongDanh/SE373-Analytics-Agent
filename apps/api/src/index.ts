@@ -42,6 +42,7 @@ import {
   type Principal,
 } from "./principals.js";
 import {
+  completionArtifacts,
   completedPayload,
   displayableSql,
   emitSseEvent,
@@ -49,6 +50,7 @@ import {
   interruptPayload,
   schemaPayload,
   sqlPayload,
+  vizPayload,
 } from "./sse.js";
 import type { AppStateStore } from "./store/alertStore.js";
 import { API_SHELL } from "./constants.js";
@@ -331,6 +333,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
     out: AgentState,
   ): void {
     const preview = (out.resultPreview ?? []) as Record<string, unknown>[];
+    const viz = vizPayload(out);
+    if (viz) {
+      emitSseEvent(res, "viz", { runId, threadId, node: "viz", data: viz });
+    }
+    const artifacts = completionArtifacts(out);
     emitSseEvent(res, "completed", {
       runId,
       threadId,
@@ -340,6 +347,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         answerText: out.answerText,
         toolsCalled: [...(out.toolsCalled ?? [])],
         total: previewCountTotal((out.columns ?? []) as string[], preview),
+        ...(artifacts ?? {}),
       }),
     });
   }

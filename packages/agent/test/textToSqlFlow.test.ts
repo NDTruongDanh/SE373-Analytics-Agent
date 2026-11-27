@@ -408,7 +408,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     expect(out.status).toBe("ok");
     expect(described).toEqual(["orders"]);
-    expect(out.answerText).toBe("total_orders: 42");
+    expect(out.answerText).toBe("Kết quả cho điều kiện đã hỏi là 42.");
   });
 
   it("reuses pre-retrieved chunks in retrieve and blocks unknown NPS metric without duplicate search", async () => {
@@ -732,7 +732,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     );
     expect(resumed.status).toBe("ok");
     expect(seenTimeRange).toBe("2025-07-01/2025-10-01");
-    expect(resumed.answerText).toBe("cnt: 12");
+    expect(resumed.answerText).toBe("Kết quả cho điều kiện đã hỏi là 12.");
   });
 
   it("short-circuits in budgetGuard when maxLlmCalls is already exhausted", async () => {
@@ -844,7 +844,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     expect(resumed.clarificationAttempts).toBe(1);
     expect(resumed.intent.schemaEntities).toEqual(["orders", "channels"]);
     expect(resumed.question).toContain("Clarification (table for phòng CSKH): channels");
-    expect(resumed.answerText).toBe("cnt: 9");
+    expect(resumed.answerText).toBe("Kết quả cho điều kiện đã hỏi là 9.");
   });
 
   it("enforces max 2 clarification rounds and asks user to start a new question once exhausted", async () => {

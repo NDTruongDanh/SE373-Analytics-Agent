@@ -165,6 +165,7 @@ describe("buildApp resume", () => {
     const resumeBlocks = parseSse(resumed.text);
     expect(resumeBlocks.map((b) => b.event)).toEqual([
       "intent_parsed",
+      "viz",
       "completed",
     ]);
     expect(new Set(resumeBlocks.map((b) => b.data["threadId"]))).toEqual(new Set([threadId]));

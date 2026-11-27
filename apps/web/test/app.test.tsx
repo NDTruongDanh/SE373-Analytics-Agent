@@ -251,6 +251,30 @@ describe("result drawer", () => {
     expect(screen.getByText("Chi tiết kết quả khác chưa được API cung cấp.")).toBeTruthy();
   });
 
+  it("shows verified citations and masked preview from the completed SSE payload", () => {
+    render(<ResultDrawer events={[{
+      event: "completed", runId: "r", threadId: "t",
+      data: {
+        status: "ok", answerText: "Có 12 đơn.", citations: ["metric:orders_count"],
+        tablesUsed: ["orders"], resultPreview: [{ n: 12 }], resultTruncated: true,
+      },
+    }]} />);
+    fireEvent.click(screen.getByRole("button", { name: /SQL & nguồn tham chiếu/ }));
+    expect(screen.getByText("metric:orders_count")).toBeTruthy();
+    expect(within(screen.getByRole("table")).getByText("12")).toBeTruthy();
+    expect(screen.getByText(/Kết quả đã bị cắt/)).toBeTruthy();
+  });
+
+  it("explains when the API withholds an unsafe preview", () => {
+    render(<ResultDrawer events={[{
+      event: "completed", runId: "r", threadId: "t",
+      data: { status: "ok", answerText: "Đã có kết quả.", citations: [], tablesUsed: ["orders"], resultTruncated: false, previewWithheld: true },
+    }]} />);
+    fireEvent.click(screen.getByRole("button", { name: /SQL & nguồn tham chiếu/ }));
+    expect(screen.getByText(/Dữ liệu xem trước đã được ẩn/)).toBeTruthy();
+    expect(screen.queryByText("Không có dòng dữ liệu.")).toBeNull();
+  });
+
   it("displays a SQL proposal as soon as its safe progress event arrives", () => {
     render(<ResultDrawer events={[{ event: "sql_generated", runId: "r", threadId: "t", data: { phase: "display", sql: "SELECT status FROM orders" } }]} />);
     fireEvent.click(screen.getByRole("button", { name: /SQL & nguồn tham chiếu/ }));

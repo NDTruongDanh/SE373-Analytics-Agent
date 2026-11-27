@@ -4,6 +4,7 @@
 // A schema-invalid payload must degrade to failed, never hit the wire raw.
 
 import { describe, expect, it } from "vitest";
+import type { AgentState } from "@shared/agent";
 import {
   SSE_EVENT_NAMES,
   SseCompletedEventSchema,
@@ -11,12 +12,14 @@ import {
   type SseEventName,
 } from "@shared/contracts";
 import {
+  completionArtifacts,
   completedPayload,
   containsWirePii,
   displayableSql,
   emitSseEvent,
   interruptPayload,
   SSE_ALLOWLIST as HOST_ALLOWLIST,
+  vizPayload,
 } from "../src/sse.js";
 
 interface CapturedWrite {
@@ -154,6 +157,7 @@ describe("containsWirePii (#115)", () => {
     "abc0901234567",
     "a,0901234567",
     "028582120590",
+    "+84 912 345 678",
     "mail lan@example.com",
   ])("flags phone or email shape in %s", (text) => {
     expect(containsWirePii(text)).toBe(true);
@@ -167,5 +171,45 @@ describe("containsWirePii (#115)", () => {
     expect(() =>
       completedPayload({ ...base, answerText: "gọi 0901234567" }),
     ).toThrow(/withheld/);
+  });
+});
+
+describe("answer artifacts on the SSE boundary", () => {
+  const state = {
+    status: "ok",
+    budgetExceeded: false,
+    sql: "-- @citations: metric:orders_count\nSELECT COUNT(*) AS n FROM public.orders",
+    semanticChunks: [{ chunkId: "metric:orders_count", text: "Number of orders" }],
+    intent: { requestedMetrics: ["orders_count"] },
+    tablesUsed: ["orders"],
+    resultPreview: [{ n: 12 }],
+    resultTruncated: false,
+    vizSpec: {
+      kind: "insight_report",
+      openuiLang: "chart = None",
+      report: {
+        chartType: "none",
+        chartSpec: { chart: "None" },
+        chartReason: "One scalar result.",
+        insights: [{ claim: "There are 12 orders.", evidence: [{ column: "n", rowKey: "12", value: 12 }] }],
+        caveats: [],
+      },
+    },
+  } as unknown as AgentState;
+
+  it("sends verified citations, preview, and UC-03 report", () => {
+    expect(completionArtifacts(state)).toMatchObject({
+      citations: ["metric:orders_count"], tablesUsed: ["orders"], resultPreview: [{ n: 12 }],
+    });
+    expect(vizPayload(state)).toMatchObject({ resultPreview: [{ n: 12 }], report: { chartType: "none" } });
+  });
+
+  it("withholds unsafe preview/report and all artifacts for restricted results", () => {
+    const unsafe = { ...state, resultPreview: [{ phone: "+84 912 345 678" }] } as AgentState;
+    expect(completionArtifacts(unsafe)?.resultPreview).toBeUndefined();
+    expect(completionArtifacts(unsafe)?.previewWithheld).toBe(true);
+    expect(vizPayload(unsafe)).toBeNull();
+    expect(completionArtifacts({ ...state, status: "restricted" })).toBeNull();
+    expect(vizPayload({ ...state, status: "restricted" })).toBeNull();
   });
 });

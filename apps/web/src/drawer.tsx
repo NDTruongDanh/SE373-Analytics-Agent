@@ -4,6 +4,7 @@ import {
   cellMatchesEvidence,
   findMatchingPreviewRows,
 } from "@/components/InsightPanel";
+import { extractAnswerArtifacts } from "@/chat";
 
 interface Props {
   answer?: SQLAnswer;
@@ -15,6 +16,36 @@ function valueText(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value;
   return JSON.stringify(value) ?? String(value);
+}
+
+function PreviewRows({ rows, highlightedEvidence }: {
+  rows: Record<string, unknown>[];
+  highlightedEvidence: EvidencePointer | null;
+}) {
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  const matchedRows = findMatchingPreviewRows(rows, highlightedEvidence);
+  return <>
+    <h3>Dữ liệu xem trước <small>({rows.length}/50 dòng)</small></h3>
+    {rows.length ? <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>
+      {rows.slice(0, 50).map((row, i) => {
+        const rowHighlighted = matchedRows.has(i);
+        return <tr
+          key={i}
+          data-highlighted-row={rowHighlighted ? "true" : undefined}
+          className={rowHighlighted ? "bg-accent/60" : undefined}
+        >
+          {columns.map((column) => {
+            const cellHighlighted = cellMatchesEvidence(row, i, column, highlightedEvidence, matchedRows);
+            return <td
+              key={column}
+              data-highlighted-cell={cellHighlighted ? "true" : undefined}
+              className={cellHighlighted ? "bg-primary/15 font-semibold text-accent-foreground" : undefined}
+            >{valueText(row[column])}</td>;
+          })}
+        </tr>;
+      })}
+    </tbody></table></div> : <p>Không có dòng dữ liệu.</p>}
+  </>;
 }
 
 // Text-only line diff so SQL text is never interpreted as HTML.
@@ -36,10 +67,8 @@ export function ResultDrawer({ answer, events, highlightedEvidence = null }: Pro
   const metadata = metadataEvent?.data && typeof metadataEvent.data === "object" ? metadataEvent.data as Record<string, unknown> : null;
   const tables = Array.isArray(metadata?.tablesUsed) ? metadata.tablesUsed.filter((value): value is string => typeof value === "string") : [];
   const withheld = events.some((event) => event.event === "sql_generated" && event.data && typeof event.data === "object" && "withheld" in event.data && event.data.withheld === true);
-  const columns = answer ? [...new Set(answer.resultPreview.flatMap((row) => Object.keys(row)))] : [];
-  const matchedRows = answer
-    ? findMatchingPreviewRows(answer.resultPreview, highlightedEvidence)
-    : new Set<number>();
+  const completed = [...events].reverse().find((event) => event.event === "completed");
+  const artifacts = extractAnswerArtifacts(completed?.data);
   return <section className="details">
     <button className="details-toggle" type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="result-details">
       <span>SQL &amp; nguồn tham chiếu</span><span aria-hidden="true">{open ? "−" : "+"}</span>
@@ -48,9 +77,20 @@ export function ResultDrawer({ answer, events, highlightedEvidence = null }: Pro
       {!answer ? <>
         {typeof sqlData?.sql === "string" && <><h3>SQL đề xuất</h3><pre>{sqlData.sql}</pre><p>SQL do model đề xuất; truy vấn thực tế có thể được chính sách truy cập điều chỉnh.</p></>}
         {withheld && <p>Không hiển thị SQL vì có thể chứa giá trị nhạy cảm hoặc nằm ngoài phạm vi demo được hỗ trợ.</p>}
-        <p>Chi tiết kết quả khác chưa được API cung cấp.</p>
+        {!artifacts && <p>Chi tiết kết quả khác chưa được API cung cấp.</p>}
         {typeof metadata?.statementType === "string" && <p>Loại truy vấn: <strong>{metadata.statementType}</strong></p>}
-        {tables.length > 0 && <p>Bảng: {tables.join(", ")}</p>}
+        {(artifacts?.tablesUsed.length ? artifacts.tablesUsed : tables).length > 0 &&
+          <p>Bảng: {(artifacts?.tablesUsed.length ? artifacts.tablesUsed : tables).join(", ")}</p>}
+        {artifacts && <>
+          <h3>Nguồn tham chiếu</h3>
+          {artifacts.citations.length
+            ? <ul>{artifacts.citations.map((citation) => <li key={citation}>{citation}</li>)}</ul>
+            : <p>Không có nguồn tham chiếu.</p>}
+          {artifacts.previewWithheld
+            ? <p>Dữ liệu xem trước đã được ẩn vì không thể hiển thị an toàn.</p>
+            : <PreviewRows rows={artifacts.resultPreview} highlightedEvidence={highlightedEvidence} />}
+          {artifacts.resultTruncated && <p>Kết quả đã bị cắt; tổng số dòng chưa xác định.</p>}
+        </>}
       </> : <>
         <h3>SQL</h3><pre>{answer.sql ?? "Không có SQL."}</pre>
         <h3>Các lần thực thi</h3>
@@ -63,34 +103,7 @@ export function ResultDrawer({ answer, events, highlightedEvidence = null }: Pro
         </div>)}
         <h3>Nguồn tham chiếu</h3>
         {answer.citations.length ? <ul>{answer.citations.map((citation, i) => <li key={`${citation}-${i}`}>{citation}</li>)}</ul> : <p>Không có nguồn tham chiếu.</p>}
-        <h3>Dữ liệu xem trước <small>({answer.resultPreview.length}/50 dòng)</small></h3>
-        {answer.resultPreview.length ? <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>
-          {answer.resultPreview.slice(0, 50).map((row, i) => {
-            const rowHighlighted = matchedRows.has(i);
-            return <tr
-              key={i}
-              data-highlighted-row={rowHighlighted ? "true" : undefined}
-              className={rowHighlighted ? "bg-accent/60" : undefined}
-            >
-              {columns.map((column) => {
-                const cellHighlighted = cellMatchesEvidence(
-                  row,
-                  i,
-                  column,
-                  highlightedEvidence,
-                  matchedRows,
-                );
-                return <td
-                  key={column}
-                  data-highlighted-cell={cellHighlighted ? "true" : undefined}
-                  className={cellHighlighted ? "bg-primary/15 font-semibold text-accent-foreground" : undefined}
-                >
-                  {valueText(row[column])}
-                </td>;
-              })}
-            </tr>;
-          })}
-        </tbody></table></div> : <p>Không có dòng dữ liệu.</p>}
+        <PreviewRows rows={answer.resultPreview} highlightedEvidence={highlightedEvidence} />
         <h3>Thống kê</h3><p>{answer.telemetry.latencyMs} ms · {answer.telemetry.promptTokens} input tokens · {answer.telemetry.completionTokens} output tokens · {answer.telemetry.embeddingTokens} embedding tokens · ${answer.telemetry.estimatedCostUsd.toFixed(4)}</p>
       </>}
     </div>}

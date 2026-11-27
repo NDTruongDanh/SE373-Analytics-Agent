@@ -52,6 +52,37 @@ export interface ChatVizState {
   resultPreview?: Record<string, unknown>[];
 }
 
+export interface ChatAnswerArtifacts {
+  citations: string[];
+  tablesUsed: string[];
+  resultPreview: Record<string, unknown>[];
+  resultTruncated: boolean;
+  previewWithheld: boolean;
+}
+
+export function extractAnswerArtifacts(value: unknown): ChatAnswerArtifacts | null {
+  const data = record(value);
+  if (!data || (data.status !== "ok" && data.status !== "no_data")) return null;
+  const rawPreview = data.resultPreview;
+  const previewWithheld = data.previewWithheld === true;
+  if ((rawPreview === undefined && !previewWithheld) || (rawPreview !== undefined && previewWithheld)) return null;
+  if (rawPreview !== undefined && (!Array.isArray(rawPreview) || rawPreview.length > 50 ||
+    rawPreview.some((row) => record(row) === null))) return null;
+  const names = (raw: unknown, pattern: RegExp): string[] | null =>
+    Array.isArray(raw) && raw.length <= 10 && raw.every((value) => typeof value === "string" && pattern.test(value))
+      ? raw as string[] : null;
+  const citations = names(data.citations, /^[a-z_][a-z0-9_.:-]{0,127}$/i);
+  const tablesUsed = names(data.tablesUsed, /^[a-z_][a-z0-9_]{0,62}$/i);
+  if (!citations || !tablesUsed || typeof data.resultTruncated !== "boolean") return null;
+  return {
+    citations,
+    tablesUsed,
+    resultPreview: (rawPreview ?? []) as Record<string, unknown>[],
+    resultTruncated: data.resultTruncated,
+    previewWithheld,
+  };
+}
+
 export interface ChatState {
   phase: Phase;
   runId: string | null;
