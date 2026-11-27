@@ -130,4 +130,77 @@ describe("UC-02 CitationValidator", () => {
     expect(repaired.ok).toBe(false);
     if (!repaired.ok) expect(repaired.issue.code).toBe("citation_missing_metric");
   });
+
+  it("repairs citation_missing_metric using retrieved metric:* chunks", () => {
+    const input = {
+      citations: ["column:orders.status"],
+      sql: "SELECT 1",
+      requestedMetrics: ["doanh thu thuần"],
+      retrievedChunkIds: ["metric:net_revenue", "column:orders.status"],
+      catalogIds: ["metric:net_revenue", "column:orders.status"],
+    };
+    const checked = validateCitations(input);
+    expect(checked.ok).toBe(false);
+    if (!checked.ok) expect(checked.issue.code).toBe("citation_missing_metric");
+    const repaired = repairCitations(input, 2);
+    expect(repaired.ok).toBe(true);
+    if (repaired.ok) {
+      expect(repaired.citations).toContain("metric:net_revenue");
+      expect(repaired.citations).toContain("column:orders.status");
+    }
+  });
+
+  it("fails closed when catalogIds is empty on a metric/data answer", () => {
+    const out1 = validateCitations({
+      citations: ["metric:net_revenue"],
+      sql: "SELECT 1",
+      requestedMetrics: ["doanh thu thuần"],
+      retrievedChunkIds: ["metric:net_revenue"],
+      catalogIds: [],
+    });
+    expect(out1.ok).toBe(false);
+    if (!out1.ok) {
+      expect(out1.issue.code).toBe("citation_unknown");
+      expect(out1.issue.field).toBe("catalogIds");
+    }
+
+    const out2 = validateCitations({
+      citations: ["column:orders.status"],
+      sql: "SELECT 1",
+      retrievedChunkIds: ["column:orders.status"],
+      catalogIds: [],
+    });
+    expect(out2.ok).toBe(false);
+    if (!out2.ok) {
+      expect(out2.issue.code).toBe("citation_unknown");
+      expect(out2.issue.field).toBe("catalogIds");
+    }
+  });
+
+  it("fails closed when retrievedChunkIds is empty on a metric/data answer", () => {
+    const out1 = validateCitations({
+      citations: ["metric:net_revenue"],
+      sql: "SELECT 1",
+      requestedMetrics: ["doanh thu thuần"],
+      retrievedChunkIds: [],
+      catalogIds: ["metric:net_revenue"],
+    });
+    expect(out1.ok).toBe(false);
+    if (!out1.ok) {
+      expect(out1.issue.code).toBe("citation_not_retrieved");
+      expect(out1.issue.field).toBe("retrievedChunkIds");
+    }
+
+    const out2 = validateCitations({
+      citations: ["column:orders.status"],
+      sql: "SELECT 1",
+      retrievedChunkIds: [],
+      catalogIds: ["column:orders.status"],
+    });
+    expect(out2.ok).toBe(false);
+    if (!out2.ok) {
+      expect(out2.issue.code).toBe("citation_not_retrieved");
+      expect(out2.issue.field).toBe("retrievedChunkIds");
+    }
+  });
 });
