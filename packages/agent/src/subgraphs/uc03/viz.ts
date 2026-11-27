@@ -3,14 +3,20 @@ import {
   type ChartType,
   type InsightReport,
 } from "@shared/contracts";
-import { createChatModel } from "../../models/factory.js";
 import {
+  createChatModel,
+  createSemanticCacheContext,
+} from "../../models/factory.js";
+import {
+  budgetTripReasonFromError,
   checkBudget,
   estimateTokens,
+  formatBudgetTripTemplate,
   type BudgetState,
+  type BudgetTripReason,
 } from "../../queryExecutor/budgets.js";
 import { takeTransientQueryBuffer } from "../../queryExecutor/transientBuffer.js";
-import { isRateLimitFailure } from "../../telemetry/retry.js";
+import { classifyModelReaskFailure, isRateLimitFailure } from "../../telemetry/retry.js";
 import { estimateCostUsd } from "../../telemetry/usage.js";
 import type {
   AgentState,
@@ -69,11 +75,35 @@ export interface Uc03VizDeps {
   truncated?: boolean;
 }
 
-function resolveModel(deps: Uc03VizDeps): VizModelLike | null {
+function resolveModel(
+  deps: Uc03VizDeps,
+  state: AgentState,
+  rt: RootRuntime,
+): VizModelLike | null {
   if (deps.model === null) return null;
   if (deps.model !== undefined && deps.model !== "auto") return deps.model;
   if (!process.env.AGENT_MODEL_API_KEY) return null;
-  return createChatModel("synthesis") as unknown as VizModelLike;
+  const configurable = (rt.config.configurable ?? {}) as Record<string, unknown>;
+  const role = typeof configurable["roleScope"] === "string"
+    ? configurable["roleScope"] as string
+    : undefined;
+  const rowScope = Object.hasOwn(configurable, "rowScope")
+    ? configurable["rowScope"]
+    : undefined;
+  return createChatModel("synthesis", {
+    semanticCacheContext: createSemanticCacheContext({
+      analysisState: {
+        question: state.question,
+        intent: state.intent,
+        analysisPlan: state.analysisPlan,
+        status: state.status,
+        tablesUsed: state.tablesUsed,
+      },
+      semanticChunks: state.semanticChunks,
+      role,
+      rowScope,
+    }),
+  }) as unknown as VizModelLike;
 }
 
 function hasTruncationCaveat(caveats: readonly string[]): boolean {
@@ -120,6 +150,42 @@ function fallbackReport(
   });
 }
 
+function budgetExceededUpdate(
+  state: AgentState,
+  rt: RootRuntime,
+  budget: BudgetState,
+  startCalls: number,
+  startTokens: number,
+  reason: BudgetTripReason,
+): AgentUpdate {
+  rt.emit({
+    node: UC03_VIZ_NODE,
+    type: "node_done",
+    durationMs: 0,
+    payload: { budgetExceeded: true, tripReason: reason, caveat: "budget_exceeded" },
+  });
+  return {
+    status: "error",
+    budgetExceeded: true,
+    vizSpec: null,
+    answerText: formatBudgetTripTemplate({
+      reason,
+      budget,
+      completed: [
+        ...state.tablesUsed.map((table) => `Queried table ${table}`),
+        ...(state.rowCount !== null ? [`Verified query returned ${state.rowCount} rows`] : []),
+      ],
+      verifiedSql: state.sql,
+      rowCount: state.rowCount ?? undefined,
+      remaining: ["Finish chart and numeric claim verification"],
+    }),
+    budget: {
+      llmCalls: budget.llmCalls - startCalls,
+      tokensUsed: budget.tokensUsed - startTokens,
+    },
+  };
+}
+
 export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
   return async (state: AgentState, rt: RootRuntime): Promise<AgentUpdate> => {
     if (state.status !== "ok" && state.status !== "no_data") return {};
@@ -149,7 +215,7 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
       },
     });
 
-    const model = resolveModel(deps);
+    const model = resolveModel(deps, state, rt);
     const baseCaveats =
       state.status === "no_data"
         ? ["No rows matched the filters; no chart is drawn."]
@@ -167,6 +233,7 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
     let estimatedCostUsd = 0;
     let regeneratedClaims = false;
     let narrativeDowngraded = false;
+    let budgetTokensUsed = 0;
 
     if (model === null || state.status === "no_data") {
       const caveats =
@@ -176,9 +243,10 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
       report = fallbackReport(buffer, selection.chartType, selection.reason, caveats);
     } else {
       const startCalls = state.budget?.llmCalls ?? 0;
+      const startTokens = state.budget?.tokensUsed ?? 0;
       const budget: BudgetState = {
         llmCalls: startCalls,
-        tokensUsed: state.budget?.tokensUsed ?? 0,
+        tokensUsed: startTokens,
         maxLlmCalls: state.budget?.maxLlmCalls ?? BUDGET_LIMITS.maxLlmCalls,
         maxTokens: state.budget?.maxTokens ?? BUDGET_LIMITS.maxTokens,
         deadlineMs:
@@ -188,10 +256,7 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
       };
       const preCheck = checkBudget(budget);
       if (preCheck.tripped) {
-        report = fallbackReport(buffer, selection.chartType, selection.reason, [
-          ...baseCaveats,
-          `Insight synthesis skipped: run budget exceeded (${preCheck.reason}).`,
-        ]);
+        return budgetExceededUpdate(state, rt, budget, startCalls, startTokens, preCheck.reason);
       } else {
         const previewRows =
           state.resultPreview.length > 0
@@ -308,6 +373,13 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           });
         } catch (error) {
           llmCalls = budget.llmCalls - startCalls;
+          const budgetCheck = checkBudget(budget);
+          const tripReason =
+            budgetTripReasonFromError(error) ??
+            (budgetCheck.tripped ? budgetCheck.reason : undefined);
+          if (tripReason) {
+            return budgetExceededUpdate(state, rt, budget, startCalls, startTokens, tripReason);
+          }
           if (isRateLimitFailure(error)) {
             rateLimitedFallback = true;
             repairs = 0;
@@ -318,13 +390,14 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
               "Insight synthesis skipped: model rate-limited.",
             ]);
           } else {
-            // Failed attempts still spent budget; account for them before falling back.
-            repairs = RENDER_REPAIR_LIMIT;
-            if (llmCalls === 0) llmCalls = 1 + RENDER_REPAIR_LIMIT;
+            const formatFailure = classifyModelReaskFailure(error)?.formatFailure === true;
+            repairs = formatFailure ? 0 : RENDER_REPAIR_LIMIT;
             promptTokens = estimateTokens(promptText, "fallback");
             report = fallbackReport(buffer, selection.chartType, selection.reason, [
               ...baseCaveats,
-              "Draft validation failed after 2 repairs; showing the result table instead.",
+              formatFailure
+                ? "Draft validation failed after one format re-ask; showing the result table instead."
+                : "Draft validation failed after 2 chart repairs; showing the result table instead.",
             ]);
           }
         }
@@ -333,6 +406,7 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           promptTokens = estimate;
         }
       }
+      budgetTokensUsed = budget.tokensUsed - startTokens;
     }
 
     rt.emit({
@@ -394,7 +468,7 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
     };
     return {
       vizSpec: spec,
-      budget: { llmCalls, tokensUsed: promptTokens + completionTokens },
+      budget: { llmCalls, tokensUsed: budgetTokensUsed },
       telemetry: { promptTokens, completionTokens, latencyMs: durationMs },
     };
   };

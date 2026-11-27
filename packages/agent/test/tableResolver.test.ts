@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIntentPrompt,
+  entityCoverage,
   foldAscii,
   MAX_CANDIDATE_TABLES,
   MAX_INTENT_REF_CHARS,
@@ -13,6 +14,61 @@ import {
   suggestClarificationTables,
 } from "../src/subgraphs/tableResolver.js";
 import type { CatalogTable } from "../src/state.js";
+import { loadSemanticJoinEdges } from "../src/semantic/catalog.js";
+
+describe("entity coverage and required FK bridges", () => {
+  it("counts distinct grounded entities without filter literals", () => {
+    expect(entityCoverage({
+      catalogMatchedEntities: ["orders", "ORDERS"], semanticMappedEntities: ["kênh bán"],
+      metricCoveredEntities: [], filterLiteralEntities: ["Đà Nẵng"],
+      unresolvedEntities: ["da nang", "NPS"],
+    })).toEqual({ matchedCount: 2, totalEntities: 3, coverage: 2 / 3 });
+  });
+
+  it("keeps a retrieved FK bridge among required tables before semantic truncation", () => {
+    const result = resolveCandidateTables({
+      question: "order_items categories", schemaEntities: ["order_items", "categories"],
+      catalogTables: [...SAMPLE_CATALOG, { name: "categories", schema: "public" }],
+      catalogLoaded: true,
+      semanticChunks: [
+        { chunkId: "table:products", docType: "table", table: "products", tables: ["products"], text: "products", score: 0.7 },
+        { chunkId: "join_rule:order_items_products_categories", docType: "join_rule",
+          tables: ["order_items", "products", "categories"], text: "join via products", score: 0.6 },
+      ],
+      maxTables: 3,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.requiredTables).toEqual(["order_items", "categories", "products"]);
+      expect(result.tables).toEqual(["order_items", "categories", "products"]);
+    }
+  });
+  it("completes verified paths and preserves the orders/promotions date link", () => {
+    const edges = loadSemanticJoinEdges();
+    const catalog = [...SAMPLE_CATALOG, { name: "categories", schema: "public" }];
+    const linked = resolveCandidateTables({
+      question: "order items by category", schemaEntities: ["order_items", "categories"],
+      catalogTables: catalog, catalogLoaded: true, semanticChunks: [], joinEdges: edges,
+    });
+    expect(linked.ok).toBe(true);
+    if (linked.ok) expect(linked.requiredTables).toEqual(["order_items", "categories", "products"]);
+
+    const promotion = resolveCandidateTables({
+      question: "orders during promotions", schemaEntities: ["orders", "promotions"],
+      catalogTables: catalog, catalogLoaded: true, semanticChunks: [], joinEdges: edges,
+    });
+    expect(promotion.ok).toBe(true);
+    if (promotion.ok) expect(promotion.requiredTables).toEqual(["orders", "promotions"]);
+
+    const disconnected = resolveCandidateTables({
+      question: "orders and inventory", schemaEntities: ["orders", "inventory"],
+      catalogTables: [...catalog, { name: "inventory", schema: "public" }],
+      catalogLoaded: true, semanticChunks: [], joinEdges: edges,
+    });
+    expect(disconnected.ok).toBe(false);
+    if (!disconnected.ok) expect(disconnected.reason).toBe("disconnected_required_tables");
+  });
+});
 
 const SAMPLE_CATALOG: CatalogTable[] = [
   { name: "orders", schema: "public", description: "Customer orders header" },

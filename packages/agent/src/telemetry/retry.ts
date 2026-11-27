@@ -511,6 +511,46 @@ export function isRateLimitFailure(error: unknown): boolean {
   return classifyModelError(error).code === "RATE_LIMITED";
 }
 
+export type ModelReaskReason =
+  | { code: "syntax_error" | "zod_error" | "output_parse_error"; formatFailure: true }
+  | { code: "provider_5xx"; formatFailure: false; status: number };
+
+export function classifyModelReaskFailure(error: unknown): ModelReaskReason | null {
+  if (error instanceof ModelRetryError) return null;
+  const chain = collectErrorChain(error);
+  const status = readHttpStatus(chain);
+  if (
+    status === 400 ||
+    status === 401 ||
+    status === 402 ||
+    status === 403 ||
+    status === 404 ||
+    status === 408 ||
+    status === 503
+  ) {
+    return null;
+  }
+
+  const cls = classifyModelError(error);
+  if (cls.code === "RATE_LIMITED") return null;
+  if (cls.reason === "aborted" || cls.reason === "timeout" || cls.reason === "context_overflow") {
+    return null;
+  }
+
+  const shape = isNonRetryableShape(error, chain);
+  if (shape === "syntax_error" || shape === "zod_error" || shape === "output_parse_error") {
+    return { code: shape, formatFailure: true };
+  }
+  if (status !== undefined && status >= 500 && status <= 599) {
+    return { code: "provider_5xx", formatFailure: false, status };
+  }
+  return null;
+}
+
+export function isReaskableModelFailure(error: unknown): boolean {
+  return classifyModelReaskFailure(error) !== null;
+}
+
 export function toModelDbToolError(
   error: unknown,
   prefix = "Model call failed",
@@ -820,6 +860,7 @@ export async function retryModelCall<T>(
         ? effectiveDeadlineMs - now()
         : undefined;
     if (remainingMs !== undefined && remainingMs <= 0) {
+      const check = opts.budget ? checkBudget(opts.budget, now()) : { tripped: false as const };
       if (retryAttempt > 0) {
         throw new ModelRetryError({
           message: buildRateLimitMessage({
@@ -831,6 +872,14 @@ export async function retryModelCall<T>(
           attempts: retryAttempt,
           reason: "deadline_exceeded",
           retryAfterMs: lastRetryAfterMs,
+          ...(check.tripped ? { budgetTripped: true, tripReason: check.reason } : {}),
+        });
+      }
+      if (check.tripped) {
+        throw Object.assign(new Error(`Run budget exceeded (${check.reason})`), {
+          name: "TimeoutError",
+          budgetTripped: true,
+          tripReason: check.reason,
         });
       }
       const err = new Error("Model call exceeded run deadline");
@@ -857,6 +906,16 @@ export async function retryModelCall<T>(
 
       if (opts.signal?.aborted) {
         if (opts.budget) recordLlmCall(opts.budget, 0);
+        if (opts.budget) {
+          const check = checkBudget(opts.budget, now());
+          if (check.tripped) {
+            throw Object.assign(new Error(`Run budget exceeded (${check.reason})`), {
+              cause: error,
+              budgetTripped: true,
+              tripReason: check.reason,
+            });
+          }
+        }
         throw error;
       }
 
@@ -868,6 +927,7 @@ export async function retryModelCall<T>(
         now() >= effectiveDeadlineMs
       ) {
         if (opts.budget) recordLlmCall(opts.budget, 0);
+        const check = opts.budget ? checkBudget(opts.budget, now()) : { tripped: false as const };
         opts.emit?.({
           node: opts.node,
           type: "llm_call",
@@ -897,6 +957,7 @@ export async function retryModelCall<T>(
           attempts: attemptsSoFar,
           reason: "deadline_exceeded",
           retryAfterMs: lastRetryAfterMs,
+          ...(check.tripped ? { budgetTripped: true, tripReason: check.reason } : {}),
         });
       }
 
@@ -939,6 +1000,16 @@ export async function retryModelCall<T>(
             reason: cls.reason,
             retryAfterMs: cls.retryAfterMs,
           });
+        }
+        if (opts.budget && (cls.reason === "timeout" || cls.reason === "aborted")) {
+          const check = checkBudget(opts.budget, now());
+          if (check.tripped) {
+            throw Object.assign(new Error(`Run budget exceeded (${check.reason})`), {
+              cause: error,
+              budgetTripped: true,
+              tripReason: check.reason,
+            });
+          }
         }
         throw error;
       }
@@ -993,6 +1064,7 @@ export async function retryModelCall<T>(
       });
 
       if (!plan.shouldRetry) {
+        const check = opts.budget ? checkBudget(opts.budget, now()) : { tripped: false as const };
         throw new ModelRetryError({
           message: buildRateLimitMessage({
             status: cls.status,
@@ -1005,6 +1077,7 @@ export async function retryModelCall<T>(
           attempts: attemptsSoFar,
           reason: plan.stopReason,
           retryAfterMs: cls.retryAfterMs,
+          ...(check.tripped ? { budgetTripped: true, tripReason: check.reason } : {}),
         });
       }
 
@@ -1030,6 +1103,7 @@ export async function retryModelCall<T>(
       await sleepFn(plan.delayMs, opts.signal);
 
       if (effectiveDeadlineMs !== undefined && now() >= effectiveDeadlineMs) {
+        const check = opts.budget ? checkBudget(opts.budget, now()) : { tripped: false as const };
         throw new ModelRetryError({
           message: buildRateLimitMessage({
             status: cls.status,
@@ -1040,6 +1114,7 @@ export async function retryModelCall<T>(
           attempts: attemptsSoFar,
           reason: "deadline_exceeded",
           retryAfterMs: cls.retryAfterMs,
+          ...(check.tripped ? { budgetTripped: true, tripReason: check.reason } : {}),
         });
       }
     }

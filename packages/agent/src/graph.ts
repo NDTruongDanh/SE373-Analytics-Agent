@@ -25,6 +25,7 @@ import { createRcaRuntime } from "./subgraphs/rootCauseAnalysis.js";
 import { createAnswerSynthesizer } from "./answer/synthesize.js";
 import { RCA_ROUTE, TEXT_TO_SQL_ROUTE, type Route } from "./constants.js";
 import { routeQuestion } from "./router.js";
+import { formatBudgetTripTemplate, type BudgetTripReason } from "./budgetTemplate.js";
 
 export interface RootGraphDeps {
   checkpointer?: BaseCheckpointSaver | boolean;
@@ -62,8 +63,25 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
 
   const graph = new StateGraph(AgentStateSchema)
     .addNode("budgetGuard", async (state: AgentState): Promise<AgentUpdate> => {
-      if (state.route === TEXT_TO_SQL_ROUTE) return guardTextToSqlBudget(state);
-      const reason =
+      if (state.route === TEXT_TO_SQL_ROUTE) {
+        const update = guardTextToSqlBudget(state);
+        if (update.budgetExceeded) {
+          const tripReason =
+            state.budget.llmCalls >= state.budget.maxLlmCalls
+              ? "llm-calls"
+              : state.budget.tokensUsed >= state.budget.maxTokens
+                ? "tokens"
+                : "deadline";
+          emit({
+            node: "budget_guard",
+            type: "node_done",
+            durationMs: 0,
+            payload: { budgetExceeded: true, tripReason, caveat: "budget_exceeded" },
+          });
+        }
+        return update;
+      }
+      const reason: BudgetTripReason | null =
         state.budget.llmCalls >= state.budget.maxLlmCalls
           ? "llm-calls"
           : state.budget.tokensUsed >= state.budget.maxTokens
@@ -73,12 +91,31 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
               ? "deadline"
               : null;
       if (reason) {
+        const answerText = formatBudgetTripTemplate({
+          reason,
+          budget: state.budget,
+          completed: [
+            ...state.tablesUsed.map((table) => `Queried table ${table}`),
+            ...(state.rowCount !== null ? [`Verified query returned ${state.rowCount} rows`] : []),
+          ],
+          verifiedSql:
+            state.status === "ok" || state.status === "no_data" ? state.sql : null,
+          rowCount: state.rowCount ?? undefined,
+          remaining: ["Finish the remaining analysis and verify its results"],
+        });
+        emit({
+          node: "budget_guard",
+          type: "node_done",
+          durationMs: 0,
+          payload: { budgetExceeded: true, tripReason: reason, caveat: "budget_exceeded" },
+        });
         return {
-          status: "cannot_answer",
-          answerText: `Run budget exceeded (${reason}); no model or query was called.`,
+          status: "error",
+          budgetExceeded: true,
+          answerText,
         };
       }
-      return {};
+      return { budgetExceeded: false };
     })
     // The route is decided once, before the budget guard and understand, because
     // both branch on it; a caller-supplied route in the input is always overwritten.
@@ -118,7 +155,7 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .addEdge(START, "router")
     .addEdge("router", "budgetGuard")
     .addConditionalEdges("budgetGuard", (state: AgentState) =>
-      state.status === "cannot_answer" ? "answer" : "understand",
+      state.budgetExceeded || state.status === "cannot_answer" ? "answer" : "understand",
     )
     .addEdge("understand", "retrieve")
     .addConditionalEdges("retrieve", (state: AgentState) =>

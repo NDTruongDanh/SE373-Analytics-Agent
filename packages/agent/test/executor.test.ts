@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
-import { dbToolError } from "@shared/contracts";
+import { DbToolErrorSchema, dbToolError } from "@shared/contracts";
 import {
   SqlProposalSchema,
   ValidatedQueryExecutor,
@@ -425,14 +425,17 @@ describe("ValidatedQueryExecutor core path", () => {
       budget: createBudgetState({ nowMs: 0, maxLlmCalls: 0 }),
     });
 
-    expect(result.status).toBe("cannot_answer");
-    if (result.status !== "cannot_answer") return;
+    expect(result.status).toBe("error");
+    if (result.status !== "error" || !("budgetExceeded" in result) || !result.budgetExceeded) return;
     expect(result.budgetExceeded).toBe(true);
     expect(result.tripReason).toBe("llm-calls");
-    expect(result.partials).toEqual({
+    expect(result.reason).toContain("budget_exceeded");
+    expect(result.partials).toMatchObject({
       tablesDescribed: [],
       lastSql: null,
+      verifiedSql: null,
       rowsFetched: 0,
+      rowCount: null,
     });
     expect(mcp.calls).toHaveLength(0);
   });
@@ -491,12 +494,70 @@ describe("ValidatedQueryExecutor core path", () => {
       budget: createBudgetState({ maxTokens: 100 }),
     });
 
-    expect(result.status).toBe("cannot_answer");
-    if (result.status !== "cannot_answer") return;
+    expect(result.status).toBe("error");
+    if (result.status !== "error" || !("budgetExceeded" in result) || !result.budgetExceeded) return;
     expect(result.budgetExceeded).toBe(true);
     expect(result.tripReason).toBe("tokens");
+    expect(result.reason).toContain("budget_exceeded");
     // Only the describe ran; explain/run never fired on the tripped budget.
     expect(mcp.calls.map((call) => call.tool)).toEqual(["describe_table"]);
+  });
+
+  it("re-asks malformed model JSON without consuming a SQL repair attempt", async () => {
+    let calls = 0;
+    const model: ChatModelLike = {
+      invoke: async () => ({ content: "unused" }),
+      stream: () => {
+        calls += 1;
+        const content = calls === 1
+          ? "{malformed"
+          : proposalFor(TRACER_SQL, ["orders"]);
+        const usage = calls === 1
+          ? { input_tokens: 10, output_tokens: 4 }
+          : { input_tokens: 20, output_tokens: 6 };
+        return (async function* () {
+          yield {
+            content,
+            usage_metadata: usage,
+            response_metadata: { model: "openai/gpt-oss-120b" },
+          };
+        })();
+      },
+      withStructuredOutput: () => ({ invoke: async () => ({}) }),
+    };
+    const mcp = new StubMcpCaller({
+      describe_table: describeHandler,
+      explain_query: () => ({ estimatedCost: 12.5, estimatedRows: 4 }),
+      run_query: () => ({
+        columns: ["status", "n"],
+        rows: [{ status: "completed", n: 7 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 4,
+      }),
+    });
+    const budget = createBudgetState({ maxLlmCalls: 10 });
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+
+    const result = await executor.run({
+      question: "How many orders per status?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+      budget,
+    });
+
+    expect(result.status, JSON.stringify(result)).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.attempts).toBe(1);
+    expect(calls).toBe(2);
+    expect(budget.llmCalls).toBe(2);
+    expect(budget.tokensUsed).toBe(40);
+    expect(mcp.calls.map((call) => call.tool)).toEqual([
+      "describe_table",
+      "explain_query",
+      "run_query",
+    ]);
   });
 
   it("retries 429 twice then succeeds, recording all attempts in budget and redacted traces", async () => {
@@ -661,10 +722,11 @@ describe("ValidatedQueryExecutor core path", () => {
         principal: PRINCIPAL,
         budget: budget2,
       });
-      expect(res2.status).toBe("cannot_answer");
-      if (res2.status !== "cannot_answer") return;
+      expect(res2.status).toBe("error");
+      if (res2.status !== "error" || !("budgetExceeded" in res2) || !res2.budgetExceeded) return;
       expect(res2.budgetExceeded).toBe(true);
       expect(res2.tripReason).toBe("llm-calls");
+      expect(res2.reason).toContain("budget_exceeded");
       expect(budget2.llmCalls).toBe(3);
     } finally {
       if (saved.max === undefined) delete process.env.AGENT_MODEL_MAX_RETRIES;
@@ -770,6 +832,74 @@ describe("ValidatedQueryExecutor core path", () => {
       principal: PRINCIPAL,
     });
     expect(result.status).toBe("ok");
+  });
+});
+
+describe("reactive FK bridge expansion", () => {
+  const columns = [
+    { name: "id", type: "integer", nullable: false, sensitive: false },
+    { name: "product_id", type: "integer", nullable: false, sensitive: false },
+  ];
+  function makeMcp(): StubMcpCaller {
+    return new StubMcpCaller({
+      describe_table: (args) => {
+        const table = String(args["table"]);
+        return {
+          table, columns, primaryKey: ["id"],
+          foreignKeys: table === "orders"
+            ? [{ column: "product_id", referencesTable: "products", referencesColumn: "id" }]
+            : table === "products"
+              ? [{ column: "id", referencesTable: "categories", referencesColumn: "id" }]
+              : [],
+        };
+      },
+      explain_query: () => ({ estimatedCost: 1, estimatedRows: 1 }),
+      run_query: () => ({ columns: ["id"], rows: [{ id: 1 }], rowCount: 1,
+        truncated: false, maskedColumns: [], durationMs: 1 }),
+    });
+  }
+
+  it("describes one public FK neighbor and rechecks the same SQL attempt", async () => {
+    const mcp = makeMcp();
+    const result = await new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp }).run({
+      question: "orders and products",
+      initialSql: "SELECT o.id FROM orders o JOIN products p ON p.id = o.product_id",
+      candidateTables: ["orders"],
+      catalogTables: [{ name: "orders", schema: "public" }, { name: "products", schema: "public" }],
+      principal: PRINCIPAL,
+      maxAttempts: 1,
+    });
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.attempts).toBe(1);
+    expect(mcp.calls.filter((call) => call.tool === "describe_table").map((call) => call.args["table"]))
+      .toEqual(["orders", "products"]);
+  });
+
+  it("refuses a second reactive table and a fabricated table", async () => {
+    const mcp = makeMcp();
+    const result = await new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp }).run({
+      question: "orders products categories",
+      initialSql: "SELECT o.id FROM orders o JOIN products p ON p.id = o.product_id JOIN categories c ON c.id = p.id",
+      candidateTables: ["orders"],
+      catalogTables: ["orders", "products", "categories"].map((name) => ({ name, schema: "public" })),
+      principal: PRINCIPAL,
+      maxAttempts: 1,
+    });
+    expect(result.status).toBe("error");
+    expect(mcp.calls.filter((call) => call.tool === "describe_table").map((call) => call.args["table"]))
+      .toEqual(["orders", "products"]);
+
+    const unknownMcp = makeMcp();
+    const unknown = await new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp: unknownMcp }).run({
+      question: "unknown table",
+      initialSql: "SELECT id FROM unicorns",
+      candidateTables: ["orders"],
+      catalogTables: [{ name: "orders", schema: "public" }],
+      principal: PRINCIPAL,
+      maxAttempts: 1,
+    });
+    expect(unknown.status).toBe("error");
+    expect(unknownMcp.calls.filter((call) => call.tool === "describe_table")).toHaveLength(1);
   });
 });
 
@@ -887,5 +1017,57 @@ describe("ValidatedQueryExecutor explain_query cost ceiling (#129)", () => {
       principal: { ...PRINCIPAL, roleScope: "analyst" },
     });
     expect(result.status).toBe("ok");
+  });
+
+  it("caps budget error message at 500 chars and catches mid-call deadline timeouts", async () => {
+    let clock = 1_000;
+    const budget = createBudgetState({ nowMs: clock, maxLlmCalls: 10, runDeadlineMs: 1_000 });
+    const timeoutModel: ChatModelLike = {
+      invoke: async () => {
+        throw new Error("unused");
+      },
+      stream: () => {
+        clock = 2_500;
+        const err = new Error("attempt timed out");
+        err.name = "TimeoutError";
+        throw err;
+      },
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          throw new Error("unused");
+        },
+      }),
+    };
+    const manyTables = Array.from({ length: 16 }, (_, i) => `orders_segment_detail_${i}`);
+    const mcp = new StubMcpCaller({
+      describe_table: (args) => ({
+        table: String(args["table"]),
+        schema: "public",
+        columns: ORDERS_COLUMNS.map((c) => ({ ...c, description: "d".repeat(60) })),
+        rowCountEstimate: 100,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model: timeoutModel, mcp });
+
+    const originalNow = Date.now;
+    Date.now = () => clock;
+    try {
+      const result = await executor.run({
+        question: "Revenue per order",
+        candidateTables: manyTables,
+        principal: PRINCIPAL,
+        budget,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status !== "error") return;
+      expect(result.budgetExceeded).toBe(true);
+      expect(result.tripReason).toBe("deadline");
+      expect(result.reason?.length ?? 0).toBeGreaterThan(500);
+      expect(() => DbToolErrorSchema.parse(result.error)).not.toThrow();
+      expect(result.error.message.length).toBeLessThanOrEqual(500);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });

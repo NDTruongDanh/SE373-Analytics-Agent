@@ -1,4 +1,5 @@
 import { BUDGET_LIMITS } from "../constants.js";
+import { redactPII } from "@shared/access-policy";
 
 export { BUDGET_LIMITS } from "../constants.js";
 
@@ -34,6 +35,80 @@ export function createBudgetState(
 }
 
 export type BudgetTripReason = "llm-calls" | "tokens" | "deadline";
+
+export function budgetLimitName(reason: BudgetTripReason): string {
+  switch (reason) {
+    case "llm-calls":
+      return "maxLlmCalls";
+    case "tokens":
+      return "maxTokens";
+    case "deadline":
+      return "runDeadlineMs";
+  }
+}
+
+export interface BudgetTripTemplateInput {
+  reason: BudgetTripReason;
+  budget: Pick<BudgetState, "llmCalls" | "tokensUsed" | "maxLlmCalls" | "maxTokens">;
+  completed?: readonly string[];
+  verifiedSql?: string | null;
+  rowCount?: number;
+  verifiedFigures?: Readonly<Record<string, number>>;
+  remaining?: readonly string[];
+}
+
+function safeTemplateText(value: string, maxLength = 300): string {
+  const normalized = value.replace(/[\r\n\t\u0000-\u001f]+/g, " ").trim();
+  return redactPII(normalized).redacted.slice(0, maxLength);
+}
+
+export function formatBudgetTripTemplate(input: BudgetTripTemplateInput): string {
+  const { budget, reason } = input;
+  const limit = budgetLimitName(reason);
+  const completed = (input.completed ?? [])
+    .map((item) => safeTemplateText(item))
+    .filter(Boolean)
+    .slice(0, 20);
+  const remaining = (input.remaining ?? [])
+    .map((item) => safeTemplateText(item))
+    .filter(Boolean)
+    .slice(0, 20);
+  const lines = [
+    `Caveat: budget_exceeded (${limit}); llmCalls=${budget.llmCalls}/${budget.maxLlmCalls}; tokensUsed=${budget.tokensUsed}/${budget.maxTokens}.`,
+    "Completed:",
+    ...(completed.length > 0 ? completed.map((item) => `- ${item}`) : ["- No verified steps completed."]),
+  ];
+
+  if (input.verifiedSql?.trim()) {
+    lines.push(`- Verified SQL: ${safeTemplateText(input.verifiedSql, 500)}`);
+  }
+  if (Number.isSafeInteger(input.rowCount) && (input.rowCount ?? -1) >= 0) {
+    lines.push(`- Verified row count: ${input.rowCount}`);
+  }
+  for (const [label, value] of Object.entries(input.verifiedFigures ?? {}).slice(0, 10)) {
+    if (!Number.isFinite(value)) continue;
+    lines.push(`- Verified ${safeTemplateText(label, 80)}: ${value}`);
+  }
+
+  lines.push("Remaining:");
+  lines.push(...(remaining.length > 0 ? remaining.map((item) => `- ${item}`) : ["- No additional steps were scheduled."]));
+  lines.push("No additional model calls or database queries were issued after the budget trip.");
+  return lines.join("\n");
+}
+
+export function budgetTripReasonFromError(error: unknown): BudgetTripReason | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const record = error as { budgetTripped?: unknown; tripReason?: unknown; message?: unknown };
+  if (
+    record.budgetTripped === true &&
+    (record.tripReason === "llm-calls" || record.tripReason === "tokens" || record.tripReason === "deadline")
+  ) {
+    return record.tripReason;
+  }
+  if (typeof record.message !== "string") return undefined;
+  const match = /^Run budget exceeded\s*\((llm-calls|tokens|deadline)\)/i.exec(record.message);
+  return match?.[1] as BudgetTripReason | undefined;
+}
 
 export type BudgetCheck =
   | { tripped: false }

@@ -4,18 +4,30 @@ import {
 } from "@shared/contracts";
 import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
-import { createChatModel } from "../models/factory.js";
+import {
+  createChatModel,
+  createSemanticCacheContext,
+} from "../models/factory.js";
 import {
   estimateCostUsd,
   invokeJsonWithUsage,
   invokeWithUsage,
+  unaccountedUsage,
   type PlainJsonModelLike,
 } from "../telemetry/usage.js";
 import {
   isRateLimitFailure,
   toModelDbToolError,
 } from "../telemetry/retry.js";
-import { checkBudget, createBudgetState, estimateTokens, type BudgetState } from "../queryExecutor/budgets.js";
+import {
+  budgetTripReasonFromError,
+  checkBudget,
+  createBudgetState,
+  estimateTokens,
+  formatBudgetTripTemplate,
+  type BudgetState,
+  type BudgetTripReason,
+} from "../queryExecutor/budgets.js";
 import {
   TRANSIENT_ROW_BUFFER_MAX,
   ValidatedQueryExecutor,
@@ -48,7 +60,7 @@ import {
   type UcEntryHandler,
   type PendingClarification,
 } from "../state.js";
-import { loadSemanticCatalogIds } from "../semantic/catalog.js";
+import { loadSemanticCatalogIds, loadSemanticJoinEdges } from "../semantic/catalog.js";
 import {
   buildCannotAnswer,
   checkUnknownTerms,
@@ -59,6 +71,7 @@ import {
 } from "../semantic/retrieveSemantic.js";
 import {
   buildIntentPrompt,
+  entityCoverage,
   foldAscii,
   matchEntityInCatalog,
   resolveCandidateTables,
@@ -118,16 +131,27 @@ export function guardTextToSqlBudget(state: AgentState): AgentUpdate {
   const check = checkBudget(budget);
   if (check.tripped) {
     return {
-      status: "cannot_answer",
-      answerText: `Run budget exceeded (${check.reason}); no model or query was called.`,
+      status: "error",
+      budgetExceeded: true,
+      answerText: formatBudgetTripTemplate({
+        reason: check.reason,
+        budget,
+        completed: [
+          ...state.tablesUsed.map((table) => `Queried table ${table}`),
+          ...(state.rowCount !== null ? [`Verified query returned ${state.rowCount} rows`] : []),
+        ],
+        verifiedSql: state.status === "ok" || state.status === "no_data" ? state.sql : null,
+        rowCount: state.rowCount ?? undefined,
+        remaining: ["Understand the question, plan SQL, and retrieve the requested result"],
+      }),
       budget: { deadlineMs: budget.deadlineMs },
     };
   }
-  return { budget: { deadlineMs: budget.deadlineMs } };
+  return { budgetExceeded: false, budget: { deadlineMs: budget.deadlineMs } };
 }
 
 function readRunContext(rt: RootRuntime): {
-  identity: { runId: string; userId: string; roleScope: string } | null;
+  identity: { runId: string; userId: string; roleScope: string; rowScope?: unknown } | null;
   transport: TracerRunConfig | null;
 } {
   const config = (rt.config.configurable ?? {}) as Record<string, unknown>;
@@ -138,7 +162,10 @@ function readRunContext(rt: RootRuntime): {
   const runId = read("runId");
   const userId = read("userId");
   const roleScope = read("roleScope");
-  const identity = runId && userId && roleScope ? { runId, userId, roleScope } : null;
+  const rowScope = Object.hasOwn(config, "rowScope") ? config["rowScope"] : undefined;
+  const identity = runId && userId && roleScope
+    ? { runId, userId, roleScope, ...(rowScope !== undefined ? { rowScope } : {}) }
+    : null;
   const mcpUrl = read("mcpUrl");
   const token = read("token");
   const transport =
@@ -149,6 +176,7 @@ function readRunContext(rt: RootRuntime): {
           runId: identity.runId,
           userId: identity.userId,
           roleScope: identity.roleScope,
+          ...(identity.rowScope !== undefined ? { rowScope: identity.rowScope as TracerRunConfig["rowScope"] } : {}),
           callbacks: rt.config.callbacks,
         }
       : null;
@@ -292,6 +320,7 @@ const EXECUTOR_UPDATE_MAP: {
     columns: result.columns,
     resultPreview: result.rows.slice(0, 50),
     resultTruncated: Boolean(result.truncated),
+    rowCount: result.truncated ? null : result.rows.length,
   }),
   no_data: (result) => ({
     status: "no_data",
@@ -300,6 +329,7 @@ const EXECUTOR_UPDATE_MAP: {
     columns: result.columns,
     resultPreview: [],
     resultTruncated: false,
+    rowCount: 0,
     answerText: result.diagnostic ?? "No matching data was found.",
   }),
   needs_clarification: (result) => ({
@@ -312,16 +342,15 @@ const EXECUTOR_UPDATE_MAP: {
     sql: result.sql,
     answerText: result.error.message,
   }),
-  error: (result) => ({
-    status: "error",
-    sql: result.sql,
-    answerText: result.error.message,
-  }),
-  cannot_answer: (result) => ({
-    status: "cannot_answer",
-    sql: result.sql,
-    answerText: result.reason,
-  }),
+  error: (result) => {
+    const budgetTrip = "budgetExceeded" in result && result.budgetExceeded;
+    return {
+      status: "error",
+      budgetExceeded: Boolean(budgetTrip),
+      sql: result.sql,
+      answerText: budgetTrip ? result.reason : result.error.message,
+    };
+  },
 };
 
 function updateFromExecutor(
@@ -688,7 +717,7 @@ type FollowUpSearchResult =
   | {
       ok: false;
       budgetExceeded: true;
-      tripReason: string;
+      tripReason: BudgetTripReason;
       calledTool: boolean;
       chunks: AgentState["semanticChunks"];
       answerText: string;
@@ -741,6 +770,7 @@ async function searchForUnmappedEntities(
         payload: {
           budgetExceeded: true,
           tripReason: budgetCheck.reason,
+          caveat: "budget_exceeded",
           followUpCompleted: completedCalls,
         },
       });
@@ -750,7 +780,7 @@ async function searchForUnmappedEntities(
         tripReason: budgetCheck.reason,
         calledTool,
         chunks: merged,
-        answerText: `Run budget exceeded (${budgetCheck.reason}) before semantic follow-up search; stopped without issuing more MCP calls.`,
+        answerText: "",
       };
     }
 
@@ -866,6 +896,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     rt: RootRuntime,
   ): Promise<AgentUpdate> => {
     const startCalls = state.budget?.llmCalls ?? 0;
+    const startTokens = state.budget?.tokensUsed ?? 0;
     const budget: BudgetState = {
       llmCalls: startCalls,
       tokensUsed: state.budget?.tokensUsed ?? 0,
@@ -879,14 +910,19 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     const preCheck = checkBudget(budget);
     if (preCheck.tripped) {
       return {
-        status: "cannot_answer",
-        answerText: `Run budget exceeded (${preCheck.reason}); no model or query was called.`,
+        status: "error",
+        budgetExceeded: true,
+        answerText: formatBudgetTripTemplate({
+          reason: preCheck.reason,
+          budget,
+          remaining: ["Extract intent, resolve tables, generate SQL, and verify the query result"],
+        }),
         budget: { deadlineMs: budget.deadlineMs },
       };
     }
 
     const skill = loadSkill("text-to-sql", { emit: rt.emit });
-    const { transport } = readRunContext(rt);
+    const { identity, transport } = readRunContext(rt);
     const understandTools: string[] = [];
 
     const catalogLoad = await loadCatalogForRun(deps, rt, transport, "understand");
@@ -973,12 +1009,54 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       out = deps.intentModel && !deps.intentJsonModel
         ? await invokeWithUsage(deps.intentModel, IntentProposalSchema, prompt, invokeOpts)
         : await invokeJsonWithUsage(
-            deps.intentJsonModel ?? createChatModel("intent"),
+            deps.intentJsonModel ?? createChatModel("intent", {
+              semanticCacheContext: createSemanticCacheContext({
+                analysisState: {
+                  question: state.question,
+                  intent: state.intent,
+                  catalogTables,
+                },
+                semanticChunks: preStateChunks,
+                role: identity?.roleScope,
+                rowScope: identity?.rowScope,
+              }),
+            }),
             IntentProposalSchema,
             prompt,
             invokeOpts,
           );
     } catch (error) {
+      const budgetCheck = checkBudget(budget);
+      const tripReason =
+        budgetTripReasonFromError(error) ??
+        (budgetCheck.tripped ? budgetCheck.reason : undefined);
+      if (tripReason) {
+        const answerText = formatBudgetTripTemplate({
+          reason: tripReason,
+          budget,
+          completed: [
+            ...(catalogTables.length > 0 ? [`Loaded ${catalogTables.length} catalog tables`] : []),
+            ...(preStateChunks.length > 0 ? [`Retrieved ${preStateChunks.length} semantic entries`] : []),
+          ],
+          remaining: ["Finish intent extraction, SQL execution, and result verification"],
+        });
+        rt.emit({
+          node: "understand",
+          type: "node_done",
+          durationMs: Date.now() - intentStarted,
+          payload: { budgetExceeded: true, tripReason, caveat: "budget_exceeded" },
+        });
+        return {
+          status: "error",
+          budgetExceeded: true,
+          answerText,
+          budget: {
+            llmCalls: budget.llmCalls - startCalls,
+            tokensUsed: budget.tokensUsed - startTokens,
+            deadlineMs: budget.deadlineMs,
+          },
+        };
+      }
       if (isRateLimitFailure(error)) {
         const toolErr = toModelDbToolError(error, "Intent extraction failed");
         return {
@@ -986,18 +1064,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
           answerText: toolErr.message,
           budget: {
             llmCalls: budget.llmCalls - startCalls,
-            tokensUsed: 0,
-            deadlineMs: budget.deadlineMs,
-          },
-        };
-      }
-      if (error instanceof Error && /^Run budget exceeded/i.test(error.message)) {
-        return {
-          status: "cannot_answer",
-          answerText: `${error.message}; no model or query was called.`,
-          budget: {
-            llmCalls: budget.llmCalls - startCalls,
-            tokensUsed: 0,
+            tokensUsed: budget.tokensUsed - startTokens,
             deadlineMs: budget.deadlineMs,
           },
         };
@@ -1008,7 +1075,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
           answerText: "The model returned an invalid intent response; please try again.",
           budget: {
             llmCalls: budget.llmCalls - startCalls,
-            tokensUsed: 0,
+            tokensUsed: budget.tokensUsed - startTokens,
             deadlineMs: budget.deadlineMs,
           },
         };
@@ -1016,12 +1083,13 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       throw error;
     }
     const intent = out.parsed;
+    const successfulUsage = unaccountedUsage(out);
     const intentDurationMs = Date.now() - intentStarted;
-    const realTokens = out.inputTokens + out.outputTokens;
+    const realTokens = successfulUsage.inputTokens + successfulUsage.outputTokens;
     const { estimatedCostUsd, pricingKnown } = estimateCostUsd(
       out.model,
-      out.inputTokens,
-      out.outputTokens,
+      successfulUsage.inputTokens,
+      successfulUsage.outputTokens,
     );
     rt.emit({
       node: "understand",
@@ -1029,8 +1097,8 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       durationMs: intentDurationMs,
       payload: {
         model: out.model ?? "unknown",
-        inputTokens: out.inputTokens,
-        outputTokens: out.outputTokens,
+        inputTokens: successfulUsage.inputTokens,
+        outputTokens: successfulUsage.outputTokens,
         estimatedCostUsd,
         pricingKnown,
       },
@@ -1038,6 +1106,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     const failedCalls = budget.llmCalls - startCalls;
     return {
       ...(state.status === "error" ? { status: "no_data" as const, answerText: "" } : {}),
+      budgetExceeded: false,
       intent,
       ...(catalogStatus === "ready" ? { catalogTables, catalogStatus } : {}),
       ...(semanticRetrieveStatus === "ok"
@@ -1059,9 +1128,10 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       budget: {
         llmCalls: failedCalls + 1,
         tokensUsed:
-          realTokens > 0
+          budget.tokensUsed - startTokens +
+          (realTokens > 0
             ? realTokens
-            : estimateTokens(prompt, JSON.stringify(intent)),
+            : estimateTokens(prompt, JSON.stringify(intent))),
       },
     };
   };
@@ -1184,6 +1254,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         catalogTables: effectiveCatalogTables,
         catalogLoaded: effectiveCatalogStatus === "ready",
         semanticChunks: chunks,
+        ...(effectiveCatalogStatus === "ready" ? { joinEdges: loadSemanticJoinEdges() } : {}),
       });
 
     const catalogUpdate =
@@ -1229,10 +1300,19 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
               ...(followUp.chunks !== state.semanticChunks
                 ? { semanticChunks: followUp.chunks }
                 : {}),
-              status: "cannot_answer",
+              status: "error",
+              budgetExceeded: true,
               pendingClarification: null,
               toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
-              answerText: followUp.answerText,
+              answerText: formatBudgetTripTemplate({
+                reason: followUp.tripReason,
+                budget,
+                completed: [
+                  ...resolved.partialTables.map((table) => `Resolved table ${table}`),
+                  ...(workingChunks.length > 0 ? [`Retrieved ${workingChunks.length} semantic entries`] : []),
+                ],
+                remaining: ["Resolve the remaining entities, generate SQL, and verify query results"],
+              }),
               budget: {
                 llmCalls: budget.llmCalls - state.budget.llmCalls,
                 tokensUsed: budget.tokensUsed - state.budget.tokensUsed,
@@ -1263,6 +1343,30 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         workingChunks !== state.semanticChunks
           ? { semanticChunks: workingChunks }
           : {};
+      const coverage = entityCoverage(resolved.entities);
+      const clearlyUnsupported = resolved.unmappedEntities.some((entity) =>
+        /\b(nps|ton kho|nha cung cap|weather|stock market)\b/.test(foldAscii(entity)),
+      );
+      if (resolved.unmappedEntities.length > 0 &&
+        ((coverage.totalEntities > 0 && coverage.matchedCount === 0 && resolved.partialTables.length === 0) || clearlyUnsupported)) {
+        rt.emit({
+          node: "describe",
+          type: "node_done",
+          durationMs: 0,
+          payload: { resolution: "out_of_domain", coverage, entities: resolved.entities },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "cannot_answer",
+          sql: null,
+          pendingClarification: null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: `Không có bảng hoặc chỉ số phù hợp cho: ${resolved.unmappedEntities.join(", ")}. ` +
+            `Các bảng hiện có: ${effectiveCatalogTables.slice(0, 8).map((table) => table.name).join(", ")}.`,
+        };
+      }
       if (resolved.reason === "too_many_required_tables") {
         rt.emit({
           node: "describe",
@@ -1283,6 +1387,24 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
           pendingClarification: null,
           toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
           answerText: buildTooManyTablesMessage(resolved),
+        };
+      }
+
+      if (resolved.reason === "disconnected_required_tables") {
+        rt.emit({
+          node: "describe", type: "node_done", durationMs: 0,
+          payload: { clarificationReason: resolved.reason, requiredTables: resolved.requiredTables },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "needs_clarification",
+          sql: null,
+          pendingClarification: null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: `Không tìm thấy đường nối dữ liệu được xác thực giữa các bảng ${resolved.requiredTables.join(", ")}. ` +
+            "Vui lòng thu hẹp câu hỏi hoặc chỉ rõ mối liên hệ cần dùng.",
         };
       }
 
@@ -1470,7 +1592,19 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     const executor =
       deps.executor ??
       new ValidatedQueryExecutor({
-        model: deps.sqlModel ?? (createChatModel("sql") as unknown as ChatModelLike),
+        model: deps.sqlModel ?? (createChatModel("sql", {
+          semanticCacheContext: createSemanticCacheContext({
+            analysisState: {
+              question: activeState.question,
+              intent: activeState.intent,
+              candidateTables,
+              tablesUsed: activeState.tablesUsed,
+            },
+            semanticChunks: workingChunks,
+            role: identity?.roleScope,
+            rowScope: identity?.rowScope,
+          }),
+        }) as unknown as ChatModelLike),
         mcp: createRuntimeMcpCaller(transport!),
         emitSpan: (event) => {
           const payload = (event as { payload?: unknown }).payload;
@@ -1499,6 +1633,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       question: activeState.question,
       timeRange: activeState.intent.timeRange,
       candidateTables,
+      catalogTables: effectiveCatalogTables,
       references,
       principal: identity,
       budget,
@@ -1555,6 +1690,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         question: activeState.question,
         timeRange: activeState.intent.timeRange,
         candidateTables,
+        catalogTables: effectiveCatalogTables,
         references,
         principal: identity,
         budget,

@@ -23,6 +23,72 @@ export type GuardFailure = {
 
 export type GuardResult = GuardSuccess | GuardFailure;
 
+export interface SqlIdentifierAliases {
+  tables?: Readonly<Record<string, readonly string[]>>;
+  columns?: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>;
+}
+
+export interface SqlGuardOptions {
+  aliases?: SqlIdentifierAliases;
+}
+
+function foldIdentifier(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d").toLowerCase().replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function editDistance(left: string, right: string): number {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row++) {
+    let diagonal = previous[0] as number;
+    previous[0] = row;
+    for (let column = 1; column <= right.length; column++) {
+      const old = previous[column] as number;
+      previous[column] = Math.min(
+        (previous[column - 1] as number) + 1,
+        old + 1,
+        diagonal + (left[row - 1] === right[column - 1] ? 0 : 1),
+      );
+      diagonal = old;
+    }
+  }
+  return previous[right.length] as number;
+}
+
+export function suggestSqlIdentifiers(
+  unknown: string,
+  candidates: readonly { name: string; aliases?: readonly string[] }[],
+): string[] {
+  const sought = foldIdentifier(unknown);
+  if (sought.length < 2 || sought.length > 128) return [];
+  const ranked = candidates.flatMap((candidate) => {
+    const names = [candidate.name, ...(candidate.aliases ?? [])]
+      .map(foldIdentifier).filter(Boolean);
+    let best = Number.POSITIVE_INFINITY;
+    for (const name of names) {
+      if (name === sought) best = Math.min(best, 0);
+      else if (name.startsWith(sought) || sought.startsWith(name)) {
+        if (Math.min(name.length, sought.length) >= 3) best = Math.min(best, 1);
+      } else if (name.includes(sought) || sought.includes(name)) {
+        if (Math.min(name.length, sought.length) >= 4) best = Math.min(best, 2);
+      } else {
+        const distance = editDistance(sought, name);
+        const threshold = sought.length >= 8 ? 3 : sought.length >= 4 ? 2 : 1;
+        if (distance <= threshold) best = Math.min(best, 3 + distance);
+      }
+    }
+    return Number.isFinite(best) ? [{ name: candidate.name, score: best }] : [];
+  });
+  ranked.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name, "en"));
+  return [...new Set(ranked.map((entry) => entry.name))].slice(0, 3);
+}
+
+function unknownIdentifierError(kind: "table" | "column", name: string, suggestions: string[]): DbToolError {
+  const suffix = suggestions.length > 0 ? ` (did you mean: ${suggestions.join(", ")}?)` : "";
+  return dbToolError("UNKNOWN_TABLE", `Unknown ${kind}: ${name.slice(0, 128)}${suffix}`.slice(0, 500));
+}
+
 // Async parse initializes libpg_query WASM once; call at boot/test setup and never use parseSync on request paths.
 export async function warmupSqlGuard(): Promise<void> {
   await parse("SELECT 1");
@@ -179,6 +245,7 @@ function subqueryOutputColumns(subquery: unknown): string[] | null {
 export async function sqlGuard(
   sql: string,
   catalog: SchemaCatalog,
+  options: SqlGuardOptions = {},
 ): Promise<GuardResult> {
   if (sql.trim().length === 0) {
     return {
@@ -379,6 +446,18 @@ export async function sqlGuard(
     name: string,
   ): SchemaCatalog["tables"][number] | undefined =>
     tableIndex.get(name) ?? tableIndex.get(name.toLowerCase());
+  const tableSuggestions = (name: string): string[] =>
+    suggestSqlIdentifiers(name, catalog.tables.filter((table) => table.schema === "public")
+      .map((table) => ({ name: table.name, aliases: options.aliases?.tables?.[table.name] })));
+  const columnSuggestions = (name: string, tableNames: readonly string[]): string[] =>
+    suggestSqlIdentifiers(name, tableNames.flatMap((tableName) => {
+      const table = lookupTable(tableName);
+      if (!table || table.schema !== "public") return [];
+      return table.columns.filter((column) => !column.sensitive).map((column) => ({
+        name: column.name,
+        aliases: options.aliases?.columns?.[table.name]?.[column.name],
+      }));
+    }));
 
   // Opaque subqueries are omitted here so references to them fail closed as UNKNOWN_TABLE.
   const subqueryOutputs = new Map<string, string[]>();
@@ -411,7 +490,7 @@ export async function sqlGuard(
     if (table === undefined) {
       return {
         ok: false,
-        error: dbToolError("UNKNOWN_TABLE", `Unknown table: ${rv.name}`),
+        error: unknownIdentifierError("table", rv.name, tableSuggestions(rv.name)),
       };
     }
     seenTables.add(rv.name.toLowerCase());
@@ -450,7 +529,7 @@ export async function sqlGuard(
         if (!outputs.includes(ref.name.toLowerCase())) {
           return {
             ok: false,
-            error: dbToolError("UNKNOWN_TABLE", `Unknown column: ${ref.name}`),
+            error: unknownIdentifierError("column", ref.name, []),
           };
         }
       } else {
@@ -458,7 +537,8 @@ export async function sqlGuard(
         if (tableName === undefined || !columnIn(tableName, ref.name)) {
           return {
             ok: false,
-            error: dbToolError("UNKNOWN_TABLE", `Unknown column: ${ref.name}`),
+            error: unknownIdentifierError("column", ref.name,
+              columnSuggestions(ref.name, tableName === undefined ? [] : [tableName])),
           };
         }
       }
@@ -470,13 +550,14 @@ export async function sqlGuard(
     } else if (seenTables.size > 0 && !anyTableHas(ref.name)) {
       return {
         ok: false,
-        error: dbToolError("UNKNOWN_TABLE", `Unknown column: ${ref.name}`),
+        error: unknownIdentifierError("column", ref.name,
+          columnSuggestions(ref.name, [...seenTables])),
       };
     } else if (seenTables.size === 0) {
       // Fail closed on any named column reference when the query has no FROM tables.
       return {
         ok: false,
-        error: dbToolError("UNKNOWN_TABLE", `Unknown column: ${ref.name}`),
+        error: unknownIdentifierError("column", ref.name, []),
       };
     }
     seenColumns.add(ref.name.toLowerCase());

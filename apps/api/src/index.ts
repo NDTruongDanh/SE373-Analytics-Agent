@@ -124,6 +124,7 @@ export interface StoredRun {
   threadId: string;
   userId: string;
   roleScope: string;
+  rowScope?: Principal["rowScope"];
   token: string;
   mcpUrl: string;
   tracesDir: string;
@@ -469,6 +470,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         threadId,
         userId: principal.userId,
         roleScope: principal.role,
+        ...(principal.rowScope ? { rowScope: { ...principal.rowScope } } : {}),
         token,
         mcpUrl: options.mcpUrl,
         tracesDir,
@@ -882,6 +884,7 @@ export function configurableForRun(
     runId,
     userId: run.userId,
     roleScope: run.roleScope,
+    rowScope: run.rowScope ?? null,
     token: run.token,
     mcpUrl: run.mcpUrl,
     tracesDir: run.tracesDir,

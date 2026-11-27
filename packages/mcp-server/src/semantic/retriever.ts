@@ -7,6 +7,8 @@ import {
 } from "../constants.js";
 import { fuseRRF, rrfScore } from "./rrf.js";
 import type { Embedder } from "./embedder.js";
+import type { ForeignKeyRef } from "../catalog.js";
+import { foreignKeyPath } from "./fkPaths.js";
 
 export {
   BM25_B,
@@ -555,12 +557,83 @@ export function expandJoinRules(
   return result;
 }
 
+export function expandForeignKeyPaths(
+  fused: SearchSemanticLayerChunk[],
+  allRows: Record<string, unknown>[],
+  queryText: string,
+  topK: number,
+  foreignKeys: ReadonlyMap<string, readonly ForeignKeyRef[]>,
+  allowedTables: ReadonlySet<string>,
+  allowRestricted = false,
+  seedChunks: readonly SearchSemanticLayerChunk[] = fused,
+): SearchSemanticLayerChunk[] {
+  const normalizedQuestion = ` ${foldAscii(queryText).replace(/[^a-z0-9]+/g, " ")} `;
+  const isNamed = (table: string): boolean =>
+    normalizedQuestion.includes(` ${foldAscii(table).replace(/[^a-z0-9]+/g, " ")} `);
+  const direct = seedChunks.filter((chunk) =>
+    chunk.docType === "table" || chunk.docType === "column",
+  );
+  const anchored = direct.filter((chunk) =>
+    chunk.aliasMatched === true || contractTables(chunk).some(isNamed),
+  );
+  if (anchored.length < 2) return [...fused];
+  const endpoints = [...new Set(anchored.flatMap(contractTables))]
+    .filter((table) => allowedTables.has(table));
+  const path = foreignKeyPath(endpoints, foreignKeys, allowedTables);
+  if (!path || path.bridges.length === 0) return [...fused];
+  const rowsById = new Map(allRows.map((row) => [String(row["chunk_id"] ?? ""), row]));
+  const selected = new Set(path.tables);
+  const additions: SearchSemanticLayerChunk[] = anchored.filter((chunk) =>
+    !fused.some((entry) => entry.chunkId === chunk.chunkId));
+  for (const bridge of path.bridges) {
+    const row = rowsById.get(`table:${bridge}`);
+    if (row && (allowRestricted || row["sensitivity"] !== "restricted_pii")) {
+      additions.push(toContractChunk(row, 1 / (RRF_K + topK + 1)));
+    }
+  }
+  const joinRows = allRows.filter((row) => {
+    if (row["doc_type"] !== "join_rule") return false;
+    if (!allowRestricted && row["sensitivity"] === "restricted_pii") return false;
+    const tables = parseTablesField(row);
+    return tables.length >= 2 && tables.every((table) => selected.has(table)) &&
+      path.edges.some(([a, b]) => tables.includes(a) && tables.includes(b));
+  }).sort((a, b) => String(a["chunk_id"]).localeCompare(String(b["chunk_id"])));
+  for (const row of joinRows) additions.push(toContractChunk(row, 1 / (RRF_K + topK + 1)));
+  const protectedIds = new Set(anchored.map((chunk) => chunk.chunkId));
+  const result = [...fused];
+  const existing = new Set(result.map((chunk) => chunk.chunkId));
+  for (const chunk of additions) {
+    const id = chunk.chunkId;
+    if (!id || existing.has(id)) continue;
+    if (result.length < topK) {
+      result.push(chunk);
+      existing.add(id);
+      continue;
+    }
+    let replace = -1;
+    for (let index = result.length - 1; index >= 0; index--) {
+      const candidate = result[index] as SearchSemanticLayerChunk;
+      if (!protectedIds.has(candidate.chunkId) && !additions.some((addition) => addition.chunkId === candidate.chunkId)) {
+        replace = index;
+        break;
+      }
+    }
+    if (replace < 0) break;
+    existing.delete((result[replace] as SearchSemanticLayerChunk).chunkId);
+    result[replace] = chunk;
+    existing.add(id);
+  }
+  return result;
+}
+
 export async function hybridSearch(
   query: RetrieverQuery,
   embedder: Embedder,
   text: string,
   topK: number,
   allowRestricted: boolean,
+  foreignKeys?: ReadonlyMap<string, readonly ForeignKeyRef[]>,
+  allowedTables?: ReadonlySet<string>,
 ): Promise<SearchSemanticLayerChunk[]> {
   const candidates = Math.max(topK * 3, topK);
 
@@ -720,7 +793,7 @@ export async function hybridSearch(
     initial.push(toContractChunk(row, score, extra));
   }
 
-  return expandJoinRules(
+  const joined = expandJoinRules(
     initial,
     effectiveRows,
     topK,
@@ -728,4 +801,7 @@ export async function hybridSearch(
     scoreById,
     aliasMatchedIds,
   );
+  return foreignKeys && allowedTables
+    ? expandForeignKeyPaths(joined, effectiveRows, text, topK, foreignKeys, allowedTables, allowRestricted, initial)
+    : joined;
 }

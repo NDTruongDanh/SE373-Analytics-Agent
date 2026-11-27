@@ -1,12 +1,18 @@
 import { z } from "zod";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { estimateCostUsd } from "./pricing.js";
-import type { BudgetState } from "../queryExecutor/budgets.js";
+import {
+  checkBudget,
+  type BudgetState,
+} from "../queryExecutor/budgets.js";
 import {
   createAttemptAbort,
+  classifyModelReaskFailure,
   resolveModelRetryConfig,
   retryModelCall,
+  timeoutError,
   type ModelRetryOverrides,
+  type RetryAttemptContext,
   type RetrySpanEmit,
 } from "./retry.js";
 
@@ -25,6 +31,7 @@ export interface LlmUsage {
 export interface InvokeUsageResult<T> extends LlmUsage {
   parsed: T;
   model: string | undefined;
+  preAccountedUsage?: LlmUsage;
   firstTokenMs?: number;
   attempts?: number;
 }
@@ -47,6 +54,7 @@ export interface InvokeWithUsageOptions extends ModelRetryContextOptions {
   name?: string;
   callbacks?: Callbacks;
   totalMs?: number;
+  formatReaskLimit?: number;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -113,13 +121,111 @@ function retryOptionsFrom(
       ? resolveModelRetryConfig(process.env, opts.retry)
       : undefined,
     budget: opts?.budget,
-    deadlineMs: opts?.deadlineMs,
+    deadlineMs: minPositiveBound(opts?.deadlineMs, opts?.budget?.deadlineMs),
     signal: opts?.signal,
     emit: opts?.emit,
     outerAttempt: opts?.outerAttempt,
     now: opts?.now,
     random: opts?.random,
     sleep: opts?.sleep,
+  };
+}
+
+function addUsage(target: LlmUsage, usage: LlmUsage): void {
+  target.inputTokens += usage.inputTokens;
+  target.outputTokens += usage.outputTokens;
+}
+
+async function retryWithFormatReask<T>(
+  input: string,
+  opts: ModelRetryContextOptions & { formatReaskLimit?: number } | undefined,
+  defaultNode: string,
+  invoke: (prompt: string, ctx: RetryAttemptContext) => Promise<T>,
+  failureInfo: () => { usage: LlmUsage; model?: string },
+): Promise<{ value: T; attempts: number }> {
+  const limit = Number.isFinite(opts?.formatReaskLimit)
+    ? Math.max(0, Math.min(1, Math.floor(opts?.formatReaskLimit ?? 1)))
+    : 1;
+  const now = opts?.now ?? Date.now;
+  const deadlineMs = minPositiveBound(opts?.deadlineMs, opts?.budget?.deadlineMs);
+  let prompt = input;
+  let reasks = 0;
+  let totalAttempts = 0;
+
+  for (;;) {
+    let callsThisCycle = 0;
+    let lastCallStarted = now();
+    try {
+      const result = await retryModelCall((ctx) => {
+        callsThisCycle += 1;
+        lastCallStarted = now();
+        return invoke(prompt, ctx);
+      }, retryOptionsFrom(opts, defaultNode));
+      totalAttempts += result.attempts;
+      return { value: result.value, attempts: totalAttempts };
+    } catch (error) {
+      totalAttempts += callsThisCycle;
+      const failure = classifyModelReaskFailure(error);
+      if (!failure || reasks >= limit) throw error;
+
+      if (opts?.budget) {
+        const check = checkBudget(opts.budget, now());
+        if (check.tripped) {
+          throw new Error(`Run budget exceeded (${check.reason})`);
+        }
+      }
+      if (deadlineMs !== undefined && now() >= deadlineMs) {
+        throw timeoutError("Model call exceeded run deadline before format re-ask");
+      }
+
+      const failed = failureInfo();
+      const cost = estimateCostUsd(failed.model ?? opts?.modelName, failed.usage.inputTokens, failed.usage.outputTokens);
+      const node = opts?.node ?? defaultNode;
+      const attempt = opts?.outerAttempt ?? totalAttempts;
+      if (callsThisCycle > 0) {
+        opts?.emit?.({
+          node,
+          type: "llm_call",
+          durationMs: Math.max(0, now() - lastCallStarted),
+          attempt,
+          payload: {
+            ok: false,
+            model: failed.model ?? opts?.modelName ?? "unknown",
+            code: failure.code,
+            ...(failure.code === "provider_5xx" ? { status: failure.status } : {}),
+            inputTokens: failed.usage.inputTokens,
+            outputTokens: failed.usage.outputTokens,
+            estimatedCostUsd: cost.estimatedCostUsd,
+            pricingKnown: cost.pricingKnown,
+          },
+        });
+      }
+      opts?.emit?.({
+        node,
+        type: "retry",
+        durationMs: 0,
+        attempt,
+        payload: {
+          target: failure.formatFailure ? "llm_format" : "llm_provider",
+          code: failure.code,
+          ...(failure.code === "provider_5xx" ? { status: failure.status } : {}),
+          reask: reasks + 1,
+          nextAttempt: reasks + 2,
+        },
+      });
+
+      reasks += 1;
+      prompt = failure.formatFailure
+        ? `${input}\n\nThe previous response did not match the required output format. Return exactly one valid JSON object matching the supplied schema. Do not include prose or code fences.`
+        : input;
+    }
+  }
+}
+
+export function unaccountedUsage(usage: InvokeUsageResult<unknown>): LlmUsage {
+  return {
+    inputTokens: Math.max(0, usage.inputTokens - (usage.preAccountedUsage?.inputTokens ?? 0)),
+    outputTokens: Math.max(0, usage.outputTokens - (usage.preAccountedUsage?.outputTokens ?? 0)),
   };
 }
 
@@ -131,7 +237,12 @@ export async function invokeWithUsage<S extends z.ZodType>(
   opts?: InvokeWithUsageOptions,
 ): Promise<InvokeUsageResult<z.infer<S>>> {
   const structOpts = opts?.name !== undefined ? { name: opts.name } : {};
-  const retryResult = await retryModelCall(async (ctx) => {
+  const preAccountedUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+  let lastFailureUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+  let lastFailureModel: string | undefined;
+  const invoke = async (prompt: string, ctx: RetryAttemptContext) => {
+    lastFailureUsage = { inputTokens: 0, outputTokens: 0 };
+    lastFailureModel = undefined;
     const effectiveTotalMs = minPositiveBound(opts?.totalMs, ctx.remainingMs);
     const needAbort =
       effectiveTotalMs !== undefined || ctx.signal !== undefined;
@@ -163,32 +274,54 @@ export async function invokeWithUsage<S extends z.ZodType>(
           prompt: string,
           config?: { callbacks?: Callbacks; signal?: AbortSignal },
         ) => Promise<unknown>
-      )(input, invokeConfig);
+      )(prompt, invokeConfig);
       callPromise.catch(() => {});
       const out = attempt
         ? await Promise.race([callPromise, attempt.abortFailure])
         : await callPromise;
       const rawShape = asRawParsed(out);
-      if (rawShape !== null) {
-        return {
-          parsed: schema.parse(rawShape.parsed),
-          ...usageFromMessage(rawShape.raw),
-          model: modelFromMessage(rawShape.raw),
-        };
+      const usage =
+        rawShape !== null
+          ? usageFromMessage(rawShape.raw)
+          : { inputTokens: 0, outputTokens: 0 };
+      const modelId = rawShape !== null ? modelFromMessage(rawShape.raw) : undefined;
+      const rawParsed = rawShape !== null ? rawShape.parsed : out;
+      let parsed: z.infer<S>;
+      try {
+        parsed = schema.parse(rawParsed);
+      } catch (error) {
+        if (classifyModelReaskFailure(error)?.formatFailure) {
+          lastFailureUsage = usage;
+          lastFailureModel = modelId;
+          addUsage(preAccountedUsage, usage);
+          if (opts?.budget) {
+            opts.budget.tokensUsed += usage.inputTokens + usage.outputTokens;
+          }
+        }
+        throw error;
       }
       return {
-        parsed: schema.parse(out),
-        inputTokens: 0,
-        outputTokens: 0,
-        model: undefined,
+        parsed,
+        ...usage,
+        model: modelId,
       };
     } finally {
       attempt?.cleanup();
     }
-  }, retryOptionsFrom(opts, "understand"));
+  };
+  const retryResult = await retryWithFormatReask(
+    input,
+    opts,
+    "understand",
+    invoke,
+    () => ({ usage: lastFailureUsage, model: lastFailureModel }),
+  );
 
   return {
     ...retryResult.value,
+    inputTokens: retryResult.value.inputTokens + preAccountedUsage.inputTokens,
+    outputTokens: retryResult.value.outputTokens + preAccountedUsage.outputTokens,
+    preAccountedUsage,
     attempts: retryResult.attempts,
   };
 }
@@ -317,6 +450,7 @@ export interface JsonStreamOptions extends ModelRetryContextOptions {
   idleMs?: number;
   totalMs?: number;
   fallbackParse?: (text: string) => unknown;
+  formatReaskLimit?: number;
 }
 
 const DEFAULT_IDLE_MS = 30000;
@@ -330,8 +464,12 @@ export async function invokeJsonWithUsage<S extends z.ZodType>(
 ): Promise<InvokeUsageResult<z.infer<S>>> {
   const requestedIdleMs = opts?.idleMs ?? DEFAULT_IDLE_MS;
   const requestedTotalMs = opts?.totalMs ?? DEFAULT_TOTAL_MS;
-
-  const retryResult = await retryModelCall(async (ctx) => {
+  const preAccountedUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+  let lastFailureUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+  let lastFailureModel: string | undefined;
+  const invoke = async (prompt: string, ctx: RetryAttemptContext) => {
+    lastFailureUsage = { inputTokens: 0, outputTokens: 0 };
+    lastFailureModel = undefined;
     const started = Date.now();
     const effectiveTotalMs =
       minPositiveBound(requestedTotalMs, ctx.remainingMs) ?? requestedTotalMs;
@@ -352,7 +490,7 @@ export async function invokeJsonWithUsage<S extends z.ZodType>(
       firstTokenMs: number | undefined;
     }> => {
       if (typeof model.stream !== "function") {
-        const message = await model.invoke(input, {
+        const message = await model.invoke(prompt, {
           callbacks: opts?.callbacks,
         });
         const text = messageText(message) ?? "";
@@ -367,7 +505,7 @@ export async function invokeJsonWithUsage<S extends z.ZodType>(
       let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
       let modelId: string | undefined;
       let firstTokenMs: number | undefined;
-      const stream = await model.stream(input, {
+      const stream = await model.stream(prompt, {
         callbacks: opts?.callbacks,
         signal: attempt.controller.signal,
         runName: opts?.name,
@@ -398,39 +536,61 @@ export async function invokeJsonWithUsage<S extends z.ZodType>(
         consume,
         attempt.abortFailure,
       ]);
-      let rawParsed: unknown;
-      if (text === "") {
-        rawParsed = undefined;
-      } else {
-        try {
-          rawParsed = extractJsonDocument(text);
-        } catch (error) {
-          if (error instanceof SyntaxError && opts?.fallbackParse) {
-            const fallback = opts.fallbackParse(text);
-            if (fallback === undefined) throw error;
-            rawParsed = fallback;
-          } else {
-            throw error;
+      try {
+        let rawParsed: unknown;
+        if (text === "") {
+          rawParsed = undefined;
+        } else {
+          try {
+            rawParsed = extractJsonDocument(text);
+          } catch (error) {
+            if (error instanceof SyntaxError && opts?.fallbackParse) {
+              const fallback = opts.fallbackParse(text);
+              if (fallback === undefined) throw error;
+              rawParsed = fallback;
+            } else {
+              throw error;
+            }
           }
         }
+        return {
+          parsed: schema.parse(rawParsed),
+          ...usage,
+          model: modelId,
+          firstTokenMs,
+        };
+      } catch (error) {
+        if (classifyModelReaskFailure(error)?.formatFailure) {
+          lastFailureUsage = usage;
+          lastFailureModel = modelId;
+          addUsage(preAccountedUsage, usage);
+          if (opts?.budget) {
+            opts.budget.tokensUsed += usage.inputTokens + usage.outputTokens;
+          }
+        }
+        throw error;
       }
-      return {
-        // Empty output fails closed through schema validation.
-        parsed: schema.parse(rawParsed),
-        ...usage,
-        model: modelId,
-        firstTokenMs,
-      };
     } finally {
       attempt.cleanup();
       if (activeIterator?.return) {
         void activeIterator.return().catch(() => {});
       }
     }
-  }, retryOptionsFrom(opts, "propose"));
+  };
+
+  const retryResult = await retryWithFormatReask(
+    input,
+    opts,
+    "propose",
+    invoke,
+    () => ({ usage: lastFailureUsage, model: lastFailureModel }),
+  );
 
   return {
     ...retryResult.value,
+    inputTokens: retryResult.value.inputTokens + preAccountedUsage.inputTokens,
+    outputTokens: retryResult.value.outputTokens + preAccountedUsage.outputTokens,
+    preAccountedUsage,
     attempts: retryResult.attempts,
   };
 }

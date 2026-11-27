@@ -93,6 +93,14 @@ function formatPreviewSummary(
 }
 
 export function synthesizeAnswer(state: AgentState): AgentUpdate {
+  if (state.budgetExceeded || state.status === "error") {
+    const answerText =
+      state.answerText.trim().length > 0
+        ? state.answerText
+        : STATUS_FALLBACK_MESSAGES.error ?? "Unable to complete the query due to an execution error.";
+    return { answerText: redactPII(answerText).redacted };
+  }
+
   if (state.answerText.trim().length > 0) {
     const { redacted, hit } = redactPII(state.answerText);
     return hit ? { answerText: redacted } : {};

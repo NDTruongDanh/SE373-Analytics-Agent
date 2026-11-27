@@ -7,12 +7,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { parse as parseYaml } from "yaml";
 import { dbToolError } from "@shared/contracts";
 import {
   ColumnScopePolicy,
   DEFAULT_ROW_SCOPE_LINEAGE_PATH,
   DEFAULT_SENSITIVE_COLUMNS_PATH,
   loadRowScopeLineage,
+  type SqlIdentifierAliases,
 } from "@shared/access-policy";
 import {
   loadMcpClients,
@@ -74,6 +76,7 @@ export interface GatewayAppOptions {
 }
 
 const DEFAULT_CLIENTS_PATH = path.resolve("policies/mcp_clients.yaml");
+const SEMANTIC_DIR = fileURLToPath(new URL("../../../semantic", import.meta.url));
 
 function defaultDocuments(): ResourceDocument[] {
   const read = (file: string): string => {
@@ -86,13 +89,48 @@ function defaultDocuments(): ResourceDocument[] {
   return [
     {
       uri: "semantic://data-dictionary",
-      text: read(path.resolve("semantic/data_dictionary.md")),
+      text: read(path.join(SEMANTIC_DIR, "data_dictionary.md")),
     },
     {
       uri: "semantic://metrics",
-      text: read(path.resolve("semantic/metrics.md")),
+      text: read(path.join(SEMANTIC_DIR, "metrics.md")),
     },
   ];
+}
+
+function semanticIdentifierAliases(): SqlIdentifierAliases {
+  const tables: Record<string, string[]> = {};
+  const columns: Record<string, Record<string, string[]>> = {};
+  for (const file of ["tables.yaml", "columns.yaml"] as const) {
+    let parsed: unknown;
+    try {
+      parsed = parseYaml(readFileSync(path.join(SEMANTIC_DIR, file), "utf8"));
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    const entries = (parsed as { chunks?: unknown }).chunks;
+    if (!Array.isArray(entries)) continue;
+    for (const raw of entries) {
+      if (!raw || typeof raw !== "object") continue;
+      const entry = raw as Record<string, unknown>;
+      if (entry["sensitivity"] === "restricted_pii") continue;
+      const names = Array.isArray(entry["aliases"])
+        ? entry["aliases"].filter((value): value is string => typeof value === "string")
+        : [];
+      if (names.length === 0) continue;
+      if (file === "tables.yaml") {
+        if (typeof entry["table"] === "string") tables[entry["table"]] = names;
+      } else if (typeof entry["column"] === "string") {
+        const parts = entry["column"].split(".");
+        if (parts.length !== 2) continue;
+        const table = parts[0] as string;
+        if (!columns[table]) columns[table] = {};
+        columns[table][parts[1] as string] = names;
+      }
+    }
+  }
+  return { tables, columns };
 }
 
 function mcpErrorPayload(
@@ -196,6 +234,7 @@ export async function createGatewayApp(
   const deps: GatewayDeps = {
     clients,
     catalog: builtCatalog,
+    identifierAliases: semanticIdentifierAliases(),
     policy: new ColumnScopePolicy(
       sensitive.columns.map((entry) => ({ ...entry })),
       rowScopeLineage,
@@ -213,6 +252,8 @@ export async function createGatewayApp(
           query,
           topK,
           allowRestricted,
+          builtCatalog.foreignKeys,
+          new Set(builtCatalog.catalog.tables.filter((table) => table.schema === "public").map((table) => table.name)),
         )),
   };
   const documents = options.documents ?? defaultDocuments();

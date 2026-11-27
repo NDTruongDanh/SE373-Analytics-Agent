@@ -20,6 +20,33 @@ const BASE_CATALOG: CatalogTable[] = [
   { name: "channels", schema: "public", description: "Sales channels" },
 ];
 
+describe("out-of-domain entity gate", () => {
+  it.each([
+    ["NPS", ["NPS"]],
+    ["NPS của đơn hàng", ["orders", "NPS"]],
+  ])("returns cannot_answer before SQL for %s", async (question, schemaEntities) => {
+    let executorCalls = 0;
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async () => [],
+        intentModel: makeIntentModel({ requestedMetrics: [], schemaEntities, queryMode: "standard_query" }).model,
+        executor: { run: async () => {
+          executorCalls += 1;
+          throw new Error("executor must not run for unsupported entities");
+        } },
+      },
+    });
+    const result = await graph.invoke({ question, route: "text-to-sql" }, runConfig(`t-oood-${schemaEntities.length}`, `r-oood-${schemaEntities.length}`));
+    expect(result.status).toBe("cannot_answer");
+    expect(result.sql).toBeNull();
+    expect(executorCalls).toBe(0);
+  });
+});
+
 function semanticChunk(
   overrides: Partial<SearchSemanticLayerChunk> & { chunkId: string },
 ): SearchSemanticLayerChunk {
@@ -737,8 +764,9 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
       runConfig("t-budget", "r-budget"),
     );
 
-    expect(out.status).toBe("cannot_answer");
-    expect(out.answerText).toMatch(/Run budget exceeded/);
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.answerText).toMatch(/budget_exceeded/);
     expect(listCalls).toBe(0);
   });
 
@@ -960,7 +988,9 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
         runConfig("t-followup-deadline", "r-followup-deadline"),
       );
       expect(queries).toEqual(["Số đơn theo kênh bán và khu vực", "kênh bán"]);
-      expect(out.status).toBe("cannot_answer");
+      expect(out.status).toBe("error");
+      expect(out.budgetExceeded).toBe(true);
+      expect(out.answerText).toMatch(/budget_exceeded/);
       expect(out.answerText).toMatch(/deadline/i);
       expect(out.toolsCalled).toContain("search_semantic_layer");
     } finally {
@@ -1203,7 +1233,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     const resumed = await graph.invoke(new Command({ resume: "sellers" }), cfg);
     expect(resumed.status).toBe("ok");
-    expect(seenTables).toEqual(["orders", "sellers"]);
+    expect(seenTables).toEqual(["orders", "sellers", "order_items"]);
   });
 
   it("includes metric-required tables in requiredTables cap check and rejects when 6 entities + metric add a 7th table", async () => {
@@ -1259,5 +1289,57 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     expect(out.pendingClarification).toBeNull();
     expect(out.answerText).toMatch(/7 bảng/);
     expect(out.answerText).toMatch(/order_items/);
+  });
+
+  it("clarifies rather than returning cannot_answer when a metric grounds partialTables alongside an unmapped entity", async () => {
+    let execCalls = 0;
+    const searchFn = async (): Promise<SearchSemanticLayerChunk[]> => [
+      semanticChunk({
+        chunkId: "metric:order_count",
+        docType: "metric",
+        tables: ["orders"],
+        metricName: "order_count",
+        content: "Số đơn hàng (order_count) = COUNT(orders.id)",
+        score: 0.95,
+        aliasMatched: true,
+      }),
+    ];
+
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: searchFn }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async (q) => (q === "tổ phụ trách" ? [] : searchFn()),
+        intentModel: makeIntentModel({
+          requestedMetrics: ["order_count"],
+          schemaEntities: ["tổ phụ trách"],
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async () => {
+            execCalls += 1;
+            return {
+              status: "ok",
+              sql: "SELECT COUNT(*) AS n FROM public.orders",
+              tablesUsed: ["orders"],
+              columns: ["n"],
+              rows: [{ n: 10 }],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+
+    const out = (await graph.invoke(
+      { question: "Số đơn hàng theo tổ phụ trách", route: "text-to-sql" },
+      runConfig("t-partial-clarify", "r-partial-clarify"),
+    )) as Record<string, unknown>;
+    expect(execCalls).toBe(0);
+    expect(out["status"]).not.toBe("cannot_answer");
+    expect(Array.isArray(out["__interrupt__"])).toBe(true);
   });
 });

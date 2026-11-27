@@ -13,6 +13,7 @@ import {
   type SqlProposal,
 } from "../src/queryExecutor/executor.js";
 import { createBudgetState } from "../src/queryExecutor/budgets.js";
+import { escapedIlikePattern, isHighCardinalityDiagnosticColumn } from "../src/queryExecutor/diagnosticCardinality.js";
 
 const PRINCIPAL = {
   runId: "run-repair-1",
@@ -600,10 +601,11 @@ describe("bounded repair loop", () => {
       budget: createBudgetState({ maxLlmCalls: 2 }),
     });
 
-    expect(result.status).toBe("cannot_answer");
-    if (result.status !== "cannot_answer") return;
+    expect(result.status).toBe("error");
+    if (result.status !== "error" || !("budgetExceeded" in result) || !result.budgetExceeded) return;
     expect(result.budgetExceeded).toBe(true);
     expect(result.tripReason).toBe("llm-calls");
+    expect(result.reason).toContain("budget_exceeded");
     expect(result.partials.tablesDescribed).toEqual(["orders"]);
     expect(result.partials.lastSql).toContain("SELECT status, COUNT");
     // Attempt 1 spent one LLM call on the proposal and failed repairable at
@@ -813,5 +815,96 @@ describe("bounded repair loop", () => {
       "explain_query",
       "run_query",
     ]);
+  });
+});
+
+describe("high-cardinality zero-row probe", () => {
+  it("passes a safe identifier suggestion into the bounded repair prompt", async () => {
+    const model = new RepairFakeModel([
+      proposalFor("SELECT statu FROM orders", ["orders"]),
+      proposalFor("SELECT status FROM orders", ["orders"]),
+    ]);
+    const mcp = new StubMcpCaller(baseHandlers(
+      () => ({ estimatedCost: 1, estimatedRows: 1 }),
+      () => okRun(),
+    ));
+    const result = await new ValidatedQueryExecutor({ model, mcp }).run({
+      question: "order status", candidateTables: ["orders"], principal: PRINCIPAL,
+    });
+    expect(result.status).toBe("ok");
+    expect(model.inputs).toHaveLength(2);
+    expect(model.inputs[1]).toContain("did you mean: status");
+    expect(mcp.tools().filter((tool) => tool === "run_query")).toHaveLength(1);
+  });
+
+  it("uses escaped ILIKE with a ten-row ceiling and repairs only the filter literal", async () => {
+    const model = new RepairFakeModel([
+      proposalFor("SELECT name FROM products WHERE name = 'Mien Nam'", ["products"]),
+      proposalFor("SELECT name FROM products WHERE name = 'Nam'", ["products"]),
+    ]);
+    let primaryRuns = 0;
+    const mcp = new StubMcpCaller({
+      describe_table: () => ({ table: "products", columns: [
+        { name: "name", type: "text", nullable: false, sensitive: false },
+      ], primaryKey: [], foreignKeys: [] }),
+      sample_rows: () => ({ columns: ["name"], rows: [], rowCount: 0 }),
+      explain_query: () => ({ estimatedCost: 2, estimatedRows: 1 }),
+      run_query: (args) => {
+        const sql = String(args["sql"]);
+        if (sql.startsWith('SELECT DISTINCT "name"')) {
+          return { columns: ["name"], rows: sql.includes("ILIKE E'%Nam%'") ? [{ name: "Nam" }] : [],
+            rowCount: sql.includes("ILIKE E'%Nam%'") ? 1 : 0, truncated: false,
+            maskedColumns: [], durationMs: 1 };
+        }
+        primaryRuns += 1;
+        return { columns: ["name"], rows: primaryRuns === 1 ? [] : [{ name: "Nam" }],
+          rowCount: primaryRuns === 1 ? 0 : 1, truncated: false,
+          maskedColumns: [], durationMs: 1 };
+      },
+    });
+    const result = await new ValidatedQueryExecutor({ model, mcp }).run({
+      question: "products in Mien Nam", candidateTables: ["products"], principal: PRINCIPAL,
+    });
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.attempts).toBe(2);
+    const probes = mcp.calls.filter((call) => call.tool === "run_query" &&
+      String(call.args["sql"]).startsWith('SELECT DISTINCT "name"'));
+    expect(probes.length).toBeGreaterThan(0);
+    expect(probes.every((call) => String(call.args["sql"]).includes(" ILIKE ") &&
+      String(call.args["sql"]).endsWith("LIMIT 10") && call.args["maxRows"] === 10)).toBe(true);
+    expect(model.inputs[1]).toContain("<untrusted-diagnostic-data>");
+  });
+
+  it("classifies only verified high columns and escapes quotes, wildcards and backslashes", () => {
+    expect(isHighCardinalityDiagnosticColumn("products", "name")).toBe(true);
+    expect(isHighCardinalityDiagnosticColumn("orders", "status")).toBe(false);
+    expect(isHighCardinalityDiagnosticColumn("customers", "name")).toBe(false);
+    expect(escapedIlikePattern("O'Reilly_%\\x")).toBe("E'%O''Reilly\\\\_\\\\%\\\\\\\\x%'");
+  });
+
+  it("skips a costly ILIKE probe before run_query", async () => {
+    let probeRuns = 0;
+    const mcp = new StubMcpCaller({
+      describe_table: () => ({ table: "products", columns: [
+        { name: "name", type: "text", nullable: false, sensitive: false },
+      ], primaryKey: [], foreignKeys: [] }),
+      sample_rows: () => ({ columns: ["name"], rows: [], rowCount: 0 }),
+      explain_query: (args) => ({
+        estimatedCost: String(args["sql"]).startsWith('SELECT DISTINCT "name"') ? 1_000_000_000 : 2,
+        estimatedRows: 1,
+      }),
+      run_query: (args) => {
+        if (String(args["sql"]).startsWith('SELECT DISTINCT "name"')) probeRuns += 1;
+        return { columns: ["name"], rows: [], rowCount: 0,
+          truncated: false, maskedColumns: [], durationMs: 1 };
+      },
+    });
+    const result = await new ValidatedQueryExecutor({ model: new RepairFakeModel([]), mcp }).run({
+      question: "product name", initialSql: "SELECT name FROM products WHERE name = 'unknown'",
+      candidateTables: ["products"], principal: PRINCIPAL, maxAttempts: 1,
+    });
+    expect(result.status).toBe("no_data");
+    if (result.status === "no_data") expect(result.diagnostic).toContain("exceeded cost ceiling");
+    expect(probeRuns).toBe(0);
   });
 });

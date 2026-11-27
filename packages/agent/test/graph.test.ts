@@ -682,8 +682,9 @@ describe("root graph seam", () => {
     );
 
     expect(out.route).toBe("text-to-sql");
-    expect(out.status).toBe("cannot_answer");
-    expect(out.answerText).toContain("Run budget exceeded");
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.answerText).toContain("budget_exceeded");
     expect(modelCalled).toBe(false);
     expect(executorCalled).toBe(false);
   });
@@ -710,8 +711,9 @@ describe("root graph seam", () => {
     );
 
     expect(out.route).toBe("root-cause-analysis");
-    expect(out.status).toBe("cannot_answer");
-    expect(out.answerText).toContain("Run budget exceeded");
+    expect(out.status).toBe("error");
+    expect(out.budgetExceeded).toBe(true);
+    expect(out.answerText).toContain("budget_exceeded");
     expect(retrieveCalled).toBe(false);
     expect(handlerCalled).toBe(false);
   });

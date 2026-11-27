@@ -10,6 +10,7 @@ import {
   type AccessPolicy,
   type Principal,
   type RowScopeApplied,
+  type SqlIdentifierAliases,
 } from "@shared/access-policy";
 import {
   authenticateRequest,
@@ -35,6 +36,7 @@ export interface GatewayDeps {
   policy: AccessPolicy;
   sessionFactory: SessionFactory;
   search: SearchFn;
+  identifierAliases?: SqlIdentifierAliases;
 }
 
 export interface PipelineRequest {
@@ -275,7 +277,7 @@ export async function executeToolCall(
             ),
           );
         }
-        const guard = await sqlGuard(sql, deps.catalog.catalog);
+        const guard = await sqlGuard(sql, deps.catalog.catalog, { aliases: deps.identifierAliases });
         if (!guard.ok) return finish(deny(guard.error));
         const policy = await deps.policy.check({
           ast: guard.ast,
@@ -348,7 +350,7 @@ async function runSqlStages(
     rowScopeApplied?: RowScopeApplied[];
   }) => void,
 ): Promise<PipelineResult> {
-  const guard = await sqlGuard(sql, deps.catalog.catalog);
+  const guard = await sqlGuard(sql, deps.catalog.catalog, { aliases: deps.identifierAliases });
   if (!guard.ok) return { ok: false, error: guard.error };
   const policy = await deps.policy.check({
     ast: guard.ast,
