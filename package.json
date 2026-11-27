@@ -39,7 +39,8 @@
     "lint": "eslint .",
     "test": "tsc -b && vitest run",
     "docs:interface": "tsx scripts/generate-interface.mjs",
-    "semantic:index": "tsx packages/mcp-server/src/semantic/index.ts"
+    "semantic:index": "tsx packages/mcp-server/src/semantic/index.ts",
+    "semantic:verify": "tsx --env-file-if-exists=.env packages/mcp-server/src/semantic/verify.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "catalog:",

@@ -2938,11 +2938,34 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       emit: rt?.emit,
     });
 
+    const rawRtEarly = rt as unknown as Record<string, unknown> | undefined;
+    const earlyConf = ((rt?.config?.configurable ?? rawRtEarly?.configurable ?? {}) as Record<string, unknown>);
+    const earlyScratch = earlyConf["__pregel_scratchpad"] as
+      | { nullResume?: unknown; resume?: unknown[] }
+      | undefined;
+    const isTimeoutResume = Boolean(
+      earlyScratch &&
+        ((typeof earlyScratch.nullResume === "object" &&
+          earlyScratch.nullResume !== null &&
+          ((earlyScratch.nullResume as { action?: unknown }).action === "timeout" ||
+            (earlyScratch.nullResume as { reason?: unknown }).reason === "HITL_APPROVAL_TIMEOUT")) ||
+          (Array.isArray(earlyScratch.resume) &&
+            earlyScratch.resume.some(
+              (v) =>
+                typeof v === "object" &&
+                v !== null &&
+                ((v as { action?: unknown }).action === "timeout" ||
+                  (v as { reason?: unknown }).reason === "HITL_APPROVAL_TIMEOUT"),
+            ))),
+    );
+
     const modelToUse =
-      deps.intentModel ??
-      (process.env.AGENT_MODEL_API_KEY
-        ? (createChatModel("intent") as unknown as IntentModelLike)
-        : undefined);
+      isTimeoutResume
+        ? undefined
+        : deps.intentModel ??
+          (process.env.AGENT_MODEL_API_KEY
+            ? (createChatModel("intent") as unknown as IntentModelLike)
+            : undefined);
     let intent: RcaIntent;
     if (modelToUse) {
       try {
@@ -3270,6 +3293,9 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           } else if (feedbackObj["plan"] && typeof feedbackObj["plan"] === "object") {
             modified = AnalysisPlanSchema.parse(feedbackObj["plan"]);
           }
+          if (activePlan.asOf) {
+            modified = { ...modified, asOf: activePlan.asOf };
+          }
         }
         return { outcome: "execute", nextPlan: modified };
       }
@@ -3306,7 +3332,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
       };
     };
 
-    if (hasExecutionBackend && !deps.skipHitlReview) {
+    if ((hasExecutionBackend || isResume) && !deps.skipHitlReview) {
       try {
         const feedback = pauseForApproval({
           action: "review_analysis_plan",
@@ -3402,7 +3428,7 @@ export function createRcaRuntime(deps: RcaRuntimeDeps = {}): {
           }
         }
 
-        shouldExecute = true;
+        shouldExecute = hasExecutionBackend;
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes("outside the context of a graph")) {
           // Allow direct unit tests without a LangGraph execution context to return the unexecuted plan.

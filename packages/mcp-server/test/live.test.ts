@@ -31,6 +31,8 @@ import {
 } from "@shared/access-policy";
 import { buildCatalog, fetchCatalogSource } from "../src/catalog.js";
 import { loadSensitiveColumns } from "../src/config.js";
+import type { SessionContext } from "../src/executor.js";
+import { verifySemanticCorpusWithPool } from "../src/semantic/verify.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..", "..");
@@ -269,6 +271,25 @@ describeLive("semantic live", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("verifies the live semantic corpus cleanly with semantic:verify", async () => {
+    const pool = new Pool({
+      connectionString: process.env["AGENT_RO_DATABASE_URL"] ?? process.env["DATABASE_URL"],
+    });
+    try {
+      const report = await verifySemanticCorpusWithPool(pool, {
+        semanticDir: path.join(ROOT, "semantic"),
+      });
+      expect(report.failures).toEqual([]);
+      expect(report.checkedTables).toBeGreaterThan(0);
+      expect(report.checkedColumns).toBeGreaterThan(0);
+      expect(report.checkedEnums).toBeGreaterThan(0);
+      expect(report.checkedMetrics).toBeGreaterThan(0);
+      expect(report.checkedJoins).toBeGreaterThan(0);
+    } finally {
+      await pool.end();
+    }
+  });
 });
 
 describeAuditLive("PostgreSQL fail-closed audit hash chain (live DB)", () => {
@@ -313,9 +334,13 @@ describeAuditLive("PostgreSQL fail-closed audit hash chain (live DB)", () => {
         sessionFactory: async () => {
           const client = await roPool.connect();
           return {
-            async beginReadOnly() {
+            async beginReadOnly(context: SessionContext) {
               await client.query("BEGIN READ ONLY");
               await client.query("SET LOCAL statement_timeout = '10s'");
+              await client.query(
+                "SELECT set_config('app.role', $1, true), set_config('app.row_scope', $2, true)",
+                [context.role, context.rowScope],
+              );
             },
             async readBounded(body: string, maxRows: number) {
               const res = await client.query(

@@ -93,6 +93,7 @@ export function setPgAuditPoolForTests(pool: AuditPoolLike | null): void {
 
 export async function ensureAuditSchema(pool: AuditPoolLike): Promise<void> {
   const client = await pool.connect();
+  let broken = false;
   try {
     await client.query("BEGIN");
     // Serialize idempotent DDL across replicas sharing an existing volume.
@@ -132,11 +133,11 @@ export async function ensureAuditSchema(pool: AuditPoolLike): Promise<void> {
     try {
       await client.query("ROLLBACK");
     } catch {
-      // Preserve the original failure.
+      broken = true;
     }
     throw err;
   } finally {
-    client.release();
+    client.release(broken || undefined);
   }
 }
 
@@ -227,8 +228,10 @@ export async function auditCall(record: AuditRecord): Promise<void> {
   ).redacted;
 
   if (pgAuditPool !== null) {
-    const caller =
-      record.userId || record.role || record.clientId || "anonymous";
+    const safeRunId = redactPII(record.runId).redacted;
+    const safeCaller = redactPII(
+      record.userId || record.role || record.clientId || "anonymous",
+    ).redacted;
     const redactedParamsObj = JSON.parse(redactedLine) as Record<
       string,
       unknown
@@ -247,6 +250,7 @@ export async function auditCall(record: AuditRecord): Promise<void> {
     );
 
     const client = await pgAuditPool.connect();
+    let broken = false;
     try {
       await client.query("BEGIN");
       const headRes = await client.query(
@@ -266,9 +270,9 @@ export async function auditCall(record: AuditRecord): Promise<void> {
       const nextSeq = currentSeq + 1;
       const currentHash = computeAuditChainHash({
         seq: nextSeq,
-        runId: record.runId,
+        runId: safeRunId,
         tool: record.tool,
-        caller,
+        caller: safeCaller,
         ts: record.ts,
         inputHash,
         outputHash,
@@ -281,9 +285,9 @@ export async function auditCall(record: AuditRecord): Promise<void> {
          VALUES ($1, $2, $3, $4, $5::timestamptz, $6, $7, $8, $9, $10::jsonb)`,
         [
           nextSeq,
-          record.runId,
+          safeRunId,
           record.tool,
-          caller,
+          safeCaller,
           record.ts,
           inputHash,
           outputHash,
@@ -301,11 +305,11 @@ export async function auditCall(record: AuditRecord): Promise<void> {
       try {
         await client.query("ROLLBACK");
       } catch {
-        // Ignore rollback failure so the original DB failure surfaces.
+        broken = true;
       }
       throw err;
     } finally {
-      client.release();
+      client.release(broken || undefined);
     }
   }
 

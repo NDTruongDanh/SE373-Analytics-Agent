@@ -109,7 +109,10 @@ export async function expirePendingCheckpoints(options: {
       AND l.checkpoint_ns = w.checkpoint_ns
       AND l.checkpoint_id = w.checkpoint_id
      WHERE w.channel = '__interrupt__'
-       AND (l.checkpoint->>'ts')::timestamptz < $1::timestamptz`,
+       AND CASE
+         WHEN l.checkpoint->>'ts' ~ '^\\d{4}-\\d{2}-\\d{2}T'
+         THEN (l.checkpoint->>'ts')::timestamptz
+       END < $1::timestamptz`,
     [cutoffIso],
   );
   const expired: string[] = [];
@@ -167,7 +170,12 @@ export async function pruneCompletedCheckpoints(options: {
      SELECT l.thread_id
      FROM latest l
      GROUP BY l.thread_id
-     HAVING MAX((l.checkpoint->>'ts')::timestamptz) < $1::timestamptz
+     HAVING MAX(
+       CASE
+         WHEN l.checkpoint->>'ts' ~ '^\\d{4}-\\d{2}-\\d{2}T'
+         THEN (l.checkpoint->>'ts')::timestamptz
+       END
+     ) < $1::timestamptz
        AND NOT EXISTS (
          SELECT 1
          FROM latest l2

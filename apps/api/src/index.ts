@@ -448,7 +448,13 @@ export function buildApp(options: BuildAppOptions): express.Express {
       return;
     }
 
-    const lock = await acquireThreadLock(threadId);
+    let lock: Awaited<ReturnType<typeof acquireThreadLock>>;
+    try {
+      lock = await acquireThreadLock(threadId);
+    } catch {
+      res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to acquire thread lock"));
+      return;
+    }
     if (!lock.acquired) {
       res.status(409).json({
         code: "CONFLICT",
@@ -457,21 +463,21 @@ export function buildApp(options: BuildAppOptions): express.Express {
       return;
     }
 
-    const run: StoredRun = {
-      threadId,
-      userId: principal.userId,
-      roleScope: principal.role,
-      token,
-      mcpUrl: options.mcpUrl,
-      tracesDir,
-    };
-    if (!runs.has(runId)) runs.set(runId, run);
-
-    res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
-    emitSseEvent(res, "intent_parsed", { runId, threadId, node: "understand", data: { phase: "starting" } });
-
     let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
+      const run: StoredRun = {
+        threadId,
+        userId: principal.userId,
+        roleScope: principal.role,
+        token,
+        mcpUrl: options.mcpUrl,
+        tracesDir,
+      };
+      if (!runs.has(runId)) runs.set(runId, run);
+
+      res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
+      emitSseEvent(res, "intent_parsed", { runId, threadId, node: "understand", data: { phase: "starting" } });
+
       const built = buildGraph(run, runId, res);
       emit = built.emit;
       const graph = built.graph;
@@ -564,15 +570,21 @@ export function buildApp(options: BuildAppOptions): express.Express {
       emit.emitRunDone(out.status);
     } catch (error) {
       emit?.emitRunDone("error");
-      emitSseEvent(res, "failed", {
-        runId,
-        threadId,
-        node: "answer",
-        data: toFailedSseData(error, "unknown ask failure"),
-      });
+      if (!res.headersSent) {
+        res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to process ask request"));
+      } else {
+        emitSseEvent(res, "failed", {
+          runId,
+          threadId,
+          node: "answer",
+          data: toFailedSseData(error, "unknown ask failure"),
+        });
+      }
     } finally {
       await lock.release();
-      res.end();
+      if (res.headersSent) {
+        res.end();
+      }
       void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
   });
@@ -645,7 +657,13 @@ export function buildApp(options: BuildAppOptions): express.Express {
     }
     if (!runs.has(runId)) runs.set(runId, stored);
 
-    const lock = await acquireThreadLock(stored.threadId);
+    let lock: Awaited<ReturnType<typeof acquireThreadLock>>;
+    try {
+      lock = await acquireThreadLock(stored.threadId);
+    } catch {
+      res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to acquire thread lock"));
+      return;
+    }
     if (!lock.acquired) {
       res.status(409).json({
         code: "CONFLICT",
@@ -775,7 +793,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
     } catch (error) {
       emit?.emitRunDone("error");
       if (!res.headersSent) {
-        res.status(500).json(dbToolError("INTERNAL_ERROR", error instanceof Error ? error.message : "unknown resume failure"));
+        res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to resume run"));
       } else {
         emitSseEvent(res, "failed", {
           runId,

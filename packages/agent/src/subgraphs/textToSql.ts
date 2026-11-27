@@ -499,16 +499,44 @@ function clarificationAttemptsOf(state: AgentState): number {
   return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : 0;
 }
 
+function isTimeoutResumeValue(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    ((value as { action?: unknown }).action === "timeout" ||
+      (value as { reason?: unknown }).reason === "HITL_APPROVAL_TIMEOUT")
+  );
+}
+
+function isTimeoutResumeInScratchpad(rt: RootRuntime): boolean {
+  const conf = (rt.config?.configurable ?? {}) as Record<string, unknown>;
+  const scratch = conf["__pregel_scratchpad"] as
+    | { nullResume?: unknown; resume?: unknown[] }
+    | undefined;
+  if (!scratch) return false;
+  if (isTimeoutResumeValue(scratch.nullResume)) return true;
+  return Array.isArray(scratch.resume) && scratch.resume.some(isTimeoutResumeValue);
+}
+
+type ClarificationSelectionResult =
+  | { ok: true; value: string }
+  | { ok: false; reason: "timeout" | "exhausted" };
+
 function clarificationSelection(
   state: AgentState,
   request: PendingClarification,
-): string | undefined {
+): ClarificationSelectionResult {
   for (let attempt = clarificationAttemptsOf(state); attempt < 2; attempt += 1) {
     const pending = { ...request, attempts: attempt };
     const value = pauseForClarification(pending);
-    if (isClarificationOption(pending, value)) return value;
+    if (isTimeoutResumeValue(value)) {
+      return { ok: false, reason: "timeout" };
+    }
+    if (isClarificationOption(pending, value)) {
+      return { ok: true, value };
+    }
   }
-  return undefined;
+  return { ok: false, reason: "exhausted" };
 }
 
 function applyClarification(
@@ -1069,16 +1097,33 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     }
     if (ambiguousMetric) {
       const selected = clarificationSelection(activeState, ambiguousMetric);
-      if (!selected) {
+      if (!selected.ok) {
+        if (selected.reason === "timeout") {
+          return {
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            pendingClarification: null,
+            answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+          };
+        }
         return {
           status: "needs_clarification",
           pendingClarification: null,
           answerText: "The requested KPI could not be disambiguated after two responses.",
         };
       }
-      const applied = applyClarification(activeState, ambiguousMetric, selected);
+      const applied = applyClarification(activeState, ambiguousMetric, selected.value);
       activeState = applied.state;
       clarificationUpdate = applied.update;
+    }
+    if (isTimeoutResumeInScratchpad(rt)) {
+      return {
+        ...clarificationUpdate,
+        status: "error",
+        errorCode: "HITL_APPROVAL_TIMEOUT",
+        pendingClarification: null,
+        answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+      };
     }
     const { identity, transport } = readRunContext(rt);
     if (!deps.executor && !transport) {
@@ -1483,14 +1528,27 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         activeState.clarificationAttempts,
       );
       const selected = clarificationSelection(activeState, clarification.pendingClarification);
-      if (!selected) {
+      if (!selected.ok) {
+        if (selected.reason === "timeout") {
+          return {
+            ...clarificationUpdate,
+            ...catalogUpdate,
+            ...(workingChunks !== state.semanticChunks
+              ? { semanticChunks: workingChunks }
+              : {}),
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            pendingClarification: null,
+            answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+          };
+        }
         return {
           status: "needs_clarification",
           pendingClarification: null,
           answerText: "The time range could not be resolved after two responses.",
         };
       }
-      const applied = applyClarification(activeState, clarification.pendingClarification, selected);
+      const applied = applyClarification(activeState, clarification.pendingClarification, selected.value);
       activeState = applied.state;
       clarificationUpdate = { ...clarificationUpdate, ...applied.update };
       result = await executor.run({

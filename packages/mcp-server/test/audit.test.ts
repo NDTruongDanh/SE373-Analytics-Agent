@@ -364,4 +364,78 @@ describe("audit canonicalization & hash chain", () => {
     expect(rollSeen.at(-1)).toBe("ROLLBACK");
     expect(rollReleased).toBe(1);
   });
+
+  it("redacts PII from run_id and caller SQL columns and destroys client when ROLLBACK throws", async () => {
+    const mock = makeMockAuditPool();
+    setPgAuditPoolForTests(mock.pool);
+    await auditCall({
+      ts: "2026-11-27T00:00:00.000Z",
+      runId: "run-0901234567",
+      userId: "alice@example.com",
+      role: "sales_south",
+      clientId: "web",
+      scopes: ["data:read"],
+      tool: "run_query",
+      params: { sql: "SELECT 1" },
+      rowCount: 1,
+      durationMs: 5,
+      decision: "allow",
+      piiHits: 0,
+      maskedColumns: [],
+      rowScopeApplied: [],
+    });
+
+    expect(mock.logRows).toHaveLength(1);
+    const inserted = mock.logRows[0]!;
+    expect(inserted.runId).not.toContain("0901234567");
+    expect(inserted.caller).not.toContain("alice@example.com");
+    expect(inserted.currentHash).toBe(
+      computeAuditChainHash({
+        seq: inserted.seq,
+        runId: inserted.runId,
+        tool: inserted.tool,
+        caller: inserted.caller,
+        ts: inserted.ts,
+        inputHash: inserted.inputHash,
+        outputHash: inserted.outputHash,
+        prevHash: inserted.prevHash,
+      }),
+    );
+
+    let destroyed: unknown;
+    setPgAuditPoolForTests({
+      async connect() {
+        return {
+          async query(text: string) {
+            if (text.includes("FOR UPDATE")) throw new Error("db error");
+            if (text === "ROLLBACK") throw new Error("rollback error");
+            return { rows: [] };
+          },
+          release(destroy?: boolean | Error) {
+            destroyed = destroy;
+          },
+        };
+      },
+      async end() {},
+    });
+    await expect(
+      auditCall({
+        ts: "2026-11-27T00:00:01.000Z",
+        runId: "run-2",
+        userId: "u2",
+        role: "sales_south",
+        clientId: "web",
+        scopes: ["data:read"],
+        tool: "run_query",
+        params: { sql: "SELECT 1" },
+        rowCount: 1,
+        durationMs: 5,
+        decision: "allow",
+        piiHits: 0,
+        maskedColumns: [],
+        rowScopeApplied: [],
+      }),
+    ).rejects.toThrow("db error");
+    expect(destroyed).toBe(true);
+  });
 });

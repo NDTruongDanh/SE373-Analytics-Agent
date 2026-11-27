@@ -9,7 +9,7 @@
 // scale-agnostic (positive live counts, never hard-coded) so the proof holds
 // on small and full volumes alike.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,6 +19,23 @@ import { fileURLToPath } from "node:url";
 import { interrupt } from "@langchain/langgraph";
 import { buildRootGraph, createRcaRuntime } from "@shared/agent";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  buildDrillDownSql,
+  buildTimeSeriesQuery,
+  DEFAULT_ANOMALY_CATALOG,
+  drillDownCandidateTables,
+  InMemoryAlertHistoryStore,
+  InMemoryDigestQueue,
+  loadSubscriptionsConfigFile,
+  runAnomalyRunner,
+  seriesCandidateTables,
+  subtractDays,
+} from "@shared/agent/alerts";
+import {
+  ValidatedQueryExecutor,
+  type ExecutorPrincipal,
+  type McpToolCaller,
+} from "@shared/agent/queryExecutor";
 import { buildApp } from "../src/index.js";
 import {
   createHostPorts,
@@ -714,5 +731,90 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     } finally {
       await new Promise<void>((resolve) => localServer.close(() => resolve()));
     }
+  }, 120_000);
+
+  it("executes UC-10 time-series and drill-down SQL for all subscriptions against live PostgreSQL", async () => {
+    const token = ADMIN_TOKEN || SALES_TOKEN;
+    const roleScope = ADMIN_TOKEN ? "admin" : "sales_south";
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+    const config = loadSubscriptionsConfigFile(path.join(repoRoot, "config/subscriptions.yaml"));
+    const runId = randomUUID();
+    const mcp: McpToolCaller = {
+      call: async (tool, args) => {
+        const toolArgs = { ...args };
+        delete toolArgs["runId"];
+        delete toolArgs["userId"];
+        delete toolArgs["roleScope"];
+        return mcpCall(tool, toolArgs, runId, token);
+      },
+    };
+    const executor = new ValidatedQueryExecutor({
+      mcp,
+      model: fakeModel("", {}) as never,
+    });
+    const principal: ExecutorPrincipal = {
+      runId,
+      userId: "uc10-live-test",
+      roleScope,
+    };
+    const date = "2026-09-12";
+    const startDate = subtractDays(date, 63);
+
+    for (const sub of config.subscriptions) {
+      const effectiveRole = ADMIN_TOKEN ? sub.recipientRole : roleScope;
+      const seriesSql = buildTimeSeriesQuery({
+        metricId: sub.metricId,
+        startDate,
+        endDate: date,
+        recipientRole: effectiveRole,
+      });
+      const seriesRes = await executor.run({
+        question: `Live UC-10 series check for ${sub.id}`,
+        initialSql: seriesSql,
+        candidateTables: seriesCandidateTables(sub.metricId, effectiveRole),
+        principal,
+        catalog: DEFAULT_ANOMALY_CATALOG,
+      });
+      expect(["ok", "no_data"], `${sub.id} series failed: ${JSON.stringify(seriesRes)}`).toContain(seriesRes.status);
+
+      const drillSql = buildDrillDownSql({
+        metricId: sub.metricId,
+        secondaryDimensions: sub.suggestedSecondaryDimensions ?? [],
+        date,
+        recipientRole: effectiveRole,
+        catalog: DEFAULT_ANOMALY_CATALOG,
+      });
+      const drillRes = await executor.run({
+        question: `Live UC-10 drilldown check for ${sub.id}`,
+        initialSql: drillSql,
+        candidateTables: drillDownCandidateTables(
+          sub.metricId,
+          sub.suggestedSecondaryDimensions ?? [],
+          effectiveRole,
+        ),
+        principal,
+        catalog: DEFAULT_ANOMALY_CATALOG,
+      });
+      expect(["ok", "no_data"], `${sub.id} drilldown failed: ${JSON.stringify(drillRes)}`).toContain(drillRes.status);
+    }
+
+    const scopedSubs = ADMIN_TOKEN
+      ? config.subscriptions
+      : config.subscriptions.map((s) => ({ ...s, recipientRole: roleScope }));
+    const runnerRes = await runAnomalyRunner({
+      subscriptions: scopedSubs,
+      targetDate: date,
+      manual: true,
+      queryExecutor: executor,
+      queryPrincipal: principal,
+      catalog: DEFAULT_ANOMALY_CATALOG,
+      historyStore: new InMemoryAlertHistoryStore(),
+      digestQueue: new InMemoryDigestQueue(),
+      dispatcherOptions: {
+        transport: async () => ({ ok: true, status: 200 }),
+      },
+    });
+    expect(runnerRes.failures).toEqual([]);
+    expect(runnerRes.evaluatedSubscriptions).toBe(scopedSubs.length);
   }, 120_000);
 });

@@ -23,7 +23,10 @@ import {
   type AdvisoryLockClientLike,
   type AdvisoryLockPoolLike,
 } from "../src/ports.js";
-import type { UcEntryHandler } from "@shared/agent";
+import {
+  buildRootGraph,
+  type UcEntryHandler,
+} from "@shared/agent";
 import type { LangSmithRunConfig } from "@shared/agent/telemetry";
 
 interface SseBlock {
@@ -908,5 +911,86 @@ describe("API Host Concurrency & Checkpoint Lifecycle (Issue #135)", () => {
       await new Promise<void>((resolve) => localServer.close(() => resolve()));
       rmSync(localTraces, { recursive: true, force: true });
     }
+  });
+
+  it("expires a real UC-01 clarification interrupt via lifecycleGraph without MCP credentials", async () => {
+    const checkpointer = new MemorySaver();
+    const askGraph = buildRootGraph({
+      checkpointer,
+      emitSpan: () => "",
+      textToSql: {
+        listTables: async () => [{ name: "orders", schema: "public", description: "Orders" }],
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => ({
+              metric: null,
+              dimensions: [],
+              filters: [],
+              timeRange: null,
+              requestedMetrics: ["net_revenue", "gross_merchandise_value"],
+              schemaEntities: ["orders"],
+              queryMode: "standard_query",
+            }),
+          }),
+        } as never,
+      },
+      retrieve: async () => ({
+        semanticChunks: [
+          {
+            chunkId: "metric:net_revenue",
+            docType: "metric" as const,
+            table: "orders",
+            tables: ["orders"],
+            metricName: "net_revenue",
+            content: "net_revenue metric",
+            score: 1,
+            aliasMatched: true,
+          },
+          {
+            chunkId: "metric:gross_merchandise_value",
+            docType: "metric" as const,
+            table: "orders",
+            tables: ["orders"],
+            metricName: "gross_merchandise_value",
+            content: "gross_merchandise_value metric",
+            score: 1,
+            aliasMatched: true,
+          },
+        ],
+        semanticRetrieveStatus: "ok" as const,
+      }),
+      viz: async () => ({}),
+      synthesize: async () => ({}),
+    });
+
+    const threadId = "chat:sales_south:clarify-timeout";
+    const initial = await askGraph.invoke(
+      { question: "Cho tôi xem doanh thu" },
+      { configurable: { thread_id: threadId } },
+    );
+    expect((initial as { __interrupt__?: unknown[] }).__interrupt__).toHaveLength(1);
+
+    const lifecycleGraph = buildRootGraph({
+      checkpointer,
+      emitSpan: () => "",
+      retrieve: async () => ({ semanticChunks: [], semanticRetrieveStatus: "ok" as const }),
+      viz: async () => ({}),
+      synthesize: async () => ({}),
+    });
+    const pool = {
+      connect: async () => ({ query: async () => ({ rows: [] }), release: () => {} }),
+      query: async () => ({ rows: [{ thread_id: threadId }] }),
+      end: async () => {},
+    };
+    const expired = await expirePendingCheckpoints({
+      pool,
+      graph: lifecycleGraph,
+      acquireThreadLock: async () => ({ acquired: true, release: async () => {} }),
+    });
+    expect(expired.expired).toEqual([threadId]);
+
+    const after = await lifecycleGraph.getState({ configurable: { thread_id: threadId } });
+    expect(after.values["status"]).toBe("error");
+    expect(after.values["errorCode"]).toBe("HITL_APPROVAL_TIMEOUT");
   });
 });

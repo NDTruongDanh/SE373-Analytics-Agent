@@ -137,9 +137,12 @@ describe.skipIf(!hasAll)(
       const client = newClient(RO_URL);
       try {
         await client.connect();
+        await client.query("BEGIN READ ONLY");
+        await client.query("SELECT set_config('app.row_scope', '*', true)");
         const orders = await client.query(
           "SELECT count(*)::int AS n FROM orders",
         );
+        await client.query("ROLLBACK");
         expect((orders.rows[0] as { n: number }).n).toBeGreaterThan(0);
         const chunks = await client.query(
           "SELECT count(*)::int AS n FROM semantic.semantic_chunks",
@@ -148,6 +151,75 @@ describe.skipIf(!hasAll)(
       } finally {
         await client.end();
       }
+    });
+
+    describe("engine row-level security (05_row_security.sql)", () => {
+      async function roCount(scope: string | null, sql: string): Promise<number> {
+        const client = newClient(RO_URL);
+        try {
+          await client.connect();
+          await client.query("BEGIN READ ONLY");
+          if (scope !== null) {
+            await client.query("SELECT set_config('app.row_scope', $1, true)", [scope]);
+          }
+          const out = await client.query(sql);
+          await client.query("ROLLBACK");
+          return (out.rows[0] as { n: number }).n;
+        } finally {
+          await client.end();
+        }
+      }
+
+      async function ownerCount(sql: string): Promise<number> {
+        const client = newClient(OWNER_URL);
+        try {
+          await client.connect();
+          const out = await client.query(sql);
+          return (out.rows[0] as { n: number }).n;
+        } finally {
+          await client.end();
+        }
+      }
+
+      it("returns no scoped rows when no row scope is set, but leaves global tables readable", async () => {
+        expect(await roCount(null, "SELECT count(*)::int AS n FROM orders")).toBe(0);
+        expect(await roCount(null, "SELECT count(*)::int AS n FROM customers")).toBe(0);
+        expect(await roCount("", "SELECT count(*)::int AS n FROM order_items")).toBe(0);
+        expect(await roCount(null, "SELECT count(*)::int AS n FROM products")).toBeGreaterThan(0);
+      });
+
+      it("limits every scoped table to the session region along the buyer lineage", async () => {
+        const southOrders = await ownerCount(
+          "SELECT count(*)::int AS n FROM orders o JOIN customers c USING (customer_id) WHERE c.region_group = 'Nam'",
+        );
+        const southItems = await ownerCount(
+          "SELECT count(*)::int AS n FROM order_items i JOIN orders o USING (order_id) JOIN customers c USING (customer_id) WHERE c.region_group = 'Nam'",
+        );
+        expect(await roCount("Nam", "SELECT count(*)::int AS n FROM orders")).toBe(southOrders);
+        expect(await roCount("Nam", "SELECT count(*)::int AS n FROM order_items")).toBe(southItems);
+        expect(southOrders).toBeLessThan(await ownerCount("SELECT count(*)::int AS n FROM orders"));
+      });
+
+      it("blocks a cross-region read even for raw SQL that never went through the AST policy", async () => {
+        expect(
+          await roCount("Nam", "SELECT count(*)::int AS n FROM customers WHERE region_group <> 'Nam'"),
+        ).toBe(0);
+        expect(
+          await roCount(
+            "Nam",
+            "SELECT count(*)::int AS n FROM orders o JOIN customers c USING (customer_id) WHERE c.region_group = 'Bắc'",
+          ),
+        ).toBe(0);
+        expect(
+          await roCount("Nam", "SELECT count(*)::int AS n FROM sellers WHERE region_group <> 'Nam'"),
+        ).toBe(0);
+      });
+
+      it("returns every row for the unscoped sentinel", async () => {
+        expect(await roCount("*", "SELECT count(*)::int AS n FROM orders")).toBe(
+          await ownerCount("SELECT count(*)::int AS n FROM orders"),
+        );
+      });
     });
 
     it("agent_ro INSERT fails 42501 after the read-only override", async () => {

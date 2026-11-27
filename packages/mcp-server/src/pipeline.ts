@@ -17,7 +17,7 @@ import {
   type ScopeName,
 } from "./auth.js";
 import type { ResolvedClient } from "./config.js";
-import { executeReadOnly, type SessionFactory } from "./executor.js";
+import { executeReadOnly, sessionContextFor, type SessionFactory } from "./executor.js";
 import { sanitizeError } from "./errors.js";
 import { auditCall } from "./audit.js";
 import { findTable, type BuiltCatalog } from "./catalog.js";
@@ -292,6 +292,7 @@ export async function executeToolCall(
           `EXPLAIN (FORMAT JSON) ${policy.sql}`,
           50,
           deps.sessionFactory,
+          sessionContextFor(principal),
         );
         if ("error" in explained) return finish(deny(explained.error));
         const plan = parseExplainPlan(explained.rows);
@@ -360,6 +361,7 @@ async function runSqlStages(
     policy.sql,
     maxRows,
     deps.sessionFactory,
+    sessionContextFor(principal),
   );
   if ("error" in executed) return { ok: false, error: executed.error };
   let hits = 0;
