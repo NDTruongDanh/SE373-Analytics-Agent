@@ -9,7 +9,12 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { warmupSqlGuard, ColumnScopePolicy } from "@shared/access-policy";
 import type { SearchSemanticLayerChunk } from "@shared/contracts";
 import { setAuditDestinationForTests } from "../src/audit.js";
-import type { SessionFactory } from "../src/executor.js";
+import {
+  sessionContextFor,
+  UNSCOPED_ROW_SCOPE,
+  type SessionContext,
+  type SessionFactory,
+} from "../src/executor.js";
 import {
   executeResourceRead,
   executeToolCall,
@@ -94,6 +99,7 @@ interface StubBehavior {
 
 interface StubCall {
   began: boolean;
+  context?: SessionContext;
   bodies: string[];
   rolledBack: boolean;
   released: boolean;
@@ -101,8 +107,8 @@ interface StubCall {
 
 function stubFactory(behavior: StubBehavior, calls: StubCall[]): SessionFactory {
   return async () => ({
-    async beginReadOnly(): Promise<void> {
-      calls.push({ began: true, bodies: [], rolledBack: false, released: false });
+    async beginReadOnly(context: SessionContext): Promise<void> {
+      calls.push({ began: true, context, bodies: [], rolledBack: false, released: false });
     },
     async readBounded(body: string, maxRows: number) {
       void maxRows;
@@ -596,5 +602,47 @@ describe("deployment guardrails", () => {
       .join("\n");
     expect(stripped).toContain("127.0.0.1");
     expect(stripped).not.toContain("0.0.0.0");
+  });
+});
+
+describe("engine row-level security session context", () => {
+  it("passes the row-scope value of a scoped principal to run_query and explain_query", async () => {
+    const { deps, calls } = makeDeps({ rows: [{ id: "1" }], columns: ["id"] });
+    await executeToolCall(deps, {
+      headers: headers("sales-token"),
+      tool: "run_query",
+      args: { sql: "SELECT id FROM sellers", maxRows: 10 },
+    });
+    await executeToolCall(deps, {
+      headers: headers("sales-token"),
+      tool: "explain_query",
+      args: { sql: "SELECT id FROM sellers" },
+    });
+    expect(calls.map((call) => call.context)).toEqual([
+      { role: "sales_south", rowScope: "Nam" },
+      { role: "sales_south", rowScope: "Nam" },
+    ]);
+  });
+
+  it("marks an unscoped principal with the unscoped sentinel", async () => {
+    const { deps, calls } = makeDeps({ rows: [{ id: "1" }], columns: ["id"] });
+    await executeToolCall(deps, {
+      headers: headers("hr-token"),
+      tool: "run_query",
+      args: { sql: "SELECT id FROM orders", maxRows: 10 },
+    });
+    expect(calls[0]?.context).toEqual({ role: "hr", rowScope: UNSCOPED_ROW_SCOPE });
+  });
+});
+
+describe("sessionContextFor", () => {
+  it("fails closed for a row scope the engine policies do not cover", () => {
+    expect(
+      sessionContextFor({ role: "x", rowScope: { column: "province", value: "HCM" } }),
+    ).toEqual({ role: "x", rowScope: "" });
+    expect(sessionContextFor({ role: "x", rowScope: null })).toEqual({
+      role: "x",
+      rowScope: UNSCOPED_ROW_SCOPE,
+    });
   });
 });
