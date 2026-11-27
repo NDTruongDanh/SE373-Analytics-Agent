@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import { parse as parseYaml } from "yaml";
+import { UNSCOPED_ROW_SCOPE } from "../executor.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +24,18 @@ export const DEFAULT_SEMANTIC_DIR = findSemanticDir();
 
 export interface VerifySemanticClient {
   query(sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+export interface VerifySemanticPoolClient extends VerifySemanticClient {
+  release(destroy?: boolean | Error): void;
+}
+
+export interface VerifySemanticPool {
+  connect(): Promise<VerifySemanticPoolClient>;
+}
+
+function quoteIdent(id: string): string {
+  return `"${id.replace(/"/g, '""')}"`;
 }
 
 export interface SemanticVerifyReport {
@@ -79,9 +92,6 @@ function parseYamlFile<T>(filePath: string): T {
   return parseYaml(content) as T;
 }
 
-/**
- * 1. Validate that every table and column in tables.yaml and columns.yaml exists in information_schema.
- */
 export async function verifyInformationSchema(
   client: VerifySemanticClient,
   semanticDir: string = DEFAULT_SEMANTIC_DIR,
@@ -102,7 +112,6 @@ export async function verifyInformationSchema(
     columnsRes.rows.map((r) => `${String(r["table_name"])}.${String(r["column_name"])}`),
   );
 
-  // Validate tables.yaml
   const tablesFile = path.join(semanticDir, "tables.yaml");
   if (existsSync(tablesFile)) {
     const data = parseYamlFile<{ chunks: TableChunk[] }>(tablesFile);
@@ -131,7 +140,6 @@ export async function verifyInformationSchema(
     }
   }
 
-  // Validate columns.yaml
   const columnsFile = path.join(semanticDir, "columns.yaml");
   if (existsSync(columnsFile)) {
     const data = parseYamlFile<{ chunks: ColumnChunk[] }>(columnsFile);
@@ -170,9 +178,6 @@ export async function verifyInformationSchema(
   return { failures, checkedTables, checkedColumns };
 }
 
-/**
- * 2. Validate that every enumValues array matches SELECT DISTINCT <col> FROM <table>.
- */
 export async function verifyEnumValues(
   client: VerifySemanticClient,
   semanticDir: string = DEFAULT_SEMANTIC_DIR,
@@ -209,8 +214,10 @@ export async function verifyEnumValues(
 
     const expectedSet = new Set(rawEnums.map((v) => String(v).trim()));
     try {
+      const qCol = quoteIdent(colName);
+      const qTable = quoteIdent(tableName);
       const res = await client.query(
-        `SELECT DISTINCT "${colName}" AS val FROM public."${tableName}" WHERE "${colName}" IS NOT NULL`,
+        `SELECT DISTINCT ${qCol} AS val FROM public.${qTable} WHERE ${qCol} IS NOT NULL`,
       );
       const actualSet = new Set(res.rows.map((r) => String(r["val"]).trim()));
 
@@ -234,9 +241,6 @@ export async function verifyEnumValues(
   return { failures, checkedEnums };
 }
 
-/**
- * 3. Validate that EXPLAIN succeeds on every metrics.yaml SQL template.
- */
 export async function verifyMetricsSql(
   client: VerifySemanticClient,
   semanticDir: string = DEFAULT_SEMANTIC_DIR,
@@ -254,8 +258,7 @@ export async function verifyMetricsSql(
     if (!chunk.sql) continue;
     checkedMetrics += 1;
 
-    // Substitute named parameter placeholders like :period_start or :period_end with safe test literals.
-    // Use negative lookbehind (?<!:) so PostgreSQL cast syntax like ::numeric is preserved.
+    // Negative lookbehind (?<!:) preserves PostgreSQL cast syntax like ::numeric.
     const explainSql = chunk.sql.replace(/(?<!:):[a-zA-Z0-9_]+/g, "'2026-01-01'");
 
     try {
@@ -270,9 +273,6 @@ export async function verifyMetricsSql(
   return { failures, checkedMetrics };
 }
 
-/**
- * Canonical join definitions corresponding to semantic/joins.yaml rules.
- */
 export const CANONICAL_JOINS: Record<
   string,
   {
@@ -324,9 +324,6 @@ export const CANONICAL_JOINS: Record<
   },
 };
 
-/**
- * 4. Validate that join keys in joins.yaml return >= 1 row and record empirical fan-out ratios.
- */
 export async function verifyJoinsAndFanout(
   client: VerifySemanticClient,
   semanticDir: string = DEFAULT_SEMANTIC_DIR,
@@ -375,9 +372,6 @@ export async function verifyJoinsAndFanout(
   return { failures, checkedJoins, fanoutRatios };
 }
 
-/**
- * 5. Reject duplicate aliases across metrics.
- */
 export function verifyMetricAliases(
   semanticDir: string = DEFAULT_SEMANTIC_DIR,
 ): { failures: string[]; aliasCount: number } {
@@ -411,9 +405,6 @@ export function verifyMetricAliases(
   return { failures, aliasCount };
 }
 
-/**
- * Full semantic verification suite against live PostgreSQL (agent_ro).
- */
 export async function verifySemanticCorpus(
   client: VerifySemanticClient,
   options: VerifyOptions = {},
@@ -422,23 +413,18 @@ export async function verifySemanticCorpus(
   const failures: string[] = [];
   const warnings: string[] = [];
 
-  // Check 5: Duplicate aliases (pure file check)
   const aliasCheck = verifyMetricAliases(semanticDir);
   failures.push(...aliasCheck.failures);
 
-  // Check 1: Information schema
   const schemaCheck = await verifyInformationSchema(client, semanticDir);
   failures.push(...schemaCheck.failures);
 
-  // Check 2: Enum values
   const enumCheck = await verifyEnumValues(client, semanticDir);
   failures.push(...enumCheck.failures);
 
-  // Check 3: Metrics EXPLAIN
   const metricsCheck = await verifyMetricsSql(client, semanticDir);
   failures.push(...metricsCheck.failures);
 
-  // Check 4: Joins and fanout ratios
   const joinsCheck = await verifyJoinsAndFanout(client, semanticDir);
   failures.push(...joinsCheck.failures);
 
@@ -454,9 +440,31 @@ export async function verifySemanticCorpus(
   };
 }
 
-/**
- * CLI runner for pnpm semantic:verify.
- */
+export async function verifySemanticCorpusWithPool(
+  pool: VerifySemanticPool,
+  options: VerifyOptions = {},
+): Promise<SemanticVerifyReport> {
+  const client = await pool.connect();
+  let broken = false;
+  try {
+    // 05_row_security.sql fails closed to 0 rows on agent_ro unless app.row_scope is set in-tx.
+    await client.query("BEGIN READ ONLY");
+    await client.query("SET LOCAL statement_timeout = '30s'");
+    await client.query(
+      "SELECT set_config('app.role', $1, true), set_config('app.row_scope', $2, true)",
+      ["admin", UNSCOPED_ROW_SCOPE],
+    );
+    return await verifySemanticCorpus(client, options);
+  } finally {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      broken = true;
+    }
+    client.release(broken || undefined);
+  }
+}
+
 export async function runCli(): Promise<void> {
   const dbUrl = process.env.AGENT_RO_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!dbUrl) {
@@ -470,7 +478,7 @@ export async function runCli(): Promise<void> {
   const pool = new Pool({ connectionString: dbUrl, max: 2 });
 
   try {
-    const report = await verifySemanticCorpus(pool);
+    const report = await verifySemanticCorpusWithPool(pool);
 
     console.log(
       `✓ Checked ${report.checkedTables} tables, ${report.checkedColumns} columns against information_schema.`,

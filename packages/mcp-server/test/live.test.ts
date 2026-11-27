@@ -15,7 +15,7 @@ import type { GatewayDeps } from "../src/pipeline.js";
 import { ColumnScopePolicy } from "@shared/access-policy";
 import { buildCatalog, fetchCatalogSource } from "../src/catalog.js";
 import { loadSensitiveColumns } from "../src/config.js";
-import { verifySemanticCorpus } from "../src/semantic/verify.js";
+import { verifySemanticCorpusWithPool } from "../src/semantic/verify.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..", "..");
@@ -168,9 +168,11 @@ describeLive("semantic live", () => {
   });
 
   it("verifies the live semantic corpus cleanly with semantic:verify", async () => {
-    const pool = new Pool({ connectionString: process.env["DATABASE_URL"] });
+    const pool = new Pool({
+      connectionString: process.env["AGENT_RO_DATABASE_URL"] ?? process.env["DATABASE_URL"],
+    });
     try {
-      const report = await verifySemanticCorpus(pool, {
+      const report = await verifySemanticCorpusWithPool(pool, {
         semanticDir: path.join(ROOT, "semantic"),
       });
       expect(report.failures).toEqual([]);

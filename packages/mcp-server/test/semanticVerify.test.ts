@@ -10,7 +10,9 @@ import {
   verifyMetricAliases,
   verifyMetricsSql,
   verifySemanticCorpus,
+  verifySemanticCorpusWithPool,
   type VerifySemanticClient,
+  type VerifySemanticPool,
 } from "../src/semantic/verify.js";
 
 describe("verifyMetricAliases", () => {
@@ -376,6 +378,96 @@ describe("verifySemanticCorpus (full suite)", () => {
       expect(report.checkedMetrics).toBe(1);
       expect(report.checkedJoins).toBe(1);
       expect(report.fanoutRatios["join_rule:orders_order_items"]).toBe(2);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verifyEnumValues identifier quoting", () => {
+  it("escapes embedded double quotes in table and column identifiers", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-test-"));
+    try {
+      writeFileSync(
+        path.join(tmpDir, "columns.yaml"),
+        `chunks:
+  - chunkId: "column:odd.col"
+    table: 'odd"table'
+    column: 'weird"col'
+    enumValues: ["ok"]`,
+        "utf8",
+      );
+      const queries: string[] = [];
+      const mockClient: VerifySemanticClient = {
+        async query(sql: string) {
+          queries.push(sql);
+          return { rows: [{ val: "ok" }] };
+        },
+      };
+      const res = await verifyEnumValues(mockClient, tmpDir);
+      expect(res.failures).toEqual([]);
+      expect(queries[0]).toBe(
+        'SELECT DISTINCT "weird""col" AS val FROM public."odd""table" WHERE "weird""col" IS NOT NULL',
+      );
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verifySemanticCorpusWithPool", () => {
+  it("sets BEGIN READ ONLY, statement_timeout, and unscoped RLS context before verifying", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-pool-"));
+    try {
+      const executed: Array<{ sql: string; params?: unknown[] }> = [];
+      let releasedArg: unknown = "not-called";
+      const mockPool: VerifySemanticPool = {
+        async connect() {
+          return {
+            async query(sql: string, params?: unknown[]) {
+              executed.push({ sql, params });
+              return { rows: [] };
+            },
+            release(destroy?: boolean | Error) {
+              releasedArg = destroy;
+            },
+          };
+        },
+      };
+
+      const report = await verifySemanticCorpusWithPool(mockPool, { semanticDir: tmpDir });
+      expect(report.failures).toEqual([]);
+      expect(executed[0]?.sql).toBe("BEGIN READ ONLY");
+      expect(executed[1]?.sql).toContain("statement_timeout");
+      expect(executed[2]?.sql).toContain("set_config('app.role'");
+      expect(executed[2]?.params).toEqual(["admin", "*"]);
+      expect(executed.at(-1)?.sql).toBe("ROLLBACK");
+      expect(releasedArg).toBeUndefined();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("destroys the pooled client when ROLLBACK throws", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-pool-"));
+    try {
+      let releasedArg: unknown;
+      const mockPool: VerifySemanticPool = {
+        async connect() {
+          return {
+            async query(sql: string) {
+              if (sql === "ROLLBACK") throw new Error("connection lost");
+              return { rows: [] };
+            },
+            release(destroy?: boolean | Error) {
+              releasedArg = destroy;
+            },
+          };
+        },
+      };
+
+      await verifySemanticCorpusWithPool(mockPool, { semanticDir: tmpDir });
+      expect(releasedArg).toBe(true);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
