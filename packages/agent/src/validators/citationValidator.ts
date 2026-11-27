@@ -80,7 +80,35 @@ export function validateCitations(input: ValidateCitationsInput): CitationValida
   const catalog = catalogSet(input);
   const retrieved = expandRetrieved(input.retrievedChunkIds ?? []);
 
-  const unknown = citations.filter((id) => catalog.size > 0 && !catalog.has(id));
+  const wantsMetric = (input.requestedMetrics ?? []).length > 0;
+  const isDataAnswer = typeof input.sql === "string" && input.sql.trim().length > 0;
+  const isMetricOrData = wantsMetric || isDataAnswer || citations.length > 0;
+
+  if (isMetricOrData && catalog.size === 0) {
+    return {
+      ok: false,
+      issue: {
+        code: "citation_unknown",
+        field: "catalogIds",
+        message: "citation catalog is empty; cannot validate citations for metric/data answer.",
+      },
+      missing: citations,
+    };
+  }
+
+  if (isMetricOrData && retrieved.size === 0) {
+    return {
+      ok: false,
+      issue: {
+        code: "citation_not_retrieved",
+        field: "retrievedChunkIds",
+        message: "no chunks retrieved this turn; cannot validate citations for metric/data answer.",
+      },
+      missing: citations,
+    };
+  }
+
+  const unknown = citations.filter((id) => !catalog.has(id));
   if (unknown.length > 0) {
     return {
       ok: false,
@@ -93,7 +121,7 @@ export function validateCitations(input: ValidateCitationsInput): CitationValida
     };
   }
 
-  const notRetrieved = citations.filter((id) => retrieved.size > 0 && !retrieved.has(id));
+  const notRetrieved = citations.filter((id) => !retrieved.has(id));
   if (notRetrieved.length > 0) {
     return {
       ok: false,
@@ -106,7 +134,6 @@ export function validateCitations(input: ValidateCitationsInput): CitationValida
     };
   }
 
-  const wantsMetric = (input.requestedMetrics ?? []).length > 0;
   if (wantsMetric && !citations.some((id) => id.startsWith("metric:"))) {
     return {
       ok: false,
@@ -142,7 +169,8 @@ export function repairCitations(
   let last: CitationValidation = validateCitations(current);
   if (last.ok) return last;
   for (let attempt = 0; attempt < maxRepairs; attempt += 1) {
-    if (!last.ok && (last.issue.code === "citation_unknown" || last.issue.code === "citation_not_retrieved")) {
+    if (last.ok) return last;
+    if (last.issue.code === "citation_unknown" || last.issue.code === "citation_not_retrieved") {
       const bad = new Set(last.missing.map(normalizeId));
       const fallback = deriveCitations(current.retrievedChunkIds ?? []).filter(
         (id) => !bad.has(normalizeId(id)),
@@ -150,6 +178,15 @@ export function repairCitations(
       const kept = current.citations.filter((id) => !bad.has(normalizeId(id)));
       const next = [...new Set([...kept, ...fallback])];
       if (next.length === 0) break;
+      current = { ...current, citations: next };
+      last = validateCitations(current);
+      if (last.ok) return last;
+    } else if (last.issue.code === "citation_missing_metric") {
+      const metricChunks = (current.retrievedChunkIds ?? [])
+        .map(normalizeId)
+        .filter((id) => id.startsWith("metric:"));
+      if (metricChunks.length === 0) break;
+      const next = [...new Set([...current.citations, ...metricChunks])];
       current = { ...current, citations: next };
       last = validateCitations(current);
       if (last.ok) return last;

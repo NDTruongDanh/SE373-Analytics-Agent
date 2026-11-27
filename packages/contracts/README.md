@@ -14,12 +14,17 @@ After the Phase 1 freeze, contract changes follow the **additive-only** rule:
   members, changing error codes — require a `CONTRACTS_VERSION` major bump
   **plus approval from every affected UC owner**.
 
-`CONTRACTS_VERSION` (`src/index.ts`, currently `1.2.0`) is the single version
+`CONTRACTS_VERSION` (`src/index.ts`, currently `1.3.0`) is the single version
 constant consumers can assert against. Enforcement is by CODEOWNERS review on
 `packages/contracts/` (see `.github/CODEOWNERS`).
 
 ## Version history
 
+- **1.3.0** (additive, one code-owner review): `RawSubscriptionSchema` and
+  `SubscriptionSchema` in `src/alert.ts` gain optional `wowThreshold` /
+  `wow_threshold` (positive percentage, default `20`) so alert subscriptions can
+  configure custom WoW thresholds (#134). Pre-1.3.0 configs without the field
+  still parse with the default.
 - **1.2.0** (additive, one code-owner review): `describe_table` columns gain
   optional `large`, the large-table flag the gateway catalog already set from
   `LARGE_TABLES`. Zod was stripping it, so live runs never saw a large table

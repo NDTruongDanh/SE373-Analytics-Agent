@@ -59,6 +59,9 @@ function preprocessSubscription(val: unknown): unknown {
   if ("min_support" in obj && !("minSupport" in obj)) {
     out.minSupport = obj.min_support;
   }
+  if ("wow_threshold" in obj && !("wowThreshold" in obj)) {
+    out.wowThreshold = obj.wow_threshold;
+  }
   return out;
 }
 
@@ -73,6 +76,7 @@ export const RawSubscriptionSchema = z.object({
   digestPreference: z.enum(["realtime", "digest"]).default("digest"),
   absoluteThreshold: AbsoluteThresholdSchema.optional(),
   minSupport: MinSupportSchema.default(15),
+  wowThreshold: z.number().positive().default(20),
 });
 
 export const SubscriptionSchema = z.preprocess(
