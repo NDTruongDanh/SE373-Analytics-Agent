@@ -217,12 +217,33 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
       const result = detectAnomaly({
         history,
         current: { date: "2026-10-01", value: 125, supportCount: 50 },
+        wowThreshold: 10,
       });
 
       expect(result.zScore).toBeGreaterThanOrEqual(2);
       expect(result.zScore).toBeLessThan(3);
       expect(result.isAnomaly).toBe(true);
       expect(result.severity).toBe("warning");
+    });
+
+    it("requires both absZ >= 2.0 AND absWoW >= wowThreshold for warning", () => {
+      const history = Array.from({ length: 28 }, (_, i) => ({
+        date: `2026-09-${String(i + 1).padStart(2, "0")}`,
+        value: i % 2 === 0 ? 90 : 110,
+        supportCount: 50,
+      }));
+
+      // z ~ 2.4 but WoW is only ~13.6% < default wowThreshold 20%
+      const result = detectAnomaly({
+        history,
+        current: { date: "2026-10-01", value: 125, supportCount: 50 },
+        wowThreshold: 20,
+      });
+
+      expect(result.zScore).toBeGreaterThanOrEqual(2);
+      expect(result.wowPercent).toBeLessThan(20);
+      expect(result.isAnomaly).toBe(false);
+      expect(result.severity).toBe("none");
     });
 
     it("does not emit info for statistical deviations below the warning threshold", () => {
@@ -270,7 +291,7 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
       });
 
       expect(result.isAnomaly).toBe(true);
-      expect(result.severity).toBe("critical");
+      expect(result.severity).toBe("info");
       expect(result.status).toBe("insufficient_history");
     });
   });
@@ -498,6 +519,279 @@ describe("Pure-Code Contamination-Resistant Statistical Anomaly Detector", () =>
       expect(result.isAnomaly).toBe(true);
       expect(result.severity).toBe("critical");
       expect(result.direction).toBe("spike");
+    });
+  });
+
+  // =========================================================================
+  // 6. Hardened Statistical Anomaly Detection (UC-10 Issue #134)
+  // =========================================================================
+  describe("Hardened Statistical Baseline, SEP & Event Handling (Issue #134)", () => {
+    // Helper to generate 63 days history for a target date
+    function generate63DayHistory(
+      targetDate: string,
+      baseValue: number,
+      variance: number,
+    ): TimeSeriesPoint[] {
+      const points: TimeSeriesPoint[] = [];
+      const target = new Date(`${targetDate}T00:00:00.000Z`);
+      for (let offset = 63; offset >= 1; offset--) {
+        const d = new Date(target);
+        d.setUTCDate(d.getUTCDate() - offset);
+        const iso = d.toISOString().slice(0, 10);
+        points.push({
+          date: iso,
+          value: baseValue + (Math.sin(offset) * variance),
+          supportCount: 40,
+        });
+      }
+      return points;
+    }
+
+    it("uses same-weekday baseline over 63-day window (4 <= n <= 8 points)", () => {
+      const targetDate = "2026-10-15"; // Thursday
+      const history = generate63DayHistory(targetDate, 100, 5);
+      const current: TimeSeriesPoint = {
+        date: targetDate,
+        value: 135, // spike
+        supportCount: 45,
+      };
+
+      const result = detectAnomaly({
+        history,
+        current,
+        sameWeekday: true,
+      });
+
+      expect(result.status).toBe("ok");
+      expect(result.isSameWeekday).toBe(true);
+      expect(result.baselineSampleSize).toBeGreaterThanOrEqual(4);
+      expect(result.baselineSampleSize).toBeLessThanOrEqual(8);
+      expect(result.sep).toBeDefined();
+      expect(result.sep!).toBeGreaterThan(0);
+      expect(result.isAnomaly).toBe(true);
+    });
+
+    it("returns insufficient_history when same-weekday points n < 4 with sameWeekday: true", () => {
+      const targetDate = "2026-10-15";
+      // Provide only 14 days of history (at most 2 same Thursdays)
+      const shortHistory = generate63DayHistory(targetDate, 100, 5).slice(-14);
+      const current: TimeSeriesPoint = {
+        date: targetDate,
+        value: 135,
+        supportCount: 45,
+      };
+
+      const result = detectAnomaly({
+        history: shortHistory,
+        current,
+        sameWeekday: true,
+      });
+
+      expect(result.status).toBe("insufficient_history");
+      expect(result.isAnomaly).toBe(false);
+    });
+
+    it("excludes holidays and mega sales from same-weekday baseline", () => {
+      const targetDate = "2026-10-01"; // Thursday
+      const history = generate63DayHistory(targetDate, 100, 5);
+
+      const result = detectAnomaly({
+        history,
+        current: { date: targetDate, value: 102, supportCount: 40 },
+        sameWeekday: true,
+      });
+
+      expect(result.status).toBe("ok");
+      // All baseline points must NOT be excluded events
+      expect(result.baselineSampleSize).toBeGreaterThanOrEqual(4);
+    });
+
+    it("calculates SEP with trimmed mean for n >= 6 and median/MAD for 4 <= n < 6", () => {
+      // Test n >= 6
+      const n8History = generate63DayHistory("2026-10-15", 50, 2);
+      const res8 = detectAnomaly({
+        history: n8History,
+        current: { date: "2026-10-15", value: 65, supportCount: 30 },
+        sameWeekday: true,
+      });
+      expect(res8.baselineSampleSize).toBeGreaterThanOrEqual(6);
+      expect(res8.sep).toBeDefined();
+
+      // Test 4 <= n < 6 with small same-weekday subset (35 days -> 5 Thursdays, t-7 excluded -> 4 points)
+      const n4History = generate63DayHistory("2026-10-15", 50, 2).slice(-35);
+      const res4 = detectAnomaly({
+        history: n4History,
+        current: { date: "2026-10-15", value: 65, supportCount: 30 },
+        sameWeekday: true,
+      });
+      expect(res4.baselineSampleSize).toBe(4);
+      expect(res4.sep).toBeDefined();
+    });
+
+    it("applies universal metric floors: 1.0 VND for currency, 0.001 for ratios, 0.01 for reviews", () => {
+      const history = generate63DayHistory("2026-10-15", 0.0001, 0);
+
+      // Currency floor
+      const resVnd = detectAnomaly({
+        history,
+        current: { date: "2026-10-15", value: 0.0001, supportCount: 20 },
+        metricId: "metric:net_revenue",
+        sameWeekday: true,
+      });
+      expect(resVnd.sigmaEff).toBeGreaterThanOrEqual(1.0);
+
+      // Ratio floor
+      const resRate = detectAnomaly({
+        history,
+        current: { date: "2026-10-15", value: 0.0001, supportCount: 20 },
+        metricId: "metric:return_rate",
+        sameWeekday: true,
+      });
+      expect(resRate.sigmaEff).toBeGreaterThanOrEqual(0.001);
+
+      // Review score floor
+      const resReview = detectAnomaly({
+        history,
+        current: { date: "2026-10-15", value: 0.0001, supportCount: 20 },
+        metricId: "metric:review_score_avg",
+        sameWeekday: true,
+      });
+      expect(resReview.sigmaEff).toBeGreaterThanOrEqual(0.01);
+    });
+
+    it("strictly enforces support gate for absolute threshold breach", () => {
+      // Baseline around 0.09 with variance 0.015 -> value 0.105 has |z| ~ 1.5 < 2.0 (absolute-only breach)
+      const history = generate63DayHistory("2026-10-15", 0.09, 0.015);
+
+      // Breached absolute threshold (value 0.105 > 0.10) but supportCount < minSupport (15)
+      const lowSupport = detectAnomaly({
+        history,
+        current: { date: "2026-10-15", value: 0.105, supportCount: 5 }, // 5 orders < 15
+        metricId: "metric:return_rate",
+        minSupport: 15,
+        absoluteThreshold: { operator: "above", value: 0.10 },
+      });
+      // MUST be suppressed to skipped_insufficient_support
+      expect(lowSupport.isAnomaly).toBe(false);
+      expect(lowSupport.status).toBe("skipped_insufficient_support");
+
+      // With support >= minSupport: successfully alerts as info (absolute-only breach, |z| < 2.0)
+      const validSupport = detectAnomaly({
+        history,
+        current: { date: "2026-10-15", value: 0.105, supportCount: 25 },
+        metricId: "metric:return_rate",
+        minSupport: 15,
+        absoluteThreshold: { operator: "above", value: 0.10 },
+      });
+      expect(validSupport.isAnomaly).toBe(true);
+      expect(validSupport.absoluteBreached).toBe(true);
+      expect(validSupport.severity).toBe("info");
+      expect(Math.abs(validSupport.zScore)).toBeLessThan(2.0);
+    });
+
+    it("downgrades non-critical alerts on public holidays to info, but critical alerts remain critical", () => {
+      // 2026-09-02 is Quốc khánh (public holiday)
+      const holidayDate = "2026-09-02";
+      // Baseline with variance 7.5 yields std ~5.3 -> value 112 gives |z| ~ 2.3 in [2.0, 3.0), WoW ~ 13.7% < 50%
+      const history = generateBaseline(28, 100, 7.5, "2026-08-01");
+
+      // 1. Moderate deviation (|z| in [2.0, 3.0), WoW >= 10% -> would normally be warning)
+      const modDev = detectAnomaly({
+        history,
+        current: { date: holidayDate, value: 112, supportCount: 30 },
+        wowThreshold: 10,
+      });
+      expect(modDev.isPublicHoliday).toBe(true);
+      expect(modDev.isAnomaly).toBe(true);
+      expect(Math.abs(modDev.zScore)).toBeGreaterThanOrEqual(2.0);
+      expect(Math.abs(modDev.zScore)).toBeLessThan(3.0);
+      expect(Math.abs(modDev.wowPercent!)).toBeLessThan(50);
+      // Downgraded to info due to public holiday!
+      expect(modDev.severity).toBe("info");
+
+      // 2. Critical deviation (|z| >= 3.0 or WoW >= 50% with high support)
+      const critDev = detectAnomaly({
+        history,
+        current: { date: holidayDate, value: 180, supportCount: 40 },
+      });
+      expect(critDev.isPublicHoliday).toBe(true);
+      expect(critDev.isAnomaly).toBe(true);
+      // Critical alerts NEVER downgraded!
+      expect(critDev.severity).toBe("critical");
+    });
+
+    it("enforces NO DOWNGRADE on Mega Sales (9.9, 11.11, Black Friday)", () => {
+      // 2026-09-09 is Mega Sale 9.9
+      const saleDate = "2026-09-09";
+      // History starts 2026-08-10, so t-7 (2026-09-02) is present in history; std ~5.3 -> |z| ~ 2.3 in [2.0, 3.0)
+      const history = generateBaseline(28, 100, 7.5, "2026-08-10");
+
+      const saleDev = detectAnomaly({
+        history,
+        current: { date: saleDate, value: 112, supportCount: 30 },
+        wowThreshold: 10,
+      });
+      expect(saleDev.isMegaSale).toBe(true);
+      expect(saleDev.isPublicHoliday).toBe(false);
+      expect(Math.abs(saleDev.zScore)).toBeGreaterThanOrEqual(2.0);
+      expect(Math.abs(saleDev.zScore)).toBeLessThan(3.0);
+      // Maintains warning severity (NO DOWNGRADE)
+      expect(saleDev.severity).toBe("warning");
+    });
+
+    it("excludes holidays and mega sales when sameWeekday is false and in auto-detect fallback", () => {
+      const targetDate = "2026-09-16";
+      const history: TimeSeriesPoint[] = Array.from({ length: 20 }, (_, i) => {
+        const d = new Date("2026-08-26T00:00:00.000Z");
+        d.setUTCDate(d.getUTCDate() + i);
+        const iso = d.toISOString().slice(0, 10);
+        const isEvent = iso === "2026-09-02" || iso === "2026-09-09";
+        return {
+          date: iso,
+          value: isEvent ? 5000 : 100,
+          supportCount: 50,
+        };
+      });
+
+      const explicitOff = detectAnomaly({
+        history,
+        current: { date: targetDate, value: 100, supportCount: 50 },
+        sameWeekday: false,
+      });
+      expect(explicitOff.status).toBe("ok");
+      expect(explicitOff.isSameWeekday).toBe(false);
+      expect(explicitOff.expectedValue).toBeCloseTo(100, 5);
+
+      const autoFallback = detectAnomaly({
+        history,
+        current: { date: targetDate, value: 100, supportCount: 50 },
+      });
+      expect(autoFallback.status).toBe("ok");
+      expect(autoFallback.isSameWeekday).toBe(false);
+      expect(autoFallback.expectedValue).toBeCloseTo(100, 5);
+    });
+
+    it("caps same-weekday baseline window to the 8 most recent matching weekdays", () => {
+      const targetDate = "2026-10-15"; // Thursday
+      const points: TimeSeriesPoint[] = [];
+      const target = new Date(`${targetDate}T00:00:00.000Z`);
+      for (let offset = 91; offset >= 1; offset--) {
+        const d = new Date(target);
+        d.setUTCDate(d.getUTCDate() - offset);
+        points.push({
+          date: d.toISOString().slice(0, 10),
+          value: 100,
+          supportCount: 40,
+        });
+      }
+
+      const result = detectAnomaly({
+        history: points,
+        current: { date: targetDate, value: 100, supportCount: 40 },
+        sameWeekday: true,
+      });
+      expect(result.isSameWeekday).toBe(true);
+      expect(result.baselineSampleSize).toBe(8);
     });
   });
 });

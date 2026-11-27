@@ -90,6 +90,7 @@ export const AnalysisPlanSchema = z.object({
   drilldownThreshold: z.number().positive().default(30.0),
   unexploredBranches: z.array(UnexploredBranchSchema).default([]),
   residualOtherAbs: z.number().default(0),
+  asOf: z.iso.datetime({ offset: true }).optional(),
 });
 
 export type AnalysisPlan = z.infer<typeof AnalysisPlanSchema>;

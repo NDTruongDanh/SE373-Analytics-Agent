@@ -1290,4 +1290,56 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
     expect(out.answerText).toMatch(/7 bảng/);
     expect(out.answerText).toMatch(/order_items/);
   });
+
+  it("clarifies rather than returning cannot_answer when a metric grounds partialTables alongside an unmapped entity", async () => {
+    let execCalls = 0;
+    const searchFn = async (): Promise<SearchSemanticLayerChunk[]> => [
+      semanticChunk({
+        chunkId: "metric:order_count",
+        docType: "metric",
+        tables: ["orders"],
+        metricName: "order_count",
+        content: "Số đơn hàng (order_count) = COUNT(orders.id)",
+        score: 0.95,
+        aliasMatched: true,
+      }),
+    ];
+
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: searchFn }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async (q) => (q === "tổ phụ trách" ? [] : searchFn()),
+        intentModel: makeIntentModel({
+          requestedMetrics: ["order_count"],
+          schemaEntities: ["tổ phụ trách"],
+          queryMode: "standard_query",
+        }).model,
+        executor: {
+          run: async () => {
+            execCalls += 1;
+            return {
+              status: "ok",
+              sql: "SELECT COUNT(*) AS n FROM public.orders",
+              tablesUsed: ["orders"],
+              columns: ["n"],
+              rows: [{ n: 10 }],
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+
+    const out = (await graph.invoke(
+      { question: "Số đơn hàng theo tổ phụ trách", route: "text-to-sql" },
+      runConfig("t-partial-clarify", "r-partial-clarify"),
+    )) as Record<string, unknown>;
+    expect(execCalls).toBe(0);
+    expect(out["status"]).not.toBe("cannot_answer");
+    expect(Array.isArray(out["__interrupt__"])).toBe(true);
+  });
 });

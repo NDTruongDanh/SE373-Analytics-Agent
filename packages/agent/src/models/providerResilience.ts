@@ -34,6 +34,7 @@ export interface ProviderFetchOptions {
   secondary?: SecondaryProviderConfig;
   cacheContext?: SemanticCacheContext;
   opencodeSessionId?: () => string;
+  deadlineMs?: number;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -270,28 +271,6 @@ function bodyWithModel(bodyText: string | null, model: string): string | undefin
   return bodyText;
 }
 
-function isTimeoutError(error: unknown): boolean {
-  const candidates: unknown[] = [error];
-  if (typeof error === "object" && error !== null && "cause" in error) {
-    candidates.push((error as { cause?: unknown }).cause);
-  }
-  return candidates.some((candidate) => {
-    if (typeof candidate !== "object" || candidate === null) return false;
-    const record = candidate as { name?: unknown; message?: unknown; code?: unknown };
-    return (
-      (typeof record.name === "string" && /timeout/i.test(record.name)) ||
-      (typeof record.message === "string" && /timed?\s*out|timeout/i.test(record.message)) ||
-      (typeof record.code === "string" &&
-        ["ETIMEDOUT", "ESOCKETTIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT"].includes(record.code))
-    );
-  });
-}
-
-function isTimedOutRequest(request: Request, error: unknown): boolean {
-  if (isTimeoutError(error) || isTimeoutError(request.signal.reason)) return true;
-  return isSdkTimeoutAbort(request);
-}
-
 function isSdkTimeoutAbort(request: Request): boolean {
   const reason = request.signal.reason;
   return Boolean(
@@ -300,8 +279,23 @@ function isSdkTimeoutAbort(request: Request): boolean {
       reason !== null &&
       "name" in reason &&
       (reason as { name?: unknown }).name === "AbortError" &&
-      !(reason instanceof Error && /model call aborted/i.test(reason.message)),
+      "message" in reason &&
+      /timed?\s*out|timeout/i.test(String((reason as { message?: unknown }).message ?? "")),
   );
+}
+
+function boundedSecondarySignal(
+  request: Request,
+  remainingDeadlineMs: number | undefined,
+): AbortSignal {
+  const timeoutMs =
+    remainingDeadlineMs !== undefined
+      ? Math.max(1, Math.min(SECONDARY_ATTEMPT_TIMEOUT_MS, remainingDeadlineMs))
+      : SECONDARY_ATTEMPT_TIMEOUT_MS;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return isSdkTimeoutAbort(request)
+    ? timeoutSignal
+    : AbortSignal.any([request.signal, timeoutSignal]);
 }
 
 function createSecondaryRequest(
@@ -369,8 +363,27 @@ export function createProviderFetch(options: ProviderFetchOptions): typeof fetch
 
     const usePrimary = !secondary || !breaker || breaker.shouldUsePrimary();
     if (!usePrimary && secondary) {
+      const remainingDeadlineMs =
+        options.deadlineMs !== undefined ? options.deadlineMs - now() : undefined;
+      if (request.signal.aborted) {
+        throw request.signal.reason instanceof Error
+          ? request.signal.reason
+          : new DOMException("This operation was aborted", "AbortError");
+      }
+      if (remainingDeadlineMs !== undefined && remainingDeadlineMs <= 0) {
+        const err = new Error("Model call exceeded run deadline");
+        err.name = "TimeoutError";
+        throw err;
+      }
       const response = await fetchImpl(
-        createSecondaryRequest(request, bodyText, options.primaryBaseURL, secondary, options.opencodeSessionId),
+        createSecondaryRequest(
+          request,
+          bodyText,
+          options.primaryBaseURL,
+          secondary,
+          options.opencodeSessionId,
+          boundedSecondarySignal(request, remainingDeadlineMs),
+        ),
       );
       await rememberResponse(cacheKey, response, ttlMs, now);
       return response;
@@ -380,36 +393,62 @@ export function createProviderFetch(options: ProviderFetchOptions): typeof fetch
     try {
       primaryResponse = await fetchImpl(request.clone());
     } catch (error) {
-      const timeout = isTimedOutRequest(request, error);
-      if (breaker && timeout) breaker.recordPrimaryFailure();
       const sdkTimedOut = isSdkTimeoutAbort(request);
-      if (!secondary || (request.signal.aborted && !sdkTimedOut)) {
+      if (request.signal.aborted && !sdkTimedOut) {
         breaker?.cancelProbe();
         throw error;
       }
-      // The SDK's own timeout aborts its composite signal without a reason.
-      // A fresh signal allows the secondary attempt; run-deadline timeouts
-      // retain their explicit TimeoutError reason and never extend a run.
-      const secondarySignal = sdkTimedOut
-        ? AbortSignal.timeout(SECONDARY_ATTEMPT_TIMEOUT_MS)
-        : request.signal;
-      if (breaker && !timeout) breaker.cancelProbe();
+      breaker?.recordPrimaryFailure();
+      const remainingDeadlineMs =
+        options.deadlineMs !== undefined ? options.deadlineMs - now() : undefined;
+      if (!secondary || (remainingDeadlineMs !== undefined && remainingDeadlineMs <= 0)) {
+        throw error;
+      }
       const response = await fetchImpl(
-        createSecondaryRequest(request, bodyText, options.primaryBaseURL, secondary, options.opencodeSessionId, secondarySignal),
+        createSecondaryRequest(
+          request,
+          bodyText,
+          options.primaryBaseURL,
+          secondary,
+          options.opencodeSessionId,
+          boundedSecondarySignal(request, remainingDeadlineMs),
+        ),
       );
       await rememberResponse(cacheKey, response, ttlMs, now);
       return response;
     }
 
-    if ((primaryResponse.status === 408 || primaryResponse.status >= 500) && secondary && breaker) {
-      breaker.recordPrimaryFailure();
-      const response = await fetchImpl(
-        createSecondaryRequest(request, bodyText, options.primaryBaseURL, secondary, options.opencodeSessionId),
-      );
-      await rememberResponse(cacheKey, response, ttlMs, now);
-      return response;
+    const remainingDeadlineMs =
+      options.deadlineMs !== undefined ? options.deadlineMs - now() : undefined;
+    if (primaryResponse.status === 408 || primaryResponse.status >= 500) {
+      breaker?.recordPrimaryFailure();
+      if (
+        secondary &&
+        !request.signal.aborted &&
+        (remainingDeadlineMs === undefined || remainingDeadlineMs > 0)
+      ) {
+        void primaryResponse.body?.cancel();
+        const response = await fetchImpl(
+          createSecondaryRequest(
+            request,
+            bodyText,
+            options.primaryBaseURL,
+            secondary,
+            options.opencodeSessionId,
+            boundedSecondarySignal(request, remainingDeadlineMs),
+          ),
+        );
+        await rememberResponse(cacheKey, response, ttlMs, now);
+        return response;
+      }
+      await rememberResponse(cacheKey, primaryResponse, ttlMs, now);
+      return primaryResponse;
     }
-    if (breaker) breaker.recordPrimarySuccess();
+    if (primaryResponse.status < 400) {
+      breaker?.recordPrimarySuccess();
+    } else {
+      breaker?.cancelProbe();
+    }
     await rememberResponse(cacheKey, primaryResponse, ttlMs, now);
     return primaryResponse;
   };

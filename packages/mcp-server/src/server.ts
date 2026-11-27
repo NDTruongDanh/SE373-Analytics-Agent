@@ -40,7 +40,12 @@ import {
   getAgentRoPool,
   type SessionFactory,
 } from "./executor.js";
-import { initAudit } from "./audit.js";
+import {
+  initAudit,
+  initPgAudit,
+  setPgAuditPoolForTests,
+  type AuditPoolLike,
+} from "./audit.js";
 import { sanitizeError } from "./errors.js";
 import { TOOL_SPECS } from "./tools.js";
 import { warmupSqlGuard } from "@shared/access-policy";
@@ -60,6 +65,9 @@ export interface GatewayAppOptions {
   rowScopeYaml?: string;
   rowScopePath?: string;
   auditPath?: string;
+  auditPool?: AuditPoolLike;
+  harnessStateDatabaseUrl?: string;
+  allowJsonlOnlyAuditForTests?: boolean;
   sessionFactory?: SessionFactory;
   catalogOverride?: BuiltCatalog;
   search?: SearchFn;
@@ -68,6 +76,7 @@ export interface GatewayAppOptions {
 }
 
 const DEFAULT_CLIENTS_PATH = path.resolve("policies/mcp_clients.yaml");
+const SEMANTIC_DIR = fileURLToPath(new URL("../../../semantic", import.meta.url));
 
 function defaultDocuments(): ResourceDocument[] {
   const read = (file: string): string => {
@@ -80,11 +89,11 @@ function defaultDocuments(): ResourceDocument[] {
   return [
     {
       uri: "semantic://data-dictionary",
-      text: read(path.resolve("semantic/data_dictionary.md")),
+      text: read(path.join(SEMANTIC_DIR, "data_dictionary.md")),
     },
     {
       uri: "semantic://metrics",
-      text: read(path.resolve("semantic/metrics.md")),
+      text: read(path.join(SEMANTIC_DIR, "metrics.md")),
     },
   ];
 }
@@ -95,7 +104,7 @@ function semanticIdentifierAliases(): SqlIdentifierAliases {
   for (const file of ["tables.yaml", "columns.yaml"] as const) {
     let parsed: unknown;
     try {
-      parsed = parseYaml(readFileSync(path.resolve("semantic", file), "utf8"));
+      parsed = parseYaml(readFileSync(path.join(SEMANTIC_DIR, file), "utf8"));
     } catch {
       continue;
     }
@@ -182,6 +191,20 @@ export async function createGatewayApp(
   );
 
   initAudit(options.auditPath ?? path.resolve("logs/mcp_audit.jsonl"));
+  const auditPgConn =
+    options.harnessStateDatabaseUrl ??
+    process.env["HARNESS_STATE_DATABASE_URL"];
+  if (options.auditPool) {
+    await initPgAudit({ pool: options.auditPool });
+  } else if (auditPgConn && auditPgConn.length > 0) {
+    await initPgAudit({ connString: auditPgConn });
+  } else if (options.allowJsonlOnlyAuditForTests === true) {
+    setPgAuditPoolForTests(null);
+  } else {
+    throw new Error(
+      "createGatewayApp: HARNESS_STATE_DATABASE_URL or auditPool is required for durable fail-closed PostgreSQL audit (pass allowJsonlOnlyAuditForTests: true only in DB-free tests).",
+    );
+  }
 
   let catalog = options.catalogOverride;
   const pool = options.catalogOverride === undefined ? getAgentRoPool() : null;

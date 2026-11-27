@@ -35,6 +35,8 @@ export interface StorageChunk {
 
 const CHUNK_COLUMNS = `chunk_id, doc_type, table_name, tables, metric_name, aliases, sensitivity, content`;
 
+const CORPUS_VERSION_SQL = `SELECT version FROM semantic.corpus_version WHERE id = 1`;
+
 const WATERMARK_SQL = `SELECT EXTRACT(EPOCH FROM MAX(updated_at)) AS max_ts, COUNT(*)::int AS total
 FROM semantic.semantic_chunks`;
 
@@ -266,6 +268,7 @@ export class Bm25Retriever {
   }
 }
 
+let cachedCorpusVersion: number | null = null;
 let cachedMaxTs: string | null = null;
 let cachedTotal: number | null = null;
 let catalogRows: Record<string, unknown>[] = [];
@@ -277,6 +280,7 @@ function rebuildCatalog(
   rows: Record<string, unknown>[],
   maxTs: string,
   total: number,
+  corpusVersion: number | null = null,
 ): void {
   catalogRows = rows;
   const retriever = new Bm25Retriever();
@@ -300,6 +304,7 @@ function rebuildCatalog(
     next.add(chunkId.replace(/^column:/, ""));
   }
   citationCatalogSet = next;
+  cachedCorpusVersion = corpusVersion;
   cachedMaxTs = maxTs;
   cachedTotal = total;
   catalogInitialized = true;
@@ -310,6 +315,7 @@ export function getCitationCatalog(): ReadonlySet<string> {
 }
 
 export function resetSemanticCache(): void {
+  cachedCorpusVersion = null;
   cachedMaxTs = null;
   cachedTotal = null;
   catalogRows = [];
@@ -632,21 +638,45 @@ export async function hybridSearch(
   const candidates = Math.max(topK * 3, topK);
 
   try {
-    const watermark = await query(WATERMARK_SQL, []);
-    const watermarkRow = (watermark.rows[0] ?? {}) as Record<string, unknown>;
-    const maxTs = String(watermarkRow["max_ts"] ?? "");
-    const total = Number(watermarkRow["total"] ?? -1);
-    if (
-      !catalogInitialized ||
-      maxTs !== cachedMaxTs ||
-      total !== cachedTotal
-    ) {
-      try {
-        const catalog = await query(CATALOG_SQL, []);
-        const rows = (catalog.rows ?? []) as Record<string, unknown>[];
-        rebuildCatalog(rows, maxTs, total);
-      } catch {
-        // Non-fatal: fall back to cached or vector rows below.
+    let corpusVersion: number | null = null;
+    try {
+      const ver = await query(CORPUS_VERSION_SQL, []);
+      const rawVer = ver.rows[0]?.["version"];
+      if (rawVer !== undefined && rawVer !== null) {
+        const parsedVer = Number(rawVer);
+        if (Number.isFinite(parsedVer)) corpusVersion = parsedVer;
+      }
+    } catch {
+      // Pre-migration volume without semantic.corpus_version falls back to watermark.
+    }
+
+    if (corpusVersion !== null) {
+      if (!catalogInitialized || corpusVersion !== cachedCorpusVersion) {
+        try {
+          const catalog = await query(CATALOG_SQL, []);
+          const rows = (catalog.rows ?? []) as Record<string, unknown>[];
+          rebuildCatalog(rows, "", rows.length, corpusVersion);
+        } catch {
+          // Non-fatal: fall back to cached or vector rows below.
+        }
+      }
+    } else {
+      const watermark = await query(WATERMARK_SQL, []);
+      const watermarkRow = (watermark.rows[0] ?? {}) as Record<string, unknown>;
+      const maxTs = String(watermarkRow["max_ts"] ?? "");
+      const total = Number(watermarkRow["total"] ?? -1);
+      if (
+        !catalogInitialized ||
+        maxTs !== cachedMaxTs ||
+        total !== cachedTotal
+      ) {
+        try {
+          const catalog = await query(CATALOG_SQL, []);
+          const rows = (catalog.rows ?? []) as Record<string, unknown>[];
+          rebuildCatalog(rows, maxTs, total, null);
+        } catch {
+          // Non-fatal: fall back to cached or vector rows below.
+        }
       }
     }
   } catch {

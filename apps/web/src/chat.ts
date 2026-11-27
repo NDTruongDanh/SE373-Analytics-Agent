@@ -87,6 +87,7 @@ export interface ChatState {
   phase: Phase;
   runId: string | null;
   threadId: string | null;
+  checkpointId: string | null;
   events: SseProgressEvent[];
   clarification: Clarification | null;
   planReview: PlanReviewState | null;
@@ -102,6 +103,7 @@ export const initialChat: ChatState = {
   phase: "idle",
   runId: null,
   threadId: null,
+  checkpointId: null,
   events: [],
   clarification: null,
   planReview: null,
@@ -409,10 +411,26 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const next = { ...state, runId: event.runId, threadId: event.threadId, events: [...state.events, event] };
       const data = record(event.data);
       if (event.event === "interrupt_waiting") {
-        const planReview = planReviewFrom(event.data);
+        const rawCheckpointId =
+          typeof (event as { checkpointId?: unknown }).checkpointId === "string" &&
+          (event as { checkpointId: string }).checkpointId.trim().length > 0
+            ? (event as { checkpointId: string }).checkpointId
+            : typeof data?.checkpointId === "string" && data.checkpointId.trim().length > 0
+              ? data.checkpointId
+              : null;
+        const planReviewBase = planReviewFrom(event.data);
+        const planReview = planReviewBase
+          ? {
+              ...planReviewBase,
+              ...(rawCheckpointId && !planReviewBase.checkpointId
+                ? { checkpointId: rawCheckpointId }
+                : {}),
+            }
+          : null;
         if (planReview) {
           return {
             ...next,
+            checkpointId: planReview.checkpointId ?? rawCheckpointId,
             phase: "waiting",
             planReview,
             clarification: null,
@@ -431,6 +449,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         return clarification
           ? {
               ...next,
+              checkpointId: rawCheckpointId,
               phase: "waiting",
               clarification,
               planReview: null,
@@ -475,6 +494,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         return {
           ...next,
           phase: "completed",
+          checkpointId: null,
           clarification: null,
           planReview: null,
           conflictError: null,

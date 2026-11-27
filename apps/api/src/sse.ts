@@ -32,6 +32,7 @@ const SCHEMAS = {
 export interface SseEnvelope {
   runId: string;
   threadId: string;
+  checkpointId?: string;
   node?: string;
   data?: unknown;
 }
@@ -199,6 +200,8 @@ export function failedPayload(input: {
 export interface InterruptPayloadInput {
   action?: string;
   reason?: string;
+  checkpointId?: string;
+  asOf?: string;
   pendingClarification?: PendingClarification | string[] | null;
   plan?: unknown;
   currentPlan?: unknown;
@@ -216,6 +219,8 @@ export function interruptPayload(input: InterruptPayloadInput): Record<string, u
   return {
     ...(input.action ? { action: input.action } : {}),
     ...(input.reason ? { reason: scrubMessage(input.reason) } : {}),
+    ...(input.checkpointId ? { checkpointId: input.checkpointId } : {}),
+    ...(input.asOf ? { asOf: input.asOf } : {}),
     ...(pending ? { pendingClarification: pending } : {}),
     ...(plan !== undefined ? { plan, currentPlan: plan } : {}),
   };
@@ -231,6 +236,9 @@ export function emitSseEvent(
   const candidate = {
     runId: String(envelope.runId ?? ""),
     threadId: String(envelope.threadId ?? ""),
+    ...(envelope.checkpointId && event === "interrupt_waiting"
+      ? { checkpointId: envelope.checkpointId }
+      : {}),
     ...(envelope.node ? { node: envelope.node } : {}),
     event,
     ...(envelope.data !== undefined ? { data: envelope.data } : {}),

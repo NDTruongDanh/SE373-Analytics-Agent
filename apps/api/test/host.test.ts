@@ -126,6 +126,7 @@ describe("buildApp /api/ask", () => {
       mcpUrl: `http://127.0.0.1:${address.port}/mcp`,
       tracesDir,
       env: stubEnv,
+      allowInMemoryLockForTests: true,
     });
     await new Promise<void>((resolve) => {
       apiServer = app.listen(0, "127.0.0.1", () => resolve());
@@ -203,7 +204,7 @@ describe("buildApp /api/ask", () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const app = buildApp({
-      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv, allowInMemoryLockForTests: true,
       routes: { "text-to-sql": async () => { await gate; return { status: "ok", answerText: "done" }; } },
     });
     const server = app.listen(0, "127.0.0.1");
@@ -241,7 +242,7 @@ describe("buildApp /api/ask", () => {
       queryMode: "standard_query" as const,
     };
     const app = buildApp({
-      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv, allowInMemoryLockForTests: true,
       textToSql: {
         listTables: async () => [
           { name: "orders", schema: "public", description: "Orders" },
@@ -295,7 +296,7 @@ describe("buildApp /api/ask", () => {
     let textToSqlCalls = 0;
     let rcaCalls = 0;
     const app = buildApp({
-      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv, allowInMemoryLockForTests: true,
       routes: {
         "text-to-sql": async () => { textToSqlCalls += 1; return { status: "ok", answerText: "sql answer" }; },
         "root-cause-analysis": async () => { rcaCalls += 1; return { status: "ok", answerText: "rca answer" }; },
@@ -324,7 +325,7 @@ describe("buildApp /api/ask", () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const app = buildApp({
-      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv, allowInMemoryLockForTests: true,
       routes: { "text-to-sql": async (_state, rt) => {
         rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: "SELECT secret FROM orders WHERE phone = '0901111111'", tablesUsed: ["orders"] } });
         rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
@@ -371,7 +372,7 @@ describe("buildApp /api/ask", () => {
     const proposalSql =
       "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status";
     const app = buildApp({
-      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv, allowInMemoryLockForTests: true,
       routes: { "text-to-sql": async (_state, rt) => {
         rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: proposalSql, tablesUsed: ["orders"] } });
         rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
@@ -458,7 +459,7 @@ describe("buildApp /api/ask", () => {
     const proposalSql =
       "SELECT status, COUNT(*) AS n FROM public.orders GROUP BY status ORDER BY status";
     const app = buildApp({
-      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv,
+      checkpointer: new MemorySaver(), mcpUrl: "http://127.0.0.1:1/mcp", tracesDir, env: stubEnv, allowInMemoryLockForTests: true,
       routes: { "text-to-sql": async (_state, rt) => {
         rt.emit({ node: "understand", type: "node_done", durationMs: 1, payload: { sql: proposalSql, tablesUsed: ["orders"] } });
         rt.emit({ node: "describe", type: "tool_call", durationMs: 1, payload: { tool: "list_tables", tables: ["orders"] } });
@@ -613,6 +614,7 @@ describe("buildApp /api/ask", () => {
       mcpUrl: `http://127.0.0.1:${mcpAddress.port}/mcp`,
       tracesDir: localTraces,
       env: stubEnv,
+      allowInMemoryLockForTests: true,
       textToSql: {
         intentModel: {
           invoke: async () => ({ content: JSON.stringify(intentPayload) }),
@@ -685,6 +687,7 @@ describe("buildApp /api/ask", () => {
       mcpUrl: "http://127.0.0.1:1/mcp",
       tracesDir,
       env: stubEnv,
+      allowInMemoryLockForTests: true,
       routes: {
         "text-to-sql": async () => {
           throw new ModelRetryError({
@@ -733,6 +736,7 @@ describe("buildApp /api/ask", () => {
       mcpUrl: "http://127.0.0.1:1/mcp",
       tracesDir,
       env: stubEnv,
+      allowInMemoryLockForTests: true,
       textToSql: {
         listTables: async () => [
           { name: "customers", schema: "public", description: "Customer directory" },
@@ -818,6 +822,7 @@ describe("buildApp /api/ask", () => {
       mcpUrl: "http://127.0.0.1:1/mcp",
       tracesDir,
       env: stubEnv,
+      allowInMemoryLockForTests: true,
       textToSql: {
         listTables: async () => [
           { name: "orders", schema: "public", description: "Orders" },
@@ -866,10 +871,11 @@ describe("buildApp /api/ask", () => {
       expect(pending?.options).toContain("channels");
 
       const runId = waiting?.data["runId"] as string;
+      const checkpointId = waiting?.data["checkpointId"] as string;
       const resumeRes = await fetch(`http://127.0.0.1:${address.port}/api/runs/${runId}/resume`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ value: "channels" }),
+        body: JSON.stringify({ value: "channels", checkpointId }),
       });
       expect(resumeRes.status).toBe(200);
       const resumeBlocks = parseSse(await resumeRes.text());
