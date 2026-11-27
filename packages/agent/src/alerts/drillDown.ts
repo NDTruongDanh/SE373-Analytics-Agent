@@ -272,17 +272,13 @@ export function buildDrillDownSql(options: {
   };
 
   const ctes: string[] = [];
-  if (needsPayments) {
+  if (needsPayments && metricId !== "metric:review_score_avg") {
     const paymentCols = activeDims.filter((d) => d.startsWith("payments."));
-    const payOrderWindow =
-      metricId === "metric:review_score_avg"
-        ? `orders.purchase_date >= '2020-01-01T00:00:00+07:00' AND orders.purchase_date < '${endExclusiveIso}'`
-        : ordersDateWhere;
     ctes.push(
       `pay_agg AS (` +
       `SELECT DISTINCT payments.order_id, ${paymentCols.join(", ")} ` +
       `FROM payments JOIN orders ON payments.order_id = orders.order_id ` +
-      `WHERE ${payOrderWindow}` +
+      `WHERE ${ordersDateWhere}` +
       `)`,
     );
   }
@@ -528,7 +524,7 @@ export async function runDrillDownAnalysis(
               `Chỉ số: ${escapeUntrustedText(subscription.metricId)}\n` +
               `Ngày: ${escapeUntrustedText(date)}\n` +
               `Độ lệch: ${escapeUntrustedText(anomaly.deviationSummary)}\n` +
-              `Phân đoạn chính: ${escapeUntrustedText(drilldownSegment)}\n` +
+              `Phân đoạn chính:\n<untrusted_data>\n${escapeUntrustedText(drilldownSegment)}\n</untrusted_data>\n` +
               `Dữ liệu truy vấn:\n<untrusted_data>\n${serializeUntrusted(rows.slice(0, 5))}\n</untrusted_data>`,
           },
         ],
@@ -541,7 +537,15 @@ export async function runDrillDownAnalysis(
           : typeof response?.content === "string"
             ? response.content
             : Array.isArray(response?.content)
-              ? JSON.stringify(response.content)
+              ? response.content
+                  .map((block) =>
+                    typeof block === "string"
+                      ? block
+                      : block && typeof block === "object" && "text" in block && typeof block.text === "string"
+                        ? block.text
+                        : "",
+                  )
+                  .join("")
               : "";
 
       if (rawContent.trim().length > 0) {
@@ -560,7 +564,6 @@ export async function runDrillDownAnalysis(
         }
       }
     } catch {
-      // Fallback to deterministic explanation on error
     }
   }
 

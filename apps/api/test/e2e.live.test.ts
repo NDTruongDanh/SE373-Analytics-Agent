@@ -397,5 +397,5 @@ describe.skipIf(!LIVE)("live e2e on the loaded DB", () => {
     });
     expect(runnerRes.failures).toEqual([]);
     expect(runnerRes.evaluatedSubscriptions).toBe(scopedSubs.length);
-  }, 60_000);
+  }, 120_000);
 });

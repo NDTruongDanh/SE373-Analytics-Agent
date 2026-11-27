@@ -498,7 +498,7 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
 
     it("enforces holiday downgrade on public holidays while preserving Mega Sale severity", async () => {
       // 1. Moderate deviation on 2026-09-02 (Quốc khánh - public_holiday):
-      // Baseline around 100 with variance ~8 (std ~8), value 125 gives z ~ 3.1 in [2.0, 3.5), WoW = 25% in [20%, 50%)
+      // Baseline around 100 with variance ~8 (std ~8), value 122 gives z ~ 2.7 in [2.0, 3.0), WoW = 22% in [20%, 50%)
       const holidaySeries: TimeSeriesPoint[] = Array.from({ length: 28 }, (_, i) => ({
         date: `2026-08-${String(i + 1).padStart(2, "0")}`,
         value: 100 + (i % 2 === 0 ? 8 : -8),
@@ -507,7 +507,7 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       holidaySeries[25]!.value = 100;
       holidaySeries.push({
         date: "2026-09-02",
-        value: 125, // z ~ 3.1 < 3.5, WoW = 25% < 50% -> moderate warning
+        value: 122, // z ~ 2.7 < 3.0, WoW = 22% < 50% -> moderate warning
         supportCount: 50,
       });
 
@@ -541,7 +541,7 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       if (weekAgoIdx >= 0) saleSeries[weekAgoIdx]!.value = 100;
       saleSeries.push({
         date: "2026-09-09",
-        value: 125, // z ~ 3.1 < 3.5, WoW = 25% >= 20% -> moderate warning
+        value: 122, // z ~ 2.7 < 3.0, WoW = 22% >= 20% -> moderate warning
         supportCount: 50,
       });
 
@@ -688,7 +688,7 @@ describe("Anomaly Detection & Governed Alert Runner (UC-10, F10.1–F10.5)", () 
       expect(res.anomaliesDetected).toBe(0);
     });
 
-    it("disallows warning alert when wowPercent is null and absZ < 3.5", async () => {
+    it("disallows warning alert when wowPercent is null and absZ < 3.0", async () => {
       const missingWowSeries: TimeSeriesPoint[] = Array.from({ length: 28 }, (_, i) => ({
         date: `2026-08-${String(i + 1).padStart(2, "0")}`,
         value: i % 2 === 0 ? 90 : 110,

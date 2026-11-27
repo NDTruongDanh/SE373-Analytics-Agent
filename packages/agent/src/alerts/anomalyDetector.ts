@@ -56,13 +56,6 @@ export interface AnomalyDetectorOutput {
   minSupport?: number;
 }
 
-/**
- * Returns minimum noise floor eps for standard metric families.
- * - Currency (VND): 1.0 VND
- * - Rates/Ratios: 0.001 (0.1%)
- * - Review score: 0.01 stars
- * - Default: 1e-6
- */
 export function getMetricEpsFloor(metricId?: string): number {
   if (!metricId) return 1e-6;
   const lower = metricId.toLowerCase();
@@ -92,11 +85,6 @@ export function getMetricEpsFloor(metricId?: string): number {
   return 1e-6;
 }
 
-/**
- * Returns minimum support sample count by metric:
- * - review_score_avg: 5 reviews
- * - orders, revenue, return_rate, cancellation_rate: 15 orders
- */
 export function getMinSupportCount(
   metricId?: string,
   explicitMinSupport?: MinSupport,
@@ -159,9 +147,6 @@ export function medianAbsoluteDeviation(values: number[], med?: number): number 
   return median(absDiffs);
 }
 
-/**
- * sigma_eff = max(sigma_raw, max(eps, 0.05 * |mu|)) to prevent noise spikes on flat metrics.
- */
 export function calculateEffectiveSigma(
   sigmaRaw: number,
   mu: number,
@@ -171,10 +156,6 @@ export function calculateEffectiveSigma(
   return Math.max(sigmaRaw, sigmaFloor);
 }
 
-/**
- * Standard Error of Prediction (SEP)
- * SEP = sigma_eff * sqrt(1 + c_estimator / n_eff)
- */
 export function calculateSEP(options: {
   sigmaEff: number;
   n: number;
@@ -188,8 +169,7 @@ export function calculateSEP(options: {
     cEstimator = 1.05;
     nEff = Math.max(1, n - 2);
   } else {
-    // Median / MAD for small samples (4 <= n < 6)
-    cEstimator = Math.PI / 2; // ~1.570796
+    cEstimator = Math.PI / 2;
     nEff = Math.max(1, n);
   }
 
@@ -297,45 +277,48 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   const currentWeekday = getUTCDayOfWeek(current.date);
   const weekAgoDate = dateDaysBefore(current.date, 7);
 
-  // Separate candidate points having the same day of week and not t-7, excluding holidays/sales
-  const sameWeekdayCandidates = history.filter((pt) => {
-    if (getUTCDayOfWeek(pt.date) !== currentWeekday) return false;
-    if (weekAgoDate !== undefined && pt.date === weekAgoDate) return false;
-    if (isExcludedFromBaseline(pt.date, calConfig)) return false;
-    return true;
-  });
+  const sameWeekdayCandidates = history
+    .filter((pt) => {
+      if (getUTCDayOfWeek(pt.date) !== currentWeekday) return false;
+      if (weekAgoDate !== undefined && pt.date === weekAgoDate) return false;
+      if (isExcludedFromBaseline(pt.date, calConfig)) return false;
+      return true;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-8);
 
   let baselinePoints: TimeSeriesPoint[];
   let isUsingSameWeekday = false;
   let insufficientHistory = false;
 
   if (sameWeekday === true) {
-    // Strict same-weekday requirement: 4 <= n <= 8
     if (sameWeekdayCandidates.length < 4) {
       insufficientHistory = true;
-      baselinePoints = sameWeekdayCandidates.length > 0 ? sameWeekdayCandidates : history;
+      baselinePoints =
+        sameWeekdayCandidates.length > 0
+          ? sameWeekdayCandidates
+          : history.filter((pt) => !isExcludedFromBaseline(pt.date, calConfig));
     } else {
       baselinePoints = sameWeekdayCandidates;
       isUsingSameWeekday = true;
     }
   } else if (sameWeekday === false) {
-    // Explicitly disabled same-weekday: use all history points except t-7 and holidays
     baselinePoints = history.filter((pt) => {
       if (weekAgoDate !== undefined && pt.date === weekAgoDate) return false;
+      if (isExcludedFromBaseline(pt.date, calConfig)) return false;
       return true;
     });
     isUsingSameWeekday = false;
     insufficientHistory = baselinePoints.length < 14;
   } else {
-    // Auto-detection mode:
-    // If we have >= 4 valid same-weekday points, use same-weekday!
     if (sameWeekdayCandidates.length >= 4) {
       baselinePoints = sameWeekdayCandidates;
       isUsingSameWeekday = true;
       insufficientHistory = false;
     } else {
-      // Legacy fallback for tests with 14-28 consecutive days
-      baselinePoints = history;
+      baselinePoints = history.filter(
+        (pt) => !isExcludedFromBaseline(pt.date, calConfig),
+      );
       isUsingSameWeekday = false;
       insufficientHistory = baselinePoints.length < 14;
     }
@@ -386,7 +369,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
       : "";
   const deviationSummary = `z=${zSign}${zScore.toFixed(2)}${wowText}`;
 
-  // Handle insufficient history: absolute threshold alerts are preserved as info
   if (insufficientHistory) {
     if (absoluteBreached) {
       return {
@@ -440,7 +422,7 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   let severity: AlertSeverity | "none" = "none";
 
   const isStatisticalCritical =
-    absZ >= 3.5 ||
+    absZ >= 3.0 ||
     (absWoW >= 50.0 && (current.supportCount ?? 0) >= 2 * minOrders);
 
   const isStatisticalWarning =
@@ -449,7 +431,6 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   if (isStatisticalCritical) {
     severity = "critical";
   } else if (isCurrentPublicHoliday && (isStatisticalWarning || absoluteBreached)) {
-    // Public holiday downgrade: non-critical alerts downgraded to "info"
     severity = "info";
   } else if (isStatisticalWarning) {
     severity = "warning";

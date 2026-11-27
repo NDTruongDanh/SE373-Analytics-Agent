@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
@@ -6,13 +6,18 @@ import { z } from "zod";
 export const CalendarEventTypeSchema = z.enum(["public_holiday", "mega_sale"]);
 export type CalendarEventType = z.infer<typeof CalendarEventTypeSchema>;
 
-export const CalendarEventSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  type: CalendarEventTypeSchema,
-});
+export const CalendarEventSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    type: CalendarEventTypeSchema,
+  })
+  .refine((event) => event.endDate >= event.startDate, {
+    message: "endDate must be on or after startDate",
+    path: ["endDate"],
+  });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
 
 export const CalendarConfigSchema = z.object({
@@ -25,7 +30,13 @@ export const DEFAULT_CALENDAR_PATH = fileURLToPath(
   new URL("../../../../config/calendar.yaml", import.meta.url),
 );
 
-let cachedDefaultConfig: CalendarConfig | undefined;
+let cachedDefaultConfig:
+  | { path: string; mtimeMs: number | null; config: CalendarConfig }
+  | undefined;
+
+export function resetCalendarConfigCacheForTests(): void {
+  cachedDefaultConfig = undefined;
+}
 
 export function loadCalendarConfig(yamlText: string): CalendarConfig {
   let raw: unknown;
@@ -39,12 +50,25 @@ export function loadCalendarConfig(yamlText: string): CalendarConfig {
   return CalendarConfigSchema.parse(raw);
 }
 
+function resolveCalendarPath(
+  filePath?: string,
+  envOverride: string | undefined = process.env["CALENDAR_PATH"],
+): { explicitPath: string | undefined; resolved: string } {
+  const trimmedEnv =
+    envOverride !== undefined && envOverride.trim().length > 0 ? envOverride : undefined;
+  const explicitPath = filePath ?? trimmedEnv;
+  return { explicitPath, resolved: explicitPath ?? DEFAULT_CALENDAR_PATH };
+}
+
 export function loadCalendarConfigFile(
   filePath?: string,
   envOverride: string | undefined = process.env["CALENDAR_PATH"],
 ): CalendarConfig {
-  const resolved = filePath ?? envOverride ?? DEFAULT_CALENDAR_PATH;
+  const { explicitPath, resolved } = resolveCalendarPath(filePath, envOverride);
   if (!existsSync(resolved)) {
+    if (explicitPath !== undefined) {
+      throw new Error(`Calendar config file not found: ${resolved}`);
+    }
     return { version: 1, events: [] };
   }
   const content = readFileSync(resolved, "utf8");
@@ -52,15 +76,26 @@ export function loadCalendarConfigFile(
 }
 
 export function getDefaultCalendarConfig(): CalendarConfig {
-  if (!cachedDefaultConfig) {
-    cachedDefaultConfig = loadCalendarConfigFile();
+  const { explicitPath, resolved } = resolveCalendarPath();
+  const exists = existsSync(resolved);
+  if (!exists && explicitPath !== undefined) {
+    throw new Error(`Calendar config file not found: ${resolved}`);
   }
-  return cachedDefaultConfig;
+  const mtimeMs = exists ? statSync(resolved).mtimeMs : null;
+  if (
+    cachedDefaultConfig &&
+    cachedDefaultConfig.path === resolved &&
+    cachedDefaultConfig.mtimeMs === mtimeMs
+  ) {
+    return cachedDefaultConfig.config;
+  }
+  const config = exists
+    ? loadCalendarConfig(readFileSync(resolved, "utf8"))
+    : { version: 1, events: [] };
+  cachedDefaultConfig = { path: resolved, mtimeMs, config };
+  return config;
 }
 
-/**
- * Finds all calendar events covering the target date (inclusive: startDate <= date <= endDate).
- */
 export function getCalendarEventsForDate(
   date: string,
   config?: CalendarConfig,
@@ -71,9 +106,6 @@ export function getCalendarEventsForDate(
   );
 }
 
-/**
- * Returns the primary matching calendar event for the target date, if any.
- */
 export function getCalendarEvent(
   date: string,
   config?: CalendarConfig,
@@ -82,11 +114,6 @@ export function getCalendarEvent(
   return events[0];
 }
 
-/**
- * Checks if target date falls into a public holiday (Tết, Giỗ tổ, 30/4, 2/9, etc.).
- * Public holidays are excluded from historical baseline, and alerts are downgraded
- * to "info" unless reaching Critical severity.
- */
 export function isPublicHoliday(
   date: string,
   config?: CalendarConfig,
@@ -96,10 +123,6 @@ export function isPublicHoliday(
   );
 }
 
-/**
- * Checks if target date falls into a mega sale event (9.9, 11.11, Black Friday, 12.12).
- * Mega sales are excluded from historical baseline, but alerts MAINTAIN severity (NO DOWNGRADE).
- */
 export function isMegaSale(
   date: string,
   config?: CalendarConfig,
@@ -109,10 +132,6 @@ export function isMegaSale(
   );
 }
 
-/**
- * Checks if target date should be excluded from historical same-weekday baseline.
- * Both public holidays and mega sales distort historical trends and must be excluded.
- */
 export function isExcludedFromBaseline(
   date: string,
   config?: CalendarConfig,

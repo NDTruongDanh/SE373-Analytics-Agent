@@ -576,7 +576,6 @@ export async function runAnomalyRunner(
     }
   }
 
-  // Deduplicate candidate subscriptions into unique hypotheses: (metricId, recipientRole, slice).
   const hypothesisGroups = new Map<string, CandidateItem[]>();
   for (const c of candidateItems) {
     const list = hypothesisGroups.get(c.hypothesisKey) ?? [];
@@ -692,7 +691,7 @@ export async function runAnomalyRunner(
 
       const isCritical =
         isStatAdmitted &&
-        (absZ >= 3.5 || (absWoW >= 50.0 && supportCount >= 2 * minSupportCount));
+        (absZ >= 3.0 || (absWoW >= 50.0 && supportCount >= 2 * minSupportCount));
 
       const isStatisticalWarning =
         isStatAdmitted &&

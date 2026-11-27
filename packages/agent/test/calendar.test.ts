@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   getCalendarEvent,
@@ -7,6 +10,8 @@ import {
   isMegaSale,
   isPublicHoliday,
   loadCalendarConfig,
+  loadCalendarConfigFile,
+  resetCalendarConfigCacheForTests,
 } from "../src/alerts/calendar.js";
 
 describe("Vietnam Retail Calendar & Event Classifier (UC-10 #134)", () => {
@@ -91,5 +96,73 @@ events:
     expect(event?.id).toBe("national-day-2026");
     expect(event?.name).toContain("Quốc khánh");
     expect(event?.type).toBe("public_holiday");
+  });
+
+  it("rejects inverted calendar event date ranges (endDate < startDate)", () => {
+    const badYaml = `
+version: 1
+events:
+  - id: bad-range
+    name: "Inverted"
+    startDate: "2026-09-10"
+    endDate: "2026-09-05"
+    type: "mega_sale"
+`;
+    expect(() => loadCalendarConfig(badYaml)).toThrow(/endDate must be on or after startDate/);
+  });
+
+  it("throws when an explicit calendar file path or CALENDAR_PATH does not exist", () => {
+    expect(() => loadCalendarConfigFile("/nonexistent/path/calendar.yaml")).toThrow(
+      /Calendar config file not found/,
+    );
+    expect(() => loadCalendarConfigFile(undefined, "/nonexistent/env/calendar.yaml")).toThrow(
+      /Calendar config file not found/,
+    );
+  });
+
+  it("reloads default calendar cache when CALENDAR_PATH or file mtime changes", () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "cal-cache-"));
+    const calPath = path.join(tmpDir, "calendar.yaml");
+    const prevEnv = process.env["CALENDAR_PATH"];
+    try {
+      writeFileSync(
+        calPath,
+        `version: 1
+events:
+  - id: ev1
+    name: "First"
+    startDate: "2026-06-01"
+    endDate: "2026-06-01"
+    type: "mega_sale"
+`,
+        "utf8",
+      );
+      process.env["CALENDAR_PATH"] = calPath;
+      resetCalendarConfigCacheForTests();
+      const first = getDefaultCalendarConfig();
+      expect(first.events[0]?.id).toBe("ev1");
+
+      writeFileSync(
+        calPath,
+        `version: 1
+events:
+  - id: ev2
+    name: "Second"
+    startDate: "2026-06-02"
+    endDate: "2026-06-02"
+    type: "public_holiday"
+`,
+        "utf8",
+      );
+      const future = new Date(Date.now() + 5_000);
+      utimesSync(calPath, future, future);
+      const second = getDefaultCalendarConfig();
+      expect(second.events[0]?.id).toBe("ev2");
+    } finally {
+      if (prevEnv === undefined) delete process.env["CALENDAR_PATH"];
+      else process.env["CALENDAR_PATH"] = prevEnv;
+      resetCalendarConfigCacheForTests();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
