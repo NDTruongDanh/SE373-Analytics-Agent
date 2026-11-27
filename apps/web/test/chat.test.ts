@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   chatReducer,
   clarificationFrom,
+  extractAnswerArtifacts,
   extractRootCausePayload,
   extractVizPayload,
   initialChat,
@@ -40,6 +41,22 @@ describe("chat state", () => {
     const answer = { intent: { metric: null, dimensions: [], filters: [], timeRange: null }, sql: "SELECT 1", tablesUsed: [], citations: [], attempts: [], resultPreview: [], answerText: "Done", status: "ok", telemetry: { promptTokens: 0, completionTokens: 0, embeddingTokens: 0, estimatedCostUsd: 0, latencyMs: 0 } };
     expect(chatReducer(initialChat, { type: "event", event: event("completed", { answer }) }).answerDetail?.sql).toBe("SELECT 1");
     expect(chatReducer(initialChat, { type: "event", event: event("completed", { answer: { ...answer, resultPreview: new Array(51).fill({}) } }) }).answerDetail).toBeNull();
+  });
+
+  it("reads additive completed artifacts without constructing a fake SQLAnswer", () => {
+    const payload = {
+      status: "ok", answerText: "Có 12 đơn.", citations: ["metric:orders_count"],
+      tablesUsed: ["orders"], resultPreview: [{ n: 12 }], resultTruncated: true,
+    };
+    expect(extractAnswerArtifacts(payload)).toMatchObject({
+      citations: ["metric:orders_count"], resultPreview: [{ n: 12 }], resultTruncated: true,
+    });
+    const state = chatReducer(initialChat, { type: "event", event: event("completed", payload) });
+    expect(state.answer).toBe("Có 12 đơn.");
+    expect(state.answerDetail).toBeNull();
+    expect(extractAnswerArtifacts({ ...payload, status: "restricted" })).toBeNull();
+    expect(extractAnswerArtifacts({ ...payload, resultPreview: new Array(51).fill({}) })).toBeNull();
+    expect(extractAnswerArtifacts({ ...payload, resultPreview: undefined, previewWithheld: true })?.previewWithheld).toBe(true);
   });
 
   it("captures streaming viz payloads and preserves them through completion", () => {

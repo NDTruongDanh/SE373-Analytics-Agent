@@ -1,6 +1,7 @@
 import type { Response } from "express";
-import type { PendingClarification } from "@shared/agent";
+import type { AgentState, PendingClarification } from "@shared/agent";
 import {
+  InsightReportSchema,
   SseCompletedEventSchema,
   SseFailedEventSchema,
   SseIntentParsedEventSchema,
@@ -38,7 +39,7 @@ export interface SseEnvelope {
 
 // Defense-in-depth wire tripwire (not the canonical redactor) for VN 10-digit 0-led phones and emails.
 // Negative lookbehind avoids matching digits inside longer integers or after decimal points.
-const PHONE_LIKE = /(?<!\d|\d[.,])0\d{9}/;
+const PHONE_LIKE = /(?<!\d|\d[.,\-/])(?:0(?:3|5|7|8|9)(?:[\s.\-]?\d){8}|02\d(?:[\s.\-]?\d){7,9}|\+84(?:[\s.\-]?\d){8,10})\b/;
 const EMAIL_LIKE = /\S+@\S+\.\S+/;
 
 export function containsWirePii(text: string): boolean {
@@ -107,16 +108,84 @@ export function completedPayload(input: {
   answerText: string;
   toolsCalled: string[];
   total: number;
+  citations?: string[];
+  tablesUsed?: string[];
+  resultPreview?: Record<string, unknown>[];
+  resultTruncated?: boolean;
+  previewWithheld?: boolean;
 }): Record<string, unknown> {
-  if (containsWirePii(input.answerText)) {
-    throw new Error("completed answer withheld: possible PII in answer text");
-  }
-  return {
+  const payload = {
     status: input.status,
     answerText: input.answerText,
     toolsCalled: [...input.toolsCalled],
     total: input.total,
+    ...(input.citations ? { citations: [...input.citations] } : {}),
+    ...(input.tablesUsed ? { tablesUsed: [...input.tablesUsed] } : {}),
+    ...(input.resultPreview ? { resultPreview: [...input.resultPreview] } : {}),
+    ...(input.resultTruncated !== undefined ? { resultTruncated: input.resultTruncated } : {}),
+    ...(input.previewWithheld ? { previewWithheld: true } : {}),
   };
+  if (containsWirePii(JSON.stringify(payload))) {
+    throw new Error("completed answer withheld: possible PII in answer text");
+  }
+  return payload;
+}
+
+export function completionArtifacts(state: AgentState): {
+  citations: string[];
+  tablesUsed: string[];
+  resultPreview?: Record<string, unknown>[];
+  resultTruncated: boolean;
+  previewWithheld?: boolean;
+} | null {
+  if (state.budgetExceeded || (state.status !== "ok" && state.status !== "no_data")) return null;
+  const header = state.sql?.split("\n", 1)[0]?.trim() ?? "";
+  const retrieved = new Set(state.semanticChunks.map((chunk) => chunk.chunkId));
+  const safeCitations = header.toLowerCase().startsWith("-- @citations:")
+    ? [
+        ...new Set(
+          header
+            .slice("-- @citations:".length)
+            .split(",")
+            .map((id) => id.trim())
+            .filter((id) => /^[a-z_][a-z0-9_.:-]{0,127}$/i.test(id) && retrieved.has(id)),
+        ),
+      ].slice(0, 10)
+    : [];
+  const tablesUsed = state.tablesUsed
+    .filter((table) => /^[a-z_][a-z0-9_]{0,62}$/i.test(table)).slice(0, 10);
+  const preview = state.resultPreview.slice(0, 50);
+  const serialized = JSON.stringify(preview);
+  const resultPreview = Buffer.byteLength(serialized, "utf8") <= 60_000 && !containsWirePii(serialized)
+    ? preview : undefined;
+  return {
+    citations: safeCitations,
+    tablesUsed,
+    ...(resultPreview ? { resultPreview } : {}),
+    resultTruncated: state.resultTruncated,
+    ...(!resultPreview ? { previewWithheld: true } : {}),
+  };
+}
+
+export function vizPayload(state: AgentState): Record<string, unknown> | null {
+  const artifacts = completionArtifacts(state);
+  if (!artifacts || !artifacts.resultPreview) return null;
+  const spec = state.vizSpec;
+  if (typeof spec !== "object" || spec === null || !("kind" in spec) || spec.kind !== "insight_report") return null;
+  const report = InsightReportSchema.safeParse("report" in spec ? spec.report : null);
+  if (!report.success) return null;
+  const openuiLang = "openuiLang" in spec && typeof spec.openuiLang === "string"
+    ? spec.openuiLang.slice(0, 30000) : "";
+  const payload = {
+    title: "Kết quả phân tích",
+    report: report.data,
+    openuiLang,
+    resultPreview: artifacts.resultPreview,
+    resultTruncated: state.resultTruncated,
+    ...( "narrativeDowngraded" in spec && spec.narrativeDowngraded === true ? { narrativeDowngraded: true } : {}),
+  };
+  const serialized = JSON.stringify(payload);
+  return Buffer.byteLength(serialized, "utf8") <= 90_000 && !containsWirePii(serialized) ? payload : null;
 }
 
 export function failedPayload(input: {

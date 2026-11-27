@@ -50,6 +50,7 @@ import {
   type Principal,
 } from "./principals.js";
 import {
+  completionArtifacts,
   completedPayload,
   displayableSql,
   emitSseEvent,
@@ -57,6 +58,7 @@ import {
   interruptPayload,
   schemaPayload,
   sqlPayload,
+  vizPayload,
 } from "./sse.js";
 import type { AppStateStore } from "./store/alertStore.js";
 import { API_SHELL } from "./constants.js";
@@ -387,6 +389,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
     out: AgentState,
   ): void {
     const preview = (out.resultPreview ?? []) as Record<string, unknown>[];
+    const viz = vizPayload(out);
+    if (viz) {
+      emitSseEvent(res, "viz", { runId, threadId, node: "viz", data: viz });
+    }
+    const artifacts = completionArtifacts(out);
     emitSseEvent(res, "completed", {
       runId,
       threadId,
@@ -396,6 +403,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         answerText: out.answerText,
         toolsCalled: [...(out.toolsCalled ?? [])],
         total: previewCountTotal((out.columns ?? []) as string[], preview),
+        ...(artifacts ?? {}),
       }),
     });
   }
@@ -503,6 +511,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
           semanticChunks: [], catalogTables: [], catalogStatus: "unloaded",
           semanticQuery: null, semanticRetrieveStatus: "unloaded", semanticErrorCode: null,
           resultPreview: [], columns: [], toolsCalled: [],
+          resultTruncated: false, rowCount: null, budgetExceeded: false,
           vizSpec: null, pendingClarification: null, analysisPlan: null, rootCauseAnswer: null,
           budget: new Overwrite({ llmCalls: 0, tokensUsed: 0, maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls, maxTokens: BUDGET_DEFAULTS.maxTokens, deadlineMs: 0 }),
           telemetry: new Overwrite({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }),

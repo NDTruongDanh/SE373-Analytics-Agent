@@ -10,6 +10,7 @@ import { InsightChart } from "@/charts";
 import {
   extractRootCausePayload,
   extractVizPayload,
+  extractAnswerArtifacts,
   type ChatAction,
   type ChatRootCauseState,
   type ChatState,
@@ -107,7 +108,9 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
           if (completedViz && !completedViz.resultPreview && latestViz?.resultPreview) {
             completedViz = { ...completedViz, resultPreview: latestViz.resultPreview };
           }
-          const previewRows = detail.success ? detail.data.resultPreview : completedViz?.resultPreview;
+          const artifacts = extractAnswerArtifacts(event.data);
+          const previewRows = detail.success ? detail.data.resultPreview :
+            completedViz?.resultPreview ?? artifacts?.resultPreview;
           if (completedViz && previewRows && previewRows.length > 0 && !completedViz.resultPreview) {
             completedViz = { ...completedViz, resultPreview: previewRows };
           }

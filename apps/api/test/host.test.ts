@@ -408,6 +408,7 @@ describe("buildApp /api/ask", () => {
         "schema_retrieved",
         "query_running",
         "sql_generated",
+        "viz",
         "completed",
       ]);
       for (const block of blocks) {
@@ -432,6 +433,10 @@ describe("buildApp /api/ask", () => {
       expect(completed.toolsCalled).toEqual(["list_tables", "run_query"]);
       expect(completed.total).toBe(12);
       expect(completed.answerText).toContain("3 status groups");
+      expect((completed as typeof completed & { resultPreview: unknown[] }).resultPreview).toHaveLength(3);
+      const viz = blocks.find((block) => block.event === "viz")?.data["data"] as { report?: unknown; resultPreview?: unknown[] };
+      expect(viz.report).toBeTruthy();
+      expect(viz.resultPreview).toHaveLength(3);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

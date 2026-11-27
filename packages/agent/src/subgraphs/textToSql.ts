@@ -315,6 +315,7 @@ const EXECUTOR_UPDATE_MAP: {
 } = {
   ok: (result) => ({
     status: "ok",
+    answerText: "",
     sql: result.sql,
     tablesUsed: result.tablesUsed,
     columns: result.columns,
@@ -330,7 +331,7 @@ const EXECUTOR_UPDATE_MAP: {
     resultPreview: [],
     resultTruncated: false,
     rowCount: 0,
-    answerText: result.diagnostic ?? "No matching data was found.",
+    answerText: "",
   }),
   needs_clarification: (result) => ({
     status: "needs_clarification",
