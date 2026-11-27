@@ -1,6 +1,6 @@
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, openSync, readFileSync, readSync } from "node:fs";
 import { Command, Overwrite, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
@@ -30,7 +30,15 @@ import {
   type LangSmithRunConfig,
 } from "@shared/agent/telemetry";
 import { dbToolError, type DbToolError } from "@shared/contracts";
-import { createHostPorts, type HostPorts } from "./ports.js";
+import {
+  createHostPorts,
+  DEFAULT_CHECKPOINT_CLEANUP_INTERVAL_MS,
+  startCheckpointLifecycleScheduler,
+  type CheckpointLifecycleScheduler,
+  type HostPorts,
+  type ThreadLockAcquirer,
+  type ThreadLockHandle,
+} from "./ports.js";
 import {
   assertTokensPresent,
   InvalidThreadError,
@@ -72,6 +80,8 @@ export interface BuildAppOptions {
   env?: NodeJS.ProcessEnv;
   // Held for UC-10 write-after-send; ask and resume never call it directly.
   store?: AppStateStore;
+  acquireThreadLock?: ThreadLockAcquirer;
+  allowInMemoryLockForTests?: boolean;
   routes?: RootGraphDeps["routes"];
   textToSql?: RootGraphDeps["textToSql"];
   retrieve?: RetrieveFn;
@@ -258,6 +268,52 @@ export function buildApp(options: BuildAppOptions): express.Express {
 
   // Keyed by runId and write-once so concurrent asks cannot cross-contaminate run identity.
   const runs = new Map<string, StoredRun>();
+  if (!options.acquireThreadLock && options.allowInMemoryLockForTests !== true) {
+    throw new Error(
+      "buildApp: acquireThreadLock is required in production; pass a PostgreSQL advisory lock acquirer or set allowInMemoryLockForTests: true for DB-free tests.",
+    );
+  }
+  const activeInMemoryLocks = new Set<string>();
+  const acquireThreadLock: ThreadLockAcquirer =
+    options.acquireThreadLock ??
+    (async (threadId: string): Promise<ThreadLockHandle> => {
+      if (activeInMemoryLocks.has(threadId)) {
+        return { acquired: false, release: async () => {} };
+      }
+      activeInMemoryLocks.add(threadId);
+      let released = false;
+      return {
+        acquired: true,
+        release: async () => {
+          if (!released) {
+            released = true;
+            activeInMemoryLocks.delete(threadId);
+          }
+        },
+      };
+    });
+
+  async function readCheckpointId(threadId: string): Promise<string | undefined> {
+    try {
+      const tuple = await options.checkpointer.getTuple({
+        configurable: { thread_id: threadId },
+      });
+      const id = (tuple?.config?.configurable as Record<string, unknown> | undefined)?.[
+        "checkpoint_id"
+      ];
+      if (typeof id !== "string" || id.length === 0) return undefined;
+      // Include a hash of pendingWrites so sequential interrupts inside a single LangGraph node superstep get distinct tokens.
+      const writes = Array.isArray(tuple?.pendingWrites) ? tuple.pendingWrites : [];
+      if (writes.length === 0) return id;
+      const digest = createHash("sha256")
+        .update(JSON.stringify(writes))
+        .digest("hex")
+        .slice(0, 12);
+      return `${id}:${digest}`;
+    } catch {
+      return undefined;
+    }
+  }
 
   const app = express();
   app.use((_req: Request, res: Response, next: NextFunction) => {
@@ -393,22 +449,37 @@ export function buildApp(options: BuildAppOptions): express.Express {
       return;
     }
 
-    const run: StoredRun = {
-      threadId,
-      userId: principal.userId,
-      roleScope: principal.role,
-      ...(principal.rowScope ? { rowScope: { ...principal.rowScope } } : {}),
-      token,
-      mcpUrl: options.mcpUrl,
-      tracesDir,
-    };
-    if (!runs.has(runId)) runs.set(runId, run);
-
-    res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
-    emitSseEvent(res, "intent_parsed", { runId, threadId, node: "understand", data: { phase: "starting" } });
+    let lock: Awaited<ReturnType<typeof acquireThreadLock>>;
+    try {
+      lock = await acquireThreadLock(threadId);
+    } catch {
+      res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to acquire thread lock"));
+      return;
+    }
+    if (!lock.acquired) {
+      res.status(409).json({
+        code: "CONFLICT",
+        message: `thread '${threadId}' is already locked by an active operation`,
+      });
+      return;
+    }
 
     let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
+      const run: StoredRun = {
+        threadId,
+        userId: principal.userId,
+        roleScope: principal.role,
+        ...(principal.rowScope ? { rowScope: { ...principal.rowScope } } : {}),
+        token,
+        mcpUrl: options.mcpUrl,
+        tracesDir,
+      };
+      if (!runs.has(runId)) runs.set(runId, run);
+
+      res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
+      emitSseEvent(res, "intent_parsed", { runId, threadId, node: "understand", data: { phase: "starting" } });
+
       const built = buildGraph(run, runId, res);
       emit = built.emit;
       const graph = built.graph;
@@ -428,7 +499,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         {
           question, runId, threadId,
           // A new question reuses the thread, but not the previous run's outputs or budgets.
-          status: "no_data", answerText: "", sql: null, tablesUsed: [],
+          status: "no_data", errorCode: null, answerText: "", sql: null, tablesUsed: [],
           semanticChunks: [], catalogTables: [], catalogStatus: "unloaded",
           semanticQuery: null, semanticRetrieveStatus: "unloaded", semanticErrorCode: null,
           resultPreview: [], columns: [], toolsCalled: [],
@@ -447,18 +518,6 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const interrupts = interruptedOf(out);
       if (interrupts?.length) {
         const pendingClarification = pendingClarificationOf(out);
-        emit?.({
-          node: "answer",
-          type: "approval_requested",
-          durationMs: 0,
-          attempt: 0,
-          payload: {
-            kind: approvalKindFor(out, pendingClarification),
-            ...(pendingClarification
-              ? { pendingClarification }
-              : {}),
-          },
-        });
         const rawInterrupt = interrupts[0] as { value?: unknown } | unknown;
         const interruptValue =
           rawInterrupt && typeof rawInterrupt === "object" && "value" in rawInterrupt
@@ -468,13 +527,40 @@ export function buildApp(options: BuildAppOptions): express.Express {
           interruptValue && typeof interruptValue === "object"
             ? (interruptValue as Record<string, unknown>)
             : {};
+        const checkpointId = await readCheckpointId(threadId);
+        const asOf =
+          typeof interruptData["asOf"] === "string"
+            ? interruptData["asOf"]
+            : out.analysisPlan?.asOf;
+        const interruptReason =
+          typeof interruptData["reason"] === "string"
+            ? interruptData["reason"]
+            : undefined;
+        emit?.({
+          node: "answer",
+          type: "approval_requested",
+          durationMs: 0,
+          attempt: 0,
+          payload: {
+            kind: approvalKindFor(out, pendingClarification),
+            ...(checkpointId ? { checkpointId } : {}),
+            ...(asOf ? { asOf } : {}),
+            ...(interruptReason ? { reason: interruptReason } : {}),
+            ...(pendingClarification
+              ? { pendingClarification }
+              : {}),
+          },
+        });
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId,
+          ...(checkpointId ? { checkpointId } : {}),
           node: "answer",
           data: interruptPayload({
             action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
-            reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
+            reason: interruptReason,
+            ...(checkpointId ? { checkpointId } : {}),
+            ...(asOf ? { asOf } : {}),
             pendingClarification,
             plan: interruptData["plan"],
             currentPlan: interruptData["currentPlan"],
@@ -486,14 +572,21 @@ export function buildApp(options: BuildAppOptions): express.Express {
       emit.emitRunDone(out.status);
     } catch (error) {
       emit?.emitRunDone("error");
-      emitSseEvent(res, "failed", {
-        runId,
-        threadId,
-        node: "answer",
-        data: toFailedSseData(error, "unknown ask failure"),
-      });
+      if (!res.headersSent) {
+        res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to process ask request"));
+      } else {
+        emitSseEvent(res, "failed", {
+          runId,
+          threadId,
+          node: "answer",
+          data: toFailedSseData(error, "unknown ask failure"),
+        });
+      }
     } finally {
-      res.end();
+      await lock.release();
+      if (res.headersSent) {
+        res.end();
+      }
       void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
   });
@@ -554,6 +647,11 @@ export function buildApp(options: BuildAppOptions): express.Express {
       res.status(400).json(dbToolError("INVALID_PARAMS", "resume body must carry a value"));
       return;
     }
+    const checkpointId = req.body["checkpointId"];
+    if (typeof checkpointId !== "string" || checkpointId.length === 0) {
+      res.status(400).json(dbToolError("INVALID_PARAMS", "resume body must carry a non-empty checkpointId"));
+      return;
+    }
     const stored = runs.get(runId) ?? rehydrateRun(runId, registry, env, options.mcpUrl, tracesDir);
     if (!stored) {
       res.status(404).json(dbToolError("INVALID_PARAMS", `unknown runId '${runId}'`));
@@ -561,8 +659,20 @@ export function buildApp(options: BuildAppOptions): express.Express {
     }
     if (!runs.has(runId)) runs.set(runId, stored);
 
-    res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
-    emitSseEvent(res, "intent_parsed", { runId, threadId: stored.threadId, node: "understand", data: { phase: "resuming" } });
+    let lock: Awaited<ReturnType<typeof acquireThreadLock>>;
+    try {
+      lock = await acquireThreadLock(stored.threadId);
+    } catch {
+      res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to acquire thread lock"));
+      return;
+    }
+    if (!lock.acquired) {
+      res.status(409).json({
+        code: "CONFLICT",
+        message: `thread '${stored.threadId}' is already locked by an active operation`,
+      });
+      return;
+    }
 
     let emit: ReturnType<typeof createSpanEmitter> | undefined;
     try {
@@ -570,6 +680,30 @@ export function buildApp(options: BuildAppOptions): express.Express {
       emit = built.emit;
       const graph = built.graph;
       const saved = await graph.getState({ configurable: configurableFor(stored, runId) });
+      const hasActiveInterrupt =
+        Array.isArray(saved.tasks) &&
+        saved.tasks.some(
+          (t) => Array.isArray(t.interrupts) && t.interrupts.length > 0,
+        );
+      if (!hasActiveInterrupt) {
+        res.status(409).json({
+          code: "CONFLICT",
+          message: "thread has no active interrupt to resume",
+        });
+        return;
+      }
+      const activeCheckpointId = await readCheckpointId(stored.threadId);
+      if (activeCheckpointId !== checkpointId) {
+        res.status(409).json({
+          code: "CONFLICT",
+          message: "stale checkpointId: checkpoint does not match active interrupt",
+        });
+        return;
+      }
+
+      res.writeHead(200, { ...SSE_HEADERS, "x-run-id": runId });
+      emitSseEvent(res, "intent_parsed", { runId, threadId: stored.threadId, node: "understand", data: { phase: "resuming" } });
+
       const savedRoute = (saved.values as Partial<AgentState> | undefined)?.route;
       const tracer = createLangSmithTracer(env);
       const ls = tracer
@@ -591,6 +725,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
         attempt: 0,
         payload: {
           kind: lastApproval?.kind ?? "approval",
+          checkpointId,
           decision: verdict.decision,
           reviewer: stored.userId,
           waitedMs: lastApproval
@@ -605,18 +740,6 @@ export function buildApp(options: BuildAppOptions): express.Express {
       const resumeInterrupts = interruptedOf(out);
       if (resumeInterrupts?.length) {
         const pendingClarification = pendingClarificationOf(out);
-        emit({
-          node: "answer",
-          type: "approval_requested",
-          durationMs: 0,
-          attempt: 0,
-          payload: {
-            kind: approvalKindFor(out, pendingClarification),
-            ...(pendingClarification
-              ? { pendingClarification }
-              : {}),
-          },
-        });
         const rawInterrupt = resumeInterrupts[0] as { value?: unknown } | unknown;
         const interruptValue =
           rawInterrupt && typeof rawInterrupt === "object" && "value" in rawInterrupt
@@ -626,13 +749,40 @@ export function buildApp(options: BuildAppOptions): express.Express {
           interruptValue && typeof interruptValue === "object"
             ? (interruptValue as Record<string, unknown>)
             : {};
+        const nextCheckpointId = await readCheckpointId(stored.threadId);
+        const asOf =
+          typeof interruptData["asOf"] === "string"
+            ? interruptData["asOf"]
+            : out.analysisPlan?.asOf;
+        const interruptReason =
+          typeof interruptData["reason"] === "string"
+            ? interruptData["reason"]
+            : undefined;
+        emit({
+          node: "answer",
+          type: "approval_requested",
+          durationMs: 0,
+          attempt: 0,
+          payload: {
+            kind: approvalKindFor(out, pendingClarification),
+            ...(nextCheckpointId ? { checkpointId: nextCheckpointId } : {}),
+            ...(asOf ? { asOf } : {}),
+            ...(interruptReason ? { reason: interruptReason } : {}),
+            ...(pendingClarification
+              ? { pendingClarification }
+              : {}),
+          },
+        });
         emitSseEvent(res, "interrupt_waiting", {
           runId,
           threadId: stored.threadId,
+          ...(nextCheckpointId ? { checkpointId: nextCheckpointId } : {}),
           node: "answer",
           data: interruptPayload({
             action: typeof interruptData["action"] === "string" ? interruptData["action"] : undefined,
-            reason: typeof interruptData["reason"] === "string" ? interruptData["reason"] : undefined,
+            reason: interruptReason,
+            ...(nextCheckpointId ? { checkpointId: nextCheckpointId } : {}),
+            ...(asOf ? { asOf } : {}),
             pendingClarification,
             plan: interruptData["plan"],
             currentPlan: interruptData["currentPlan"],
@@ -644,14 +794,21 @@ export function buildApp(options: BuildAppOptions): express.Express {
       emit.emitRunDone(out.status);
     } catch (error) {
       emit?.emitRunDone("error");
-      emitSseEvent(res, "failed", {
-        runId,
-        threadId: stored.threadId,
-        node: "answer",
-        data: toFailedSseData(error, "unknown resume failure"),
-      });
+      if (!res.headersSent) {
+        res.status(500).json(dbToolError("INTERNAL_ERROR", "failed to resume run"));
+      } else {
+        emitSseEvent(res, "failed", {
+          runId,
+          threadId: stored.threadId,
+          node: "answer",
+          data: toFailedSseData(error, "unknown resume failure"),
+        });
+      }
     } finally {
-      res.end();
+      await lock.release();
+      if (res.headersSent) {
+        res.end();
+      }
       void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS });
     }
   });
@@ -788,6 +945,48 @@ function readFirstLine(tracesDir: string, runId: string): string | null {
   }
 }
 
+export function startApiCheckpointLifecycle(options: {
+  ports: Pick<HostPorts, "checkpointer" | "lockPool" | "acquireThreadLock">;
+  intervalMs?: number;
+  maxAgeDays?: number;
+  retentionDays?: number;
+  routes?: RootGraphDeps["routes"];
+  retrieve?: RetrieveFn;
+  viz?: VizFn;
+  synthesize?: SynthesizeFn;
+  onError?: (error: unknown) => void;
+}): CheckpointLifecycleScheduler {
+  const lifecycleGraph = buildRootGraph({
+    checkpointer: options.ports.checkpointer,
+    emitSpan: () => "",
+    ...(options.routes ? { routes: options.routes } : {}),
+    retrieve: options.retrieve ?? createRetrieveSemantic(),
+    viz: options.viz ?? createUc03Viz(),
+    synthesize: options.synthesize ?? createAnswerSynthesizer(),
+  });
+  return startCheckpointLifecycleScheduler({
+    pool: options.ports.lockPool,
+    graph: lifecycleGraph,
+    acquireThreadLock: options.ports.acquireThreadLock,
+    intervalMs:
+      options.intervalMs ?? DEFAULT_CHECKPOINT_CLEANUP_INTERVAL_MS,
+    ...(options.maxAgeDays !== undefined
+      ? { maxAgeDays: options.maxAgeDays }
+      : {}),
+    ...(options.retentionDays !== undefined
+      ? { retentionDays: options.retentionDays }
+      : {}),
+    onError:
+      options.onError ??
+      ((err) => {
+        console.error(
+          "[api] checkpoint lifecycle sweep failed:",
+          err instanceof Error ? err.message : String(err),
+        );
+      }),
+  });
+}
+
 if (
   process.argv[1] !== undefined &&
   (await import("node:path")).resolve(process.argv[1]) ===
@@ -798,12 +997,18 @@ if (
   const tracesDir = process.env.TRACES_DIR ?? "traces";
   const mcpUrl =
     process.env.MCP_URL ?? `http://127.0.0.1:${mcpPort}/mcp`;
+  const rawInterval = Number(process.env.CHECKPOINT_CLEANUP_INTERVAL_MS);
+  const intervalMs =
+    Number.isFinite(rawInterval) && rawInterval > 0
+      ? rawInterval
+      : DEFAULT_CHECKPOINT_CLEANUP_INTERVAL_MS;
   const ports: HostPorts = await createHostPorts();
   const registry = loadRegistryFromFile();
   assertTokensPresent(registry);
   const app = buildApp({
     checkpointer: ports.checkpointer,
     store: ports.store,
+    acquireThreadLock: ports.acquireThreadLock,
     mcpUrl,
     tracesDir,
     registry,
@@ -812,11 +1017,17 @@ if (
     console.log(`[api] listening on 127.0.0.1:${apiPort}`);
   });
   await new Promise<void>((resolve) => server.on("listening", resolve));
+  const checkpointScheduler = startApiCheckpointLifecycle({
+    ports,
+    intervalMs,
+  });
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {
-      void flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS }).finally(() =>
-        process.exit(0),
-      );
+      checkpointScheduler.stop();
+      void Promise.allSettled([
+        ports.lockPool.end(),
+        flushLangSmith({ timeoutMs: LANGSMITH_FLUSH_TIMEOUT_MS }),
+      ]).finally(() => process.exit(0));
     });
   }
 }

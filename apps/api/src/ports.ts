@@ -1,9 +1,42 @@
 import { createCheckpointer, type Checkpointer } from "@shared/agent/ports";
 import { AppStateStore } from "./store/alertStore.js";
+import {
+  createLockPool,
+  createThreadLockAcquirer,
+  DEFAULT_CHECKPOINT_CLEANUP_INTERVAL_MS,
+  expirePendingCheckpoints,
+  pruneCompletedCheckpoints,
+  startCheckpointLifecycleScheduler,
+  type AdvisoryLockClientLike,
+  type AdvisoryLockPoolLike,
+  type CheckpointGraphLike,
+  type CheckpointLifecycleScheduler,
+  type CheckpointLifecycleSchedulerOptions,
+  type ThreadLockAcquirer,
+  type ThreadLockHandle,
+} from "./store/threadLock.js";
+
+export {
+  createLockPool,
+  createThreadLockAcquirer,
+  DEFAULT_CHECKPOINT_CLEANUP_INTERVAL_MS,
+  expirePendingCheckpoints,
+  pruneCompletedCheckpoints,
+  startCheckpointLifecycleScheduler,
+  type AdvisoryLockClientLike,
+  type AdvisoryLockPoolLike,
+  type CheckpointGraphLike,
+  type CheckpointLifecycleScheduler,
+  type CheckpointLifecycleSchedulerOptions,
+  type ThreadLockAcquirer,
+  type ThreadLockHandle,
+};
 
 export interface HostPorts {
   checkpointer: Checkpointer;
   store: AppStateStore;
+  lockPool: AdvisoryLockPoolLike;
+  acquireThreadLock: ThreadLockAcquirer;
 }
 
 export async function createHostPorts(
@@ -18,5 +51,11 @@ export async function createHostPorts(
   }
   const checkpointer = await createCheckpointer(conn);
   const store = new AppStateStore(conn);
-  return { checkpointer, store };
+  const lockPool = createLockPool(conn);
+  return {
+    checkpointer,
+    store,
+    lockPool,
+    acquireThreadLock: createThreadLockAcquirer(lockPool),
+  };
 }

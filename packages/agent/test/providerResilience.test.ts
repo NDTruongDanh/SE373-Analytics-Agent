@@ -86,4 +86,112 @@ describe("provider resilience", () => {
     expect(await (await admin(request())).json()).toEqual({ call: 3 });
     expect(calls).toBe(3);
   });
+
+  it("opens after three primary transport errors and resets cooldown on half-open failure", async () => {
+    let now = 1_000;
+    let primaryCalls = 0;
+    let secondaryCalls = 0;
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const received = new Request(input);
+      if (received.url.startsWith(PRIMARY_URL)) {
+        primaryCalls += 1;
+        throw Object.assign(new TypeError("fetch failed"), {
+          cause: Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }),
+        });
+      }
+      secondaryCalls += 1;
+      return Response.json({ provider: "secondary" });
+    }) as typeof fetch;
+
+    const providerFetch = createProviderFetch({
+      primaryBaseURL: PRIMARY_URL,
+      secondary: { baseURL: SECONDARY_URL, apiKey: "secondary-key", model: "secondary-model" },
+      env: { AGENT_MODEL_SEMANTIC_CACHE_TTL_MS: "0" },
+      fetchImpl,
+      now: () => now,
+    });
+
+    for (let i = 0; i < 4; i += 1) {
+      expect(await (await providerFetch(request())).json()).toEqual({ provider: "secondary" });
+    }
+    expect(primaryCalls).toBe(3);
+    expect(secondaryCalls).toBe(4);
+
+    now += 30_000;
+    expect(await (await providerFetch(request())).json()).toEqual({ provider: "secondary" });
+    expect(primaryCalls).toBe(4);
+    expect(secondaryCalls).toBe(5);
+
+    now += 15_000;
+    expect(await (await providerFetch(request())).json()).toEqual({ provider: "secondary" });
+    expect(primaryCalls).toBe(4);
+    expect(secondaryCalls).toBe(6);
+  });
+
+  it("does not fail over or trip breaker when caller aborts with AbortController", async () => {
+    let primaryCalls = 0;
+    let secondaryCalls = 0;
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const received = new Request(input);
+      if (received.url.startsWith(PRIMARY_URL)) {
+        primaryCalls += 1;
+        throw new DOMException("This operation was aborted", "AbortError");
+      }
+      secondaryCalls += 1;
+      return Response.json({ provider: "secondary" });
+    }) as typeof fetch;
+
+    const providerFetch = createProviderFetch({
+      primaryBaseURL: PRIMARY_URL,
+      secondary: { baseURL: SECONDARY_URL, apiKey: "secondary-key", model: "secondary-model" },
+      env: { AGENT_MODEL_SEMANTIC_CACHE_TTL_MS: "0" },
+      fetchImpl,
+    });
+
+    for (let i = 0; i < 4; i += 1) {
+      const controller = new AbortController();
+      const req = new Request(REQUEST_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer primary-key" },
+        body: REQUEST_BODY,
+        signal: controller.signal,
+      });
+      controller.abort();
+      await expect(providerFetch(req)).rejects.toThrow();
+    }
+    expect(primaryCalls).toBe(4);
+    expect(secondaryCalls).toBe(0);
+  });
+
+  it("does not count HTTP 429 or 401 on primary as a circuit-resetting success", async () => {
+    let primaryCalls = 0;
+    let secondaryCalls = 0;
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const received = new Request(input);
+      if (received.url.startsWith(PRIMARY_URL)) {
+        primaryCalls += 1;
+        if (primaryCalls === 3) return new Response("rate limited", { status: 429 });
+        return new Response("overloaded", { status: 500 });
+      }
+      secondaryCalls += 1;
+      return Response.json({ provider: "secondary" });
+    }) as typeof fetch;
+
+    const providerFetch = createProviderFetch({
+      primaryBaseURL: PRIMARY_URL,
+      secondary: { baseURL: SECONDARY_URL, apiKey: "secondary-key", model: "secondary-model" },
+      env: { AGENT_MODEL_SEMANTIC_CACHE_TTL_MS: "0" },
+      fetchImpl,
+      now: () => 1_000,
+    });
+
+    expect(await (await providerFetch(request())).json()).toEqual({ provider: "secondary" });
+    expect(await (await providerFetch(request())).json()).toEqual({ provider: "secondary" });
+    const rateLimited = await providerFetch(request());
+    expect(rateLimited.status).toBe(429);
+    expect(await (await providerFetch(request())).json()).toEqual({ provider: "secondary" });
+    expect(await (await providerFetch(request())).json()).toEqual({ provider: "secondary" });
+    expect(primaryCalls).toBe(4);
+    expect(secondaryCalls).toBe(4);
+  });
 });

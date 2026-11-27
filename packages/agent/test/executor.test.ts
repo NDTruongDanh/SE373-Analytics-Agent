@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
-import { dbToolError } from "@shared/contracts";
+import { DbToolErrorSchema, dbToolError } from "@shared/contracts";
 import {
   SqlProposalSchema,
   ValidatedQueryExecutor,
@@ -1017,5 +1017,57 @@ describe("ValidatedQueryExecutor explain_query cost ceiling (#129)", () => {
       principal: { ...PRINCIPAL, roleScope: "analyst" },
     });
     expect(result.status).toBe("ok");
+  });
+
+  it("caps budget error message at 500 chars and catches mid-call deadline timeouts", async () => {
+    let clock = 1_000;
+    const budget = createBudgetState({ nowMs: clock, maxLlmCalls: 10, runDeadlineMs: 1_000 });
+    const timeoutModel: ChatModelLike = {
+      invoke: async () => {
+        throw new Error("unused");
+      },
+      stream: () => {
+        clock = 2_500;
+        const err = new Error("attempt timed out");
+        err.name = "TimeoutError";
+        throw err;
+      },
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          throw new Error("unused");
+        },
+      }),
+    };
+    const manyTables = Array.from({ length: 16 }, (_, i) => `orders_segment_detail_${i}`);
+    const mcp = new StubMcpCaller({
+      describe_table: (args) => ({
+        table: String(args["table"]),
+        schema: "public",
+        columns: ORDERS_COLUMNS.map((c) => ({ ...c, description: "d".repeat(60) })),
+        rowCountEstimate: 100,
+      }),
+    });
+    const executor = new ValidatedQueryExecutor({ model: timeoutModel, mcp });
+
+    const originalNow = Date.now;
+    Date.now = () => clock;
+    try {
+      const result = await executor.run({
+        question: "Revenue per order",
+        candidateTables: manyTables,
+        principal: PRINCIPAL,
+        budget,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status !== "error") return;
+      expect(result.budgetExceeded).toBe(true);
+      expect(result.tripReason).toBe("deadline");
+      expect(result.reason?.length ?? 0).toBeGreaterThan(500);
+      expect(() => DbToolErrorSchema.parse(result.error)).not.toThrow();
+      expect(result.error.message.length).toBeLessThanOrEqual(500);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });

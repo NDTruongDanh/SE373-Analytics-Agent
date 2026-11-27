@@ -725,7 +725,7 @@ export class ValidatedQueryExecutor {
       });
       return {
         status: "error",
-        error: dbToolError("INTERNAL_ERROR", message),
+        error: dbToolError("INTERNAL_ERROR", message.slice(0, 500)),
         reason: message,
         budgetExceeded: true,
         tripReason: reason,
@@ -864,7 +864,10 @@ export class ValidatedQueryExecutor {
           usage = unaccountedUsage(out);
           usageModel = out.model;
         } catch (thrown) {
-          const tripReason = budgetTripReasonFromError(thrown);
+          const budgetCheck = checkBudget(budget);
+          const tripReason =
+            budgetTripReasonFromError(thrown) ??
+            (budgetCheck.tripped ? budgetCheck.reason : undefined);
           if (tripReason) return budgetTrip(tripReason, attempt);
           if (isRateLimitFailure(thrown)) {
             return {

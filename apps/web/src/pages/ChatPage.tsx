@@ -168,7 +168,11 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
     }
     const identity = { runId: state.runId, threadId: state.threadId };
     dispatch({ type: "resume" });
-    void run(`/api/runs/${encodeURIComponent(identity.runId)}/resume`, { value }, identity);
+    void run(
+      `/api/runs/${encodeURIComponent(identity.runId)}/resume`,
+      { value, ...(state.checkpointId ? { checkpointId: state.checkpointId } : {}) },
+      identity,
+    );
   }
 
   function resumePlan(submission: PlanResumeSubmission) {
@@ -176,12 +180,13 @@ export function ChatPage({ persona, state, dispatch, history, setHistory }: Chat
       return;
     }
     const identity = { runId: state.runId, threadId: state.threadId };
+    const checkpointId = submission.checkpointId ?? state.checkpointId;
     dispatch({ type: "resume" });
     void run(
       `/api/runs/${encodeURIComponent(identity.runId)}/resume`,
       {
         value: submission.value,
-        ...(submission.checkpointId ? { checkpointId: submission.checkpointId } : {}),
+        ...(checkpointId ? { checkpointId } : {}),
       },
       identity,
     );

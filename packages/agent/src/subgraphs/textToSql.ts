@@ -528,16 +528,44 @@ function clarificationAttemptsOf(state: AgentState): number {
   return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : 0;
 }
 
+function isTimeoutResumeValue(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    ((value as { action?: unknown }).action === "timeout" ||
+      (value as { reason?: unknown }).reason === "HITL_APPROVAL_TIMEOUT")
+  );
+}
+
+function isTimeoutResumeInScratchpad(rt: RootRuntime): boolean {
+  const conf = (rt.config?.configurable ?? {}) as Record<string, unknown>;
+  const scratch = conf["__pregel_scratchpad"] as
+    | { nullResume?: unknown; resume?: unknown[] }
+    | undefined;
+  if (!scratch) return false;
+  if (isTimeoutResumeValue(scratch.nullResume)) return true;
+  return Array.isArray(scratch.resume) && scratch.resume.some(isTimeoutResumeValue);
+}
+
+type ClarificationSelectionResult =
+  | { ok: true; value: string }
+  | { ok: false; reason: "timeout" | "exhausted" };
+
 function clarificationSelection(
   state: AgentState,
   request: PendingClarification,
-): string | undefined {
+): ClarificationSelectionResult {
   for (let attempt = clarificationAttemptsOf(state); attempt < 2; attempt += 1) {
     const pending = { ...request, attempts: attempt };
     const value = pauseForClarification(pending);
-    if (isClarificationOption(pending, value)) return value;
+    if (isTimeoutResumeValue(value)) {
+      return { ok: false, reason: "timeout" };
+    }
+    if (isClarificationOption(pending, value)) {
+      return { ok: true, value };
+    }
   }
-  return undefined;
+  return { ok: false, reason: "exhausted" };
 }
 
 function applyClarification(
@@ -613,7 +641,7 @@ function clarificationForUnmappedTable(
 type SafeTableClarificationSelection =
   | { ok: true; kind: "table"; table: string; attemptsUsed: number }
   | { ok: true; kind: "abort_rephrase"; attemptsUsed: number }
-  | { ok: false; reason: "interrupt_unavailable" | "invalid_selection" };
+  | { ok: false; reason: "interrupt_unavailable" | "invalid_selection" | "timeout" };
 
 function tryTableClarificationSelection(
   state: AgentState,
@@ -625,6 +653,13 @@ function tryTableClarificationSelection(
     for (let attempt = clarificationAttemptsOf(state); attempt < 2; attempt += 1) {
       const pending = { ...request, attempts: attempt };
       const rawValue = pauseForClarification(pending);
+      if (
+        typeof rawValue === "object" &&
+        rawValue !== null &&
+        (rawValue as { action?: unknown }).action === "timeout"
+      ) {
+        return { ok: false, reason: "timeout" };
+      }
       const verdict = classifyTableClarificationValue(pending, rawValue, allowedNames);
       if (verdict.kind === "abort_rephrase") {
         return { ok: true, kind: "abort_rephrase", attemptsUsed: attempt + 1 };
@@ -991,7 +1026,10 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
             invokeOpts,
           );
     } catch (error) {
-      const tripReason = budgetTripReasonFromError(error);
+      const budgetCheck = checkBudget(budget);
+      const tripReason =
+        budgetTripReasonFromError(error) ??
+        (budgetCheck.tripped ? budgetCheck.reason : undefined);
       if (tripReason) {
         const answerText = formatBudgetTripTemplate({
           reason: tripReason,
@@ -1129,16 +1167,33 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     }
     if (ambiguousMetric) {
       const selected = clarificationSelection(activeState, ambiguousMetric);
-      if (!selected) {
+      if (!selected.ok) {
+        if (selected.reason === "timeout") {
+          return {
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            pendingClarification: null,
+            answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+          };
+        }
         return {
           status: "needs_clarification",
           pendingClarification: null,
           answerText: "The requested KPI could not be disambiguated after two responses.",
         };
       }
-      const applied = applyClarification(activeState, ambiguousMetric, selected);
+      const applied = applyClarification(activeState, ambiguousMetric, selected.value);
       activeState = applied.state;
       clarificationUpdate = applied.update;
+    }
+    if (isTimeoutResumeInScratchpad(rt)) {
+      return {
+        ...clarificationUpdate,
+        status: "error",
+        errorCode: "HITL_APPROVAL_TIMEOUT",
+        pendingClarification: null,
+        answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+      };
     }
     const { identity, transport } = readRunContext(rt);
     if (!deps.executor && !transport) {
@@ -1293,7 +1348,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         /\b(nps|ton kho|nha cung cap|weather|stock market)\b/.test(foldAscii(entity)),
       );
       if (resolved.unmappedEntities.length > 0 &&
-        ((coverage.totalEntities > 0 && coverage.matchedCount === 0) || clearlyUnsupported)) {
+        ((coverage.totalEntities > 0 && coverage.matchedCount === 0 && resolved.partialTables.length === 0) || clearlyUnsupported)) {
         rt.emit({
           node: "describe",
           type: "node_done",
@@ -1422,6 +1477,29 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         effectiveCatalogTables,
       );
       if (!selection.ok) {
+        if (selection.reason === "timeout") {
+          rt.emit({
+            node: "describe",
+            type: "node_done",
+            durationMs: 0,
+            payload: {
+              clarificationReason: "timeout",
+              partialTables: resolved.partialTables,
+              unmappedEntities: resolved.unmappedEntities,
+              entities: resolved.entities,
+            },
+          });
+          return {
+            ...clarificationUpdate,
+            ...catalogUpdate,
+            ...semanticUpdate,
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            pendingClarification: null,
+            toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+            answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+          };
+        }
         rt.emit({
           node: "describe",
           type: "node_done",
@@ -1585,14 +1663,27 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         activeState.clarificationAttempts,
       );
       const selected = clarificationSelection(activeState, clarification.pendingClarification);
-      if (!selected) {
+      if (!selected.ok) {
+        if (selected.reason === "timeout") {
+          return {
+            ...clarificationUpdate,
+            ...catalogUpdate,
+            ...(workingChunks !== state.semanticChunks
+              ? { semanticChunks: workingChunks }
+              : {}),
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            pendingClarification: null,
+            answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+          };
+        }
         return {
           status: "needs_clarification",
           pendingClarification: null,
           answerText: "The time range could not be resolved after two responses.",
         };
       }
-      const applied = applyClarification(activeState, clarification.pendingClarification, selected);
+      const applied = applyClarification(activeState, clarification.pendingClarification, selected.value);
       activeState = applied.state;
       clarificationUpdate = { ...clarificationUpdate, ...applied.update };
       result = await executor.run({

@@ -373,7 +373,10 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           });
         } catch (error) {
           llmCalls = budget.llmCalls - startCalls;
-          const tripReason = budgetTripReasonFromError(error);
+          const budgetCheck = checkBudget(budget);
+          const tripReason =
+            budgetTripReasonFromError(error) ??
+            (budgetCheck.tripped ? budgetCheck.reason : undefined);
           if (tripReason) {
             return budgetExceededUpdate(state, rt, budget, startCalls, startTokens, tripReason);
           }

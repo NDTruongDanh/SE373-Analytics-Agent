@@ -236,6 +236,7 @@ export const SseFailedEventSchema = z.object({
 export const SseInterruptWaitingEventSchema = z.object({
   ...SseBaseFields,
   event: z.literal("interrupt_waiting"),
+  checkpointId: z.string().min(1).optional(),
   data: z.unknown().optional(),
 });
 

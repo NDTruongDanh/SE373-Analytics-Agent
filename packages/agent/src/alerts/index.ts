@@ -1,4 +1,6 @@
 export * from "./anomalyDetector.js";
+export * from "./calendar.js";
+export * from "./catalog.js";
 export * from "./subscription.js";
 export * from "./fingerprint.js";
 export * from "./query.js";

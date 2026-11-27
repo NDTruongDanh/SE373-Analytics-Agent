@@ -150,6 +150,7 @@ export const AgentStateSchema = new StateSchema({
   tablesUsed: z.array(z.string()).default([]),
   toolsCalled: z.array(z.string()).default([]),
   status: SQLAnswerStatusSchema.default("no_data"),
+  errorCode: z.string().nullable().default(null),
   answerText: z.string().default(""),
   budgetExceeded: z.boolean().default(false),
   budget: new ReducedValue(BudgetStateSchema, {

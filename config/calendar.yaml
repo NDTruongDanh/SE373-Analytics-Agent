@@ -1,0 +1,71 @@
+version: 1
+events:
+  # =========================================================================
+  # 1. Public Holidays (type: "public_holiday")
+  # - Excluded from historical same-weekday baselines
+  # - Alerts downgraded to "info" unless reaching Critical
+  # =========================================================================
+  - id: new-year-2026
+    name: "Tết Dương lịch 2026"
+    startDate: "2026-01-01"
+    endDate: "2026-01-01"
+    type: "public_holiday"
+
+  - id: tet-2026
+    name: "Tết Nguyên Đán Bính Ngọ 2026"
+    startDate: "2026-02-14"
+    endDate: "2026-02-22"
+    type: "public_holiday"
+
+  - id: hung-kings-2026
+    name: "Giỗ tổ Hùng Vương 2026"
+    startDate: "2026-04-26"
+    endDate: "2026-04-26"
+    type: "public_holiday"
+
+  - id: reunification-labor-2026
+    name: "Giải phóng miền Nam & Quốc tế Lao động 2026"
+    startDate: "2026-04-30"
+    endDate: "2026-05-03"
+    type: "public_holiday"
+
+  - id: national-day-2026
+    name: "Quốc khánh 2/9 2026"
+    startDate: "2026-09-01"
+    endDate: "2026-09-03"
+    type: "public_holiday"
+
+  # =========================================================================
+  # 2. Mega Sales (type: "mega_sale")
+  # - Excluded from historical same-weekday baselines
+  # - NO DOWNGRADE: Maintains Warning/Critical severity
+  # =========================================================================
+  - id: mega-sale-0909
+    name: "Siêu Sale 9.9"
+    startDate: "2026-09-09"
+    endDate: "2026-09-09"
+    type: "mega_sale"
+
+  - id: mega-sale-1010
+    name: "Siêu Sale 10.10"
+    startDate: "2026-10-10"
+    endDate: "2026-10-10"
+    type: "mega_sale"
+
+  - id: mega-sale-1111
+    name: "Siêu Sale Độc thân 11.11"
+    startDate: "2026-11-11"
+    endDate: "2026-11-12"
+    type: "mega_sale"
+
+  - id: black-friday-2026
+    name: "Black Friday 2026"
+    startDate: "2026-11-27"
+    endDate: "2026-11-29"
+    type: "mega_sale"
+
+  - id: mega-sale-1212
+    name: "Siêu Sale Cuối năm 12.12"
+    startDate: "2026-12-12"
+    endDate: "2026-12-13"
+    type: "mega_sale"

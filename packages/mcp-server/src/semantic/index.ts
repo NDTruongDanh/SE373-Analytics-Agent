@@ -351,6 +351,7 @@ export interface IndexCounts {
   updated: number;
   skipped: number;
   deleted: number;
+  corpusVersion?: number;
   embeddingTokens?: number;
   estimatedCostUsd?: number;
   durationMs?: number;
@@ -361,6 +362,35 @@ export type IndexQueryFn = (
   params?: unknown[],
 ) => Promise<{ rows: Record<string, unknown>[] }>;
 
+export async function ensureCorpusVersionTable(
+  queryFn: IndexQueryFn,
+): Promise<void> {
+  // Serialize first-time bootstrap and check to_regclass first so indexer skips
+  // CREATE/GRANT when 04_semantic_state.sql already created the owner-owned table.
+  await queryFn(
+    "SELECT pg_advisory_xact_lock(hashtextextended('ddl:corpus_version', 0))",
+  );
+  const reg = await queryFn(
+    "SELECT to_regclass('semantic.corpus_version')::text AS rel",
+  );
+  const exists = Boolean(reg.rows[0]?.["rel"]);
+  if (!exists) {
+    await queryFn(`
+      CREATE TABLE IF NOT EXISTS semantic.corpus_version (
+        id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        version BIGINT NOT NULL DEFAULT 1,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await queryFn("GRANT SELECT ON TABLE semantic.corpus_version TO agent_ro");
+  }
+  await queryFn(
+    `INSERT INTO semantic.corpus_version (id, version)
+     VALUES (1, 1)
+     ON CONFLICT (id) DO NOTHING`,
+  );
+}
+
 export async function indexCorpus(options: {
   dbUrl?: string;
   query?: IndexQueryFn;
@@ -369,6 +399,8 @@ export async function indexCorpus(options: {
 }): Promise<IndexCounts> {
   const startedAt = Date.now();
   let pool: Pool | null = null;
+  let client: { query: IndexQueryFn; release: (d?: boolean | Error) => void } | null = null;
+  let ownsTx = false;
   try {
     let queryFn: IndexQueryFn;
     if (options.query !== undefined) {
@@ -378,11 +410,16 @@ export async function indexCorpus(options: {
         throw new Error("indexCorpus needs dbUrl or query");
       }
       pool = new Pool({ connectionString: options.dbUrl, max: 2 });
-      const activePool: Pool = pool;
+      const pgClient = await pool.connect();
+      client = pgClient as unknown as {
+        query: IndexQueryFn;
+        release: (d?: boolean | Error) => void;
+      };
       queryFn = async (text: string, params?: unknown[]) => {
-        const result = await activePool.query(text, params as unknown[]);
+        const result = await pgClient.query(text, params as unknown[]);
         return { rows: result.rows as Record<string, unknown>[] };
       };
+      ownsTx = true;
     }
     const chunks: ParsedChunk[] = [];
     for (const file of options.files) {
@@ -412,13 +449,6 @@ export async function indexCorpus(options: {
     };
     const currentIds = new Set(chunks.map((chunk) => chunk.chunkId));
     const toDelete = [...known.keys()].filter((id) => !currentIds.has(id));
-    if (toDelete.length > 0) {
-      await queryFn(
-        `DELETE FROM semantic.semantic_chunks WHERE chunk_id = ANY($1)`,
-        [toDelete],
-      );
-      counts.deleted = toDelete.length;
-    }
     const dirty = chunks.filter(
       (chunk) => known.get(chunk.chunkId) !== contentHash(chunk),
     );
@@ -437,60 +467,107 @@ export async function indexCorpus(options: {
     const estimatedCostUsd = Number(
       ((embeddingTokens / 1_000_000) * 0.02).toFixed(8),
     );
-    for (let index = 0; index < dirty.length; index++) {
-      const chunk = dirty[index] as ParsedChunk;
-      const vector = vectors[index] as number[];
-      const hash = contentHash(chunk);
-      const chunkMeta = chunk.metadata ?? validateChunkMetadata(chunk);
-      const metadataJson = JSON.stringify(chunkMeta);
-      const additiveValue = chunk.additive ?? null;
-      if (known.has(chunk.chunkId)) {
+
+    if (ownsTx) {
+      await queryFn("BEGIN");
+    }
+    try {
+      await ensureCorpusVersionTable(queryFn);
+      if (toDelete.length > 0) {
         await queryFn(
-          `UPDATE semantic.semantic_chunks
-           SET doc_type = $2, table_name = $3, tables = $4, metric_name = $5,
-               aliases = $6, sensitivity = $7, additive = $8, metadata = $9::jsonb,
-               content = $10, content_hash = $11,
-               embedding = $12::vector, updated_at = now()
-           WHERE chunk_id = $1`,
-          [
-            chunk.chunkId,
-            chunk.docType,
-            chunk.table,
-            chunk.tables.join(","),
-            chunk.metricName,
-            chunk.aliases.join(","),
-            chunk.sensitivity,
-            additiveValue,
-            metadataJson,
-            chunk.content,
-            hash,
-            `[${vector.join(",")}]`,
-          ],
+          `DELETE FROM semantic.semantic_chunks WHERE chunk_id = ANY($1)`,
+          [toDelete],
         );
-        counts.updated += 1;
-      } else {
-        await queryFn(
-          `INSERT INTO semantic.semantic_chunks
-             (chunk_id, doc_type, table_name, tables, metric_name, aliases,
-              sensitivity, additive, metadata, content, content_hash, embedding, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12::vector, now())`,
-          [
-            chunk.chunkId,
-            chunk.docType,
-            chunk.table,
-            chunk.tables.join(","),
-            chunk.metricName,
-            chunk.aliases.join(","),
-            chunk.sensitivity,
-            additiveValue,
-            metadataJson,
-            chunk.content,
-            hash,
-            `[${vector.join(",")}]`,
-          ],
-        );
-        counts.added += 1;
+        counts.deleted = toDelete.length;
       }
+      for (let index = 0; index < dirty.length; index++) {
+        const chunk = dirty[index] as ParsedChunk;
+        const vector = vectors[index] as number[];
+        const hash = contentHash(chunk);
+        const chunkMeta = chunk.metadata ?? validateChunkMetadata(chunk);
+        const metadataJson = JSON.stringify(chunkMeta);
+        const additiveValue = chunk.additive ?? null;
+        if (known.has(chunk.chunkId)) {
+          await queryFn(
+            `UPDATE semantic.semantic_chunks
+             SET doc_type = $2, table_name = $3, tables = $4, metric_name = $5,
+                 aliases = $6, sensitivity = $7, additive = $8, metadata = $9::jsonb,
+                 content = $10, content_hash = $11,
+                 embedding = $12::vector, updated_at = now()
+             WHERE chunk_id = $1`,
+            [
+              chunk.chunkId,
+              chunk.docType,
+              chunk.table,
+              chunk.tables.join(","),
+              chunk.metricName,
+              chunk.aliases.join(","),
+              chunk.sensitivity,
+              additiveValue,
+              metadataJson,
+              chunk.content,
+              hash,
+              `[${vector.join(",")}]`,
+            ],
+          );
+          counts.updated += 1;
+        } else {
+          await queryFn(
+            `INSERT INTO semantic.semantic_chunks
+               (chunk_id, doc_type, table_name, tables, metric_name, aliases,
+                sensitivity, additive, metadata, content, content_hash, embedding, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12::vector, now())`,
+            [
+              chunk.chunkId,
+              chunk.docType,
+              chunk.table,
+              chunk.tables.join(","),
+              chunk.metricName,
+              chunk.aliases.join(","),
+              chunk.sensitivity,
+              additiveValue,
+              metadataJson,
+              chunk.content,
+              hash,
+              `[${vector.join(",")}]`,
+            ],
+          );
+          counts.added += 1;
+        }
+      }
+      if (dirty.length > 0 || toDelete.length > 0) {
+        const verRes = await queryFn(
+          `INSERT INTO semantic.corpus_version (id, version, updated_at)
+           VALUES (1, 2, now())
+           ON CONFLICT (id) DO UPDATE
+           SET version = semantic.corpus_version.version + 1, updated_at = now()
+           RETURNING version`,
+        );
+        const bumped = Number(verRes.rows[0]?.["version"]);
+        if (Number.isFinite(bumped)) {
+          counts.corpusVersion = bumped;
+        }
+      } else {
+        const verRes = await queryFn(
+          "SELECT version FROM semantic.corpus_version WHERE id = 1",
+        );
+        const currentVer = Number(verRes.rows[0]?.["version"]);
+        if (Number.isFinite(currentVer)) {
+          counts.corpusVersion = currentVer;
+        }
+      }
+      if (ownsTx) {
+        await queryFn("COMMIT");
+      }
+    } catch (err) {
+      if (ownsTx) {
+        try {
+          await queryFn("ROLLBACK");
+        } catch {
+          // Ignore rollback failure so original error propagates.
+        }
+      }
+      throw err;
     }
     counts.skipped = chunks.length - dirty.length;
     counts.embeddingTokens = embeddingTokens;
@@ -498,6 +575,7 @@ export async function indexCorpus(options: {
     counts.durationMs = Math.max(0, Date.now() - startedAt);
     return counts;
   } finally {
+    if (client !== null) client.release();
     if (pool !== null) await pool.end();
   }
 }

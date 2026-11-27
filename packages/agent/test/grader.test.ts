@@ -110,7 +110,7 @@ describe("compareRuns", () => {
         ms: m,
         tokens: tokens[i],
       })),
-      summary: { total: ms.length, passed: rate * ms.length, exRate: rate, avgMs: 0, avgTokens: 0 },
+      summary: { total: ms.length, passed: rate * ms.length, exRate: rate, avgMs: 0, avgTokens: 0, rateLimitedCount: 0, rateLimitedRate: 0 },
     };
   }
 
@@ -130,6 +130,31 @@ describe("compareRuns", () => {
     expect(delta.avgTokensDelta).toBeCloseTo(10);
     expect(delta.improved).toEqual(["c1"]);
     expect(delta.regressed).toEqual([]);
+  });
+
+  it("enforces the < 5% rate-limit health gate alongside datasetVersion parity", () => {
+    const before = file("same", 1, [10], [5]);
+    const after = {
+      datasetVersion: "same",
+      cases: Array.from({ length: 20 }, (_, i) => ({
+        id: `c${i}`,
+        status: i === 0 ? "rate_limited" : "ok",
+        exPass: i !== 0,
+        ms: 10,
+        tokens: 5,
+        rateLimited: i === 0,
+      })),
+      summary: {
+        total: 20,
+        passed: 19,
+        exRate: 0.95,
+        avgMs: 10,
+        avgTokens: 5,
+        rateLimitedCount: 1,
+        rateLimitedRate: 0.05,
+      },
+    };
+    expect(() => compareRuns(before, after)).toThrow(/rate-limit health gate failed/);
   });
 });
 
@@ -193,7 +218,32 @@ describe("summarizeCases", () => {
         { id: "a", status: "ok", exPass: true, ms: 10, tokens: 4 },
         { id: "b", status: "error", exPass: false, ms: 30, tokens: 0 },
       ]),
-    ).toEqual({ total: 2, passed: 1, exRate: 0.5, avgMs: 20, avgTokens: 2 });
+    ).toEqual({
+      total: 2,
+      passed: 1,
+      exRate: 0.5,
+      avgMs: 20,
+      avgTokens: 2,
+      rateLimitedCount: 0,
+      rateLimitedRate: 0,
+    });
+  });
+
+  it("tracks rate-limited case counts and percentages", () => {
+    expect(
+      summarizeCases([
+        { id: "a", status: "ok", exPass: true, ms: 10, tokens: 4 },
+        { id: "b", status: "rate_limited", exPass: false, ms: 30, tokens: 0 },
+      ]),
+    ).toEqual({
+      total: 2,
+      passed: 1,
+      exRate: 0.5,
+      avgMs: 20,
+      avgTokens: 2,
+      rateLimitedCount: 1,
+      rateLimitedRate: 0.5,
+    });
   });
 
   it("averages cost only over cases that report one (#97)", () => {
@@ -210,6 +260,8 @@ describe("summarizeCases", () => {
       avgMs: 20 / 3,
       avgTokens: 2000 / 3,
       avgCostUsd: 0.0015,
+      rateLimitedCount: 0,
+      rateLimitedRate: 0,
     });
   });
 
@@ -220,6 +272,8 @@ describe("summarizeCases", () => {
       exRate: 0,
       avgMs: 0,
       avgTokens: 0,
+      rateLimitedCount: 0,
+      rateLimitedRate: 0,
     });
   });
 });

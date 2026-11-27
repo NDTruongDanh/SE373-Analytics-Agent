@@ -5,7 +5,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { dbToolError } from "@shared/contracts";
-import { createBudgetState } from "../src/queryExecutor/budgets.js";
+import {
+  budgetTripReasonFromError,
+  createBudgetState,
+} from "../src/queryExecutor/budgets.js";
 import {
   ModelRetryError,
   classifyModelError,
@@ -487,5 +490,28 @@ describe("retryModelCall", () => {
     controller.abort(new Error("user cancelled"));
     await expect(pending).rejects.toThrow("user cancelled");
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("tags mid-call TimeoutError as budget deadline trip once budget deadline has elapsed", async () => {
+    let clock = 1_000;
+    const budget = createBudgetState({ nowMs: clock, maxLlmCalls: 10, runDeadlineMs: 500 });
+
+    const err = await retryModelCall(
+      async () => {
+        clock = 1_600;
+        const timeoutErr = new Error("attempt timed out");
+        timeoutErr.name = "TimeoutError";
+        throw timeoutErr;
+      },
+      {
+        node: "propose",
+        config: { maxRetries: 2, baseMs: 10, maxWaitMs: 100 },
+        budget,
+        now: () => clock,
+      },
+    ).catch((e: unknown) => e);
+
+    expect(budgetTripReasonFromError(err)).toBe("deadline");
+    expect(budget.llmCalls).toBe(1);
   });
 });
