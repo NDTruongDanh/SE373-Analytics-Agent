@@ -60,7 +60,7 @@ import {
   type UcEntryHandler,
   type PendingClarification,
 } from "../state.js";
-import { loadSemanticCatalogIds } from "../semantic/catalog.js";
+import { loadSemanticCatalogIds, loadSemanticJoinEdges } from "../semantic/catalog.js";
 import {
   buildCannotAnswer,
   checkUnknownTerms,
@@ -71,6 +71,7 @@ import {
 } from "../semantic/retrieveSemantic.js";
 import {
   buildIntentPrompt,
+  entityCoverage,
   foldAscii,
   matchEntityInCatalog,
   resolveCandidateTables,
@@ -1198,6 +1199,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         catalogTables: effectiveCatalogTables,
         catalogLoaded: effectiveCatalogStatus === "ready",
         semanticChunks: chunks,
+        ...(effectiveCatalogStatus === "ready" ? { joinEdges: loadSemanticJoinEdges() } : {}),
       });
 
     const catalogUpdate =
@@ -1286,6 +1288,30 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         workingChunks !== state.semanticChunks
           ? { semanticChunks: workingChunks }
           : {};
+      const coverage = entityCoverage(resolved.entities);
+      const clearlyUnsupported = resolved.unmappedEntities.some((entity) =>
+        /\b(nps|ton kho|nha cung cap|weather|stock market)\b/.test(foldAscii(entity)),
+      );
+      if (resolved.unmappedEntities.length > 0 &&
+        ((coverage.totalEntities > 0 && coverage.matchedCount === 0) || clearlyUnsupported)) {
+        rt.emit({
+          node: "describe",
+          type: "node_done",
+          durationMs: 0,
+          payload: { resolution: "out_of_domain", coverage, entities: resolved.entities },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "cannot_answer",
+          sql: null,
+          pendingClarification: null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: `Không có bảng hoặc chỉ số phù hợp cho: ${resolved.unmappedEntities.join(", ")}. ` +
+            `Các bảng hiện có: ${effectiveCatalogTables.slice(0, 8).map((table) => table.name).join(", ")}.`,
+        };
+      }
       if (resolved.reason === "too_many_required_tables") {
         rt.emit({
           node: "describe",
@@ -1306,6 +1332,24 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
           pendingClarification: null,
           toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
           answerText: buildTooManyTablesMessage(resolved),
+        };
+      }
+
+      if (resolved.reason === "disconnected_required_tables") {
+        rt.emit({
+          node: "describe", type: "node_done", durationMs: 0,
+          payload: { clarificationReason: resolved.reason, requiredTables: resolved.requiredTables },
+        });
+        return {
+          ...clarificationUpdate,
+          ...catalogUpdate,
+          ...semanticUpdate,
+          status: "needs_clarification",
+          sql: null,
+          pendingClarification: null,
+          toolsCalled: dedupeTools([...activeState.toolsCalled, ...entryPreTools]),
+          answerText: `Không tìm thấy đường nối dữ liệu được xác thực giữa các bảng ${resolved.requiredTables.join(", ")}. ` +
+            "Vui lòng thu hẹp câu hỏi hoặc chỉ rõ mối liên hệ cần dùng.",
         };
       }
 
@@ -1511,6 +1555,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       question: activeState.question,
       timeRange: activeState.intent.timeRange,
       candidateTables,
+      catalogTables: effectiveCatalogTables,
       references,
       principal: identity,
       budget,
@@ -1554,6 +1599,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         question: activeState.question,
         timeRange: activeState.intent.timeRange,
         candidateTables,
+        catalogTables: effectiveCatalogTables,
         references,
         principal: identity,
         budget,

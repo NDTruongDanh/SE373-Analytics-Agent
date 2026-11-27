@@ -835,6 +835,74 @@ describe("ValidatedQueryExecutor core path", () => {
   });
 });
 
+describe("reactive FK bridge expansion", () => {
+  const columns = [
+    { name: "id", type: "integer", nullable: false, sensitive: false },
+    { name: "product_id", type: "integer", nullable: false, sensitive: false },
+  ];
+  function makeMcp(): StubMcpCaller {
+    return new StubMcpCaller({
+      describe_table: (args) => {
+        const table = String(args["table"]);
+        return {
+          table, columns, primaryKey: ["id"],
+          foreignKeys: table === "orders"
+            ? [{ column: "product_id", referencesTable: "products", referencesColumn: "id" }]
+            : table === "products"
+              ? [{ column: "id", referencesTable: "categories", referencesColumn: "id" }]
+              : [],
+        };
+      },
+      explain_query: () => ({ estimatedCost: 1, estimatedRows: 1 }),
+      run_query: () => ({ columns: ["id"], rows: [{ id: 1 }], rowCount: 1,
+        truncated: false, maskedColumns: [], durationMs: 1 }),
+    });
+  }
+
+  it("describes one public FK neighbor and rechecks the same SQL attempt", async () => {
+    const mcp = makeMcp();
+    const result = await new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp }).run({
+      question: "orders and products",
+      initialSql: "SELECT o.id FROM orders o JOIN products p ON p.id = o.product_id",
+      candidateTables: ["orders"],
+      catalogTables: [{ name: "orders", schema: "public" }, { name: "products", schema: "public" }],
+      principal: PRINCIPAL,
+      maxAttempts: 1,
+    });
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.attempts).toBe(1);
+    expect(mcp.calls.filter((call) => call.tool === "describe_table").map((call) => call.args["table"]))
+      .toEqual(["orders", "products"]);
+  });
+
+  it("refuses a second reactive table and a fabricated table", async () => {
+    const mcp = makeMcp();
+    const result = await new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp }).run({
+      question: "orders products categories",
+      initialSql: "SELECT o.id FROM orders o JOIN products p ON p.id = o.product_id JOIN categories c ON c.id = p.id",
+      candidateTables: ["orders"],
+      catalogTables: ["orders", "products", "categories"].map((name) => ({ name, schema: "public" })),
+      principal: PRINCIPAL,
+      maxAttempts: 1,
+    });
+    expect(result.status).toBe("error");
+    expect(mcp.calls.filter((call) => call.tool === "describe_table").map((call) => call.args["table"]))
+      .toEqual(["orders", "products"]);
+
+    const unknownMcp = makeMcp();
+    const unknown = await new ValidatedQueryExecutor({ model: new FakeChatModel([]), mcp: unknownMcp }).run({
+      question: "unknown table",
+      initialSql: "SELECT id FROM unicorns",
+      candidateTables: ["orders"],
+      catalogTables: [{ name: "orders", schema: "public" }],
+      principal: PRINCIPAL,
+      maxAttempts: 1,
+    });
+    expect(unknown.status).toBe("error");
+    expect(unknownMcp.calls.filter((call) => call.tool === "describe_table")).toHaveLength(1);
+  });
+});
+
 describe("ValidatedQueryExecutor large-table flag (#129)", () => {
   const LARGE_ORDERS_COLUMNS = [
     { name: "id", type: "integer", nullable: false, sensitive: false, large: true },

@@ -589,6 +589,7 @@ export interface ResolveCandidateTablesInput {
   catalogTables: readonly CatalogTable[];
   catalogLoaded: boolean;
   semanticChunks: AgentState["semanticChunks"];
+  joinEdges?: readonly (readonly [string, string])[];
   maxTables?: number;
 }
 
@@ -598,6 +599,27 @@ export interface EntityResolutionBreakdown {
   filterLiteralEntities: string[];
   metricCoveredEntities: string[];
   unresolvedEntities: string[];
+}
+
+export function entityCoverage(entities: EntityResolutionBreakdown): {
+  matchedCount: number;
+  totalEntities: number;
+  coverage: number;
+} {
+  const filtered = new Set(entities.filterLiteralEntities.map(foldAscii));
+  const matched = new Set([
+    ...entities.catalogMatchedEntities,
+    ...entities.semanticMappedEntities,
+    ...entities.metricCoveredEntities,
+  ].map(foldAscii).filter((value) => value && !filtered.has(value)));
+  const unresolved = new Set(entities.unresolvedEntities.map(foldAscii)
+    .filter((value) => value && !filtered.has(value) && !matched.has(value)));
+  const totalEntities = matched.size + unresolved.size;
+  return {
+    matchedCount: matched.size,
+    totalEntities,
+    coverage: totalEntities === 0 ? 0 : matched.size / totalEntities,
+  };
 }
 
 export type ResolveCandidateTablesResult =
@@ -619,7 +641,8 @@ export type ResolveCandidateTablesResult =
         | "partial_unmapped_entities"
         | "unmapped_entities"
         | "no_candidates"
-        | "too_many_required_tables";
+        | "too_many_required_tables"
+        | "disconnected_required_tables";
       partialTables: string[];
       requiredTables: string[];
       maxTables: number;
@@ -639,6 +662,54 @@ function dedupeStrings(items: readonly string[]): string[] {
     if (item && !out.includes(item)) out.push(item);
   }
   return out;
+}
+
+function completeRequiredJoinPaths(
+  required: readonly string[],
+  edges: readonly (readonly [string, string])[],
+  allowed: ReadonlySet<string>,
+): string[] | null {
+  if (required.length < 2) return [];
+  const graph = new Map<string, Set<string>>();
+  for (const [a, b] of edges) {
+    const left = a.toLowerCase();
+    const right = b.toLowerCase();
+    if (!allowed.has(left) || !allowed.has(right)) continue;
+    if (!graph.has(left)) graph.set(left, new Set());
+    if (!graph.has(right)) graph.set(right, new Set());
+    graph.get(left)?.add(right);
+    graph.get(right)?.add(left);
+  }
+  const selected = new Set<string>([required[0]?.toLowerCase() as string]);
+  const bridges: string[] = [];
+  for (const targetName of required.slice(1)) {
+    const target = targetName.toLowerCase();
+    if (selected.has(target)) continue;
+    const queue = [...selected].sort().map((name) => [name]);
+    const visited = new Set(selected);
+    let path: string[] | null = null;
+    while (queue.length > 0) {
+      const current = queue.shift() as string[];
+      const last = current[current.length - 1] as string;
+      if (last === target) {
+        path = current;
+        break;
+      }
+      for (const next of [...(graph.get(last) ?? [])].sort()) {
+        if (visited.has(next)) continue;
+        visited.add(next);
+        queue.push([...current, next]);
+      }
+    }
+    if (!path) return null;
+    for (const table of path) {
+      if (!selected.has(table) && !required.some((name) => name.toLowerCase() === table)) {
+        bridges.push(table);
+      }
+      selected.add(table);
+    }
+  }
+  return dedupeStrings(bridges);
 }
 
 export function resolveCandidateTables(
@@ -794,6 +865,28 @@ export function resolveCandidateTables(
     ...groundedMetricTables,
   ]).filter((t) => !directEntityTables.has(t.toLowerCase()));
 
+  const groundedBeforeBridges = dedupeStrings([
+    ...catalogMatched,
+    ...entitySemanticMapped,
+    ...metricRequired,
+  ]);
+  const groundedSet = new Set(groundedBeforeBridges.map((table) => table.toLowerCase()));
+  const tableChunks = new Set(rankedChunks.filter((chunk) =>
+    (chunk.docType ?? inferDocType(chunk.chunkId)) === "table",
+  ).flatMap((chunk) => resolveChunkTables(chunk, input.catalogTables, input.catalogLoaded))
+    .map((table) => table.toLowerCase()));
+  const bridgeRules = rankedChunks.filter((chunk) =>
+    (chunk.docType ?? inferDocType(chunk.chunkId)) === "join_rule",
+  ).map((chunk) => resolveChunkTables(chunk, input.catalogTables, input.catalogLoaded))
+    .filter((tables) => tables.length >= 3 &&
+      tables.filter((table) => groundedSet.has(table.toLowerCase())).length >= 2 &&
+      tables.filter((table) => !groundedSet.has(table.toLowerCase()))
+        .every((table) => tableChunks.has(table.toLowerCase())))
+    .sort((a, b) => a.length - b.length || a.join(",").localeCompare(b.join(",")));
+  const bridgeRequired = bridgeRules.length > 0
+    ? dedupeStrings((bridgeRules[0] ?? []).filter((table) => !groundedSet.has(table.toLowerCase())))
+    : [];
+
   const entitiesBreakdown: EntityResolutionBreakdown = {
     catalogMatchedEntities,
     semanticMappedEntities,
@@ -802,10 +895,11 @@ export function resolveCandidateTables(
     unresolvedEntities: stillUnmapped,
   };
 
-  const requiredTables = dedupeStrings([
+  let requiredTables = dedupeStrings([
     ...catalogMatched,
     ...entitySemanticMapped,
     ...metricRequired,
+    ...bridgeRequired,
   ]);
 
   if (stillUnmapped.length > 0) {
@@ -826,6 +920,25 @@ export function resolveCandidateTables(
       unmappedEntities: stillUnmapped,
       entities: entitiesBreakdown,
     };
+  }
+
+  if (input.joinEdges && requiredTables.length >= 2 && requiredTables.length <= maxTables) {
+    const publicNames = new Set(input.catalogTables.filter((table) => table.schema === "public")
+      .map((table) => table.name.toLowerCase()));
+    const joins = completeRequiredJoinPaths(requiredTables, input.joinEdges, publicNames);
+    if (joins === null) {
+      return {
+        ok: false,
+        reason: "disconnected_required_tables",
+        partialTables: requiredTables.slice(0, maxTables),
+        requiredTables,
+        maxTables,
+        sources: { catalogMatched, entitySemanticMapped, metricRequired, semanticExpanded: [] },
+        unmappedEntities: [],
+        entities: entitiesBreakdown,
+      };
+    }
+    requiredTables = dedupeStrings([...requiredTables, ...joins]);
   }
 
   // Ask the user to narrow the question rather than silently dropping required tables past maxTables.

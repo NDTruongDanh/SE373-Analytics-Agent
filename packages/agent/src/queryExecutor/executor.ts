@@ -50,6 +50,12 @@ import {
 } from "./costPolicy.js";
 import { escapeUntrustedText, serializeUntrusted } from "../untrusted.js";
 import { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
+import { loadSqlIdentifierAliases } from "../semantic/catalog.js";
+import {
+  escapedIlikePattern,
+  isHighCardinalityDiagnosticColumn,
+  likeDiagnosticTerms,
+} from "./diagnosticCardinality.js";
 
 export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
@@ -114,6 +120,7 @@ export interface ExecutorRunInput {
   timeRange?: string | null;
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
+  catalogTables?: readonly { name: string; schema: string }[];
   /** Trusted semantic-layer snippets (metric definitions, join rules, enum anchors); never row data. */
   references?: string[];
   principal: ExecutorPrincipal;
@@ -479,7 +486,9 @@ function stringFilterPredicates(
           const column = catalogTable?.columns.find(
             (entry) => entry.name.toLowerCase() === ref.column.toLowerCase(),
           )?.name;
-          if (column) {
+          if (column && catalogTable?.columns.some((entry) =>
+            entry.name === column && !entry.sensitive && /text|char|varchar/i.test(entry.type),
+          )) {
             const predicate = { table, column, literal };
             predicates.set(`${table}\u0000${column}\u0000${literal}`, predicate);
           }
@@ -766,7 +775,8 @@ export class ValidatedQueryExecutor {
         payload: { tool: "describe_table", table: parsed.data.table },
       });
     }
-    const catalog = input.catalog ?? catalogFromDescribe(described);
+    let catalog = input.catalog ?? catalogFromDescribe(described);
+    let reactiveBridgeUsed = false;
 
     const effectiveMaxAttempts =
       typeof input.maxAttempts === "number" && input.maxAttempts > 0
@@ -915,7 +925,53 @@ export class ValidatedQueryExecutor {
         });
       }
 
-      const guard = await sqlGuard(sql, catalog);
+      let guard = await sqlGuard(sql, catalog, { aliases: loadSqlIdentifierAliases() });
+      if (!guard.ok && diagnosticBaseline === null && !reactiveBridgeUsed && guard.error.code === "UNKNOWN_TABLE" &&
+        described.length < 6) {
+        const unknown = /^Unknown table: ([A-Za-z_][A-Za-z0-9_]*)/.exec(guard.error.message)?.[1];
+        const allowed = unknown && input.catalogTables?.find((table) =>
+          table.schema === "public" && table.name.toLowerCase() === unknown.toLowerCase(),
+        );
+        if (allowed && !described.some((table) => table.table.toLowerCase() === allowed.name.toLowerCase())) {
+          const check = checkBudget(budget);
+          if (check.tripped) return budgetTrip(check.reason, attempt);
+          reactiveBridgeUsed = true;
+          const started = Date.now();
+          let raw: unknown;
+          try {
+            raw = await this.mcp.call("describe_table", { ...identity, table: allowed.name });
+          } catch (thrown) {
+            return executorFailure(asDbToolError("describe_table", thrown), sql, attempt);
+          }
+          const parsed = DescribeTableOutputSchema.safeParse(raw);
+          if (!parsed.success || parsed.data.table.toLowerCase() !== allowed.name.toLowerCase()) {
+            return executorFailure(dbToolError("INTERNAL_ERROR", "Reactive describe_table returned an unexpected table"), sql, attempt);
+          }
+          this.span({
+            node: "describe",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - started,
+            payload: { tool: "describe_table", table: allowed.name, reactive: true },
+          });
+          const connected = described.some((table) =>
+            (table.foreignKeys ?? []).some((fk) => fk.referencesTable.toLowerCase() === allowed.name.toLowerCase()) ||
+            parsed.data.foreignKeys.some((fk) => fk.referencesTable.toLowerCase() === table.table.toLowerCase()),
+          );
+          if (connected) {
+            described.push({
+              table: parsed.data.table,
+              columns: parsed.data.columns,
+              primaryKey: parsed.data.primaryKey,
+              foreignKeys: parsed.data.foreignKeys,
+            });
+            partials.tablesDescribed.push(parsed.data.table);
+            const addition = catalogFromDescribe([parsed.data]);
+            catalog = { tables: [...catalog.tables, ...addition.tables] };
+            guard = await sqlGuard(sql, catalog, { aliases: loadSqlIdentifierAliases() });
+          }
+        }
+      }
       if (!guard.ok) {
         lastError = guard.error;
         if (isRepairable(guard.error.code) && attempt < effectiveMaxAttempts) {
@@ -1363,108 +1419,82 @@ export class ValidatedQueryExecutor {
         }
       }
 
-      const distinctSql =
-        `SELECT DISTINCT ${quotedIdentifier(predicate.column)} ` +
-        `FROM ${quotedIdentifier(predicate.table)} LIMIT ${DIAGNOSTIC_DISTINCT_LIMIT}`;
-      const distinctGuard = await sqlGuard(distinctSql, catalog);
-      if (!distinctGuard.ok) {
-        notes.push(`guarded distinct ${predicate.table}.${predicate.column} was denied`);
-        continue;
-      }
-
-      const explainCheck = checkBudget(budget);
-      if (explainCheck.tripped) return { note: "", budgetTripped: explainCheck.reason };
-      try {
-        const started = Date.now();
-        const raw = await this.mcp.call("explain_query", {
-          ...identity,
-          sql: distinctSql,
-        });
-        const parsed = ExplainQueryOutputSchema.safeParse(raw);
-        if (!parsed.success) {
-          notes.push(`distinct ${predicate.table}.${predicate.column} explain returned an unexpected shape`);
+      const highCardinality = isHighCardinalityDiagnosticColumn(predicate.table, predicate.column);
+      const terms = highCardinality ? likeDiagnosticTerms(predicate.literal) : [""];
+      for (const term of terms) {
+        const probeLimit = highCardinality ? DIAGNOSTIC_MAX_OBSERVED_VALUES : DIAGNOSTIC_DISTINCT_LIMIT;
+        const probeSql = highCardinality
+          ? `SELECT DISTINCT ${quotedIdentifier(predicate.column)} FROM ${quotedIdentifier(predicate.table)} ` +
+            `WHERE ${quotedIdentifier(predicate.column)} ILIKE ${escapedIlikePattern(term)} ESCAPE E'\\\\' LIMIT ${probeLimit}`
+          : `SELECT DISTINCT ${quotedIdentifier(predicate.column)} ` +
+            `FROM ${quotedIdentifier(predicate.table)} LIMIT ${probeLimit}`;
+        const probeGuard = await sqlGuard(probeSql, catalog);
+        if (!probeGuard.ok) {
+          notes.push(`guarded diagnostic ${predicate.table}.${predicate.column} was denied`);
           continue;
         }
-        this.span({
-          node: "diagnose",
-          type: "tool_call",
-          attempt,
-          durationMs: Date.now() - started,
-          payload: {
-            tool: "explain_query",
-            table: predicate.table,
-            column: predicate.column,
-            estimatedCost: parsed.data.estimatedCost,
-          },
-        });
-      } catch (thrown) {
-        const error = asDbToolError("explain_query", thrown);
-        notes.push(`distinct ${predicate.table}.${predicate.column} explain failed (${error.code})`);
-        this.span({
-          node: "diagnose",
-          type: "tool_call",
-          attempt,
-          payload: {
-            tool: "explain_query",
-            table: predicate.table,
-            column: predicate.column,
-            probeError: error.code,
-          },
-        });
-        continue;
-      }
 
-      const runCheck = checkBudget(budget);
-      if (runCheck.tripped) return { note: "", budgetTripped: runCheck.reason };
-      try {
-        const started = Date.now();
-        const raw = await this.mcp.call("run_query", {
-          ...identity,
-          sql: distinctSql,
-          maxRows: DIAGNOSTIC_DISTINCT_LIMIT,
-        });
-        const parsed = RunQueryOutputSchema.safeParse(raw);
-        if (!parsed.success) {
-          notes.push(`distinct ${predicate.table}.${predicate.column} returned an unexpected shape`);
+        const explainCheck = checkBudget(budget);
+        if (explainCheck.tripped) return { note: "", budgetTripped: explainCheck.reason };
+        try {
+          const started = Date.now();
+          const raw = await this.mcp.call("explain_query", { ...identity, sql: probeSql });
+          const parsed = ExplainQueryOutputSchema.safeParse(raw);
+          if (!parsed.success) {
+            notes.push(`diagnostic ${predicate.table}.${predicate.column} explain returned an unexpected shape`);
+            continue;
+          }
+          this.span({
+            node: "diagnose",
+            type: "tool_call",
+            attempt,
+            durationMs: Date.now() - started,
+            payload: {
+              tool: "explain_query", table: predicate.table,
+              column: predicate.column, estimatedCost: parsed.data.estimatedCost,
+            },
+          });
+          const breach = costBreach(parsed.data, ceilingsFor(
+            this.costPolicy ?? defaultQueryCostPolicy(), identity.roleScope,
+          ));
+          if (breach) {
+            notes.push(`diagnostic ${predicate.table}.${predicate.column} exceeded cost ceiling`);
+            continue;
+          }
+        } catch (thrown) {
+          const error = asDbToolError("explain_query", thrown);
+          notes.push(`diagnostic ${predicate.table}.${predicate.column} explain failed (${error.code})`);
           continue;
         }
-        this.span({
-          node: "diagnose",
-          type: "tool_call",
-          attempt,
-          durationMs: Date.now() - started,
-          payload: {
-            tool: "run_query",
-            table: predicate.table,
-            column: predicate.column,
-            rowCount: parsed.data.rowCount,
-          },
-        });
-        const repairFeedback = diagnosticMismatch(predicate, parsed.data.rows);
-        const resultNote =
-          `${sampleNote}; distinct ${predicate.table}.${predicate.column} ` +
-          `returned ${parsed.data.rowCount} values`;
-        if (repairFeedback) {
-          return {
-            note: `zero-row diagnostic: ${resultNote}; attempting one repair`,
-            repairFeedback,
-          };
+
+        const runCheck = checkBudget(budget);
+        if (runCheck.tripped) return { note: "", budgetTripped: runCheck.reason };
+        try {
+          const started = Date.now();
+          const raw = await this.mcp.call("run_query", { ...identity, sql: probeSql, maxRows: probeLimit });
+          const parsed = RunQueryOutputSchema.safeParse(raw);
+          if (!parsed.success) {
+            notes.push(`diagnostic ${predicate.table}.${predicate.column} returned an unexpected shape`);
+            continue;
+          }
+          this.span({
+            node: "diagnose", type: "tool_call", attempt,
+            durationMs: Date.now() - started,
+            payload: { tool: "run_query", table: predicate.table, column: predicate.column,
+              rowCount: parsed.data.rowCount },
+          });
+          const repairFeedback = diagnosticMismatch(predicate, parsed.data.rows);
+          const resultNote = `${sampleNote}; ${highCardinality ? "ILIKE" : "distinct"} ` +
+            `${predicate.table}.${predicate.column} returned ${parsed.data.rowCount} values`;
+          if (repairFeedback) {
+            return { note: `zero-row diagnostic: ${resultNote}; attempting one repair`, repairFeedback };
+          }
+          notes.push(resultNote);
+          if (parsed.data.rows.length > 0) break;
+        } catch (thrown) {
+          const error = asDbToolError("run_query", thrown);
+          notes.push(`diagnostic ${predicate.table}.${predicate.column} probe failed (${error.code})`);
         }
-        notes.push(resultNote);
-      } catch (thrown) {
-        const error = asDbToolError("run_query", thrown);
-        notes.push(`distinct ${predicate.table}.${predicate.column} probe failed (${error.code})`);
-        this.span({
-          node: "diagnose",
-          type: "tool_call",
-          attempt,
-          payload: {
-            tool: "run_query",
-            table: predicate.table,
-            column: predicate.column,
-            probeError: error.code,
-          },
-        });
       }
     }
     return {

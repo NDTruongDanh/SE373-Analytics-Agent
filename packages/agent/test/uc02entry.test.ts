@@ -466,7 +466,7 @@ describe("UC-02 text-to-SQL entry", () => {
     ]);
   });
 
-  it("requests clarification with available tables instead of cannot_answer when no table candidates resolve", async () => {
+  it("returns cannot_answer when no requested entity is grounded after follow-up", async () => {
     let executorCalls = 0;
     const { entry } = createTextToSqlRuntime({
       executor: {
@@ -508,14 +508,10 @@ describe("UC-02 text-to-SQL entry", () => {
     });
     const out = await entry(state, fakeRuntime());
     expect(executorCalls).toBe(0);
-    expect(out.status).toBe("needs_clarification");
-    expect(out.pendingClarification).toMatchObject({
-      field: "table",
-      options: ["orders", "customers", NO_MATCHING_TABLE_OPTION],
-    });
+    expect(out.status).toBe("cannot_answer");
+    expect(out.sql).toBeNull();
     expect(out.answerText).toMatch(/salaries/);
     expect(out.answerText).toMatch(/orders, customers/);
-    expect(out.answerText).toMatch(/ask a new question/i);
   });
 
   it("refuses to silently drop an unresolved partial entity and asks user to clarify or ask a new question", async () => {

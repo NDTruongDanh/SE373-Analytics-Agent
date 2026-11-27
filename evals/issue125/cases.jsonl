@@ -1,0 +1,10 @@
+{"id":"uc01-125-table-typo","uc":"uc01","kind":"identifier_table","sql":"SELECT id FROM ordres","expected":"orders"}
+{"id":"uc01-125-column-alias","uc":"uc01","kind":"identifier_alias","sql":"SELECT ngay_mua FROM orders","expected":"purchase_date"}
+{"id":"uc01-125-fk-bridge","uc":"uc01","kind":"fk_bridge","tables":["order_items","categories"],"expected":"products"}
+{"id":"uc01-125-high-cardinality","uc":"uc01","kind":"high_cardinality","table":"products","column":"name","literal":"Mien Nam"}
+{"id":"uc01-125-low-cardinality","uc":"uc01","kind":"low_cardinality","table":"orders","column":"status"}
+{"id":"uc02-125-date-link","uc":"uc02","kind":"date_link","tables":["orders","promotions"]}
+{"id":"uc02-125-disconnected","uc":"uc02","kind":"disconnected","tables":["orders","inventory"]}
+{"id":"uc02-125-outside-domain","uc":"uc02","kind":"outside_domain","entity":"NPS"}
+{"id":"uc02-125-sensitive-column","uc":"uc02","kind":"sensitive_column","sql":"SELECT nam FROM customers","forbidden":"name"}
+{"id":"uc02-125-adversarial-probe","uc":"uc02","kind":"adversarial_probe","literal":"x%' OR TRUE --"}

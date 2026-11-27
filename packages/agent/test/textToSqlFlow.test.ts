@@ -20,6 +20,33 @@ const BASE_CATALOG: CatalogTable[] = [
   { name: "channels", schema: "public", description: "Sales channels" },
 ];
 
+describe("out-of-domain entity gate", () => {
+  it.each([
+    ["NPS", ["NPS"]],
+    ["NPS của đơn hàng", ["orders", "NPS"]],
+  ])("returns cannot_answer before SQL for %s", async (question, schemaEntities) => {
+    let executorCalls = 0;
+    const graph = buildRootGraph({
+      checkpointer: new MemorySaver(),
+      retrieve: createRetrieveSemantic({ search: async () => [] }),
+      synthesize: createAnswerSynthesizer(),
+      textToSql: {
+        listTables: async () => BASE_CATALOG,
+        semanticSearch: async () => [],
+        intentModel: makeIntentModel({ requestedMetrics: [], schemaEntities, queryMode: "standard_query" }).model,
+        executor: { run: async () => {
+          executorCalls += 1;
+          throw new Error("executor must not run for unsupported entities");
+        } },
+      },
+    });
+    const result = await graph.invoke({ question, route: "text-to-sql" }, runConfig(`t-oood-${schemaEntities.length}`, `r-oood-${schemaEntities.length}`));
+    expect(result.status).toBe("cannot_answer");
+    expect(result.sql).toBeNull();
+    expect(executorCalls).toBe(0);
+  });
+});
+
 function semanticChunk(
   overrides: Partial<SearchSemanticLayerChunk> & { chunkId: string },
 ): SearchSemanticLayerChunk {
@@ -1206,7 +1233,7 @@ describe("end-to-end UC-01 flow through buildRootGraph", () => {
 
     const resumed = await graph.invoke(new Command({ resume: "sellers" }), cfg);
     expect(resumed.status).toBe("ok");
-    expect(seenTables).toEqual(["orders", "sellers"]);
+    expect(seenTables).toEqual(["orders", "sellers", "order_items"]);
   });
 
   it("includes metric-required tables in requiredTables cap check and rejects when 6 entities + metric add a 7th table", async () => {

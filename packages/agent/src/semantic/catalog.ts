@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import type { SqlIdentifierAliases } from "@shared/access-policy";
 
 const SEMANTIC_FILES = [
   "tables.yaml",
@@ -17,6 +18,8 @@ export const DEFAULT_SEMANTIC_DIR = fileURLToPath(
 );
 
 let cachedCatalog: ReadonlySet<string> | null = null;
+let cachedAliases: SqlIdentifierAliases | null = null;
+let cachedJoinEdges: readonly (readonly [string, string])[] | null = null;
 
 function entriesFromYaml(text: string): Record<string, unknown>[] {
   let parsed: unknown;
@@ -100,6 +103,69 @@ export function loadSemanticCatalogIds(
   return ids;
 }
 
+export function loadSqlIdentifierAliases(
+  semanticDir: string = DEFAULT_SEMANTIC_DIR,
+): SqlIdentifierAliases {
+  if (semanticDir === DEFAULT_SEMANTIC_DIR && cachedAliases !== null) return cachedAliases;
+  const aliases: {
+    tables: Record<string, string[]>;
+    columns: Record<string, Record<string, string[]>>;
+  } = { tables: {}, columns: {} };
+  for (const file of ["tables.yaml", "columns.yaml"] as const) {
+    const fullPath = path.join(semanticDir, file);
+    if (!existsSync(fullPath)) continue;
+    for (const entry of entriesFromYaml(readFileSync(fullPath, "utf8"))) {
+      if (entry["sensitivity"] === "restricted_pii") continue;
+      const names = Array.isArray(entry["aliases"])
+        ? entry["aliases"].filter((value): value is string => typeof value === "string")
+        : [];
+      if (names.length === 0) continue;
+      if (file === "tables.yaml") {
+        const table = entry["table"];
+        if (typeof table === "string") aliases.tables[table] = names;
+      } else {
+        const column = entry["column"];
+        if (typeof column !== "string") continue;
+        const parts = column.split(".");
+        if (parts.length !== 2) continue;
+        const table = parts[0] as string;
+        const name = parts[1] as string;
+        if (!aliases.columns[table]) aliases.columns[table] = {};
+        aliases.columns[table][name] = names;
+      }
+    }
+  }
+  if (semanticDir === DEFAULT_SEMANTIC_DIR) cachedAliases = aliases;
+  return aliases;
+}
+
+export function loadSemanticJoinEdges(
+  semanticDir: string = DEFAULT_SEMANTIC_DIR,
+): readonly (readonly [string, string])[] {
+  if (semanticDir === DEFAULT_SEMANTIC_DIR && cachedJoinEdges !== null) return cachedJoinEdges;
+  const fullPath = path.join(semanticDir, "tables.yaml");
+  const edges = new Map<string, readonly [string, string]>();
+  if (existsSync(fullPath)) {
+    for (const entry of entriesFromYaml(readFileSync(fullPath, "utf8"))) {
+      if (entry["docType"] !== "table" || typeof entry["table"] !== "string") continue;
+      const source = entry["table"];
+      const content = typeof entry["content"] === "string" ? entry["content"] : "";
+      for (const match of content.matchAll(/\bFK\s+to\s+([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z_][A-Za-z0-9_]*/gi)) {
+        const target = match[1] as string;
+        if (source === target) continue;
+        const pair = [source, target].sort() as [string, string];
+        edges.set(pair.join("\u0000"), pair);
+      }
+    }
+  }
+  edges.set("orders\u0000promotions", ["orders", "promotions"]);
+  const result = [...edges.values()].sort((a, b) => a.join("\u0000").localeCompare(b.join("\u0000")));
+  if (semanticDir === DEFAULT_SEMANTIC_DIR) cachedJoinEdges = result;
+  return result;
+}
+
 export function resetSemanticCatalogCacheForTests(): void {
   cachedCatalog = null;
+  cachedAliases = null;
+  cachedJoinEdges = null;
 }
