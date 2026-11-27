@@ -465,7 +465,7 @@ The harness is organized around eight orthogonal engineering dimensions that map
 
 ## 5. Shared Contracts (`@shared/contracts`) & Package Boundaries
 
-All packages communicate through `@shared/contracts` (`CONTRACTS_VERSION = "1.2.0"`). Full JSON Schemas are generated into [`docs/mcp_interface.md`](mcp_interface.md) via `pnpm docs:interface` (never hand-edited).
+All packages communicate through `@shared/contracts` (`CONTRACTS_VERSION = "1.3.0"`). Full JSON Schemas are generated into [`docs/mcp_interface.md`](mcp_interface.md) via `pnpm docs:interface` (never hand-edited).
 
 | Contract File | Key Exports | Consumers |
 |---|---|---|

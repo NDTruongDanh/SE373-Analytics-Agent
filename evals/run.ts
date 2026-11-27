@@ -731,18 +731,12 @@ async function runPureUc(
     ...(opts.noSemantic ? { ablation: "control_no_semantic" } : {}),
   };
 
+  const outFile = opts.noSemantic ? `${uc}-control.json` : `${uc}.json`;
   writeFileSync(
-    path.join(repoRoot, "results", `${uc}.json`),
+    path.join(repoRoot, "results", outFile),
     `${JSON.stringify(resultPayload, null, 2)}\n`,
     "utf8",
   );
-  if (opts.noSemantic) {
-    writeFileSync(
-      path.join(repoRoot, "results", `${uc}-control.json`),
-      `${JSON.stringify(resultPayload, null, 2)}\n`,
-      "utf8",
-    );
-  }
 
   if (verbose || !gatesOk || !rateLimitOk) {
     runner.print(run as never, { noSemantic: opts.noSemantic });
@@ -759,6 +753,7 @@ async function runPureUc(
     );
   }
 
+  // Control ablation (--no-semantic) is expected to fail semantic-dependent cases while still enforcing the rate-limit gate.
   const passedOk = opts.noSemantic ? true : passed === run.cases.length;
   return passedOk && gatesOk && rateLimitOk;
 }
