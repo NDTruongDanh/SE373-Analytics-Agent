@@ -15,6 +15,7 @@ import type { GatewayDeps } from "../src/pipeline.js";
 import { ColumnScopePolicy } from "@shared/access-policy";
 import { buildCatalog, fetchCatalogSource } from "../src/catalog.js";
 import { loadSensitiveColumns } from "../src/config.js";
+import { verifySemanticCorpusWithPool } from "../src/semantic/verify.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..", "..");
@@ -161,6 +162,25 @@ describeLive("semantic live", () => {
       if (hr.ok) {
         expect((hr.data as { text: string }).text).toContain("compensation_cost");
       }
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("verifies the live semantic corpus cleanly with semantic:verify", async () => {
+    const pool = new Pool({
+      connectionString: process.env["AGENT_RO_DATABASE_URL"] ?? process.env["DATABASE_URL"],
+    });
+    try {
+      const report = await verifySemanticCorpusWithPool(pool, {
+        semanticDir: path.join(ROOT, "semantic"),
+      });
+      expect(report.failures).toEqual([]);
+      expect(report.checkedTables).toBeGreaterThan(0);
+      expect(report.checkedColumns).toBeGreaterThan(0);
+      expect(report.checkedEnums).toBeGreaterThan(0);
+      expect(report.checkedMetrics).toBeGreaterThan(0);
+      expect(report.checkedJoins).toBeGreaterThan(0);
     } finally {
       await pool.end();
     }
