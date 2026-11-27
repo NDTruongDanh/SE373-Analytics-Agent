@@ -31,8 +31,30 @@ export function resetAgentRoPoolForTests(): void {
   }
 }
 
+// Engine row-level security (docker/initdb/05_row_security.sql) reads these per
+// transaction; a missing or empty row scope returns no rows, "*" means unscoped.
+export const UNSCOPED_ROW_SCOPE = "*";
+export const RLS_SCOPE_COLUMN = "region_group";
+export const SESSION_WORK_MEM = "16MB";
+
+export interface SessionContext {
+  role: string;
+  rowScope: string;
+}
+
+export function sessionContextFor(principal: {
+  role: string;
+  rowScope?: { column: string; value: string } | null;
+}): SessionContext {
+  if (principal.rowScope === undefined || principal.rowScope === null) {
+    return { role: principal.role, rowScope: UNSCOPED_ROW_SCOPE };
+  }
+  const supported = principal.rowScope.column.toLowerCase() === RLS_SCOPE_COLUMN;
+  return { role: principal.role, rowScope: supported ? principal.rowScope.value : "" };
+}
+
 export interface ReadSession {
-  beginReadOnly(): Promise<void>;
+  beginReadOnly(context: SessionContext): Promise<void>;
   readBounded(
     body: string,
     maxRows: number,
@@ -57,9 +79,14 @@ export function defaultSessionFactory(): Promise<ReadSession> {
     .then((client) => {
       let cursor: Cursor | null = null;
       const session: ReadSession = {
-        async beginReadOnly(): Promise<void> {
+        async beginReadOnly(context: SessionContext): Promise<void> {
           await client.query("BEGIN READ ONLY");
           await client.query("SET LOCAL statement_timeout = '30s'");
+          await client.query(`SET LOCAL work_mem = '${SESSION_WORK_MEM}'`);
+          await client.query(
+            "SELECT set_config('app.role', $1, true), set_config('app.row_scope', $2, true)",
+            [context.role, context.rowScope],
+          );
         },
         async readBounded(body: string, maxRows: number) {
           const text = stripTrailingSemicolons(body);
@@ -107,7 +134,8 @@ export type ExecutorFailure = { error: DbToolError };
 export async function executeReadOnly(
   sql: string,
   maxRows: number,
-  factory: SessionFactory = defaultSessionFactory,
+  factory: SessionFactory,
+  context: SessionContext,
 ): Promise<ReadOnlyResult | ExecutorFailure> {
   if (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 1000) {
     return {
@@ -125,7 +153,7 @@ export async function executeReadOnly(
   }
   const started = Date.now();
   try {
-    await session.beginReadOnly();
+    await session.beginReadOnly(context);
     const read = await session.readBounded(
       stripTrailingSemicolons(sql),
       maxRows,
