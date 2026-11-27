@@ -1,4 +1,11 @@
 import type { MinSupport } from "@shared/contracts";
+import {
+  getDefaultCalendarConfig,
+  isExcludedFromBaseline,
+  isMegaSale,
+  isPublicHoliday,
+  type CalendarConfig,
+} from "./calendar.js";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 export type AlertDirection = "spike" | "drop";
@@ -22,6 +29,9 @@ export interface AnomalyDetectorInput {
   absoluteThreshold?: AbsoluteThreshold;
   eps?: number;
   trimRatio?: number;
+  sameWeekday?: boolean;
+  calendarConfig?: CalendarConfig;
+  wowThreshold?: number;
 }
 
 export interface AnomalyDetectorOutput {
@@ -35,6 +45,62 @@ export interface AnomalyDetectorOutput {
   deviationSummary: string;
   status: "ok" | "skipped_insufficient_support" | "insufficient_history";
   caveat?: string;
+  sep?: number;
+  sigmaEff?: number;
+  baselineSampleSize?: number;
+  isSameWeekday?: boolean;
+  isPublicHoliday?: boolean;
+  isMegaSale?: boolean;
+  absoluteBreached?: boolean;
+  supportCount?: number;
+  minSupport?: number;
+}
+
+export function getMetricEpsFloor(metricId?: string): number {
+  if (!metricId) return 1e-6;
+  const lower = metricId.toLowerCase();
+  if (
+    lower.includes("revenue") ||
+    lower.includes("price") ||
+    lower.includes("amount") ||
+    lower.includes("vnd") ||
+    lower.includes("gmv")
+  ) {
+    return 1.0;
+  }
+  if (
+    lower.includes("rate") ||
+    lower.includes("ratio") ||
+    lower.includes("percentage") ||
+    lower.includes("pct")
+  ) {
+    return 0.001;
+  }
+  if (lower.includes("review") || lower.includes("score")) {
+    return 0.01;
+  }
+  if (lower.includes("count") || lower.includes("orders")) {
+    return 1.0;
+  }
+  return 1e-6;
+}
+
+export function getMinSupportCount(
+  metricId?: string,
+  explicitMinSupport?: MinSupport,
+): number {
+  if (typeof explicitMinSupport === "number") return explicitMinSupport;
+  if (
+    explicitMinSupport &&
+    typeof explicitMinSupport === "object" &&
+    typeof explicitMinSupport.minOrders === "number"
+  ) {
+    return explicitMinSupport.minOrders;
+  }
+  if (metricId && metricId.toLowerCase().includes("review")) {
+    return 5;
+  }
+  return 15;
 }
 
 export function trimmedMean(values: number[], trimRatio = 0.05): number {
@@ -65,12 +131,49 @@ export function trimmedStd(values: number[], trimRatio = 0.05): number {
   return Math.sqrt(variance);
 }
 
+export function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0
+    ? sorted[mid]!
+    : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+export function medianAbsoluteDeviation(values: number[], med?: number): number {
+  if (values.length === 0) return 0;
+  const m = med ?? median(values);
+  const absDiffs = values.map((v) => Math.abs(v - m));
+  return median(absDiffs);
+}
+
 export function calculateEffectiveSigma(
   sigmaRaw: number,
-  muTrim: number,
+  mu: number,
   eps = 1e-6,
 ): number {
-  return Math.max(sigmaRaw, eps, 0.05 * Math.abs(muTrim));
+  const sigmaFloor = Math.max(eps, 0.05 * Math.abs(mu));
+  return Math.max(sigmaRaw, sigmaFloor);
+}
+
+export function calculateSEP(options: {
+  sigmaEff: number;
+  n: number;
+  estimatorType: "trimmed_mean" | "median_mad";
+}): number {
+  const { sigmaEff, n, estimatorType } = options;
+  let cEstimator: number;
+  let nEff: number;
+
+  if (estimatorType === "trimmed_mean") {
+    cEstimator = 1.05;
+    nEff = Math.max(1, n - 2);
+  } else {
+    cEstimator = Math.PI / 2;
+    nEff = Math.max(1, n);
+  }
+
+  return sigmaEff * Math.sqrt(1 + cEstimator / nEff);
 }
 
 export function calculateWoW(
@@ -84,7 +187,7 @@ export function calculateWoW(
   );
 }
 
-function dateDaysBefore(date: string, days: number): string | undefined {
+export function dateDaysBefore(date: string, days: number): string | undefined {
   const parsed = new Date(`${date}T00:00:00.000Z`);
   if (
     Number.isNaN(parsed.getTime()) ||
@@ -94,6 +197,11 @@ function dateDaysBefore(date: string, days: number): string | undefined {
   }
   parsed.setUTCDate(parsed.getUTCDate() - days);
   return parsed.toISOString().slice(0, 10);
+}
+
+export function getUTCDayOfWeek(date: string): number {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  return d.getUTCDay();
 }
 
 export function isAbsoluteThresholdBreached(
@@ -114,26 +222,35 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
   const {
     history,
     current,
-    minSupport = 15,
+    metricId,
+    minSupport,
     absoluteThreshold,
-    eps = 1e-6,
+    eps: userEps,
     trimRatio = 0.05,
+    sameWeekday,
+    calendarConfig,
+    wowThreshold = 20,
   } = input;
 
+  const calConfig = calendarConfig ?? getDefaultCalendarConfig();
+  const metricEps = Math.max(userEps ?? 0, getMetricEpsFloor(metricId));
   const minOrders =
-    typeof minSupport === "number" ? minSupport : minSupport.minOrders;
+    typeof minSupport === "number"
+      ? minSupport
+      : minSupport?.minOrders ?? (metricId?.toLowerCase().includes("review") ? 5 : 15);
   const minMetricTrimmedMean =
-    typeof minSupport === "number" ? undefined : minSupport.minMetricTrimmedMean;
-  const historyValues = history.map((h) => h.value);
-  const insufficientHistory = historyValues.length < 14;
+    typeof minSupport === "object" ? minSupport.minMetricTrimmedMean : undefined;
 
-  const muTrim = trimmedMean(historyValues, trimRatio);
+  const rawValues = history.map((h) => h.value);
+  const rawMu = trimmedMean(rawValues, trimRatio);
   const hasMetricFloor =
-    minMetricTrimmedMean !== undefined && muTrim >= minMetricTrimmedMean;
-  if (
-    current.supportCount === undefined ||
-    (current.supportCount < minOrders && !hasMetricFloor)
-  ) {
+    minMetricTrimmedMean !== undefined && rawMu >= minMetricTrimmedMean;
+
+  const hasSupport =
+    current.supportCount !== undefined &&
+    (current.supportCount >= minOrders || hasMetricFloor);
+
+  if (!hasSupport) {
     return {
       isAnomaly: false,
       severity: "none",
@@ -144,48 +261,106 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
       wowPercent: null,
       deviationSummary:
         current.supportCount === undefined
-          ? `Insufficient support: supportCount is missing; minOrders=${minOrders}`
-          : `Insufficient support: sample=${current.supportCount} < minOrders=${minOrders}`,
+          ? `Insufficient support: supportCount is missing; minSupport=${minOrders}`
+          : `Insufficient support: sample=${current.supportCount} < minSupport=${minOrders}`,
       status: "skipped_insufficient_support",
+      supportCount: current.supportCount,
+      minSupport: minOrders,
     };
   }
 
-  const sigmaRaw = trimmedStd(historyValues, trimRatio);
-  const sigmaEff = calculateEffectiveSigma(sigmaRaw, muTrim, eps);
-
-  const zScore = (current.value - muTrim) / sigmaEff;
-
-  let wowPercent: number | null = null;
-  const weekAgoDate = dateDaysBefore(current.date, 7);
-  if (weekAgoDate !== undefined) {
-    const weekAgoPoint = history.find((point) => point.date === weekAgoDate);
-    if (weekAgoPoint !== undefined) {
-      wowPercent = calculateWoW(current.value, weekAgoPoint.value, eps);
-    }
-  }
-
-  const direction: AlertDirection = current.value >= muTrim ? "spike" : "drop";
-
-  const breachedAbsolute = isAbsoluteThresholdBreached(
+  const absoluteBreached = isAbsoluteThresholdBreached(
     current.value,
     absoluteThreshold,
   );
 
-  const absZ = Math.abs(zScore);
-  const absWoW = wowPercent !== null ? Math.abs(wowPercent) : 0;
+  const currentWeekday = getUTCDayOfWeek(current.date);
+  const weekAgoDate = dateDaysBefore(current.date, 7);
 
-  let severity: AlertSeverity | "none" = "none";
-  if (breachedAbsolute) {
-    severity = "critical";
-  } else if (!insufficientHistory) {
-    if (absZ >= 3.0 || absWoW >= 50.0) {
-      severity = "critical";
-    } else if (absZ >= 2.0) {
-      severity = "warning";
+  const sameWeekdayCandidates = history
+    .filter((pt) => {
+      if (getUTCDayOfWeek(pt.date) !== currentWeekday) return false;
+      if (weekAgoDate !== undefined && pt.date === weekAgoDate) return false;
+      if (isExcludedFromBaseline(pt.date, calConfig)) return false;
+      return true;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-8);
+
+  let baselinePoints: TimeSeriesPoint[];
+  let isUsingSameWeekday = false;
+  let insufficientHistory = false;
+
+  if (sameWeekday === true) {
+    if (sameWeekdayCandidates.length < 4) {
+      insufficientHistory = true;
+      baselinePoints =
+        sameWeekdayCandidates.length > 0
+          ? sameWeekdayCandidates
+          : history.filter((pt) => !isExcludedFromBaseline(pt.date, calConfig));
+    } else {
+      baselinePoints = sameWeekdayCandidates;
+      isUsingSameWeekday = true;
+    }
+  } else if (sameWeekday === false) {
+    baselinePoints = history.filter((pt) => {
+      if (weekAgoDate !== undefined && pt.date === weekAgoDate) return false;
+      if (isExcludedFromBaseline(pt.date, calConfig)) return false;
+      return true;
+    });
+    isUsingSameWeekday = false;
+    insufficientHistory = baselinePoints.length < 14;
+  } else {
+    if (sameWeekdayCandidates.length >= 4) {
+      baselinePoints = sameWeekdayCandidates;
+      isUsingSameWeekday = true;
+      insufficientHistory = false;
+    } else {
+      baselinePoints = history.filter(
+        (pt) => !isExcludedFromBaseline(pt.date, calConfig),
+      );
+      isUsingSameWeekday = false;
+      insufficientHistory = baselinePoints.length < 14;
     }
   }
 
-  const isAnomaly = severity !== "none";
+  const n = baselinePoints.length;
+  const baselineValues = baselinePoints.map((pt) => pt.value);
+
+  let mu: number;
+  let sigmaRaw: number;
+  let estimatorType: "trimmed_mean" | "median_mad";
+
+  if (n >= 6) {
+    estimatorType = "trimmed_mean";
+    mu = trimmedMean(baselineValues, trimRatio);
+    sigmaRaw = trimmedStd(baselineValues, trimRatio);
+  } else {
+    estimatorType = "median_mad";
+    mu = median(baselineValues);
+    const mad = medianAbsoluteDeviation(baselineValues, mu);
+    sigmaRaw = 1.4826 * mad;
+  }
+
+  const sigmaEff = calculateEffectiveSigma(sigmaRaw, mu, metricEps);
+  const sep = calculateSEP({ sigmaEff, n, estimatorType });
+
+  const zScore = isUsingSameWeekday
+    ? (sep > 0 ? (current.value - mu) / sep : 0)
+    : (sigmaEff > 0 ? (current.value - mu) / sigmaEff : 0);
+
+  let wowPercent: number | null = null;
+  if (weekAgoDate !== undefined) {
+    const weekAgoPoint = history.find((point) => point.date === weekAgoDate);
+    if (weekAgoPoint !== undefined) {
+      wowPercent = calculateWoW(current.value, weekAgoPoint.value, metricEps);
+    }
+  }
+
+  const direction: AlertDirection = current.value >= mu ? "spike" : "drop";
+
+  const isCurrentPublicHoliday = isPublicHoliday(current.date, calConfig);
+  const isCurrentMegaSale = isMegaSale(current.date, calConfig);
 
   const zSign = zScore > 0 ? "+" : "";
   const wowText =
@@ -194,17 +369,96 @@ export function detectAnomaly(input: AnomalyDetectorInput): AnomalyDetectorOutpu
       : "";
   const deviationSummary = `z=${zSign}${zScore.toFixed(2)}${wowText}`;
 
+  if (insufficientHistory) {
+    if (absoluteBreached) {
+      return {
+        isAnomaly: true,
+        severity: "info",
+        direction,
+        currentValue: current.value,
+        expectedValue: mu,
+        zScore,
+        wowPercent,
+        deviationSummary,
+        status: "insufficient_history",
+        caveat: "insufficient_history",
+        sep,
+        sigmaEff,
+        baselineSampleSize: n,
+        isSameWeekday: isUsingSameWeekday,
+        isPublicHoliday: isCurrentPublicHoliday,
+        isMegaSale: isCurrentMegaSale,
+        absoluteBreached: true,
+        supportCount: current.supportCount,
+        minSupport: minOrders,
+      };
+    }
+    return {
+      isAnomaly: false,
+      severity: "none",
+      direction: "none",
+      currentValue: current.value,
+      expectedValue: mu,
+      zScore,
+      wowPercent,
+      deviationSummary,
+      status: "insufficient_history",
+      caveat: "insufficient_history",
+      sep,
+      sigmaEff,
+      baselineSampleSize: n,
+      isSameWeekday: isUsingSameWeekday,
+      isPublicHoliday: isCurrentPublicHoliday,
+      isMegaSale: isCurrentMegaSale,
+      absoluteBreached: false,
+      supportCount: current.supportCount,
+      minSupport: minOrders,
+    };
+  }
+
+  const absZ = Math.abs(zScore);
+  const absWoW = wowPercent !== null ? Math.abs(wowPercent) : 0;
+
+  let severity: AlertSeverity | "none" = "none";
+
+  const isStatisticalCritical =
+    absZ >= 3.0 ||
+    (absWoW >= 50.0 && (current.supportCount ?? 0) >= 2 * minOrders);
+
+  const isStatisticalWarning =
+    absZ >= 2.0 && (wowPercent !== null && absWoW >= wowThreshold);
+
+  if (isStatisticalCritical) {
+    severity = "critical";
+  } else if (isCurrentPublicHoliday && (isStatisticalWarning || absoluteBreached)) {
+    severity = "info";
+  } else if (isStatisticalWarning) {
+    severity = "warning";
+  } else if (absoluteBreached) {
+    severity = "info";
+  }
+
+  const isAnomaly = severity !== "none";
+
   return {
     isAnomaly,
     severity,
     direction: isAnomaly ? direction : "none",
     currentValue: current.value,
-    expectedValue: muTrim,
+    expectedValue: mu,
     zScore,
     wowPercent,
     deviationSummary,
-    status: insufficientHistory ? "insufficient_history" : "ok",
-    caveat: insufficientHistory ? "insufficient_history" : undefined,
+    status: "ok",
+    sep,
+    sigmaEff,
+    baselineSampleSize: n,
+    isSameWeekday: isUsingSameWeekday,
+    isPublicHoliday: isCurrentPublicHoliday,
+    isMegaSale: isCurrentMegaSale,
+    absoluteBreached,
+    supportCount: current.supportCount,
+    minSupport: minOrders,
   };
 }
 
@@ -216,7 +470,7 @@ export function detectAnomalyFromSeries(
     throw new Error("Cannot detect anomaly from empty time-series");
   }
   const history = series.slice(0, -1);
-  const current = series[series.length - 1];
+  const current = series[series.length - 1]!;
   return detectAnomaly({
     history,
     current,
