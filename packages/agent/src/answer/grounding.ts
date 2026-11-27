@@ -101,7 +101,7 @@ function sameRowEvidence(
     const cell = row[pointer.column];
     const equal = typeof pointer.value === "number"
       ? toNumberCell(cell) === pointer.value
-      : cell === pointer.value || String(cell) === pointer.value;
+      : cell === pointer.value || (cell !== null && cell !== undefined && String(cell) === pointer.value);
     return equal && Object.values(row).some((value) =>
       value !== null && value !== undefined && String(value) === pointer.rowKey
     );
@@ -114,7 +114,7 @@ function directNumbersGrounded(claim: InsightClaim): boolean {
     claim.evidence.some((pointer) => {
       const value = toNumberCell(pointer.value);
       return value !== null && [number.bare, number.scaled].some((candidate) =>
-        candidate === value
+        Math.abs(candidate - value) <= Math.max(1e-9, Math.abs(value) * 1e-12)
       );
     }) || claim.evidence.some((pointer) =>
       new RegExp(`(^|\\D)${String(number.bare).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\D|$)`).test(pointer.rowKey)
@@ -130,15 +130,15 @@ function claimGrounded(
   unitContext: string,
 ): boolean {
   if (/ignore (?:all )?(?:previous|above)|show all (?:phone|email)|system prompt|api key/i.test(claim.claim)) return false;
-  if (/\b(?:because|due to|caused by|driven by|thanks to)\b|(?:vì|bởi|nhờ|nguyên nhân|dẫn đến|gây ra)/iu.test(claim.claim)) return false;
-  if (/(?:highest|lowest|top|rank|dẫn đầu|cao nhất|thấp nhất|xếp hạng)/iu.test(claim.claim) && claim.derivation !== "rank") return false;
-  if (/(?:VND|₫|đồng)/iu.test(claim.claim) && !/(?:VND|₫|đồng)/iu.test(unitContext)) return false;
+  if (/(?<![\p{L}])(?:because|due to|caused by|driven by|thanks to|vì|bởi|nhờ|nguyên nhân|dẫn đến|gây ra)(?![\p{L}])/iu.test(claim.claim)) return false;
+  if (/(?<![\p{L}])(?:highest|lowest|top|rank|dẫn đầu|cao nhất|thấp nhất|xếp hạng)(?![\p{L}])/iu.test(claim.claim) && claim.derivation !== "rank") return false;
+  if (/(?:VND|₫|(?:\d|nghìn|ngàn|triệu|tỷ|tỉ)\s*đồng(?![\p{L}]))/iu.test(claim.claim) && !/(?:VND|₫|(?<![\p{L}])đồng(?![\p{L}]))/iu.test(unitContext)) return false;
   if (/(?:USD|\$)/iu.test(claim.claim) && !/(?:USD|\$)/iu.test(unitContext)) return false;
-  if (/(?:%|percent|phần trăm)/iu.test(claim.claim) &&
+  if (/(?:%|(?<![\p{L}])(?:percent|phần trăm)(?![\p{L}]))/iu.test(claim.claim) &&
       !["pct_change", "pp_change", "share_of_total"].includes(claim.derivation ?? "") &&
       !claim.evidence.some((pointer) => /(?:pct|percent|share|rate|ratio|ty_le|tỷ_lệ)/iu.test(pointer.column)) &&
-      !/(?:%|percent|phần trăm)/iu.test(unitContext)) return false;
-  if (/(?:\b(?:all|every|always|never|entire|overall)\b|tất cả|toàn bộ|mọi|luôn luôn)/iu.test(claim.claim)) return false;
+      !/(?:%|(?<![\p{L}])(?:percent|phần trăm)(?![\p{L}]))/iu.test(unitContext)) return false;
+  if (/(?<![\p{L}])(?:all|every|always|never|entire|overall|tất cả|toàn bộ|mọi|luôn luôn)(?![\p{L}])/iu.test(claim.claim)) return false;
   if (claim.evidence.some((pointer) => !sameRowEvidence(pointer, rows, columns))) return false;
   if (claim.derivation === "cell" && !directNumbersGrounded(claim)) return false;
   const checked = verifyNumericClaims([claim], { columns, rows }, { truncated: partial });

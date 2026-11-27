@@ -212,4 +212,22 @@ describe("answer artifacts on the SSE boundary", () => {
     expect(completionArtifacts({ ...state, status: "restricted" })).toBeNull();
     expect(vizPayload({ ...state, status: "restricted" })).toBeNull();
   });
+
+  it("ignores ISO date ranges while flagging 10-digit +84 landlines, dedupes citations, and enforces byte limits", () => {
+    expect(containsWirePii("Khoảng thời gian 2026-07-01 - 2026-09-30")).toBe(false);
+    expect(containsWirePii("+84 28 1234 5678")).toBe(true);
+
+    const dupSql = "-- @citations: metric:orders_count, metric:orders_count\nSELECT COUNT(*) AS n FROM public.orders";
+    expect(completionArtifacts({ ...state, sql: dupSql } as AgentState)?.citations).toEqual([
+      "metric:orders_count",
+    ]);
+
+    const largeUtf8Row = { label: "đ".repeat(32_000) };
+    const oversizedPreview = { ...state, resultPreview: [largeUtf8Row] } as AgentState;
+    expect(JSON.stringify([largeUtf8Row]).length).toBeLessThanOrEqual(60_000);
+    expect(Buffer.byteLength(JSON.stringify([largeUtf8Row]), "utf8")).toBeGreaterThan(60_000);
+    expect(completionArtifacts(oversizedPreview)?.resultPreview).toBeUndefined();
+    expect(completionArtifacts(oversizedPreview)?.previewWithheld).toBe(true);
+    expect(vizPayload(oversizedPreview)).toBeNull();
+  });
 });

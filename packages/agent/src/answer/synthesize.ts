@@ -69,10 +69,12 @@ function readVerifiedInsights(vizSpec: unknown): { claims: string[]; caveats: st
 }
 
 function skipModelAfterVizFailure(vizSpec: unknown): boolean {
-  if (!vizSpec || typeof vizSpec !== "object" || !("report" in vizSpec)) return false;
+  if (!vizSpec || typeof vizSpec !== "object") return false;
+  if ("narrativeDowngraded" in vizSpec && vizSpec.narrativeDowngraded === true) return true;
+  if (!("report" in vizSpec)) return false;
   const report = InsightReportSchema.safeParse(vizSpec.report);
   return report.success && report.data.caveats.some((value) =>
-    /rate-limited|draft validation failed|budget exceeded/i.test(value)
+    /rate-limited|draft validation failed|budget exceeded|nhận định đã bị loại|no verifiable claims/i.test(value)
   );
 }
 

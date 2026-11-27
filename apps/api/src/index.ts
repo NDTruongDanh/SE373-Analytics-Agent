@@ -511,6 +511,7 @@ export function buildApp(options: BuildAppOptions): express.Express {
           semanticChunks: [], catalogTables: [], catalogStatus: "unloaded",
           semanticQuery: null, semanticRetrieveStatus: "unloaded", semanticErrorCode: null,
           resultPreview: [], columns: [], toolsCalled: [],
+          resultTruncated: false, rowCount: null, budgetExceeded: false,
           vizSpec: null, pendingClarification: null, analysisPlan: null, rootCauseAnswer: null,
           budget: new Overwrite({ llmCalls: 0, tokensUsed: 0, maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls, maxTokens: BUDGET_DEFAULTS.maxTokens, deadlineMs: 0 }),
           telemetry: new Overwrite({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }),

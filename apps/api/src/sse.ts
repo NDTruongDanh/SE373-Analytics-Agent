@@ -39,7 +39,7 @@ export interface SseEnvelope {
 
 // Defense-in-depth wire tripwire (not the canonical redactor) for VN 10-digit 0-led phones and emails.
 // Negative lookbehind avoids matching digits inside longer integers or after decimal points.
-const PHONE_LIKE = /(?<!\d|\d[.,])(?:0(?:3|5|7|8|9)(?:[\s.\-]*\d){8}|02\d(?:[\s.\-]*\d){7,9}|\+84(?:[\s.\-]*\d){8,9})\b/;
+const PHONE_LIKE = /(?<!\d|\d[.,\-/])(?:0(?:3|5|7|8|9)(?:[\s.\-]?\d){8}|02\d(?:[\s.\-]?\d){7,9}|\+84(?:[\s.\-]?\d){8,10})\b/;
 const EMAIL_LIKE = /\S+@\S+\.\S+/;
 
 export function containsWirePii(text: string): boolean {
@@ -142,16 +142,21 @@ export function completionArtifacts(state: AgentState): {
   const header = state.sql?.split("\n", 1)[0]?.trim() ?? "";
   const retrieved = new Set(state.semanticChunks.map((chunk) => chunk.chunkId));
   const safeCitations = header.toLowerCase().startsWith("-- @citations:")
-    ? header.slice("-- @citations:".length).split(",")
-      .map((id) => id.trim())
-      .filter((id) => /^[a-z_][a-z0-9_.:-]{0,127}$/i.test(id) && retrieved.has(id))
-      .slice(0, 10)
+    ? [
+        ...new Set(
+          header
+            .slice("-- @citations:".length)
+            .split(",")
+            .map((id) => id.trim())
+            .filter((id) => /^[a-z_][a-z0-9_.:-]{0,127}$/i.test(id) && retrieved.has(id)),
+        ),
+      ].slice(0, 10)
     : [];
   const tablesUsed = state.tablesUsed
     .filter((table) => /^[a-z_][a-z0-9_]{0,62}$/i.test(table)).slice(0, 10);
   const preview = state.resultPreview.slice(0, 50);
   const serialized = JSON.stringify(preview);
-  const resultPreview = serialized.length <= 60000 && !containsWirePii(serialized)
+  const resultPreview = Buffer.byteLength(serialized, "utf8") <= 60_000 && !containsWirePii(serialized)
     ? preview : undefined;
   return {
     citations: safeCitations,
@@ -180,7 +185,7 @@ export function vizPayload(state: AgentState): Record<string, unknown> | null {
     ...( "narrativeDowngraded" in spec && spec.narrativeDowngraded === true ? { narrativeDowngraded: true } : {}),
   };
   const serialized = JSON.stringify(payload);
-  return serialized.length <= 90000 && !containsWirePii(serialized) ? payload : null;
+  return Buffer.byteLength(serialized, "utf8") <= 90_000 && !containsWirePii(serialized) ? payload : null;
 }
 
 export function failedPayload(input: {

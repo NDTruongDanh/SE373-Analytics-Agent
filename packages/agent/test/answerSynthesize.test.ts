@@ -3,7 +3,7 @@ import {
   createAnswerSynthesizer,
   synthesizeAnswer,
 } from "../src/answer/synthesize.js";
-import { buildAnswerPrompt, prepareAnswerRows } from "../src/answer/grounding.js";
+import { buildAnswerPrompt, prepareAnswerRows, verifyAnswerDraft } from "../src/answer/grounding.js";
 import type { AgentState, RootRuntime, SpanEvent } from "../src/state.js";
 
 function baseState(overrides: Partial<AgentState> = {}): AgentState {
@@ -274,5 +274,87 @@ describe("synthesizeAnswer & createAnswerSynthesizer", () => {
     expect(calls).toBe(1);
     expect(oneCall.status).toBe("error");
     expect(oneCall.budgetExceeded).toBe(true);
+  });
+
+  it("skips model synthesis when vizSpec.narrativeDowngraded is true", async () => {
+    let calls = 0;
+    const model = {
+      invoke: async () => ({ content: "" }),
+      stream: async function* () {
+        calls += 1;
+        yield { content: "{}" };
+      },
+    };
+    const out = await createAnswerSynthesizer({ model })(
+      baseState({
+        question: "Doanh thu tháng này thế nào?",
+        resultPreview: [{ total: 120 }],
+        columns: ["total"],
+        rowCount: 1,
+        vizSpec: {
+          kind: "insight_report",
+          narrativeDowngraded: true,
+          report: {
+            chartType: "none",
+            chartSpec: { chart: "None" },
+            chartReason: "Scalar.",
+            insights: [],
+            caveats: ["Nhận định đã bị loại do không đủ căn cứ số liệu."],
+          },
+        },
+      }),
+      { emit: () => "", config: {} } as RootRuntime,
+    );
+    expect(calls).toBe(0);
+    expect(out.answerText).toBeTruthy();
+  });
+
+  it("allows benign substrings (Laptop, Đồng hồ, da nhờn), scaled float tolerance (2.01 triệu), and blocks null-to-'null' coercion", () => {
+    const state = baseState({
+      question: "Doanh số theo sản phẩm?",
+      resultPreview: [
+        { category: "Laptop", note: null, revenue: 2_010_000 },
+        { category: "Đồng hồ", note: "da nhờn", revenue: 500_000 },
+      ],
+      columns: ["category", "note", "revenue"],
+      rowCount: 2,
+    });
+    const prepared = prepareAnswerRows(state);
+
+    expect(
+      verifyAnswerDraft(
+        {
+          claims: [
+            {
+              claim: "Laptop đạt doanh số 2.01 triệu.",
+              derivation: "cell",
+              evidence: [{ column: "revenue", rowKey: "Laptop", value: 2_010_000 }],
+            },
+            {
+              claim: "Đồng hồ phù hợp da nhờn đạt 500000.",
+              derivation: "cell",
+              evidence: [{ column: "revenue", rowKey: "Đồng hồ", value: 500_000 }],
+            },
+          ],
+        },
+        state,
+        prepared,
+      ),
+    ).toContain("Laptop đạt doanh số 2.01 triệu.");
+
+    expect(
+      verifyAnswerDraft(
+        {
+          claims: [
+            {
+              claim: "Laptop có ghi chú.",
+              evidence: [{ column: "note", rowKey: "Laptop", value: "null" }],
+            },
+          ],
+        },
+        state,
+        prepared,
+      ),
+    ).toBeNull();
   });
 });
