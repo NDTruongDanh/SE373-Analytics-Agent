@@ -11,9 +11,12 @@ import {
   verifyMetricsSql,
   verifySemanticCorpus,
   verifySemanticCorpusWithPool,
+  verifySemanticIndexed,
+  verifySemanticIndexedWithPool,
   type VerifySemanticClient,
   type VerifySemanticPool,
 } from "../src/semantic/verify.js";
+import { chunkYaml, contentHash } from "../src/semantic/index.js";
 
 describe("verifyMetricAliases", () => {
   it("passes cleanly on the committed semantic/metrics.yaml without duplicate aliases", () => {
@@ -468,6 +471,145 @@ describe("verifySemanticCorpusWithPool", () => {
 
       await verifySemanticCorpusWithPool(mockPool, { semanticDir: tmpDir });
       expect(releasedArg).toBe(true);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verifySemanticIndexed", () => {
+  it("passes when all corpus chunks are indexed with matching content_hash and embeddings", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-idx-"));
+    try {
+      const yaml = `
+chunks:
+  - chunkId: "table:orders"
+    table: "orders"
+    content: "Orders table"
+  - chunkId: "metric:gmv"
+    metricName: "gmv"
+    content: "Gross Merchandise Value"
+`;
+      writeFileSync(path.join(tmpDir, "tables.yaml"), yaml, "utf8");
+      const parsed = chunkYaml("tables", yaml, "table");
+
+      const mockClient: VerifySemanticClient = {
+        async query(sql: string) {
+          if (sql.includes("FROM semantic.semantic_chunks")) {
+            return {
+              rows: parsed.map((chunk) => ({
+                chunk_id: chunk.chunkId,
+                content_hash: contentHash(chunk),
+                has_embedding: true,
+              })),
+            };
+          }
+          if (sql.includes("FROM semantic.corpus_version")) {
+            return { rows: [{ version: 3 }] };
+          }
+          return { rows: [] };
+        },
+      };
+
+      const report = await verifySemanticIndexed(mockClient, { semanticDir: tmpDir });
+      expect(report.failures).toEqual([]);
+      expect(report.expectedChunks).toBe(2);
+      expect(report.indexedChunks).toBe(2);
+      expect(report.embeddedChunks).toBe(2);
+      expect(report.corpusVersion).toBe(3);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails cleanly when semantic.semantic_chunks is empty", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-idx-empty-"));
+    try {
+      writeFileSync(
+        path.join(tmpDir, "tables.yaml"),
+        `chunks:\n  - chunkId: "table:orders"\n    table: "orders"\n    content: "Orders"\n`,
+        "utf8",
+      );
+      const mockClient: VerifySemanticClient = {
+        async query() {
+          return { rows: [] };
+        },
+      };
+
+      const report = await verifySemanticIndexed(mockClient, { semanticDir: tmpDir });
+      expect(report.failures.length).toBe(1);
+      expect(report.failures[0]).toMatch(/not indexed.*0 rows/);
+      expect(report.missingChunks).toEqual(["table:orders"]);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects missing, stale, unembedded, and orphaned chunks", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-idx-drift-"));
+    try {
+      const yaml = `
+chunks:
+  - chunkId: "table:orders"
+    table: "orders"
+    content: "Orders updated"
+  - chunkId: "table:customers"
+    table: "customers"
+    content: "Customers"
+`;
+      writeFileSync(path.join(tmpDir, "tables.yaml"), yaml, "utf8");
+
+      const mockClient: VerifySemanticClient = {
+        async query(sql: string) {
+          if (sql.includes("FROM semantic.semantic_chunks")) {
+            return {
+              rows: [
+                { chunk_id: "table:orders", content_hash: "stale-hash", has_embedding: false },
+                { chunk_id: "table:legacy", content_hash: "old-hash", has_embedding: true },
+              ],
+            };
+          }
+          return { rows: [] };
+        },
+      };
+
+      const report = await verifySemanticIndexed(mockClient, { semanticDir: tmpDir });
+      expect(report.missingChunks).toEqual(["table:customers"]);
+      expect(report.staleChunks).toEqual(["table:orders"]);
+      expect(report.unembeddedChunks).toEqual(["table:orders"]);
+      expect(report.orphanedChunks).toEqual(["table:legacy"]);
+      expect(report.failures.length).toBe(4);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs inside a read-only transaction via verifySemanticIndexedWithPool", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-idx-pool-"));
+    try {
+      writeFileSync(
+        path.join(tmpDir, "tables.yaml"),
+        `chunks:\n  - chunkId: "table:orders"\n    table: "orders"\n    content: "Orders"\n`,
+        "utf8",
+      );
+      const executed: string[] = [];
+      const mockPool: VerifySemanticPool = {
+        async connect() {
+          return {
+            async query(sql: string) {
+              executed.push(sql);
+              return { rows: [] };
+            },
+            release() {},
+          };
+        },
+      };
+
+      const report = await verifySemanticIndexedWithPool(mockPool, { semanticDir: tmpDir });
+      expect(report.failures.length).toBe(1);
+      expect(executed[0]).toBe("BEGIN READ ONLY");
+      expect(executed[1]).toContain("statement_timeout");
+      expect(executed.at(-1)).toBe("ROLLBACK");
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

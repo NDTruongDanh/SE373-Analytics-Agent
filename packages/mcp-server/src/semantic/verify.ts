@@ -1,9 +1,16 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import { parse as parseYaml } from "yaml";
 import { UNSCOPED_ROW_SCOPE } from "../executor.js";
+import {
+  chunkMarkdown,
+  chunkYaml,
+  contentHash,
+  discoverDefaultFiles,
+  type ParsedChunk,
+} from "./index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -440,21 +447,191 @@ export async function verifySemanticCorpus(
   };
 }
 
-export async function verifySemanticCorpusWithPool(
-  pool: VerifySemanticPool,
+export interface SemanticIndexVerifyReport {
+  failures: string[];
+  expectedChunks: number;
+  indexedChunks: number;
+  embeddedChunks: number;
+  missingChunks: string[];
+  staleChunks: string[];
+  orphanedChunks: string[];
+  unembeddedChunks: string[];
+  corpusVersion: number | null;
+}
+
+function loadExpectedSemanticChunks(semanticDir: string): ParsedChunk[] {
+  if (!existsSync(semanticDir)) return [];
+  const hasYaml = readdirSync(semanticDir).some(
+    (entry) => entry.endsWith(".yaml") || entry.endsWith(".yml"),
+  );
+  if (!hasYaml) return [];
+
+  const chunks: ParsedChunk[] = [];
+  for (const file of discoverDefaultFiles(semanticDir)) {
+    const text = readFileSync(file.path, "utf8");
+    const source = path.basename(file.path, path.extname(file.path));
+    if (file.path.endsWith(".yaml") || file.path.endsWith(".yml")) {
+      chunks.push(...chunkYaml(source, text, file.docType));
+    } else {
+      chunks.push(...chunkMarkdown(source, text, file.docType));
+    }
+  }
+  return chunks;
+}
+
+export async function verifySemanticIndexed(
+  client: VerifySemanticClient,
   options: VerifyOptions = {},
-): Promise<SemanticVerifyReport> {
+): Promise<SemanticIndexVerifyReport> {
+  const semanticDir = options.semanticDir ?? DEFAULT_SEMANTIC_DIR;
+  const failures: string[] = [];
+  const missingChunks: string[] = [];
+  const staleChunks: string[] = [];
+  const orphanedChunks: string[] = [];
+  const unembeddedChunks: string[] = [];
+
+  if (!existsSync(semanticDir)) {
+    failures.push(`Semantic directory does not exist: ${semanticDir}.`);
+    return {
+      failures,
+      expectedChunks: 0,
+      indexedChunks: 0,
+      embeddedChunks: 0,
+      missingChunks,
+      staleChunks,
+      orphanedChunks,
+      unembeddedChunks,
+      corpusVersion: null,
+    };
+  }
+
+  const expected = loadExpectedSemanticChunks(semanticDir);
+  if (expected.length === 0) {
+    failures.push(`No semantic corpus chunks found in ${semanticDir}.`);
+  }
+
+  let dbRows: Record<string, unknown>[] = [];
+  try {
+    const res = await client.query(
+      "SELECT chunk_id, content_hash, (embedding IS NOT NULL) AS has_embedding FROM semantic.semantic_chunks",
+    );
+    dbRows = res.rows;
+  } catch (err) {
+    failures.push(
+      `Failed to query semantic.semantic_chunks: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return {
+      failures,
+      expectedChunks: expected.length,
+      indexedChunks: 0,
+      embeddedChunks: 0,
+      missingChunks,
+      staleChunks,
+      orphanedChunks,
+      unembeddedChunks,
+      corpusVersion: null,
+    };
+  }
+
+  let corpusVersion: number | null = null;
+  try {
+    const verRes = await client.query(
+      "SELECT version FROM semantic.corpus_version WHERE id = 1",
+    );
+    const rawVer = verRes.rows[0]?.["version"];
+    if (rawVer !== undefined && rawVer !== null) {
+      const parsed = Number(rawVer);
+      if (Number.isFinite(parsed)) corpusVersion = parsed;
+    }
+  } catch {
+    // Optional metadata table check; missing row/table does not block chunk verification.
+  }
+
+  const dbMap = new Map<string, { contentHash: string; hasEmbedding: boolean }>();
+  let embeddedChunks = 0;
+  for (const row of dbRows) {
+    const chunkId = String(row["chunk_id"]);
+    const hash = String(row["content_hash"] ?? "");
+    const hasEmbedding = Boolean(row["has_embedding"]);
+    if (hasEmbedding) embeddedChunks += 1;
+    dbMap.set(chunkId, { contentHash: hash, hasEmbedding });
+  }
+
+  const expectedById = new Map<string, string>();
+  for (const chunk of expected) {
+    expectedById.set(chunk.chunkId, contentHash(chunk));
+  }
+
+  if (dbMap.size === 0 && expected.length > 0) {
+    for (const chunk of expected) {
+      missingChunks.push(chunk.chunkId);
+    }
+    failures.push(
+      `Semantic corpus is not indexed: semantic.semantic_chunks has 0 rows (expected ${expected.length}). Run "pnpm semantic:index".`,
+    );
+  } else {
+    for (const [chunkId, expectedHash] of expectedById) {
+      const actual = dbMap.get(chunkId);
+      if (!actual) {
+        missingChunks.push(chunkId);
+        failures.push(
+          `Chunk "${chunkId}" is not indexed in semantic.semantic_chunks (run "pnpm semantic:index").`,
+        );
+      } else if (actual.contentHash !== expectedHash) {
+        staleChunks.push(chunkId);
+        failures.push(
+          `Chunk "${chunkId}" is out of date in semantic.semantic_chunks (content_hash mismatch; run "pnpm semantic:index").`,
+        );
+      }
+    }
+
+    for (const [chunkId, actual] of dbMap) {
+      if (!actual.hasEmbedding) {
+        unembeddedChunks.push(chunkId);
+        failures.push(
+          `Chunk "${chunkId}" in semantic.semantic_chunks has a NULL embedding (run "pnpm semantic:index").`,
+        );
+      }
+      if (!expectedById.has(chunkId)) {
+        orphanedChunks.push(chunkId);
+        failures.push(
+          `Orphaned chunk "${chunkId}" exists in semantic.semantic_chunks but not in ${semanticDir} (run "pnpm semantic:index").`,
+        );
+      }
+    }
+  }
+
+  return {
+    failures,
+    expectedChunks: expected.length,
+    indexedChunks: dbMap.size,
+    embeddedChunks,
+    missingChunks,
+    staleChunks,
+    orphanedChunks,
+    unembeddedChunks,
+    corpusVersion,
+  };
+}
+
+async function withReadOnlyTx<T>(
+  pool: VerifySemanticPool,
+  setRlsContext: boolean,
+  fn: (client: VerifySemanticClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   let broken = false;
   try {
-    // 05_row_security.sql fails closed to 0 rows on agent_ro unless app.row_scope is set in-tx.
     await client.query("BEGIN READ ONLY");
     await client.query("SET LOCAL statement_timeout = '30s'");
-    await client.query(
-      "SELECT set_config('app.role', $1, true), set_config('app.row_scope', $2, true)",
-      ["admin", UNSCOPED_ROW_SCOPE],
-    );
-    return await verifySemanticCorpus(client, options);
+    if (setRlsContext) {
+      // 05_row_security.sql fails closed to 0 rows on agent_ro unless app.row_scope is set in-tx.
+      await client.query(
+        "SELECT set_config('app.role', $1, true), set_config('app.row_scope', $2, true)",
+        ["admin", UNSCOPED_ROW_SCOPE],
+      );
+    }
+    return await fn(client);
   } finally {
     try {
       await client.query("ROLLBACK");
@@ -465,30 +642,41 @@ export async function verifySemanticCorpusWithPool(
   }
 }
 
+export async function verifySemanticIndexedWithPool(
+  pool: VerifySemanticPool,
+  options: VerifyOptions = {},
+): Promise<SemanticIndexVerifyReport> {
+  return withReadOnlyTx(pool, false, (client) => verifySemanticIndexed(client, options));
+}
+
+export async function verifySemanticCorpusWithPool(
+  pool: VerifySemanticPool,
+  options: VerifyOptions = {},
+): Promise<SemanticVerifyReport> {
+  return withReadOnlyTx(pool, true, (client) => verifySemanticCorpus(client, options));
+}
+
 export async function runCli(): Promise<void> {
-  const dbUrl = process.env.AGENT_RO_DATABASE_URL ?? process.env.DATABASE_URL;
+  const dbUrl =
+    process.env.AGENT_RO_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    process.env.INDEXER_DATABASE_URL;
   if (!dbUrl) {
     console.error(
-      "❌ semantic:verify failed: AGENT_RO_DATABASE_URL (or DATABASE_URL) environment variable is not set.",
+      "❌ semantic:verify failed: AGENT_RO_DATABASE_URL (or DATABASE_URL / INDEXER_DATABASE_URL) environment variable is not set.",
     );
     process.exit(1);
   }
 
-  console.log("🔍 Running semantic:verify against live PostgreSQL (agent_ro)...");
+  console.log("🔍 Checking semantic index status in PostgreSQL (semantic.semantic_chunks)...");
   const pool = new Pool({ connectionString: dbUrl, max: 2 });
 
   try {
-    const report = await verifySemanticCorpusWithPool(pool);
+    const report = await verifySemanticIndexedWithPool(pool);
 
     console.log(
-      `✓ Checked ${report.checkedTables} tables, ${report.checkedColumns} columns against information_schema.`,
+      `✓ Indexed chunks: ${report.indexedChunks}/${report.expectedChunks} (${report.embeddedChunks} with embeddings, corpus_version=${report.corpusVersion ?? "unknown"}).`,
     );
-    console.log(`✓ Checked ${report.checkedEnums} enum columns against SELECT DISTINCT.`);
-    console.log(`✓ EXPLAIN succeeded on ${report.checkedMetrics} metric SQL templates.`);
-    console.log(`✓ Verified ${report.checkedJoins} join rules (all returned >= 1 row):`);
-    for (const [joinId, ratio] of Object.entries(report.fanoutRatios)) {
-      console.log(`   • ${joinId}: empirical fan-out ratio = ${ratio}`);
-    }
 
     if (report.failures.length > 0) {
       console.error(`\n❌ semantic:verify failed with ${report.failures.length} errors:`);
@@ -498,7 +686,7 @@ export async function runCli(): Promise<void> {
       process.exit(1);
     }
 
-    console.log("\n✅ All semantic corpus checks passed cleanly!");
+    console.log("\n✅ Semantic corpus is indexed and up to date!");
   } catch (err) {
     console.error(`\n❌ Fatal error during semantic verification: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
