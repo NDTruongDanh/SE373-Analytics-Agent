@@ -26,6 +26,7 @@ import { createAnswerSynthesizer } from "./answer/synthesize.js";
 import { RCA_ROUTE, TEXT_TO_SQL_ROUTE, type Route } from "./constants.js";
 import { routeQuestion } from "./router.js";
 import { formatBudgetTripTemplate, type BudgetTripReason } from "./budgetTemplate.js";
+import { finalizeTurnMemory } from "./multiTurn.js";
 
 export interface RootGraphDeps {
   checkpointer?: BaseCheckpointSaver | boolean;
@@ -122,9 +123,35 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .addNode(
       "router",
       runWithRuntime(async (state, rt) => {
-        const route = routeQuestion(state.question);
+        const route = routeQuestion(state.question, state.analysisState);
         rt.emit({ node: "router", type: "node_done", durationMs: 0, payload: { route } });
-        return { route };
+        if (state.turnHistory.length === 0) return { route };
+        return {
+          route,
+          status: "no_data",
+          errorCode: null,
+          answerText: "",
+          sql: null,
+          tablesUsed: [],
+          semanticChunks: [],
+          semanticQuery: null,
+          semanticRetrieveStatus: "unloaded",
+          semanticErrorCode: null,
+          resultPreview: [],
+          resultTruncated: false,
+          rowCount: null,
+          columns: [],
+          toolsCalled: [],
+          vizSpec: null,
+          pendingClarification: null,
+          clarificationAttempts: 0,
+          analysisTopicChanged: false,
+          analysisPlan: null,
+          rootCauseAnswer: null,
+          budgetExceeded: false,
+          caveats: [],
+          governed: undefined,
+        };
       }),
     )
     .addNode("understand", runWithRuntime((state, rt) => {
@@ -151,7 +178,10 @@ export function buildRootGraph(deps: RootGraphDeps = {}) {
     .addNode("rcaEntry", runWithRuntime((state, rt) => entries[RCA_ROUTE](state, rt)))
     .addNode("statusCheck", noopUpdate)
     .addNode("vizSeam", runWithRuntime((state, rt) => viz(state, rt)))
-    .addNode("answer", runWithRuntime((state, rt) => synthesize(state, rt)))
+    .addNode("answer", runWithRuntime(async (state, rt) => {
+      const update = await synthesize(state, rt);
+      return update.turnHistory ? update : finalizeTurnMemory(state, update);
+    }))
     .addEdge(START, "router")
     .addEdge("router", "budgetGuard")
     .addConditionalEdges("budgetGuard", (state: AgentState) =>

@@ -23,7 +23,7 @@ import {
   type BudgetState,
   type BudgetTripReason,
 } from "./budgets.js";
-import { buildSqlProposalPrompt, type DescribedTable } from "./prompt.js";
+import { buildSqlProposalPrompt, type DescribedTable, type SqlPromptInput } from "./prompt.js";
 import {
   estimateCostUsd,
   extractFencedSqlProposal,
@@ -138,6 +138,8 @@ export interface ExecutorRunInput {
     schemaEntities?: string[];
   };
   timeRange?: string | null;
+  analysisContext?: SqlPromptInput["analysisContext"];
+  recentTurns?: SqlPromptInput["recentTurns"];
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
   catalogTables?: readonly { name: string; schema: string }[];
@@ -845,6 +847,8 @@ export class ValidatedQueryExecutor {
         const prompt = buildSqlProposalPrompt({
           question: input.question,
           timeRange: input.timeRange,
+          analysisContext: input.analysisContext,
+          recentTurns: input.recentTurns,
           described,
           references: input.references,
           repair:

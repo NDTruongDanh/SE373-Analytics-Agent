@@ -887,4 +887,132 @@ describe("buildApp /api/ask", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  it("carries multi-turn AnalysisState across /api/ask calls while compacting checkpoints after SSE completion", async () => {
+    const checkpointer = new MemorySaver();
+    const seenContexts: unknown[] = [];
+    const seenRecentTurns: unknown[] = [];
+    const seenVizMeta: Array<{ rowCount: number | null; truncated: boolean }> = [];
+    const proposals = [
+      {
+        metric: "net_revenue", dimensions: [], timeRange: "2026-09",
+        filters: [{ field: "region", operator: "=", value: "Nam" }],
+        requestedMetrics: ["net_revenue"], schemaEntities: ["orders"], queryMode: "standard_query",
+        isFollowUp: false, topicChanged: false, ambiguousReference: false, clarificationCandidates: [], deltaOps: [],
+      },
+      {
+        metric: null, dimensions: [], filters: [], timeRange: null,
+        requestedMetrics: [], schemaEntities: [], queryMode: "standard_query",
+        isFollowUp: true, topicChanged: false, ambiguousReference: false, clarificationCandidates: [],
+        deltaOps: [{ op: "replace", field: "timeRange", value: "2026-Q2" }],
+      },
+    ];
+    let turn = 0;
+    const chunks = [
+      { chunkId: "table:orders", docType: "table", table: "orders", tables: ["orders"],
+        metricName: null, content: "Orders", score: 0.9, aliasMatched: true },
+      { chunkId: "metric:net_revenue", docType: "metric", table: "orders", tables: ["orders"],
+        metricName: "net_revenue", content: "Net revenue", score: 0.95, aliasMatched: true },
+    ];
+    const app = buildApp({
+      checkpointer,
+      mcpUrl: "http://127.0.0.1:1/mcp",
+      tracesDir,
+      env: stubEnv,
+      allowInMemoryLockForTests: true,
+      viz: async (state) => {
+        seenVizMeta.push({ rowCount: state.rowCount, truncated: state.resultTruncated });
+        return {};
+      },
+      textToSql: {
+        listTables: async () => [{ name: "orders", schema: "public", description: "Orders" }],
+        semanticSearch: async () => chunks as never,
+        intentModel: {
+          withStructuredOutput: () => ({
+            invoke: async () => proposals[Math.min(turn++, proposals.length - 1)],
+          }),
+        } as never,
+        executor: {
+          run: async (input) => {
+            seenContexts.push(input.analysisContext);
+            seenRecentTurns.push(input.recentTurns);
+            return {
+              status: "ok",
+              sql: "-- @citations: metric:net_revenue\nSELECT SUM(total) AS rev FROM public.orders",
+              tablesUsed: ["orders"],
+              columns: ["rev"],
+              rows: [{ rev: 420 }],
+              truncated: turn === 1,
+              maskedColumns: [],
+              attempts: 1,
+            };
+          },
+        },
+      },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.on("listening", resolve));
+    const address = server.address() as AddressInfo;
+    try {
+      const firstRes = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "Doanh thu thuần tháng 9 miền Nam?", persona: "sales_south" }),
+      });
+      expect(firstRes.status).toBe(200);
+      const firstBlocks = parseSse(await firstRes.text());
+      const firstCompleted = firstBlocks.find((b) => b.event === "completed");
+      const firstData = firstCompleted?.data["data"] as {
+        status?: string;
+        citations?: string[];
+        resultPreview?: Record<string, unknown>[];
+      };
+      expect(firstData.status).toBe("ok");
+      expect(firstData.citations).toEqual(["metric:net_revenue"]);
+      expect(firstData.resultPreview).toEqual([{ rev: 420 }]);
+
+      const threadId = firstBlocks[0]!.data["threadId"] as string;
+      const tuple1 = await checkpointer.getTuple({ configurable: { thread_id: threadId } });
+      const values1 = tuple1?.checkpoint.channel_values as Record<string, unknown> | undefined;
+      expect(values1?.["resultPreview"]).toEqual([]);
+      expect(values1?.["semanticChunks"]).toEqual([]);
+      expect(values1?.["analysisState"]).toMatchObject({
+        metric: "net_revenue",
+        timeRange: "2026-09",
+        citations: ["metric:net_revenue"],
+      });
+
+      const secondRes = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "Còn quý trước thì sao?", persona: "sales_south", threadId }),
+      });
+      expect(secondRes.status).toBe(200);
+      const secondBlocks = parseSse(await secondRes.text());
+      expect(secondBlocks.some((b) => b.event === "completed")).toBe(true);
+      expect(seenContexts[1]).toMatchObject({
+        metric: "net_revenue",
+        timeRange: "2026-Q2",
+        filters: [{ field: "region", operator: "=", value: "Nam" }],
+      });
+      expect(seenRecentTurns[1]).toHaveLength(1);
+      expect(seenVizMeta[0]?.truncated).toBe(true);
+      expect(seenVizMeta[1]?.truncated).toBe(false);
+
+      const tuple2 = await checkpointer.getTuple({ configurable: { thread_id: threadId } });
+      const values2 = tuple2?.checkpoint.channel_values as Record<string, unknown> | undefined;
+      expect(values2?.["resultPreview"]).toEqual([]);
+      expect(values2?.["semanticChunks"]).toEqual([]);
+      expect(values2?.["turnHistory"]).toHaveLength(2);
+
+      const crossUser = await fetch(`http://127.0.0.1:${address.port}/api/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: "Còn quý trước?", persona: "marketing", threadId }),
+      });
+      expect(crossUser.status).toBe(400);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

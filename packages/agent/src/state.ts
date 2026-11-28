@@ -5,6 +5,7 @@ import {
 } from "@langchain/langgraph";
 import {
   AnalysisPlanSchema,
+  AnalysisStateSchema,
   RootCauseAnswerSchema,
   SQLAnswerStatusSchema,
 } from "@shared/contracts";
@@ -55,6 +56,14 @@ export const PendingClarificationSchema = z.object({
   attempts: z.number().int().min(0).max(2),
 });
 export type PendingClarification = z.infer<typeof PendingClarificationSchema>;
+
+export const TurnSummarySchema = z.object({
+  question: z.string().max(500),
+  summary: z.string().max(1000),
+  status: SQLAnswerStatusSchema,
+  route: z.enum(ROUTES).optional(),
+});
+export type TurnSummary = z.infer<typeof TurnSummarySchema>;
 
 const SemanticChunkSchema = z.object({
   chunkId: z.string().min(1),
@@ -133,6 +142,9 @@ export const AgentStateSchema = new StateSchema({
     schemaEntities: [],
     queryMode: "standard_query" as const,
   })),
+  analysisState: AnalysisStateSchema.nullable().default(null),
+  analysisTopicChanged: z.boolean().default(false),
+  turnHistory: z.array(TurnSummarySchema).max(3).default([]),
   semanticChunks: z.array(SemanticChunkSchema).default([]),
   catalogTables: z.array(CatalogTableSchema).default([]),
   catalogStatus: z.enum(["unloaded", "ready", "empty", "error"]).default("unloaded"),

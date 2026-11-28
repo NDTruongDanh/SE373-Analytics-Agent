@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   AgentResponseSchema,
+  AnalysisStateSchema,
   BenchmarkRowSchema,
   CONTRACTS_VERSION,
   DbToolErrorSchema,
   ErrorCodes,
+  IntentFilterSchema,
   REPAIRABLE_CODES,
   RETRYABLE_CODES,
   RenderChartInputSchema,
@@ -59,6 +61,16 @@ function validAnswer(status = "ok") {
 }
 
 describe("contracts 1.3.0", () => {
+  it("adds bounded AnalysisState without changing the contracts version", () => {
+    expect(CONTRACTS_VERSION).toBe("1.3.0");
+    expect(IntentFilterSchema.parse({ field: "region", operator: "=", value: "Nam" }).value).toBe("Nam");
+    const parsed = AnalysisStateSchema.parse({
+      metric: "net_revenue", timeRange: null, lastSqlHash: "a".repeat(64),
+    });
+    expect(parsed).toMatchObject({ dimensions: [], filters: [], requestedMetrics: [], schemaEntities: [], citations: [] });
+    expect(AnalysisStateSchema.safeParse({ ...parsed, lastSqlHash: "not-a-hash" }).success).toBe(false);
+    expect(AnalysisStateSchema.safeParse({ ...parsed, dimensions: new Array(11).fill("channel") }).success).toBe(false);
+  });
   it("freezes CONTRACTS_VERSION at 1.3.0 with 12 codes", () => {
     expect(CONTRACTS_VERSION).toBe("1.3.0");
     expect(ErrorCodes).toHaveLength(12);

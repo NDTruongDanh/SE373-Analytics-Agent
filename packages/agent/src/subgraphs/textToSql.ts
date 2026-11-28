@@ -85,9 +85,20 @@ import {
   validateCitations,
 } from "../validators/citationValidator.js";
 import { BUDGET_LIMITS } from "../constants.js";
+import {
+  DeltaOpSchema,
+  buildGroundedSearchQuery,
+  resolveMultiTurnIntent,
+} from "../multiTurn.js";
 
 
-export const IntentProposalSchema = IntentSchema;
+export const IntentProposalSchema = IntentSchema.extend({
+  isFollowUp: z.boolean().default(false),
+  topicChanged: z.boolean().default(false),
+  ambiguousReference: z.boolean().default(false),
+  clarificationCandidates: z.array(z.string()).max(4).default([]),
+  deltaOps: z.array(DeltaOpSchema).max(16).default([]),
+});
 export type IntentProposal = z.infer<typeof IntentProposalSchema>;
 
 export interface IntentModelLike {
@@ -955,7 +966,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     let semanticRetrieveStatus: AgentState["semanticRetrieveStatus"] = "unloaded";
     let semanticErrorCode: string | null = null;
 
-    if (deps.semanticSearch || (!deps.executor && transport)) {
+    if (!state.analysisState && (deps.semanticSearch || (!deps.executor && transport))) {
       const searchStarted = Date.now();
       try {
         const rawChunks = deps.semanticSearch
@@ -999,6 +1010,8 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       skillContract: skill.contract,
       catalogTables,
       semanticChunks: preStateChunks,
+      analysisState: state.analysisState,
+      turnHistory: state.turnHistory,
     });
     const intentStarted = Date.now();
     let out;
@@ -1019,6 +1032,8 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
                 analysisState: {
                   question: state.question,
                   intent: state.intent,
+                  priorAnalysisState: state.analysisState,
+                  recentTurns: state.turnHistory,
                   catalogTables,
                 },
                 semanticChunks: preStateChunks,
@@ -1109,12 +1124,34 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       },
     });
     const failedCalls = budget.llmCalls - startCalls;
+    const resolvedIntent = resolveMultiTurnIntent(state, intent);
+    const groundedQuery = resolvedIntent.kind === "intent" && resolvedIntent.followUp
+      ? buildGroundedSearchQuery(state.question, resolvedIntent.intent)
+      : state.question;
     return {
-      ...(state.status === "error" ? { status: "no_data" as const, answerText: "" } : {}),
       budgetExceeded: false,
-      intent,
+      ...(resolvedIntent.kind === "intent"
+        ? {
+            status: "no_data" as const,
+            answerText: "",
+            intent: resolvedIntent.intent,
+            analysisTopicChanged: resolvedIntent.topicChanged,
+          }
+        : {
+            ...(resolvedIntent.intent ? { intent: resolvedIntent.intent } : {}),
+            status: "needs_clarification" as const,
+            pendingClarification: resolvedIntent.pendingClarification,
+            answerText: resolvedIntent.answerText,
+          }),
       ...(catalogStatus === "ready" ? { catalogTables, catalogStatus } : {}),
-      ...(semanticRetrieveStatus === "ok"
+      ...(resolvedIntent.kind === "intent" && resolvedIntent.followUp
+        ? {
+            semanticChunks: [],
+            semanticQuery: groundedQuery,
+            semanticRetrieveStatus: "unloaded" as const,
+            semanticErrorCode: null,
+          }
+        : semanticRetrieveStatus === "ok"
         ? {
             semanticChunks: preStateChunks,
             semanticQuery,
@@ -1126,7 +1163,14 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
               semanticRetrieveStatus,
               semanticErrorCode,
             }
-          : {}),
+          : state.analysisState
+            ? {
+                semanticChunks: [],
+                semanticQuery: null,
+                semanticRetrieveStatus: "unloaded" as const,
+                semanticErrorCode: null,
+              }
+            : {}),
       ...(understandTools.length > 0
         ? { toolsCalled: dedupeTools([...state.toolsCalled, ...understandTools]) }
         : {}),
@@ -1149,7 +1193,8 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     if (
       state.status === "error" ||
       state.status === "restricted" ||
-      state.status === "cannot_answer"
+      state.status === "cannot_answer" ||
+      (state.status === "needs_clarification" && !state.pendingClarification)
     ) {
       return {};
     }
@@ -1158,10 +1203,35 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       return {};
     }
     let clarificationUpdate: AgentUpdate = {};
-    const definition = handleDefinitionLookup(activeState, catalogIds);
-    if (definition) return definition;
-    const unknownTerm = handleUnknownTerm(activeState, catalogIds);
-    if (unknownTerm) return unknownTerm;
+    let regroundAfterClarification = false;
+    if (activeState.status === "needs_clarification" && activeState.pendingClarification) {
+      const selected = clarificationSelection(activeState, activeState.pendingClarification);
+      if (!selected.ok) {
+        if (selected.reason === "timeout") {
+          return {
+            status: "error",
+            errorCode: "HITL_APPROVAL_TIMEOUT",
+            pendingClarification: null,
+            answerText: "Clarification request timed out (HITL_APPROVAL_TIMEOUT).",
+          };
+        }
+        return {
+          status: "needs_clarification",
+          pendingClarification: null,
+          answerText: "Vui lòng đặt lại câu hỏi với chỉ số hoặc phạm vi cụ thể.",
+        };
+      }
+      const applied = applyClarification(activeState, activeState.pendingClarification, selected.value);
+      activeState = { ...applied.state, question: state.question, status: "no_data" };
+      clarificationUpdate = { ...applied.update, question: state.question, status: "no_data" };
+      regroundAfterClarification = true;
+    }
+    if (!regroundAfterClarification) {
+      const definition = handleDefinitionLookup(activeState, catalogIds);
+      if (definition) return definition;
+      const unknownTerm = handleUnknownTerm(activeState, catalogIds);
+      if (unknownTerm) return unknownTerm;
+    }
     const ambiguousMetric = clarificationForAmbiguousMetric(activeState);
     if (ambiguousMetric === "exhausted") {
       return {
@@ -1271,6 +1341,41 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         : {};
 
     let workingChunks = activeState.semanticChunks;
+    if (regroundAfterClarification) {
+      const groundedQuery = buildGroundedSearchQuery(activeState.question, activeState.intent);
+      const check = checkBudget(budget);
+      if (check.tripped) return {
+        ...clarificationUpdate,
+        status: "error",
+        budgetExceeded: true,
+        answerText: formatBudgetTripTemplate({ reason: check.reason, budget,
+          remaining: ["Ground the clarified metric and verify the query"] }),
+      };
+      try {
+        const chunks = deps.semanticSearch
+          ? await deps.semanticSearch(groundedQuery, RETRIEVE_TOP_K)
+          : transport ? await fetchSemanticChunks(transport, groundedQuery, RETRIEVE_TOP_K) : null;
+        if (chunks) {
+          workingChunks = chunks.map(toStateChunk);
+          activeState = { ...activeState, semanticChunks: workingChunks,
+            semanticQuery: groundedQuery, semanticRetrieveStatus: "ok", semanticErrorCode: null };
+          clarificationUpdate = { ...clarificationUpdate, semanticChunks: workingChunks,
+            semanticQuery: groundedQuery, semanticRetrieveStatus: "ok", semanticErrorCode: null };
+          entryPreTools.push("search_semantic_layer");
+        } else if (activeState.intent.requestedMetrics.length > 0 || !deps.executor) {
+          return { ...clarificationUpdate, status: "error",
+            answerText: "Semantic grounding is unavailable after clarification." };
+        }
+      } catch (error) {
+        const normalized = toNormalizedMcpError("search_semantic_layer", error);
+        return { ...clarificationUpdate,
+          status: normalized.code === "SCOPE_DENIED" || normalized.code === "UNAUTHORIZED" ? "restricted" : "error",
+          semanticRetrieveStatus: "error", semanticErrorCode: normalized.code,
+          answerText: `Semantic grounding failed (${normalized.code}).` };
+      }
+      const unknownTerm = handleUnknownTerm(activeState, catalogIds);
+      if (unknownTerm) return { ...clarificationUpdate, ...unknownTerm };
+    }
     let resolved = resolveCurrent(activeState, workingChunks);
     if (!resolved.ok) {
       if (activeState.semanticRetrieveStatus === "error") {
@@ -1602,6 +1707,8 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
             analysisState: {
               question: activeState.question,
               intent: activeState.intent,
+              mergedIntent: activeState.intent,
+              priorLastSqlHash: activeState.analysisState?.lastSqlHash,
               candidateTables,
               tablesUsed: activeState.tablesUsed,
             },
@@ -1638,6 +1745,13 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       question: activeState.question,
       timeRange: activeState.intent.timeRange,
       intent: activeState.intent,
+      analysisContext: {
+        metric: activeState.intent.metric,
+        dimensions: activeState.intent.dimensions,
+        filters: activeState.intent.filters,
+        timeRange: activeState.intent.timeRange,
+      },
+      recentTurns: activeState.turnHistory,
       candidateTables,
       catalogTables: effectiveCatalogTables,
       references,
@@ -1696,6 +1810,13 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
         question: activeState.question,
         timeRange: activeState.intent.timeRange,
         intent: activeState.intent,
+        analysisContext: {
+          metric: activeState.intent.metric,
+          dimensions: activeState.intent.dimensions,
+          filters: activeState.intent.filters,
+          timeRange: activeState.intent.timeRange,
+        },
+        recentTurns: activeState.turnHistory,
         candidateTables,
         catalogTables: effectiveCatalogTables,
         references,

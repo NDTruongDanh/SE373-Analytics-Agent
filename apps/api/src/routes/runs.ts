@@ -1,6 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { Command } from "@langchain/langgraph";
-import { RCA_ROUTE, TEXT_TO_SQL_ROUTE, type AgentState } from "@shared/agent";
+import {
+  compactTurnCheckpoint,
+  RCA_ROUTE,
+  TEXT_TO_SQL_ROUTE,
+  type AgentState,
+} from "@shared/agent";
 import {
   buildLangSmithRunConfig,
   createLangSmithTracer,
@@ -136,9 +141,8 @@ export function createRunsRouter(ctx: AppContext): Router {
           valueLength: verdict.valueLength,
         },
       });
-      const out = (await graph.invoke(new Command({ resume: req.body["value"] }), {
-        ...buildResumeInvokeOptions({ langsmith: ls, run: stored, runId }),
-      })) as AgentState;
+      const invokeConfig = buildResumeInvokeOptions({ langsmith: ls, run: stored, runId });
+      const out = (await graph.invoke(new Command({ resume: req.body["value"] }), invokeConfig)) as AgentState;
       const resumeInterrupts = interruptedOf(out);
       if (resumeInterrupts?.length) {
         await emitInterruptWaiting({
@@ -153,6 +157,11 @@ export function createRunsRouter(ctx: AppContext): Router {
         return;
       }
       streamCompletion(res, runId, stored.threadId, out);
+      try {
+        await compactTurnCheckpoint(graph, invokeConfig);
+      } catch {
+        emit({ node: "answer", type: "checkpoint_compaction_failed", durationMs: 0 });
+      }
       emit.emitRunDone(out.status);
     } catch (error) {
       emit?.emitRunDone("error");

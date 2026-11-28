@@ -21,11 +21,24 @@ export const SqlAttemptSchema = z.object({
 
 export type SqlAttempt = z.infer<typeof SqlAttemptSchema>;
 
-const IntentFilterSchema = z.object({
+export const IntentFilterSchema = z.object({
   field: z.string(),
   operator: z.string(),
   value: z.unknown(),
 });
+export type IntentFilter = z.infer<typeof IntentFilterSchema>;
+
+export const AnalysisStateSchema = z.object({
+  metric: z.string().nullable(),
+  dimensions: z.array(z.string()).max(10).default([]),
+  filters: z.array(IntentFilterSchema).max(16).default([]),
+  timeRange: z.string().nullable(),
+  requestedMetrics: z.array(z.string()).max(10).default([]),
+  schemaEntities: z.array(z.string()).max(16).default([]),
+  citations: z.array(z.string()).max(20).default([]),
+  lastSqlHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+});
+export type AnalysisState = z.infer<typeof AnalysisStateSchema>;
 
 export const SQLAnswerStatusSchema = z.enum([
   "ok",

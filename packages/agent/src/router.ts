@@ -1,4 +1,5 @@
 import { RCA_ROUTE, TEXT_TO_SQL_ROUTE, type Route } from "./constants.js";
+import type { AnalysisState } from "@shared/contracts";
 
 const DEFINITION_LOOKUP_PATTERNS = [
   /\bđịnh\s*nghĩa\b/i,
@@ -28,7 +29,7 @@ const RCA_PATTERNS = [
   /\blý\s+do\b.*?\b(giảm|tăng|sụt|biến\s+động)\b/i,
 ];
 
-export function routeQuestion(question: string): Route {
+export function routeQuestion(question: string, analysisState?: AnalysisState | null): Route {
   const q = question.trim();
   // Check definitions first so overlapping RCA patterns cannot capture them.
   for (const pattern of DEFINITION_LOOKUP_PATTERNS) {
@@ -41,5 +42,7 @@ export function routeQuestion(question: string): Route {
       return RCA_ROUTE;
     }
   }
+  if (analysisState && /(?:nguyên\s+nhân|tại\s+sao|vì\s+sao|why\b)/i.test(q) &&
+    /(?:thì\s+sao|kênh\s+này|it\b|this\b|that\b)/i.test(q)) return RCA_ROUTE;
   return TEXT_TO_SQL_ROUTE;
 }
