@@ -37,6 +37,7 @@ const ForeignKeySchema = z.object({
   column: z.string().min(1),
   referencesTable: z.string().min(1),
   referencesColumn: z.string().min(1),
+  cardinality: z.enum(["1:1", "1:N", "N:1", "M:N"]).optional(),
 });
 
 export const DescribeTableOutputSchema = z.object({
@@ -44,6 +45,7 @@ export const DescribeTableOutputSchema = z.object({
   columns: z.array(DescribeTableColumnSchema),
   primaryKey: z.array(z.string()).default([]),
   foreignKeys: z.array(ForeignKeySchema).default([]),
+  grain: z.string().max(500).optional(),
 });
 
 export type DescribeTableOutput = z.infer<typeof DescribeTableOutputSchema>;

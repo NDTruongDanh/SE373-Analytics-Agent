@@ -12,11 +12,25 @@ export type SchemaCatalogTableColumn = z.infer<
   typeof SchemaCatalogTableColumnSchema
 >;
 
+export const SchemaCatalogForeignKeySchema = z.object({
+  column: z.string().min(1).max(128),
+  referencesTable: z.string().min(1).max(128),
+  referencesColumn: z.string().min(1).max(128),
+  cardinality: z.enum(["1:1", "1:N", "N:1", "M:N"]).optional(),
+});
+
+export type SchemaCatalogForeignKey = z.infer<
+  typeof SchemaCatalogForeignKeySchema
+>;
+
 export const SchemaCatalogTableSchema = z.object({
   name: z.string().min(1).max(128),
   schema: z.string().min(1).max(128).default("public"),
   columns: z.array(SchemaCatalogTableColumnSchema),
   description: z.string().max(500).optional(),
+  grain: z.string().max(500).optional(),
+  foreignKeys: z.array(SchemaCatalogForeignKeySchema).optional(),
+  primaryKey: z.array(z.string()).optional(),
 });
 
 export type SchemaCatalogTable = z.infer<typeof SchemaCatalogTableSchema>;

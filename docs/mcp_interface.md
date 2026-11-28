@@ -155,6 +155,15 @@ Required scope: `schema:read`.
           "referencesColumn": {
             "type": "string",
             "minLength": 1
+          },
+          "cardinality": {
+            "type": "string",
+            "enum": [
+              "1:1",
+              "1:N",
+              "N:1",
+              "M:N"
+            ]
           }
         },
         "required": [
@@ -164,6 +173,10 @@ Required scope: `schema:read`.
         ],
         "additionalProperties": false
       }
+    },
+    "grain": {
+      "type": "string",
+      "maxLength": 500
     }
   },
   "required": [
@@ -492,6 +505,18 @@ Required scope: `data:read`.
           },
           "denseScore": {
             "type": "number"
+          },
+          "cardinality": {
+            "type": "string",
+            "enum": [
+              "1:1",
+              "1:N",
+              "N:1",
+              "M:N"
+            ]
+          },
+          "grain": {
+            "type": "string"
           }
         },
         "required": [

@@ -51,6 +51,8 @@ export const SQLAnswerSchema = z.object({
   resultPreview: z.array(z.record(z.string(), z.unknown())).max(50),
   answerText: z.string().min(1),
   status: SQLAnswerStatusSchema,
+  caveats: z.array(z.string()).default([]),
+  governed: z.boolean().optional(),
   telemetry: z.object({
     promptTokens: z.number().int().nonnegative(),
     completionTokens: z.number().int().nonnegative(),

@@ -26,6 +26,8 @@ export const SearchSemanticLayerChunkSchema = z.object({
   score: z.number(),
   aliasMatched: z.boolean().optional(),
   denseScore: z.number().optional(),
+  cardinality: z.enum(["1:1", "1:N", "N:1", "M:N"]).optional(),
+  grain: z.string().optional(),
 });
 
 export type SearchSemanticLayerChunk = z.infer<
