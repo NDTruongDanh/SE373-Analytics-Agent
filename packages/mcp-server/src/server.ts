@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -96,6 +96,22 @@ function defaultDocuments(): ResourceDocument[] {
       text: read(path.join(SEMANTIC_DIR, "metrics.md")),
     },
   ];
+}
+
+function loadTableGrains(): Record<string, string> {
+  const grains: Record<string, string> = {};
+  const file = path.join(SEMANTIC_DIR, "tables.yaml");
+  if (!existsSync(file)) return grains;
+  try {
+    const parsed = parseYaml(readFileSync(file, "utf8")) as { chunks?: unknown[] };
+    for (const raw of parsed?.chunks ?? []) {
+      const entry = raw as Record<string, unknown>;
+      if (typeof entry["table"] === "string" && typeof entry["grain"] === "string") {
+        grains[entry["table"]] = entry["grain"];
+      }
+    }
+  } catch {}
+  return grains;
 }
 
 function semanticIdentifierAliases(): SqlIdentifierAliases {
@@ -213,7 +229,7 @@ export async function createGatewayApp(
       const result = await (pool as NonNullable<typeof pool>).query(text);
       return { rows: result.rows as Record<string, unknown>[] };
     });
-    catalog = buildCatalog(source, sensitive);
+    catalog = buildCatalog(source, sensitive, { tableGrains: loadTableGrains() });
   }
   const builtCatalog: BuiltCatalog = catalog;
 

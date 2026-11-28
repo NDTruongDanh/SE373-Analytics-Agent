@@ -241,6 +241,7 @@ export async function executeToolCall(
             columns: table.columns,
             primaryKey: deps.catalog.primaryKeys.get(table.name) ?? [],
             foreignKeys: deps.catalog.foreignKeys.get(table.name) ?? [],
+            ...(table.grain ? { grain: table.grain } : {}),
           },
         });
       }

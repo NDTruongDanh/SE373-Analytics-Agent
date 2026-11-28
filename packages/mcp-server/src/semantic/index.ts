@@ -24,6 +24,8 @@ export interface ParsedChunk {
   aliases: string[];
   sensitivity: "public" | "internal" | "restricted_pii";
   additive?: boolean;
+  cardinality?: "1:1" | "1:N" | "N:1" | "M:N";
+  grain?: string;
   metadata?: Record<string, unknown>;
   content: string;
 }
@@ -41,6 +43,8 @@ export function validateChunkMetadata(
     aliases: chunk.aliases,
     sensitivity: chunk.sensitivity,
     ...(chunk.additive !== undefined ? { additive: chunk.additive } : {}),
+    ...(chunk.cardinality !== undefined ? { cardinality: chunk.cardinality } : {}),
+    ...(chunk.grain !== undefined ? { grain: chunk.grain } : {}),
     updatedAt,
   });
 }
@@ -144,6 +148,7 @@ const STRUCTURED_FIELDS: StructuredField[] = [
     label: "Affected Channels",
   },
   { keys: ["grain"], label: "Grain" },
+  { keys: ["cardinality"], label: "Cardinality" },
   { keys: ["primaryKey", "primary_key"], label: "Primary Key" },
   { keys: ["rowCountScale", "row_count_scale"], label: "Row Count Scale" },
   { keys: ["dataType", "data_type"], label: "Data Type" },
@@ -270,6 +275,19 @@ export function chunkYaml(
     if (typeof record["additive"] === "boolean") {
       additive = record["additive"] as boolean;
     }
+    let cardinality: "1:1" | "1:N" | "N:1" | "M:N" | undefined;
+    if (
+      record["cardinality"] === "1:1" ||
+      record["cardinality"] === "1:N" ||
+      record["cardinality"] === "N:1" ||
+      record["cardinality"] === "M:N"
+    ) {
+      cardinality = record["cardinality"];
+    }
+    let grain: string | undefined;
+    if (typeof record["grain"] === "string" && record["grain"].trim()) {
+      grain = record["grain"].trim();
+    }
     const contentRaw =
       record["content"] ??
       record["body"] ??
@@ -318,6 +336,8 @@ export function chunkYaml(
             ? "internal"
             : "public",
       ...(additive !== undefined ? { additive } : {}),
+      ...(cardinality !== undefined ? { cardinality } : {}),
+      ...(grain !== undefined ? { grain } : {}),
       content,
     };
     const validated = validateChunkMetadata(chunk);
@@ -337,6 +357,8 @@ export function canonicalJson(chunk: ParsedChunk): string {
     aliases: chunk.aliases,
     sensitivity: chunk.sensitivity,
     ...(chunk.additive !== undefined ? { additive: chunk.additive } : {}),
+    ...(chunk.cardinality !== undefined ? { cardinality: chunk.cardinality } : {}),
+    ...(chunk.grain !== undefined ? { grain: chunk.grain } : {}),
     content: chunk.content,
   };
   return JSON.stringify(payload);

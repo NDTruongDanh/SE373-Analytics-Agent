@@ -82,6 +82,8 @@ interface JoinChunk {
   tables?: string[];
   sql?: string;
   joinSql?: string;
+  cardinality?: "1:1" | "1:N" | "N:1" | "M:N";
+  grain?: string;
 }
 
 function parseYamlFile<T>(filePath: string): T {
@@ -362,6 +364,14 @@ export async function verifyJoinsAndFanout(
 
       const ratio = distinctBase > 0 ? Number((totalRows / distinctBase).toFixed(4)) : 0;
       fanoutRatios[chunk.chunkId] = ratio;
+
+      if (chunk.cardinality) {
+        if ((chunk.cardinality === "1:1" || chunk.cardinality === "N:1") && ratio > 1.0) {
+          failures.push(
+            `Join rule "${chunk.chunkId}" declared cardinality "${chunk.cardinality}" but empirical fanout ratio is ${ratio} (> 1.0).`,
+          );
+        }
+      }
     } catch (err) {
       failures.push(
         `Failed executing join verification for "${chunk.chunkId}": ${err instanceof Error ? err.message : String(err)}`,
