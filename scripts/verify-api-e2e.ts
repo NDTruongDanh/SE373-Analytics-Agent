@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildTraceTree } from "@shared/agent/telemetry";
+import { buildTraceTree, type TreeInputEvent } from "@shared/agent/telemetry";
 import {
   createLockPool,
   type AdvisoryLockPoolLike,
@@ -214,7 +214,11 @@ function inspectTrace(
   const lines = raw
     .split("\n")
     .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter(
+      (line): line is Record<string, unknown> & TreeInputEvent =>
+        typeof line["node"] === "string" && typeof line["type"] === "string",
+    );
   const audits = existsSync(auditFile)
     ? readFileSync(auditFile, "utf8")
         .split("\n")
@@ -233,12 +237,10 @@ function inspectTrace(
   const toolsCalled: string[] = [];
   const spanTypes: string[] = [];
   for (const event of lines) {
-    if (typeof event["type"] === "string") {
-      spanTypes.push(event["type"]);
-    }
-    const payload = event["payload"] as Record<string, unknown> | undefined;
+    spanTypes.push(event.type);
+    const payload = event.payload as Record<string, unknown> | undefined;
     if (
-      event["type"] === "tool_call" &&
+      event.type === "tool_call" &&
       typeof payload?.["tool"] === "string"
     ) {
       toolsCalled.push(payload["tool"]);
