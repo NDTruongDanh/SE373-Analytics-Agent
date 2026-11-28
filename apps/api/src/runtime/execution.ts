@@ -180,7 +180,13 @@ export function buildRunGraph(
       emitSpan: progress,
       ...(options.routes ? { routes: options.routes } : {}),
       ...(options.textToSql ? { textToSql: options.textToSql } : {}),
-      retrieve: options.retrieve ?? createRetrieveSemantic(),
+      retrieve:
+        options.retrieve ??
+        createRetrieveSemantic(
+          options.textToSql?.semanticSearch
+            ? { search: options.textToSql.semanticSearch }
+            : undefined,
+        ),
       viz: options.viz ?? createUc03Viz(),
       synthesize: options.synthesize ?? createAnswerSynthesizer(),
     }),

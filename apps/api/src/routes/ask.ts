@@ -1,6 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { Overwrite } from "@langchain/langgraph";
-import { BUDGET_DEFAULTS, routeQuestion, type AgentState } from "@shared/agent";
+import {
+  BUDGET_DEFAULTS,
+  compactTurnCheckpoint,
+  routeQuestion,
+  type AgentState,
+} from "@shared/agent";
 import {
   buildLangSmithRunConfig,
   createLangSmithTracer,
@@ -105,6 +110,13 @@ export function createAskRouter(ctx: AppContext): Router {
             maskedColumns: [],
           })
         : undefined;
+      const invokeConfig = {
+        runId,
+        callbacks: ls?.callbacks,
+        tags: ls?.tags,
+        metadata: ls?.metadata,
+        configurable: configurableForRun(run, runId),
+      };
       const out = (await graph.invoke(
         {
           question, runId, threadId,
@@ -114,17 +126,12 @@ export function createAskRouter(ctx: AppContext): Router {
           semanticQuery: null, semanticRetrieveStatus: "unloaded", semanticErrorCode: null,
           resultPreview: [], columns: [], toolsCalled: [],
           resultTruncated: false, rowCount: null, budgetExceeded: false,
+          clarificationAttempts: 0, analysisTopicChanged: false, caveats: [], governed: undefined,
           vizSpec: null, pendingClarification: null, analysisPlan: null, rootCauseAnswer: null,
           budget: new Overwrite({ llmCalls: 0, tokensUsed: 0, maxLlmCalls: BUDGET_DEFAULTS.maxLlmCalls, maxTokens: BUDGET_DEFAULTS.maxTokens, deadlineMs: 0 }),
           telemetry: new Overwrite({ promptTokens: 0, completionTokens: 0, latencyMs: 0 }),
         },
-        {
-          runId,
-          callbacks: ls?.callbacks,
-          tags: ls?.tags,
-          metadata: ls?.metadata,
-          configurable: configurableForRun(run, runId),
-        },
+        invokeConfig,
       )) as AgentState;
       const interrupts = interruptedOf(out);
       if (interrupts?.length) {
@@ -140,6 +147,11 @@ export function createAskRouter(ctx: AppContext): Router {
         return;
       }
       streamCompletion(res, runId, threadId, out);
+      try {
+        await compactTurnCheckpoint(graph, invokeConfig);
+      } catch {
+        emit?.({ node: "answer", type: "checkpoint_compaction_failed", durationMs: 0 });
+      }
       emit.emitRunDone(out.status);
     } catch (error) {
       emit?.emitRunDone("error");

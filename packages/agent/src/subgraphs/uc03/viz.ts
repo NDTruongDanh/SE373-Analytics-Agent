@@ -95,6 +95,8 @@ function resolveModel(
       analysisState: {
         question: state.question,
         intent: state.intent,
+        mergedIntent: state.intent,
+        priorLastSqlHash: state.analysisState?.lastSqlHash,
         analysisPlan: state.analysisPlan,
         status: state.status,
         tablesUsed: state.tablesUsed,

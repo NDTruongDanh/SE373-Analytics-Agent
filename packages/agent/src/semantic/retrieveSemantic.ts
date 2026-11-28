@@ -267,18 +267,20 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
     if (
       state.status === "error" ||
       state.status === "restricted" ||
-      state.status === "cannot_answer"
+      state.status === "cannot_answer" ||
+      state.status === "needs_clarification"
     ) {
       return {};
     }
     const metrics = state.intent.requestedMetrics ?? [];
+    const query = state.semanticQuery?.trim() || state.question;
     const isDefinition = state.intent.queryMode === "definition_lookup";
     const needsGrounding = metrics.length > 0 || isDefinition;
 
     // Reuse pre-intent retrieval for the same question to avoid a duplicate MCP search.
     if (
       state.semanticRetrieveStatus === "ok" &&
-      state.semanticQuery === state.question
+      state.semanticQuery === query
     ) {
       if (!hasUserSuppliedFormula(state.question) && metrics.length > 0) {
         const { ungrounded } = checkUnknownTerms(metrics, state.semanticChunks);
@@ -309,7 +311,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
     let chunks: SearchSemanticLayerChunk[];
     try {
       if (deps.search) {
-        chunks = await deps.search(state.question, topK);
+        chunks = await deps.search(query, topK);
       } else {
         const transport = readTransport(rt);
         if (!transport) {
@@ -324,7 +326,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
               "Semantic grounding unavailable (MCP transport identity is incomplete); cannot verify requested metrics without speculating.",
           };
         }
-        chunks = await fetchSemanticChunks(transport, state.question, topK);
+        chunks = await fetchSemanticChunks(transport, query, topK);
       }
     } catch (error) {
       const normalized = toNormalizedMcpError("search_semantic_layer", error);
@@ -387,7 +389,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
         });
         return {
           semanticChunks: stateChunks,
-          semanticQuery: state.question,
+          semanticQuery: query,
           semanticRetrieveStatus: "ok",
           semanticErrorCode: null,
           ...buildCannotAnswer(ungrounded, chunks, catalogIds),
@@ -406,7 +408,7 @@ export function createRetrieveSemantic(deps: RetrieveSemanticDeps = {}): (
     });
     return {
       semanticChunks: stateChunks,
-      semanticQuery: state.question,
+      semanticQuery: query,
       semanticRetrieveStatus: "ok",
       semanticErrorCode: null,
     };

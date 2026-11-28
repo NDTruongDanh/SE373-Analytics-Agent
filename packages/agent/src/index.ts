@@ -9,6 +9,7 @@ export * from "./subgraphs/previewCount.js";
 export * from "./alerts/index.js";
 export * from "./subgraphs/rootCauseAnalysis.js";
 export * from "./router.js";
+export { compactTurnCheckpoint } from "./multiTurn.js";
 export { RCA_ROUTE, ROUTES, TEXT_TO_SQL_ROUTE, type Route } from "./constants.js";
 export {
   createRetrieveSemantic,

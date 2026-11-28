@@ -12,6 +12,7 @@ import {
   type BudgetTripReason,
 } from "../queryExecutor/budgets.js";
 import { invokeJsonWithUsage, unaccountedUsage, type PlainJsonModelLike } from "../telemetry/usage.js";
+import { finalizeTurnMemory } from "../multiTurn.js";
 import {
   AnswerDraftSchema,
   buildAnswerPrompt,
@@ -269,6 +270,6 @@ export function createAnswerSynthesizer(deps: AnswerSynthesizerDeps = {}): Synth
         },
       });
     }
-    return update;
+    return finalizeTurnMemory(state, update);
   };
 }
