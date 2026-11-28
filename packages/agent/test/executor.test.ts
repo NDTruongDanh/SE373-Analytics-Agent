@@ -14,6 +14,7 @@ import {
   type SqlProposal,
 } from "../src/queryExecutor/executor.js";
 import { createBudgetState } from "../src/queryExecutor/budgets.js";
+import { UNGOVERNED_QUERY_CAVEAT } from "../src/queryExecutor/semanticCompiler.js";
 
 const PRINCIPAL = {
   runId: "run-exec-1",
@@ -1069,5 +1070,166 @@ describe("ValidatedQueryExecutor explain_query cost ceiling (#129)", () => {
     } finally {
       Date.now = originalNow;
     }
+  });
+});
+
+describe("ValidatedQueryExecutor H-04 governed semantic query compiler (#131)", () => {
+  const SEMANTIC_ORDERS_COLUMNS = [
+    { name: "order_id", type: "text", nullable: false, sensitive: false },
+    { name: "customer_id", type: "text", nullable: false, sensitive: false },
+    { name: "status", type: "text", nullable: true, sensitive: false },
+    { name: "purchase_date", type: "timestamp", nullable: true, sensitive: false },
+  ];
+  const SEMANTIC_ITEMS_COLUMNS = [
+    { name: "order_id", type: "text", nullable: false, sensitive: false },
+    { name: "order_item_id", type: "integer", nullable: false, sensitive: false },
+    { name: "price_vnd", type: "numeric", nullable: true, sensitive: false },
+    { name: "freight_vnd", type: "numeric", nullable: true, sensitive: false },
+  ];
+
+  const semanticDescribe = (args: Record<string, unknown>) => {
+    const table = String(args["table"] ?? "");
+    if (table === "order_items") {
+      return {
+        table: "order_items",
+        columns: SEMANTIC_ITEMS_COLUMNS,
+        primaryKey: ["order_id", "order_item_id"],
+        foreignKeys: [
+          {
+            column: "order_id",
+            referencesTable: "orders",
+            referencesColumn: "order_id",
+          },
+        ],
+      };
+    }
+    return {
+      table: "orders",
+      columns: SEMANTIC_ORDERS_COLUMNS,
+      primaryKey: ["order_id"],
+      foreignKeys: [],
+    };
+  };
+
+  it("compiles governed metric query deterministically without model LLM proposal", async () => {
+    let modelCalled = false;
+    const model: ChatModelLike = {
+      invoke: async () => {
+        modelCalled = true;
+        throw new Error("model should not be invoked for governed query");
+      },
+      stream: () => {
+        modelCalled = true;
+        throw new Error("model should not be invoked for governed query");
+      },
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          modelCalled = true;
+          throw new Error("model should not be invoked for governed query");
+        },
+      }),
+    };
+
+    const mcp = new StubMcpCaller({
+      describe_table: semanticDescribe,
+      explain_query: () => ({ estimatedCost: 10, estimatedRows: 1 }),
+      run_query: () => ({
+        columns: ["order_count"],
+        rows: [{ order_count: 42 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 5,
+      }),
+    });
+
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+    const result = await executor.run({
+      question: "How many orders were placed?",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+      semanticQuery: {
+        metrics: ["order_count"],
+        dimensions: [],
+        filters: [],
+      },
+    });
+
+    expect(modelCalled).toBe(false);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.governed).toBe(true);
+    expect(result.caveats).toEqual([]);
+    expect(result.sql).toContain("COUNT(DISTINCT o.order_id)");
+  });
+
+  it("adds UNGOVERNED_QUERY_CAVEAT when falling back to raw LLM-authored SQL", async () => {
+    const model = new FakeChatModel([
+      proposalFor(
+        "SELECT status, COUNT(*) AS n FROM orders GROUP BY status",
+        ["orders"],
+      ),
+    ]);
+    const mcp = new StubMcpCaller({
+      describe_table: semanticDescribe,
+      explain_query: () => ({ estimatedCost: 10, estimatedRows: 1 }),
+      run_query: () => ({
+        columns: ["status", "n"],
+        rows: [{ status: "delivered", n: 10 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 5,
+      }),
+    });
+
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+    const result = await executor.run({
+      question: "Break down orders by custom status",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.governed).toBe(false);
+    expect(result.caveats).toContain(UNGOVERNED_QUERY_CAVEAT);
+  });
+
+  it("compiles structured semanticQuery proposal from model as governed", async () => {
+    const proposalWithSemantic = JSON.stringify({
+      semanticQuery: {
+        metrics: ["order_count"],
+        dimensions: [],
+        filters: [],
+      },
+      tablesUsed: ["orders"],
+    });
+    const model = new FakeChatModel([proposalWithSemantic]);
+    const mcp = new StubMcpCaller({
+      describe_table: semanticDescribe,
+      explain_query: () => ({ estimatedCost: 10, estimatedRows: 1 }),
+      run_query: () => ({
+        columns: ["order_count"],
+        rows: [{ order_count: 99 }],
+        rowCount: 1,
+        truncated: false,
+        maskedColumns: [],
+        durationMs: 5,
+      }),
+    });
+
+    const executor = new ValidatedQueryExecutor({ model, mcp });
+    const result = await executor.run({
+      question: "Count orders please",
+      candidateTables: ["orders"],
+      principal: PRINCIPAL,
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.governed).toBe(true);
+    expect(result.caveats).toEqual([]);
+    expect(result.sql).toContain("COUNT(DISTINCT o.order_id)");
   });
 });

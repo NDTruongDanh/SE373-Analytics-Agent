@@ -40,7 +40,7 @@ const CORPUS_VERSION_SQL = `SELECT version FROM semantic.corpus_version WHERE id
 const WATERMARK_SQL = `SELECT EXTRACT(EPOCH FROM MAX(updated_at)) AS max_ts, COUNT(*)::int AS total
 FROM semantic.semantic_chunks`;
 
-const CATALOG_SQL = `SELECT chunk_id, doc_type, table_name, tables, metric_name, aliases, sensitivity, content, updated_at
+const CATALOG_SQL = `SELECT chunk_id, doc_type, table_name, tables, metric_name, aliases, sensitivity, content, updated_at, metadata
 FROM semantic.semantic_chunks`;
 
 export function toContractChunk(
@@ -49,7 +49,25 @@ export function toContractChunk(
   extra?: { aliasMatched?: boolean; denseScore?: number },
 ): SearchSemanticLayerChunk {
   const tables = String(row["tables"] ?? "");
-  const base = {
+  let meta: Record<string, unknown> = {};
+  if (typeof row["metadata"] === "object" && row["metadata"] !== null) {
+    meta = row["metadata"] as Record<string, unknown>;
+  } else if (typeof row["metadata"] === "string") {
+    try {
+      meta = JSON.parse(row["metadata"] as string) as Record<string, unknown>;
+    } catch {
+      meta = {};
+    }
+  }
+  const cardinality =
+    meta["cardinality"] === "1:1" ||
+    meta["cardinality"] === "1:N" ||
+    meta["cardinality"] === "N:1" ||
+    meta["cardinality"] === "M:N"
+      ? meta["cardinality"]
+      : undefined;
+  const grain = typeof meta["grain"] === "string" ? meta["grain"] : undefined;
+  const base: SearchSemanticLayerChunk = {
     chunkId: String(row["chunk_id"]),
     docType: row["doc_type"] as SearchSemanticLayerChunk["docType"],
     table: (row["table_name"] as string | null) ?? null,
@@ -57,6 +75,8 @@ export function toContractChunk(
     metricName: (row["metric_name"] as string | null) ?? null,
     content: String(row["content"] ?? ""),
     score,
+    ...(cardinality ? { cardinality } : {}),
+    ...(grain ? { grain } : {}),
   };
   if (extra?.aliasMatched === undefined && extra?.denseScore === undefined) {
     return base;

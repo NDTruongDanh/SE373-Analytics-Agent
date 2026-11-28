@@ -16,6 +16,8 @@ export const SemanticChunkMetadataSchema = z.object({
   aliases: z.array(z.string()).default([]),
   sensitivity: z.enum(["public", "internal", "restricted_pii"]),
   additive: z.boolean().optional(),
+  cardinality: z.enum(["1:1", "1:N", "N:1", "M:N"]).optional(),
+  grain: z.string().optional(),
   updatedAt: z.iso.datetime(),
 });
 

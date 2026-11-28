@@ -344,6 +344,79 @@ describe("LocalQuerySafetyGate", () => {
     if (result.verdict !== "pass") return;
     expect(result.sql).toContain(`LIMIT ${DETAIL_QUERY_LIMIT}`);
   });
+
+  it("denies SUM over a column on the '1' side of a 1:N join", async () => {
+    const result = await gate(
+      "SELECT SUM(o.total) AS total_revenue FROM orders o JOIN order_items i ON i.order_id = o.order_id WHERE o.purchase_date >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("deny");
+    if (result.verdict !== "deny") return;
+    expect(result.error.code).toBe("INVALID_SQL");
+    expect(result.error.message).toContain("1:N join");
+  });
+
+  it("denies AVG over a column on the '1' side of a 1:N join", async () => {
+    const result = await gate(
+      "SELECT AVG(o.total) AS avg_revenue FROM orders o JOIN order_items i ON i.order_id = o.order_id WHERE o.purchase_date >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("deny");
+    if (result.verdict !== "deny") return;
+    expect(result.error.code).toBe("INVALID_SQL");
+    expect(result.error.message).toContain("1:N join");
+  });
+
+  it("denies COUNT(*) over a 1:N join without grain-safe pre-aggregation", async () => {
+    const result = await gate(
+      "SELECT COUNT(*) AS order_cnt FROM orders o JOIN order_items i ON i.order_id = o.order_id WHERE o.purchase_date >= '2026-01-01'",
+      largeCatalog,
+    );
+    expect(result.verdict).toBe("deny");
+    if (result.verdict !== "deny") return;
+    expect(result.error.code).toBe("INVALID_SQL");
+    expect(result.error.message).toContain("1:N join");
+  });
+
+  it("denies SUM on custom non-hardcoded tables using FK metadata", async () => {
+    const customCatalog: SchemaCatalog = {
+      tables: [
+        {
+          name: "departments",
+          schema: "public",
+          columns: [col("id"), col("budget")],
+        },
+        {
+          name: "projects",
+          schema: "public",
+          columns: [col("id"), col("dept_id"), col("cost")],
+          foreignKeys: [
+            {
+              column: "dept_id",
+              referencesTable: "departments",
+              referencesColumn: "id",
+              cardinality: "1:N",
+            },
+          ],
+        },
+      ],
+    };
+    const guard = await sqlGuard(
+      "SELECT SUM(d.budget) AS total_budget FROM departments d JOIN projects p ON p.dept_id = d.id",
+      customCatalog,
+    );
+    expect(guard.ok).toBe(true);
+    const result = localQuerySafetyGate(
+      "SELECT SUM(d.budget) AS total_budget FROM departments d JOIN projects p ON p.dept_id = d.id",
+      guard as GuardSuccess,
+      customCatalog,
+      [],
+    );
+    expect(result.verdict).toBe("deny");
+    if (result.verdict !== "deny") return;
+    expect(result.error.code).toBe("INVALID_SQL");
+    expect(result.error.message).toContain("departments and projects");
+  });
 });
 
 describe("clampLimit", () => {

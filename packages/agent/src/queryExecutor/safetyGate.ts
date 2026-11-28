@@ -9,6 +9,10 @@ import {
   FANOUT_CHILD_TABLES,
   FANOUT_SENSITIVE_AGGREGATES,
 } from "../constants.js";
+import {
+  loadSemanticJoinRules,
+  type SemanticJoinRuleMeta,
+} from "../semantic/catalog.js";
 
 export { DETAIL_QUERY_LIMIT } from "../constants.js";
 
@@ -178,6 +182,15 @@ function columnRefFieldName(columnRef: unknown): string | undefined {
   return typeof name === "string" ? name.toLowerCase() : undefined;
 }
 
+function columnRefQualifier(columnRef: unknown): string | undefined {
+  const ref = asRecord(columnRef);
+  const fields = ref?.["fields"];
+  if (!Array.isArray(fields) || fields.length < 2) return undefined;
+  const qualField = asRecord(fields.at(-2));
+  const name = asRecord(qualField?.["String"])?.["sval"];
+  return typeof name === "string" ? name.toLowerCase() : undefined;
+}
+
 function comparisonOperator(expression: Record<string, unknown>): string | undefined {
   const names = expression["name"];
   if (!Array.isArray(names)) return undefined;
@@ -236,49 +249,204 @@ function hasLargeTableTimeFilter(guard: GuardSuccess, large: string[]): boolean 
   );
 }
 
-/** Subselects and CTEs are boundaries: their pre-aggregation removes the fan-out. */
-function joinedRelations(fromItem: unknown, out: Set<string>): void {
+function extractBaseTable(fromItem: unknown): string | undefined {
   if (Array.isArray(fromItem)) {
-    for (const entry of fromItem) joinedRelations(entry, out);
+    return extractBaseTable(fromItem[0]);
+  }
+  const record = asRecord(fromItem);
+  if (!record) return undefined;
+  const range = asRecord(record["RangeVar"]);
+  if (range && typeof range["relname"] === "string") {
+    return range["relname"].toLowerCase();
+  }
+  const join = asRecord(record["JoinExpr"]);
+  if (join) {
+    return extractBaseTable(join["larg"]);
+  }
+  return undefined;
+}
+
+function extractTableAliases(fromItem: unknown, out: Map<string, string>): void {
+  if (Array.isArray(fromItem)) {
+    for (const entry of fromItem) extractTableAliases(entry, out);
     return;
   }
   const record = asRecord(fromItem);
   if (!record) return;
   const range = asRecord(record["RangeVar"]);
   if (range) {
-    const name = range["relname"];
-    if (typeof name === "string") out.add(name.toLowerCase());
+    const relname = typeof range["relname"] === "string" ? range["relname"].toLowerCase() : undefined;
+    if (relname) {
+      out.set(relname, relname);
+      const aliasNode = asRecord(range["alias"]);
+      const alias = typeof aliasNode?.["aliasname"] === "string" ? (aliasNode["aliasname"] as string).toLowerCase() : undefined;
+      if (alias) out.set(alias, relname);
+    }
     return;
   }
   const join = asRecord(record["JoinExpr"]);
   if (join) {
-    joinedRelations(join["larg"], out);
-    joinedRelations(join["rarg"], out);
+    extractTableAliases(join["larg"], out);
+    extractTableAliases(join["rarg"], out);
   }
 }
 
-function hasFanoutSensitiveAggregate(stmt: Record<string, unknown>): boolean {
-  const scope = [stmt["targetList"], stmt["havingClause"]];
-  return findNodes(scope, "FuncCall").some((node) => {
-    const call = asRecord(node);
-    if (call?.["agg_distinct"] === true) return false;
-    return FANOUT_SENSITIVE_AGGREGATES.includes(functionName(node) ?? "");
-  });
+function getJoinRuleMap(joinRules: readonly SemanticJoinRuleMeta[]): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const rule of joinRules) {
+    if (rule.cardinality === "1:N" && rule.tables.length >= 2) {
+      const parent = rule.table ?? rule.tables[0]!;
+      for (const t of rule.tables) {
+        if (t !== parent) {
+          if (!map.has(parent)) map.set(parent, new Set());
+          map.get(parent)!.add(t);
+        }
+      }
+    } else if (rule.cardinality === "M:N" && rule.tables.length >= 3) {
+      const parent = rule.table ?? rule.tables[0]!;
+      for (const t of rule.tables) {
+        if (t !== parent) {
+          if (!map.has(parent)) map.set(parent, new Set());
+          map.get(parent)!.add(t);
+        }
+      }
+    }
+  }
+  return map;
 }
 
-function fanoutChildren(ast: GuardAst): string[] | undefined {
+function extractAggMeasureColumnRefs(node: unknown): unknown[] {
+  if (Array.isArray(node)) {
+    const out: unknown[] = [];
+    for (const item of node) {
+      out.push(...extractAggMeasureColumnRefs(item));
+    }
+    return out;
+  }
+  const record = asRecord(node);
+  if (!record) return [];
+  if (record["CaseExpr"]) {
+    const caseExpr = asRecord(record["CaseExpr"]);
+    const out: unknown[] = [];
+    if (caseExpr) {
+      const whens = caseExpr["args"];
+      if (Array.isArray(whens)) {
+        for (const w of whens) {
+          const whenRec = asRecord(asRecord(w)?.["CaseWhen"]);
+          if (whenRec?.["result"]) {
+            out.push(...extractAggMeasureColumnRefs(whenRec["result"]));
+          }
+        }
+      }
+      if (caseExpr["defresult"]) {
+        out.push(...extractAggMeasureColumnRefs(caseExpr["defresult"]));
+      }
+    }
+    return out;
+  }
+  if (record["A_Expr"]) {
+    const expr = asRecord(record["A_Expr"]);
+    const out: unknown[] = [];
+    if (expr?.["lexpr"]) out.push(...extractAggMeasureColumnRefs(expr["lexpr"]));
+    if (expr?.["rexpr"]) out.push(...extractAggMeasureColumnRefs(expr["rexpr"]));
+    return out;
+  }
+  return findNodes(node, "ColumnRef");
+}
+
+function evaluateJoinFanout(
+  ast: GuardAst,
+  catalog: SchemaCatalog,
+  joinRules: readonly SemanticJoinRuleMeta[] = loadSemanticJoinRules(),
+): DbToolError | undefined {
+  const ruleMap = getJoinRuleMap(joinRules);
+  for (const t of catalog.tables) {
+    const childName = t.name.toLowerCase();
+    for (const fk of t.foreignKeys ?? []) {
+      const parentName = fk.referencesTable.toLowerCase();
+      if (parentName !== childName) {
+        if (!ruleMap.has(parentName)) ruleMap.set(parentName, new Set());
+        ruleMap.get(parentName)!.add(childName);
+      }
+    }
+  }
+
   for (const node of findNodes(ast, "SelectStmt")) {
     const stmt = asRecord(node);
-    if (!stmt || !hasFanoutSensitiveAggregate(stmt)) continue;
-    const relations = new Set<string>();
-    joinedRelations(stmt["fromClause"], relations);
-    const children = FANOUT_CHILD_TABLES.filter((table) => relations.has(table));
-    if (children.length >= 2) return children;
+    if (!stmt) continue;
+    const aliases = new Map<string, string>();
+    extractTableAliases(stmt["fromClause"], aliases);
+    const scanned = new Set(aliases.values());
+    if (scanned.size < 2) continue;
+
+    const aggCalls = findNodes([stmt["targetList"], stmt["havingClause"]], "FuncCall").filter(
+      (n) => {
+        const call = asRecord(n);
+        if (call?.["agg_distinct"] === true) return false;
+        return FANOUT_SENSITIVE_AGGREGATES.includes(functionName(n) ?? "");
+      },
+    );
+    if (aggCalls.length === 0) continue;
+
+    for (const parent of scanned) {
+      const childrenSet = ruleMap.get(parent);
+      const fallbackChildren = parent === "orders" ? FANOUT_CHILD_TABLES : [];
+      const candidateChildNames = childrenSet ? [...childrenSet] : [...fallbackChildren];
+      const presentChildren = candidateChildNames.filter((c) => scanned.has(c));
+      if (presentChildren.length >= 2) {
+        return dbToolError(
+          "INVALID_SQL",
+          `Join fan-out: ${presentChildren.join(" and ")} are joined at the same level as SUM/AVG/COUNT, ` +
+            "which repeats rows before aggregating. Pre-aggregate each child table by order_id " +
+            "in its own CTE, then join the CTEs.",
+        );
+      }
+      if (presentChildren.length === 1) {
+        const child = presentChildren[0]!;
+        for (const callNode of aggCalls) {
+          const call = asRecord(callNode);
+          if (!call) continue;
+          const colRefs = extractAggMeasureColumnRefs(call["args"]);
+          if (colRefs.length === 0) {
+            const baseTable = extractBaseTable(stmt["fromClause"]);
+            if (baseTable === parent) {
+              return dbToolError(
+                "INVALID_SQL",
+                `Join fan-out: aggregate over column on the "1" side of 1:N join between ${parent} and ${child} without grain-safe pre-aggregation. Pre-aggregate child table in a CTE, then join.`,
+              );
+            }
+            continue;
+          }
+          for (const colRef of colRefs) {
+            const qualifier = columnRefQualifier(colRef);
+            const colName = columnRefFieldName(colRef);
+            let resolvedTable: string | undefined;
+            if (qualifier) {
+              resolvedTable = aliases.get(qualifier);
+            } else if (colName) {
+              const matches = catalog.tables.filter(
+                (tbl) =>
+                  scanned.has(tbl.name.toLowerCase()) &&
+                  tbl.columns.some((c) => c.name.toLowerCase() === colName),
+              );
+              if (matches.length === 1) {
+                resolvedTable = matches[0]?.name.toLowerCase();
+              }
+            }
+            if (resolvedTable === parent) {
+              return dbToolError(
+                "INVALID_SQL",
+                `Join fan-out: aggregate over column "${colName ?? "unknown"}" on the "1" side of 1:N join between ${parent} and ${child} without grain-safe pre-aggregation. Pre-aggregate child table in a CTE, then join.`,
+              );
+            }
+          }
+        }
+      }
+    }
   }
   return undefined;
 }
 
-/** Tail-only rewrite preserves inner subquery LIMITs and leaves parameterized LIMITs for the server. */
 export function clampLimit(sql: string, cap: number): string {
   const body = sql.replace(/;+\s*$/, "");
   const limited = /\bLIMIT\s+(ALL|\d+)(\s+OFFSET\s+\d+)?\s*$/i.exec(body);
@@ -308,6 +476,7 @@ export function localQuerySafetyGate(
   sql: string,
   guard: GuardSuccess,
   catalog: SchemaCatalog,
+  joinRules?: readonly SemanticJoinRuleMeta[],
 ): SafetyGateResult {
   const sensitive = sensitiveRef(guard, catalog);
   if (sensitive) {
@@ -328,16 +497,11 @@ export function localQuerySafetyGate(
     };
   }
 
-  const fanout = fanoutChildren(guard.ast);
+  const fanout = evaluateJoinFanout(guard.ast, catalog, joinRules);
   if (fanout) {
     return {
       verdict: "deny",
-      error: dbToolError(
-        "INVALID_SQL",
-        `Join fan-out: ${fanout.join(" and ")} are joined at the same level as SUM/AVG/COUNT, ` +
-          "which repeats rows before aggregating. Pre-aggregate each child table by order_id " +
-          "in its own CTE, then join the CTEs.",
-      ),
+      error: fanout,
     };
   }
 

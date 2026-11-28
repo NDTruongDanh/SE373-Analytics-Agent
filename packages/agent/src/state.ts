@@ -178,6 +178,8 @@ export const AgentStateSchema = new StateSchema({
   clarificationAttempts: z.number().int().min(0).max(2).default(0),
   analysisPlan: AnalysisPlanSchema.nullable().default(null),
   rootCauseAnswer: RootCauseAnswerSchema.nullable().default(null),
+  caveats: z.array(z.string()).default([]),
+  governed: z.boolean().optional(),
 });
 
 export type AgentState = typeof AgentStateSchema.State;

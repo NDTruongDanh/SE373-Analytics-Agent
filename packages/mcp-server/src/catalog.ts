@@ -8,6 +8,7 @@ export interface ForeignKeyRef {
   column: string;
   referencesTable: string;
   referencesColumn: string;
+  cardinality?: "1:1" | "1:N" | "N:1" | "M:N";
 }
 
 export interface BuiltCatalog {
@@ -79,6 +80,7 @@ export async function fetchCatalogSource(
 export function buildCatalog(
   source: CatalogSource,
   sensitive: SensitiveColumns,
+  options?: { tableGrains?: Record<string, string> },
 ): BuiltCatalog {
   if (source.tables.length === 0) {
     throw new Error("refusing to serve an empty schema catalog");
@@ -111,6 +113,7 @@ export function buildCatalog(
         column: constraint.column_name,
         referencesTable: constraint.references_table,
         referencesColumn: constraint.references_column,
+        cardinality: "N:1",
       });
       foreignKeys.set(constraint.table_name, list);
     }
@@ -129,6 +132,9 @@ export function buildCatalog(
           ),
           large: largeKeys.has(name.toLowerCase()),
         })),
+        ...(options?.tableGrains?.[name] ? { grain: options.tableGrains[name] } : {}),
+        ...(primaryKeys.has(name) ? { primaryKey: primaryKeys.get(name) } : {}),
+        ...(foreignKeys.has(name) ? { foreignKeys: foreignKeys.get(name) } : {}),
       })),
     },
     primaryKeys,

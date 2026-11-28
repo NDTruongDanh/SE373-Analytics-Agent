@@ -56,6 +56,12 @@ import {
   isHighCardinalityDiagnosticColumn,
   likeDiagnosticTerms,
 } from "./diagnosticCardinality.js";
+import {
+  SemanticQueryCompiler,
+  UNGOVERNED_QUERY_CAVEAT,
+  SemanticQuerySchema,
+  type SemanticQuery,
+} from "./semanticCompiler.js";
 
 export { MAX_ATTEMPTS, TIMEOUT_RETRY_LIMIT } from "../constants.js";
 
@@ -67,10 +73,15 @@ const DIAGNOSTIC_MAX_VALUE_CHARS = 200;
 const MAX_DIAGNOSTIC_FILTER_PROBES = 3;
 
 /** Model SQL proposal (untrusted until gated). */
-export const SqlProposalSchema = z.object({
-  sql: z.string().min(1),
-  tablesUsed: z.array(z.string()),
-});
+export const SqlProposalSchema = z
+  .object({
+    sql: z.string().optional(),
+    semanticQuery: SemanticQuerySchema.optional(),
+    tablesUsed: z.array(z.string()).default([]),
+  })
+  .refine((data) => Boolean(data.sql || data.semanticQuery), {
+    message: "Either sql or semanticQuery must be provided",
+  });
 
 export type SqlProposal = z.infer<typeof SqlProposalSchema>;
 
@@ -117,6 +128,15 @@ export interface ExecutorRunInput {
   question: string;
   /** Trusted SQL still passes describe, sqlGuard, LocalQuerySafetyGate, explain, and repair. */
   initialSql?: string;
+  semanticQuery?: SemanticQuery;
+  intent?: {
+    metric: string | null;
+    dimensions: string[];
+    filters: Array<{ field: string; operator: string; value: unknown }>;
+    timeRange: string | null;
+    requestedMetrics?: string[];
+    schemaEntities?: string[];
+  };
   timeRange?: string | null;
   /** Only these tables are described — never a full-schema sweep. */
   candidateTables: string[];
@@ -156,6 +176,8 @@ export type ExecutorResult =
       truncated?: boolean;
       maskedColumns: string[];
       attempts: number;
+      governed?: boolean;
+      caveats?: string[];
     }
   | {
       status: "no_data";
@@ -166,6 +188,8 @@ export type ExecutorResult =
       maskedColumns: string[];
       attempts: number;
       diagnostic?: string;
+      governed?: boolean;
+      caveats?: string[];
     }
   | {
       status: "needs_clarification";
@@ -789,6 +813,18 @@ export class ValidatedQueryExecutor {
     let lastTablesUsed: string[] = [];
     let timeoutSimplified = false;
     let diagnosticBaseline: { tables: string; projection: string } | null = null;
+    const compiler = new SemanticQueryCompiler();
+    let isGoverned = false;
+    const caveats: string[] = [];
+
+    if (input.semanticQuery) {
+      try {
+        const compiled = compiler.compile(input.semanticQuery);
+        forcedSql = compiled.sql;
+        lastTablesUsed = compiled.tablesUsed;
+        isGoverned = true;
+      } catch {}
+    }
 
     while (attemptNo < effectiveMaxAttempts) {
       attemptNo += 1;
@@ -916,6 +952,28 @@ export class ValidatedQueryExecutor {
             pricingKnown,
           },
         });
+        if (proposal.semanticQuery) {
+          try {
+            const compiled = compiler.compile(proposal.semanticQuery);
+            proposal.sql = compiled.sql;
+            proposal.tablesUsed = compiled.tablesUsed;
+            isGoverned = true;
+          } catch {}
+        }
+        if (!proposal.sql) {
+          return {
+            status: "error",
+            error: dbToolError(
+              "INTERNAL_ERROR",
+              "SQL proposal produced neither valid SQL nor compilable semanticQuery",
+            ),
+            sql: partials.lastSql,
+            attempts: attempt,
+          };
+        }
+        if (!isGoverned && !caveats.includes(UNGOVERNED_QUERY_CAVEAT)) {
+          caveats.push(UNGOVERNED_QUERY_CAVEAT);
+        }
         partials.lastSql = proposal.sql;
         sql = proposal.sql;
         lastTablesUsed = proposal.tablesUsed;
@@ -1241,6 +1299,11 @@ export class ValidatedQueryExecutor {
             });
             continue;
           }
+          const finalCaveats = isGoverned
+            ? []
+            : caveats.includes(UNGOVERNED_QUERY_CAVEAT)
+              ? [...caveats]
+              : [UNGOVERNED_QUERY_CAVEAT, ...caveats];
           return {
             status: "no_data",
             sql: finalSql,
@@ -1250,8 +1313,15 @@ export class ValidatedQueryExecutor {
             maskedColumns,
             attempts: attempt,
             diagnostic: diagnostic.note,
+            governed: isGoverned,
+            caveats: finalCaveats,
           };
         }
+        const finalCaveats = isGoverned
+          ? []
+          : caveats.includes(UNGOVERNED_QUERY_CAVEAT)
+            ? [...caveats]
+            : [UNGOVERNED_QUERY_CAVEAT, ...caveats];
         return {
           status: "no_data",
           sql: finalSql,
@@ -1260,8 +1330,15 @@ export class ValidatedQueryExecutor {
           rows: [],
           maskedColumns,
           attempts: attempt,
+          governed: isGoverned,
+          caveats: finalCaveats,
         };
       }
+      const finalCaveats = isGoverned
+        ? []
+        : caveats.includes(UNGOVERNED_QUERY_CAVEAT)
+          ? [...caveats]
+          : [UNGOVERNED_QUERY_CAVEAT, ...caveats];
       return {
         status: "ok",
         sql: finalSql,
@@ -1271,6 +1348,8 @@ export class ValidatedQueryExecutor {
         truncated,
         maskedColumns,
         attempts: attempt,
+        governed: isGoverned,
+        caveats: finalCaveats,
       };
     }
 

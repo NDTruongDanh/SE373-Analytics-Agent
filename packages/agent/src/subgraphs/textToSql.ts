@@ -322,6 +322,8 @@ const EXECUTOR_UPDATE_MAP: {
     resultPreview: result.rows.slice(0, 50),
     resultTruncated: Boolean(result.truncated),
     rowCount: result.truncated ? null : result.rows.length,
+    governed: result.governed,
+    caveats: result.caveats,
   }),
   no_data: (result) => ({
     status: "no_data",
@@ -332,6 +334,8 @@ const EXECUTOR_UPDATE_MAP: {
     resultTruncated: false,
     rowCount: 0,
     answerText: "",
+    governed: result.governed,
+    caveats: result.caveats,
   }),
   needs_clarification: (result) => ({
     status: "needs_clarification",
@@ -1633,6 +1637,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
     let result = await executor.run({
       question: activeState.question,
       timeRange: activeState.intent.timeRange,
+      intent: activeState.intent,
       candidateTables,
       catalogTables: effectiveCatalogTables,
       references,
@@ -1690,6 +1695,7 @@ export function createTextToSqlRuntime(deps: TextToSqlRuntimeDeps = {}): {
       result = await executor.run({
         question: activeState.question,
         timeRange: activeState.intent.timeRange,
+        intent: activeState.intent,
         candidateTables,
         catalogTables: effectiveCatalogTables,
         references,

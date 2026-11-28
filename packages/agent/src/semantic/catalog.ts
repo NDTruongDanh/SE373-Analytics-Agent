@@ -20,6 +20,15 @@ export const DEFAULT_SEMANTIC_DIR = fileURLToPath(
 let cachedCatalog: ReadonlySet<string> | null = null;
 let cachedAliases: SqlIdentifierAliases | null = null;
 let cachedJoinEdges: readonly (readonly [string, string])[] | null = null;
+let cachedJoinRules: readonly SemanticJoinRuleMeta[] | null = null;
+
+export interface SemanticJoinRuleMeta {
+  chunkId: string;
+  table: string | null;
+  tables: string[];
+  cardinality: "1:1" | "1:N" | "N:1" | "M:N";
+  grain?: string;
+}
 
 function entriesFromYaml(text: string): Record<string, unknown>[] {
   let parsed: unknown;
@@ -164,8 +173,40 @@ export function loadSemanticJoinEdges(
   return result;
 }
 
+export function loadSemanticJoinRules(
+  semanticDir: string = DEFAULT_SEMANTIC_DIR,
+): readonly SemanticJoinRuleMeta[] {
+  if (semanticDir === DEFAULT_SEMANTIC_DIR && cachedJoinRules !== null) return cachedJoinRules;
+  const fullPath = path.join(semanticDir, "joins.yaml");
+  const rules: SemanticJoinRuleMeta[] = [];
+  if (existsSync(fullPath)) {
+    for (const entry of entriesFromYaml(readFileSync(fullPath, "utf8"))) {
+      if (entry["docType"] !== "join_rule") continue;
+      const rawTables = entry["tables"];
+      const tables = Array.isArray(rawTables)
+        ? rawTables.map((t) => String(t).trim().toLowerCase()).filter(Boolean)
+        : [];
+      const card = entry["cardinality"];
+      const cardinality =
+        card === "1:1" || card === "1:N" || card === "N:1" || card === "M:N"
+          ? card
+          : "1:N";
+      rules.push({
+        chunkId: String(entry["chunkId"] ?? ""),
+        table: typeof entry["table"] === "string" ? entry["table"].toLowerCase() : null,
+        tables,
+        cardinality,
+        grain: typeof entry["grain"] === "string" ? entry["grain"] : undefined,
+      });
+    }
+  }
+  if (semanticDir === DEFAULT_SEMANTIC_DIR) cachedJoinRules = rules;
+  return rules;
+}
+
 export function resetSemanticCatalogCacheForTests(): void {
   cachedCatalog = null;
   cachedAliases = null;
   cachedJoinEdges = null;
+  cachedJoinRules = null;
 }

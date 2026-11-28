@@ -306,6 +306,62 @@ chunks:
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("fails when declared cardinality is 1:1 or N:1 but empirical fan-out ratio exceeds 1.0", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-test-"));
+    try {
+      const joinsYaml = `
+chunks:
+  - chunkId: "join_rule:orders_customers_regions"
+    table: "orders"
+    tables: ["orders", "customers"]
+    cardinality: "N:1"
+`;
+      writeFileSync(path.join(tmpDir, "joins.yaml"), joinsYaml, "utf8");
+
+      const mockClient: VerifySemanticClient = {
+        async query() {
+          return {
+            rows: [{ total_rows: 150, distinct_base: 100 }],
+          };
+        },
+      };
+
+      const res = await verifyJoinsAndFanout(mockClient, tmpDir);
+      expect(res.failures.length).toBe(1);
+      expect(res.failures[0]).toMatch(/declared cardinality "N:1" but empirical fanout ratio is 1.5/);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("passes when declared cardinality 1:N has empirical fan-out ratio > 1.0", async () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "semantic-test-"));
+    try {
+      const joinsYaml = `
+chunks:
+  - chunkId: "join_rule:orders_order_items"
+    table: "orders"
+    tables: ["orders", "order_items"]
+    cardinality: "1:N"
+`;
+      writeFileSync(path.join(tmpDir, "joins.yaml"), joinsYaml, "utf8");
+
+      const mockClient: VerifySemanticClient = {
+        async query() {
+          return {
+            rows: [{ total_rows: 240, distinct_base: 100 }],
+          };
+        },
+      };
+
+      const res = await verifyJoinsAndFanout(mockClient, tmpDir);
+      expect(res.failures).toEqual([]);
+      expect(res.fanoutRatios["join_rule:orders_order_items"]).toBe(2.4);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("verifySemanticCorpus (full suite)", () => {

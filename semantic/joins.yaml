@@ -10,6 +10,8 @@ chunks:
     metricName: null
     aliases: ["chống nhân dòng", "chong nhan dong", "fan-out", "anti-fanout", "pre-aggregate", "CTE", "đối soát thanh toán", "payment reconciliation", "orders items payments join"]
     sensitivity: "public"
+    cardinality: "M:N"
+    grain: "1 row per order when pre-aggregated; direct join fans out to items x payments"
     content: >-
       Anti-fanout rule for orders + order_items + payments. order_items holds
       1-to-many rows per order and payments holds 1-to-many rows per order
@@ -35,6 +37,8 @@ chunks:
     metricName: null
     aliases: ["đơn hàng và dòng đơn", "order line grain", "order count distinct", "doanh thu thuần", "net revenue join", "orders order_items join"]
     sensitivity: "public"
+    cardinality: "1:N"
+    grain: "1 row per order item (fans out from order grain)"
     content: >-
       Join rule for orders to order_items: order grain fans out to line-item
       grain, so one order becomes many rows. Join on
@@ -56,6 +60,8 @@ chunks:
     metricName: null
     aliases: ["thanh toán nhiều dòng", "multiple payments per order", "installments", "trả góp", "voucher", "pre-aggregate payments", "orders payments join"]
     sensitivity: "public"
+    cardinality: "1:N"
+    grain: "1 row per payment (fans out from order grain)"
     content: >-
       Join rule for orders to payments: payments holds multiple rows per
       order_id (installments with installments > 1, split tenders, vouchers),
@@ -78,6 +84,8 @@ chunks:
     metricName: null
     aliases: ["khách hàng theo vùng", "customer region join", "tỉnh thành", "miền Bắc Trung Nam", "region_group", "orders customers regions join"]
     sensitivity: "public"
+    cardinality: "N:1"
+    grain: "1 row per order"
     content: >-
       Geographic join path for order demand: join orders.customer_id =
       customers.customer_id, then customers.province = regions.province for
@@ -100,6 +108,8 @@ chunks:
     metricName: null
     aliases: ["ngành hàng", "danh mục sản phẩm", "category revenue", "Đồ gia dụng", "Điện gia dụng", "category join", "order_items products categories join"]
     sensitivity: "public"
+    cardinality: "N:1"
+    grain: "1 row per order item"
     content: >-
       Category attribution path: join order_items.product_id =
       products.product_id, then products.category_id = categories.category_id.
@@ -122,6 +132,8 @@ chunks:
     metricName: null
     aliases: ["người bán theo vùng", "seller region join", "shop", "seller province", "region_group", "order_items sellers regions join"]
     sensitivity: "public"
+    cardinality: "N:1"
+    grain: "1 row per order item"
     content: >-
       Seller geography path: join order_items.seller_id = sellers.seller_id,
       then sellers.province = regions.province for the province dimension.
@@ -144,6 +156,8 @@ chunks:
     metricName: null
     aliases: ["đánh giá đơn hàng", "review score join", "rating", "điểm đánh giá", "orders reviews join"]
     sensitivity: "public"
+    cardinality: "1:N"
+    grain: "1 row per review (fans out from order grain)"
     content: >-
       Review join rule: join orders.order_id = reviews.order_id. Reviews are
       zero-or-more rows per order (optional per order), so average scores cover

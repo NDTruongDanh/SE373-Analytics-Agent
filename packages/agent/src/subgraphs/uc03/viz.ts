@@ -216,12 +216,15 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
     });
 
     const model = resolveModel(deps, state, rt);
-    const baseCaveats =
-      state.status === "no_data"
+    const stateCaveats = state.caveats ?? [];
+    const baseCaveats = [
+      ...(state.status === "no_data"
         ? ["No rows matched the filters; no chart is drawn."]
         : truncated
           ? [TRUNCATION_CAVEAT]
-          : [];
+          : []),
+      ...stateCaveats,
+    ];
 
     let report: InsightReport;
     let stripped: StrippedClaim[] = [];
@@ -337,6 +340,11 @@ export function createUc03Viz(deps: Uc03VizDeps = {}): VizFn {
           stripped = checked.stripped;
 
           const caveats = [...activeDraft.caveats];
+          for (const c of baseCaveats) {
+            if (!caveats.includes(c)) {
+              caveats.push(c);
+            }
+          }
           if (checked.truncationCaveatRequired && !hasTruncationCaveat(caveats)) {
             caveats.push(TRUNCATION_CAVEAT);
           }

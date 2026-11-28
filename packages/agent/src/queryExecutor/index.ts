@@ -44,3 +44,16 @@ export {
   type DescribedTable,
   type SqlPromptInput,
 } from "./prompt.js";
+export {
+  SemanticQueryCompiler,
+  isGovernedQuery,
+  normalizeMetricName,
+  SemanticQuerySchema,
+  SemanticQueryFilterSchema,
+  SemanticQueryOrderBySchema,
+  UNGOVERNED_QUERY_CAVEAT,
+  type SemanticQuery,
+  type SemanticQueryFilter,
+  type SemanticQueryOrderBy,
+  type CompiledSemanticResult,
+} from "./semanticCompiler.js";
