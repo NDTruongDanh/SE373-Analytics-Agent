@@ -670,7 +670,7 @@ describe("buildApp /api/ask", () => {
   });
 
   it("fails if production or live-eval root graph builders omit the retrieve seam", () => {
-    const apiSrc = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+    const apiSrc = readFileSync(new URL("../src/runtime/execution.ts", import.meta.url), "utf8");
     const evalSrc = readFileSync(new URL("../../../evals/run.ts", import.meta.url), "utf8");
 
     expect(apiSrc).toMatch(/createRetrieveSemantic/);
