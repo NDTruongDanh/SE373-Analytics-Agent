@@ -14,6 +14,7 @@
     "db:up": "docker compose -f docker/docker-compose.yml up -d db",
     "db:reset": "docker compose -f docker/docker-compose.yml down -v && docker compose -f docker/docker-compose.yml up -d db",
     "docker:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d",
+    "docker:build": "docker compose --env-file .env -f docker/docker-compose.yml up -d --build",
     "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
     "docker:ps": "docker compose --env-file .env -f docker/docker-compose.yml ps",
     "docker:logs": "docker compose --env-file .env -f docker/docker-compose.yml logs -f --tail=100",
